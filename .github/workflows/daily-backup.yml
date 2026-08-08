@@ -1,0 +1,83 @@
+name: Daily Supabase Backup
+
+on:
+  schedule:
+    - cron: '0 20 * * *'   # 8:00 PM UTC = 1:30 AM IST
+  workflow_dispatch:         # manual trigger for testing
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone private backup repo
+        run: |
+          echo "Starting backup at $(date -u)..."
+          git clone https://x-access-token:${{ secrets.BACKUP_PAT }}@github.com/${{ secrets.BACKUP_REPO }}.git backup-repo
+
+      # Year/month/day folder — each day gets its own snapshot
+      - name: Set folder path
+        run: echo "FOLDER=$(date +%Y/%m/%d)" >> $GITHUB_ENV
+
+      - name: Create date folder
+        run: mkdir -p backup-repo/${{ env.FOLDER }}
+
+      # ── Fetch all 4 tables using SERVICE ROLE KEY (bypasses RLS) ────────────
+
+      - name: Backup admin table (customers)
+        run: |
+          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/admin?select=*" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Accept: text/csv" \
+            -o "backup-repo/${{ env.FOLDER }}/admin.csv"
+          LINES=$(wc -l < "backup-repo/${{ env.FOLDER }}/admin.csv" | tr -d ' ')
+          echo "admin.csv: $LINES rows"
+          if [ "$LINES" -le 1 ]; then
+            echo "::warning::admin.csv has no data rows — check if table is empty or secrets are wrong"
+          fi
+
+      - name: Backup profiles table
+        run: |
+          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/profiles?select=*" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Accept: text/csv" \
+            -o "backup-repo/${{ env.FOLDER }}/profiles.csv"
+          LINES=$(wc -l < "backup-repo/${{ env.FOLDER }}/profiles.csv" | tr -d ' ')
+          echo "profiles.csv: $LINES rows"
+
+      - name: Backup activity_log table
+        run: |
+          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/activity_log?select=*&order=created_at.desc&limit=5000" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Accept: text/csv" \
+            -o "backup-repo/${{ env.FOLDER }}/activity_log.csv"
+          LINES=$(wc -l < "backup-repo/${{ env.FOLDER }}/activity_log.csv" | tr -d ' ')
+          echo "activity_log.csv: $LINES rows"
+
+      - name: Backup metadata table
+        run: |
+          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/metadata?select=*" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Accept: text/csv" \
+            -o "backup-repo/${{ env.FOLDER }}/metadata.csv"
+          LINES=$(wc -l < "backup-repo/${{ env.FOLDER }}/metadata.csv" | tr -d ' ')
+          echo "metadata.csv: $LINES rows"
+
+      # ── Commit — each day is a new folder, git history tracks everything ────
+
+      - name: Commit backup files
+        run: |
+          cd backup-repo
+          git config user.name  "backup-bot"
+          git config user.email "backup-bot@users.noreply.github.com"
+          git add ${{ env.FOLDER }}/admin.csv \
+                  ${{ env.FOLDER }}/profiles.csv \
+                  ${{ env.FOLDER }}/activity_log.csv \
+                  ${{ env.FOLDER }}/metadata.csv
+          git commit -m "Daily snapshot $(date +'%d %b %Y, %H:%M UTC')" || echo "No changes since last backup"
+          git push
+          echo "Backup complete ✅"
