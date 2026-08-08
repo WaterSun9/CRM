@@ -1,0 +1,289 @@
+// ─── UserManagementView.jsx ───────────────────────────────────────────────────
+// Admin view: list, create, role-update, and deactivate users.
+// USER_TYPE_OPTIONS / ROLE_OPTIONS sourced from constants.js.
+// ──────────────────────────────────────────────────────────────────────────────
+
+import { useState, useEffect } from 'react';
+import { supabase } from '../supabase';
+import { logActivity } from '../utils';
+import { USER_TYPE_OPTIONS, ROLE_OPTIONS } from '../constants';
+import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X } from 'lucide-react';
+
+// ─── CreateUserModal ──────────────────────────────────────────────────────────
+function CreateUserModal({ onClose, onCreated, currentUser }) {
+    const [form, setForm] = useState({ name: '', email: '', password: '', role: 'Sales Executive', user_type: 'sales' });
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+    const [showPw, setShowPw] = useState(false);
+    const set = (field, val) => setForm(prev => ({ ...prev, [field]: val }));
+
+    const handleCreate = async () => {
+    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+        setError('Name, email, and password are required.');
+        return;
+    }
+
+    if (form.password.length < 8) {
+        setError('Password must be at least 8 characters.');
+        return;
+    }
+
+    setSaving(true);
+    setError('');
+
+    try {
+        const response = await supabase.functions.invoke('smooth-worker', {
+            body: form,
+        });
+
+        if (response.error) {
+            let message = response.error.message;
+
+            try {
+                const body = await response.error.context?.json();
+                if (body?.error) {
+                    message = body.error;
+                }
+            } catch (_) {
+                // Ignore if the error body can't be parsed
+            }
+
+            throw new Error(message);
+        }
+
+        if (response.data?.error) {
+            throw new Error(response.data.error);
+        }
+
+        logActivity(
+            currentUser.id,
+            'create',
+            `Created new user: ${form.name}`,
+            `${form.role} (${form.user_type})`
+        );
+
+        onCreated();
+    } catch (err) {
+        setError(err.message || 'Failed to create user.');
+    } finally {
+        setSaving(false);
+    }
+};
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md overflow-hidden flex flex-col">
+                <div className="bg-stone-900 px-5 py-4 flex justify-between items-center">
+                    <div>
+                        <h2 className="text-lg font-bold text-white">Create New User</h2>
+                        <p className="text-stone-400 text-xs mt-0.5">They'll receive a login via email</p>
+                    </div>
+                    <button onClick={onClose} className="text-white/60 hover:text-white"><X className="w-5 h-5" /></button>
+                </div>
+                <div className="p-4 space-y-3 overflow-y-auto">
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                            <p className="text-red-600 text-xs">{error}</p>
+                        </div>
+                    )}
+                    {[{ label: 'Full Name *', field: 'name', type: 'text' }, { label: 'Email *', field: 'email', type: 'email' }].map(({ label, field, type }) => (
+                        <div key={field}>
+                            <label className="block text-xs font-medium text-stone-600 mb-1">{label}</label>
+                            <input type={type} value={form[field]} onChange={e => set(field, e.target.value)}
+                                className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                        </div>
+                    ))}
+                    <div>
+                        <label className="block text-xs font-medium text-stone-600 mb-1">Temporary Password *</label>
+                        <div className="relative">
+                            <input type={showPw ? 'text' : 'password'} value={form.password} onChange={e => set('password', e.target.value)}
+                                placeholder="Min. 8 characters"
+                                className="w-full px-3 py-2.5 pr-10 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                            <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-3 text-stone-400 hover:text-stone-600">
+                                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs font-medium text-stone-600 mb-1">Access Type</label>
+                            <select value={form.user_type} onChange={e => set('user_type', e.target.value)}
+                                className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300">
+                                {USER_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-stone-600 mb-1">Role</label>
+                            <select value={form.role} onChange={e => set('role', e.target.value)}
+                                className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300">
+                                {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div className="border-t p-4 flex gap-3">
+                    <button onClick={onClose} className="flex-1 py-2.5 border border-stone-300 text-stone-700 rounded-xl text-sm font-medium">Cancel</button>
+                    <button onClick={handleCreate} disabled={saving}
+                        className="flex-1 py-2.5 bg-stone-900 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+                        {saving ? 'Creating...' : <><UserCog className="w-4 h-4" /> Create User</>}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── UserManagementView ───────────────────────────────────────────────────────
+export default function UserManagementView({ currentUser }) {
+    const [profiles, setProfiles] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [actionLoading, setActionLoading] = useState(null);
+
+    const fetchProfiles = async () => {
+        setLoading(true);
+        const { data, error } = await supabase.from('profiles')
+            .select('*').eq('status', 'active').order('created_at', { ascending: false });
+        if (!error) setProfiles(data || []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchProfiles(); }, []);
+
+    const handleUpdateRole = async (profileId, field, value) => {
+        setActionLoading(profileId);
+        const { error } = await supabase.from('profiles').update({ [field]: value }).eq('id', profileId);
+        if (!error) {
+            setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, [field]: value } : p));
+            logActivity(currentUser.id, 'update', `Updated ${field} for user profile`, value);
+        }
+        setActionLoading(null);
+    };
+
+    const handleResetPassword = async (email) => {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+        if (!error) alert(`Password reset email sent to ${email}`);
+        else alert(`Error: ${error.message}`);
+    };
+
+    const deactivateUser = async (userId) => {
+        try {
+            const response = await fetch(
+                'https://vpsuvtopsyuafbrjyinr.supabase.co/functions/v1/smooth-worker',
+                {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+                    body: JSON.stringify({ user_id: userId }),
+                }
+            );
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error);
+            setProfiles(profiles.filter(p => p.id !== userId));
+        } catch (err) {
+            console.error('Error deactivating user:', err.message);
+        }
+    };
+
+    if (loading) return (
+        <div className="flex items-center justify-center h-64">
+            <div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" />
+        </div>
+    );
+
+    return (
+        <div className="max-w-4xl mx-auto space-y-4">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-stone-400" />
+                    <p className="text-sm text-stone-500">{profiles.length} users registered</p>
+                </div>
+                <div className="flex gap-2">
+                    <button onClick={fetchProfiles} className="p-2 border border-stone-200 rounded-xl text-stone-500 hover:bg-stone-50 transition-colors">
+                        <RefreshCw className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setShowCreateModal(true)}
+                        className="flex items-center gap-2 bg-stone-900 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-stone-800 transition-colors">
+                        <Plus className="w-4 h-4" /> Create User
+                    </button>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b border-stone-100 bg-stone-50">
+                                <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">User</th>
+                                <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Access Type</th>
+                                <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Role</th>
+                                <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Joined</th>
+                                <th className="px-4 py-3" />
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-stone-50">
+                            {profiles.map(profile => (
+                                <tr key={profile.id} className="hover:bg-stone-50 transition-colors">
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 bg-stone-900 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                                {profile.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-stone-800">{profile.name || 'Unnamed'}</p>
+                                                <p className="text-xs text-stone-400">{profile.email || '–'}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <select value={profile.user_type || ''} disabled={profile.id === currentUser.id || actionLoading === profile.id}
+                                            onChange={e => handleUpdateRole(profile.id, 'user_type', e.target.value)}
+                                            className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 focus:outline-none disabled:opacity-50 bg-white">
+                                            {USER_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                                        </select>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <select value={profile.role || ''} disabled={actionLoading === profile.id}
+                                            onChange={e => handleUpdateRole(profile.id, 'role', e.target.value)}
+                                            className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 focus:outline-none disabled:opacity-50 bg-white">
+                                            <option value="">Select role...</option>
+                                            {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                                        </select>
+                                    </td>
+                                    <td className="px-4 py-3 text-xs text-stone-500">
+                                        {profile.created_at ? new Date(profile.created_at).toLocaleDateString('en-IN') : '–'}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center gap-1 justify-end">
+                                            {profile.id !== currentUser.id ? (
+                                                <>
+                                                    <button onClick={() => handleResetPassword(profile.email)} title="Send password reset"
+                                                        className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                                                        <RefreshCw className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button onClick={() => deactivateUser(profile.id)}
+                                                        className="px-3 py-1.5 text-xs text-stone-700 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors font-medium">
+                                                        Deactivate
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">You</span>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {showCreateModal && (
+                <CreateUserModal
+                    onClose={() => setShowCreateModal(false)}
+                    onCreated={() => { setShowCreateModal(false); fetchProfiles(); }}
+                    currentUser={currentUser}
+                />
+            )}
+        </div>
+    );
+}
