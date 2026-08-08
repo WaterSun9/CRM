@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://sadaf953.github.io/WaterSun_CRM",
+  "homepage": "https://github.com/WaterSun9/CRM/settings/pages",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
