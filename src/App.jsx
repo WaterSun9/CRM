@@ -30,8 +30,22 @@ export default function App() {
 
 
     useEffect(() => {
+        // ── Detect recovery link from URL hash BEFORE any async work ──
+        // Supabase appends #type=recovery to the redirect URL.
+        // We check this synchronously so we never accidentally show the
+        // Dashboard before the PASSWORD_RECOVERY event fires.
+        const hash = window.location.hash;
+        if (hash && hash.includes('type=recovery')) {
+            setIsPasswordRecovery(true);
+            setLoading(false);
+            // Don't return — still set up the listener below for cleanup.
+        }
+
         // Restore session on page load
         supabase.auth.getSession().then(async ({ data: { session } }) => {
+            // Skip normal login flow if we're in password recovery
+            if (isPasswordRecovery) { setLoading(false); return; }
+
             if (session?.user) {
                 const { data: profile } = await supabase
                     .from('profiles').select('*').eq('id', session.user.id).single();
@@ -51,10 +65,13 @@ export default function App() {
             setLoading(false);
         });
 
-        // Only respond to sign-out; sign-in is handled by LoginScreen via onLogin
+        // Listen for auth events
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
             if (event === 'SIGNED_OUT') setUser(null);
-            if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true); // NEW
+            if (event === 'PASSWORD_RECOVERY') {
+                setIsPasswordRecovery(true);
+                setLoading(false);
+            }
         });
 
         return () => subscription.unsubscribe();
