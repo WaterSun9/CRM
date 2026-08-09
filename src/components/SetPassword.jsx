@@ -130,7 +130,7 @@ export default function SetPassword() {
                             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
                             <p className="text-stone-800 font-medium">Password set successfully</p>
                             <p className="text-stone-500 text-xs">You can now log in with your new password.</p>
-                            <a href="/" className="mt-2 text-sm font-medium text-stone-900 underline">Go to login</a>
+                            <a href="/CRM/" className="mt-2 text-sm font-medium text-stone-900 underline">Go to login</a>
                         </div>
                     )}
                 </div>
