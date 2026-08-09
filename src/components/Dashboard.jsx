@@ -49,8 +49,8 @@ export default function Dashboard({ user, onLogout }) {
     const [meta, setMeta] = useState({});
 
     // ── Data fetching ──────────────────────────────────────────────────────────
-    const fetchData = async () => {
-        setLoading(true);
+    const fetchData = async (showSpinner = true) => {
+        if (showSpinner) setLoading(true);
         // Load customers
         const { data, error } = await supabase
             .from('admin').select('*').order('created_at', { ascending: false });
@@ -70,14 +70,28 @@ export default function Dashboard({ user, onLogout }) {
         } else {
             console.error('Metadata fetch error:', metaErr);
         }
-        setLoading(false);
+        if (showSpinner) setLoading(false);
     };
 
     useEffect(() => {
-        fetchData();
+        fetchData(true); // initial load — show spinner
+
         const channel = supabase.channel('admin_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, fetchData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, (payload) => {
+                // Handle each event type directly to avoid full refetch flicker
+                if (payload.eventType === 'INSERT') {
+                    setCustomers(prev => [payload.new, ...prev]);
+                } else if (payload.eventType === 'UPDATE') {
+                    setCustomers(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
+                } else if (payload.eventType === 'DELETE') {
+                    setCustomers(prev => prev.filter(c => c.id !== payload.old.id));
+                } else {
+                    // Fallback: silent full refresh
+                    fetchData(false);
+                }
+            })
             .subscribe();
+
         return () => supabase.removeChannel(channel);
     }, []);
 
@@ -297,7 +311,7 @@ export default function Dashboard({ user, onLogout }) {
         } else {
             logActivity(user.id, 'create', `Added new lead: ${data.customer_name}`, `Done by: ${user.name}`, newCustomer.id);
             setShowAddLead(false);
-            fetchData();
+            fetchData(false); // silent refresh — Realtime handles the instant update
             syncMetadata(insertData);
         }
     };
