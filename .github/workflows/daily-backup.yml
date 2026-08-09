@@ -13,7 +13,7 @@ jobs:
       - name: Clone private backup repo
         run: |
           echo "Starting backup at $(date -u)..."
-          git clone https://x-access-token:${{ secrets.BACKUP_PAT }}@github.com/${{ secrets.BACKUP_REPO }}.git backup-repo
+          git clone "https://x-access-token:${{ secrets.BACKUP_PAT }}@github.com/${{ secrets.BACKUP_REPO }}.git" backup-repo
 
       # Year/month/day folder — each day gets its own snapshot
       - name: Set folder path
