@@ -6,13 +6,31 @@ import { supabase } from './supabase';
 import { PRIMARY_STAGES, SUBSIDY_TAGS } from './constants';
 
 // ─── Activity Logging ─────────────────────────────────────────────────────────
-export async function logActivity(userId, action, message, details = '') {
+export async function logActivity(
+    userId,
+    action,
+    message,
+    details = '',
+    customerId = null
+) {
     try {
-        await supabase.from('activity_log').insert({
-            user_id: userId, action, message,
-            new_value: details, created_at: new Date().toISOString(),
-        });
-    } catch (e) { console.error('Activity log error:', e); }
+        const { error } = await supabase
+            .from('activity_log')
+            .insert({
+                user_id: userId,
+                customer_id: customerId,
+                action,
+                message,
+                new_value: details,
+                created_at: new Date().toISOString(),
+            });
+
+        if (error) {
+            console.error('Activity log error:', error);
+        }
+    } catch (e) {
+        console.error('Activity log error:', e);
+    }
 }
 
 // ─── Metadata Hook ────────────────────────────────────────────────────────────

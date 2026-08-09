@@ -200,13 +200,25 @@ export default function Dashboard({ user, onLogout }) {
     const handleRecover = async (id) => {
         await supabase.from('admin').update({ deleted_at: null }).eq('id', id);
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: null } : c));
-        logActivity(user.id, 'update', `Recovered customer from trash`, id);
+        logActivity(
+            user.id,
+            'update',
+            `Recovered customer from trash`,
+            '',
+            id
+        );
     };
 
     // Hard-delete: permanent, admin only
     const handleHardDelete = async (id) => {
         const c = customers.find(x => x.id === id);
-        await logActivity(user.id, 'delete', `Permanently deleted: ${c?.customer_name}`, id);
+        await logActivity(
+            user.id,
+            'delete',
+            `Permanently deleted: ${c?.customer_name}`,
+            '',
+            id
+        );
         await supabase.from('admin').delete().eq('id', id);
         setCustomers(prev => prev.filter(c => c.id !== id));
     };
@@ -251,8 +263,11 @@ export default function Dashboard({ user, onLogout }) {
             internal_remarks: updatedInternalRemarks
         });
 
-        await logActivity(user.id, 'stage_change',
+        await logActivity(
+            user.id,
+            'stage_change',
             `${customer.customer_name}: STAGE: ${oldStage} → ${newStage}`,
+            '',
             id
         );
     };
@@ -275,12 +290,12 @@ export default function Dashboard({ user, onLogout }) {
             }
         });
 
-        const { error } = await supabase.from('admin').insert(insertData).select().single();
+        const { data: newCustomer, error } = await supabase.from('admin').insert(insertData).select().single();
         if (error) {
             console.error("Error adding lead to Supabase:", error);
             alert(`Failed to add lead: ${error.message} (Code: ${error.code})`);
         } else {
-            logActivity(user.id, 'create', `Added new lead: ${data.customer_name}`, `Done by: ${user.name}`);
+            logActivity(user.id, 'create', `Added new lead: ${data.customer_name}`, `Done by: ${user.name}`, newCustomer.id);
             setShowAddLead(false);
             fetchData();
             syncMetadata(insertData);
@@ -354,7 +369,7 @@ export default function Dashboard({ user, onLogout }) {
     const headerTitle =
         currentView === 'dashboard' ? 'Business Dashboard'
             : currentView === 'subsidy' ? 'Subsidy Tag Tracking'
-                : currentView === 'channel_partner_mgmt' ? 'Channel Partner & Brand Management'
+                : currentView === 'channel_partner_mgmt' ? 'Operations'
                     : currentView === 'activity' ? 'Activity Log'
                         : currentView === 'users' ? 'User Management'
                             : currentView === 'trash' ? 'Trash'
@@ -395,7 +410,7 @@ export default function Dashboard({ user, onLogout }) {
                     {user.userType === 'admin' && (
                         <>
                             <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-5 pb-2 tracking-widest">System</div>
-                            <NavBtn view="channel_partner_mgmt" icon={Users} label="Channel Partners" count={0} />
+                            <NavBtn view="channel_partner_mgmt" icon={Users} label="Operations" count={0} />
                             <NavBtn view="activity" icon={Activity} label="Activity Log" count={0} />
                             <NavBtn view="users" icon={UserCog} label="User Management" count={0} />
                             <NavBtn view="trash" icon={Trash2} label="Trash" count={trashCount} redBadge />

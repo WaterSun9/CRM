@@ -42,7 +42,10 @@ export const SUBSIDY_TAG_COLORS = {
 };
 
 // Supabase metadata table categories (one per managed dropdown)
-export const META_CATEGORIES = ['payment_type', 'module_brand', 'customer_type', 'payment_method_modes', 'subsidy_approval_status'];
+export const META_CATEGORIES = ['payment_type', 'module_brand', 'payment_method_modes', 'subsidy_approval_status', 'branch_name', 'registration_by'];
 
-export const USER_TYPE_OPTIONS = ['admin', 'sales', 'agent'];
-export const ROLE_OPTIONS      = ['Manager', 'Sales Executive', 'Field Agent', 'Operations', 'Finance'];
+export const APP_ROLES = [
+    { id: 'admin', label: 'Admin', user_type: 'admin', role: 'Admin' },
+    { id: 'office', label: 'Office', user_type: 'sales', role: 'Office' },
+    { id: 'channel_partner', label: 'Channel Partners', user_type: 'agent', role: 'Channel Partners' },
+];

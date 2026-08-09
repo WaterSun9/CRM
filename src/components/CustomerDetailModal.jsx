@@ -16,7 +16,6 @@ import {
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag,
 } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
-import { normalizeChecklist } from '../models';
 import { logActivity, formatLogDate, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
@@ -58,33 +57,8 @@ const getStageRemarkFromData = (stagesRemarksObj, stageName) => {
     return '';
 };
 
-// ─── MetaSelect: dropdown that lets the user type+add a new option ───────────
-// Adds the new value to the Supabase metadata table automatically.
-function MetaSelect({ label, field, value, onChange, category, options = [], isEditing, user }) {
-    const [adding, setAdding] = useState(false);
-    const [newVal, setNewVal] = useState('');
-    const [localOptions, setLocalOptions] = useState(options);
-
-    useEffect(() => { setLocalOptions(options); }, [options.length]);
-
-    const handleAdd = async () => {
-        const trimmed = newVal.trim();
-        if (!trimmed) return;
-        // Persist to Supabase metadata table
-        const { error } = await supabase.from('metadata').insert({ category, label: trimmed });
-        if (error) {
-            alert('Failed to save metadata: ' + error.message);
-            return;
-        }
-        setLocalOptions(prev => [...prev, trimmed]);
-        onChange(field, trimmed);
-        setNewVal('');
-        setAdding(false);
-        if (user) {
-            await logActivity(user.id, 'create', `Added new ${category}: "${trimmed}" (inline from Customer Details Modal)`);
-        }
-    };
-
+// ─── MetaSelect: standard select dropdown for metadata fields ─────────────────
+function MetaSelect({ label, field, value, onChange, options = [], isEditing }) {
     if (!isEditing) {
         return (
             <div className="bg-stone-50 p-3 rounded-xl">
@@ -94,36 +68,14 @@ function MetaSelect({ label, field, value, onChange, category, options = [], isE
         );
     }
 
-    if (adding) {
-        return (
-            <div className="bg-stone-50 p-3 rounded-xl space-y-2">
-                <p className="text-[9px] text-stone-400 uppercase tracking-wide font-bold">{label} — New</p>
-                <div className="flex gap-1">
-                    <input autoFocus value={newVal} onChange={e => setNewVal(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleAdd()}
-                        placeholder={`New ${label}...`}
-                        className="flex-1 bg-white border border-amber-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300" />
-                    <button onClick={handleAdd} className="px-2 py-1 bg-amber-500 text-white rounded-lg text-xs font-bold">Add</button>
-                    <button onClick={() => setAdding(false)} className="px-2 py-1 bg-stone-200 text-stone-600 rounded-lg text-xs">✕</button>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="bg-stone-50 p-3 rounded-xl">
             <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
-            <div className="flex gap-1">
-                <select value={value || ''} onChange={e => onChange(field, e.target.value)}
-                    className="flex-1 bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300">
-                    <option value="">Select...</option>
-                    {localOptions.map(o => <option key={o}>{o}</option>)}
-                </select>
-                <button onClick={() => setAdding(true)} title="Add new option"
-                    className="px-2 py-1 bg-stone-100 hover:bg-amber-50 hover:text-amber-600 text-stone-400 rounded-lg text-xs transition-colors">
-                    <Plus className="w-3.5 h-3.5" />
-                </button>
-            </div>
+            <select value={value || ''} onChange={e => onChange(field, e.target.value)}
+                className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300">
+                <option value="">Select...</option>
+                {options.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
         </div>
     );
 }
@@ -177,21 +129,6 @@ function ChannelPartnerAutocomplete({ label, value, onChange, suggestions = [], 
         setShowSuggestions(true);
     };
 
-    if (!isAdmin) {
-        return (
-            <select
-                value={inputValue || ''}
-                onChange={e => handleSelect(e.target.value)}
-                className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700"
-            >
-                <option value="">Select Channel Partner</option>
-                {suggestions.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                ))}
-            </select>
-        );
-    }
-
     return (
         <div className="relative w-full" ref={containerRef}>
             <input
@@ -223,7 +160,7 @@ function ChannelPartnerAutocomplete({ label, value, onChange, suggestions = [], 
 function EditableDetailItem({ label, field, value, onChange, type = 'text', isMoney = false, isEnergy = false, isEditing, options, category, meta, channel_partners = [], isAdmin = false, user }) {
     // Metadata-driven dropdown with add-new
     if (options && category) {
-        return <MetaSelect label={label} field={field} value={value} onChange={onChange} category={category} options={options} isEditing={isEditing} user={user} />;
+        return <MetaSelect label={label} field={field} value={value} onChange={onChange} options={options} isEditing={isEditing} />;
     }
     if (!isEditing) return <DetailItem label={label} value={value} isMoney={isMoney} isEnergy={isEnergy} />;
 
@@ -258,15 +195,7 @@ function EditableDetailItem({ label, field, value, onChange, type = 'text', isMo
 }
 
 // ─── CheckboxRemarkItem ───────────────────────────────────────────────────────
-function CheckboxRemarkItem({ label, field, remarkField, value, remarkValue, onChange, isEditing }) {
-    const [showInput, setShowInput] = useState(!!remarkValue?.trim());
-
-    useEffect(() => {
-        if (remarkValue?.trim()) {
-            setShowInput(true);
-        }
-    }, [remarkValue]);
-
+function CheckboxRemarkItem({ label, field, value, onChange, isEditing }) {
     if (!isEditing) {
         return (
             <div className="py-1.5 flex items-start gap-3 group">
@@ -275,11 +204,6 @@ function CheckboxRemarkItem({ label, field, remarkField, value, remarkValue, onC
                 </div>
                 <div className="flex-1 min-w-0">
                     <span className={`text-xs block ${value ? 'text-stone-400 line-through' : 'text-stone-700 font-semibold'}`}>{label}</span>
-                    {remarkValue?.trim() && (
-                        <p className="text-[10px] text-stone-400 mt-0.5 font-medium italic">
-                            Remark: {remarkValue}
-                        </p>
-                    )}
                 </div>
             </div>
         );
@@ -301,27 +225,6 @@ function CheckboxRemarkItem({ label, field, remarkField, value, remarkValue, onC
                     </label>
                 </div>
             </div>
-            {showInput && (
-                <div className="relative flex items-center gap-1.5 animate-in slide-in-from-top-1 duration-200 pl-6.5">
-                    <input
-                        type="text"
-                        placeholder="Add a remark/note..."
-                        value={remarkValue || ''}
-                        onChange={e => onChange(remarkField, e.target.value)}
-                        className="w-full bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 text-stone-700 pr-8"
-                    />
-                    {!(remarkValue?.trim()) && (
-                        <button
-                            type="button"
-                            onClick={() => setShowInput(false)}
-                            className="absolute right-2 text-stone-300 hover:text-stone-500 text-xs font-bold font-mono"
-                            title="Remove remark field"
-                        >
-                            ✕
-                        </button>
-                    )}
-                </div>
-            )}
         </div>
     );
 }
@@ -436,9 +339,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     // Frozen for ALL users when completed. Admin can temporarily unlock.
     const isFrozen = isCompleted && !(isAdmin && adminUnlocked);
 
-    const [localChecklist, setLocalChecklist] = useState(normalizeChecklist(customer.project_checklist));
-    const [checklistDirty, setChecklistDirty] = useState(false);
-    const sections = [...new Set(localChecklist.map(item => item.section))];
+
 
     const [draftStatus, setDraftStatus] = useState('Approved');
     const [draftDate, setDraftDate] = useState('');
@@ -459,41 +360,33 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const REG_CHECKLIST_FIELDS = [
-        { key: 'adhaar_card', remarkKey: 'adhaar_card_remarks' },
-        { key: 'pan_card', remarkKey: 'pan_card_remarks' },
-        { key: 'index_2', remarkKey: 'index_2_remarks' },
-        { key: 'light_bill', remarkKey: 'light_bill_remarks' },
-        { key: 'bank_details', remarkKey: 'bank_details_remarks' },
-        { key: 'bank_passbook', remarkKey: 'bank_passbook_remarks' },
+        'adhaar_card',
+        'pan_card',
+        'index_2',
+        'light_bill',
+        'bank_details',
+        'bank_passbook',
     ];
 
     const isRegChecklistDirty = REG_CHECKLIST_FIELDS.some(field => {
-        const checkDirty = !!editData[field.key] !== !!customer[field.key];
-        const remarkDirty = (editData[field.remarkKey] || '') !== (customer[field.remarkKey] || '');
-        return checkDirty || remarkDirty;
+        return !!editData[field] !== !!customer[field];
     });
 
     const handleSaveRegChecklist = async () => {
         const patch = {};
         const changes = [];
         REG_CHECKLIST_FIELDS.forEach(field => {
-            const oldCheck = !!customer[field.key];
-            const newCheck = !!editData[field.key];
+            const oldCheck = !!customer[field];
+            const newCheck = !!editData[field];
             if (oldCheck !== newCheck) {
-                patch[field.key] = newCheck;
-                changes.push(`${field.key}: ${oldCheck ? 'Checked' : 'Unchecked'} → ${newCheck ? 'Checked' : 'Unchecked'}`);
-            }
-            const oldRemark = customer[field.remarkKey] || '';
-            const newRemark = editData[field.remarkKey] || '';
-            if (oldRemark !== newRemark) {
-                patch[field.remarkKey] = newRemark;
-                changes.push(`${field.remarkKey}: "${oldRemark}" → "${newRemark}"`);
+                patch[field] = newCheck;
+                changes.push(`${field}: ${oldCheck ? 'Checked' : 'Unchecked'} → ${newCheck ? 'Checked' : 'Unchecked'}`);
             }
         });
 
         await onUpdate(customer.id, patch);
         if (changes.length > 0) {
-            await logActivity(user.id, 'update', `${customer.customer_name}: Registration checklist update - ${changes.join(' | ')}`, customer.id);
+            await logActivity(user.id, 'update', `${customer.customer_name}: Registration checklist update - ${changes.join(' | ')}`, '', customer.id);
         }
         fetchLogs();
     };
@@ -508,7 +401,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 stages_remarks: prev.stages_remarks
             };
         });
-        setLocalChecklist(normalizeChecklist(customer.project_checklist));
         fetchLogs();
     }, [customer]);
 
@@ -566,6 +458,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             user.id,
             'update',
             `${customer.customer_name}: Subsidy Tag saved to ${newTag ? tagLabel : 'None'} (logged to history)`,
+            '',
             customer.id
         );
         
@@ -615,6 +508,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 user.id,
                 'update',
                 `${customer.customer_name}: Stage remark update for ${editData.stage} - "${currentRemark}"`,
+                '',
                 customer.id
             );
             fetchLogs();
@@ -679,7 +573,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
         delete updates.id; delete updates.created_at; delete updates.crn;
         await onUpdate(customer.id, updates);
-        if (changeSummary.length > 0) await logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, customer.id);
+        if (changeSummary.length > 0) await logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id);
         setEditingSection(null);
         setSaving(false);
         fetchLogs();
@@ -689,7 +583,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (!followUpText.trim()) return;
         const updatedNotes = [...(editData.follow_ups || []), { text: followUpText, author: user.name, date: new Date().toISOString() }];
         await onUpdate(customer.id, { follow_ups: updatedNotes });
-        await logActivity(user.id, 'note', `Note Added: ${followUpText}`, customer.id);
+        await logActivity(user.id, 'note', `Note Added: ${followUpText}`, '', customer.id);
         setEditData(prev => ({ ...prev, follow_ups: updatedNotes }));
         setFollowUpText('');
         fetchLogs();
@@ -697,7 +591,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const handleSoftDelete = async () => {
         const deletedAt = new Date().toISOString();
-        await logActivity(user.id, 'delete', `Soft-deleted: ${customer.customer_name}`, customer.id);
+        await logActivity(user.id, 'delete', `Soft-deleted: ${customer.customer_name}`, '', customer.id);
         await onDelete(customer.id, deletedAt);   // pass timestamp for soft-delete
         onClose();
     };
@@ -849,7 +743,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                             stages_remarks: updatedRemarks
                                         });
 
-                                        await logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${newStage}`, customer.id);
+                                        await logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${newStage}`, '', customer.id);
                                         fetchLogs();
                                     }} className="w-full p-2.5 bg-white border border-stone-200 rounded-xl font-bold text-stone-700 outline-none">
                                         {PRIMARY_STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -911,10 +805,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                 <SectionHeader title="Customer Info" id="cus" icon={User} />
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                     <EditableDetailItem label="Customer Name" field="customer_name" value={editData.customer_name} onChange={handleChange} isEditing={editingSection === 'cus'} />
-                                    <EditableDetailItem label="Phone Number" field="phone" value={editData.phone} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                                    <EditableDetailItem label="Phone Number" field="phone" value={editData.phone} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="Email Address" field="email" value={editData.email} onChange={handleChange} isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="Villages" field="villages" value={editData.villages} onChange={handleChange} isEditing={editingSection === 'cus'} />
-                                    <EditableDetailItem label="Folder No" field="folder_no" value={editData.folder_no} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                                    <EditableDetailItem label="Folder No" field="folder_no" value={editData.folder_no} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="Channel Partner Name" field="channel_partner" value={editData.channel_partner} onChange={handleChange} isEditing={editingSection === 'cus'} channel_partners={channel_partners} isAdmin={isAdmin} />
                                     <EditableDetailItem label="Sub Channel Partner Name" field="sub_channel_partner" value={editData.sub_channel_partner} onChange={handleChange} isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="System Capacity (kWp)" field="system_capacity_kwp" value={editData.system_capacity_kwp} onChange={handleChange} isEditing={editingSection === 'cus'} />
@@ -922,7 +816,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     <EditableDetailItem label="MODULE WP" field="module_wp" value={editData.module_wp} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="PAYMENT TYPE" field="payment_type" value={editData.payment_type} onChange={handleChange} options={meta['payment_type']} category="payment_type" isEditing={editingSection === 'cus'} user={user} />
                                     <EditableDetailItem label="Sub Division" field="sub_divisions" value={editData.sub_divisions} onChange={handleChange} isEditing={editingSection === 'cus'} />
-                                    <EditableDetailItem label="Consumer No" field="consumer_no" value={editData.consumer_no} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                                    <EditableDetailItem label="Consumer No" field="consumer_no" value={editData.consumer_no} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
 
 
                                 </div>
@@ -939,8 +833,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                 <SectionHeader title="Registration & Bank Details" id="reg_details" icon={Building2} />
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                     <EditableDetailItem label="Registration date" field="registration_date" value={editData.registration_date} onChange={handleChange} type="date" isEditing={editingSection === 'reg_details'} />
+                                    <EditableDetailItem label="Registration By" field="registration_by" value={editData.registration_by} onChange={handleChange} options={meta['registration_by']} category="registration_by" isEditing={editingSection === 'reg_details'} user={user} />
+                                    <EditableDetailItem label="Loan Registration Date" field="loan_registration_date" value={editData.loan_registration_date} onChange={handleChange} type="date" isEditing={editingSection === 'reg_details'} />
                                     <EditableDetailItem label="Bank Name" field="bank_name" value={editData.bank_name} onChange={handleChange} isEditing={editingSection === 'reg_details'} />
-                                    <EditableDetailItem label="Bank Branch & IFSC" field="bank_branch_ifsc" value={editData.bank_branch_ifsc} onChange={handleChange} isEditing={editingSection === 'reg_details'} />
+                                    <EditableDetailItem label="Branch Name" field="branch_name" value={editData.branch_name} onChange={handleChange} options={meta['branch_name']} category="branch_name" isEditing={editingSection === 'reg_details'} user={user} />
                                 </div>
                             </section>
 
@@ -961,15 +857,15 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     <div className="flex flex-col gap-2">
                                         {editData.payment_type?.trim().toLowerCase() !== 'cash' && (
                                             <>
-                                                <CheckboxRemarkItem label="Adhaar card" field="adhaar_card" remarkField="adhaar_card_remarks" value={editData.adhaar_card} remarkValue={editData.adhaar_card_remarks} onChange={handleChange} isEditing={!isFrozen} />
-                                                <CheckboxRemarkItem label="Pan card" field="pan_card" remarkField="pan_card_remarks" value={editData.pan_card} remarkValue={editData.pan_card_remarks} onChange={handleChange} isEditing={!isFrozen} />
-                                                <CheckboxRemarkItem label="Index 2" field="index_2" remarkField="index_2_remarks" value={editData.index_2} remarkValue={editData.index_2_remarks} onChange={handleChange} isEditing={!isFrozen} />
+                                                <CheckboxRemarkItem label="Adhaar card" field="adhaar_card" value={editData.adhaar_card} onChange={handleChange} isEditing={!isFrozen} />
+                                                <CheckboxRemarkItem label="Pan card" field="pan_card" value={editData.pan_card} onChange={handleChange} isEditing={!isFrozen} />
+                                                <CheckboxRemarkItem label="Index 2" field="index_2" value={editData.index_2} onChange={handleChange} isEditing={!isFrozen} />
                                             </>
                                         )}
-                                        <CheckboxRemarkItem label="Light Bill" field="light_bill" remarkField="light_bill_remarks" value={editData.light_bill} remarkValue={editData.light_bill_remarks} onChange={handleChange} isEditing={!isFrozen} />
-                                        <CheckboxRemarkItem label="Bank details" field="bank_details" remarkField="bank_details_remarks" value={editData.bank_details} remarkValue={editData.bank_details_remarks} onChange={handleChange} isEditing={!isFrozen} />
+                                        <CheckboxRemarkItem label="Light Bill" field="light_bill" value={editData.light_bill} onChange={handleChange} isEditing={!isFrozen} />
+                                        <CheckboxRemarkItem label="Bank details" field="bank_details" value={editData.bank_details} onChange={handleChange} isEditing={!isFrozen} />
                                         {editData.payment_type?.trim().toLowerCase() !== 'cash' && (
-                                            <CheckboxRemarkItem label="Bank Passbook" field="bank_passbook" remarkField="bank_passbook_remarks" value={editData.bank_passbook} remarkValue={editData.bank_passbook_remarks} onChange={handleChange} isEditing={!isFrozen} />
+                                            <CheckboxRemarkItem label="Bank Passbook" field="bank_passbook" value={editData.bank_passbook} onChange={handleChange} isEditing={!isFrozen} />
                                         )}
                                     </div>
                                 </div>
@@ -1006,7 +902,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
                             await onUpdate(customer.id, patch);
                             if (changes.length > 0) {
-                                await logActivity(user.id, 'update', `${customer.customer_name}: Operational checklist update - ${changes.join(' | ')}`, customer.id);
+                                await logActivity(user.id, 'update', `${customer.customer_name}: Operational checklist update - ${changes.join(' | ')}`, '', customer.id);
                             }
                             fetchLogs();
                         };
@@ -1210,6 +1106,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                                                 user.id,
                                                                 'update',
                                                                 `${customer.customer_name}: Added subsidy entry (${draftStatus} on ${entryDate}${draftRemark ? `: ${draftRemark}` : ''})`,
+                                                                '',
                                                                 customer.id
                                                             );
                                                             

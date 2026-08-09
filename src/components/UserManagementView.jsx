@@ -6,12 +6,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { logActivity } from '../utils';
-import { USER_TYPE_OPTIONS, ROLE_OPTIONS } from '../constants';
+import { APP_ROLES } from '../constants';
 import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X } from 'lucide-react';
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
 function CreateUserModal({ onClose, onCreated, currentUser }) {
-    const [form, setForm] = useState({ name: '', email: '', password: '', role: 'Sales Executive', user_type: 'sales' });
+    const [form, setForm] = useState({ name: '', email: '', password: '', role: 'Office', user_type: 'sales' });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [showPw, setShowPw] = useState(false);
@@ -32,7 +32,7 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
     setError('');
 
     try {
-        const response = await supabase.functions.invoke('smooth-worker', {
+        const response = await supabase.functions.invoke('add_user', {
             body: form,
         });
 
@@ -104,21 +104,23 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
                             </button>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-xs font-medium text-stone-600 mb-1">Access Type</label>
-                            <select value={form.user_type} onChange={e => set('user_type', e.target.value)}
-                                className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300">
-                                {USER_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-stone-600 mb-1">Role</label>
-                            <select value={form.role} onChange={e => set('role', e.target.value)}
-                                className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300">
-                                {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                            </select>
-                        </div>
+                    <div>
+                        <label className="block text-xs font-medium text-stone-600 mb-1">Role *</label>
+                        <select 
+                            value={APP_ROLES.find(r => r.user_type === form.user_type)?.id || 'office'} 
+                            onChange={e => {
+                                const val = e.target.value;
+                                const selected = APP_ROLES.find(r => r.id === val);
+                                setForm(prev => ({
+                                    ...prev,
+                                    user_type: selected.user_type,
+                                    role: selected.role
+                                }));
+                            }}
+                            className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white"
+                        >
+                            {APP_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                        </select>
                     </div>
                 </div>
                 <div className="border-t p-4 flex gap-3">
@@ -168,16 +170,24 @@ export default function UserManagementView({ currentUser }) {
 
     const deactivateUser = async (userId) => {
         try {
-            const response = await fetch(
-                'https://vpsuvtopsyuafbrjyinr.supabase.co/functions/v1/smooth-worker',
-                {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-                    body: JSON.stringify({ user_id: userId }),
-                }
-            );
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error);
+            const response = await supabase.functions.invoke('add_user', {
+                method: 'DELETE',
+                body: { user_id: userId },
+            });
+
+            if (response.error) {
+                let message = response.error.message;
+                try {
+                    const body = await response.error.context?.json();
+                    if (body?.error) message = body.error;
+                } catch (_) {}
+                throw new Error(message);
+            }
+
+            if (response.data?.error) {
+                throw new Error(response.data.error);
+            }
+
             setProfiles(profiles.filter(p => p.id !== userId));
         } catch (err) {
             console.error('Error deactivating user:', err.message);
@@ -214,7 +224,6 @@ export default function UserManagementView({ currentUser }) {
                         <thead>
                             <tr className="border-b border-stone-100 bg-stone-50">
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">User</th>
-                                <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Access Type</th>
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Role</th>
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Joined</th>
                                 <th className="px-4 py-3" />
@@ -235,19 +244,33 @@ export default function UserManagementView({ currentUser }) {
                                         </div>
                                     </td>
                                     <td className="px-4 py-3">
-                                        <select value={profile.user_type || ''} disabled={profile.id === currentUser.id || actionLoading === profile.id}
-                                            onChange={e => handleUpdateRole(profile.id, 'user_type', e.target.value)}
-                                            className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 focus:outline-none disabled:opacity-50 bg-white">
-                                            {USER_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                                        </select>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <select value={profile.role || ''} disabled={actionLoading === profile.id}
-                                            onChange={e => handleUpdateRole(profile.id, 'role', e.target.value)}
-                                            className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 focus:outline-none disabled:opacity-50 bg-white">
-                                            <option value="">Select role...</option>
-                                            {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                                        </select>
+                                        {profile.id === currentUser.id ? (
+                                            <span className="text-xs font-semibold text-stone-600">
+                                                {APP_ROLES.find(r => r.user_type === profile.user_type)?.label || profile.role || 'Admin'}
+                                            </span>
+                                        ) : (
+                                            <select 
+                                                value={APP_ROLES.find(r => r.user_type === profile.user_type)?.id || 'office'} 
+                                                disabled={actionLoading === profile.id}
+                                                onChange={async (e) => {
+                                                    const val = e.target.value;
+                                                    const selected = APP_ROLES.find(r => r.id === val);
+                                                    setActionLoading(profile.id);
+                                                    const { error } = await supabase.from('profiles').update({
+                                                        user_type: selected.user_type,
+                                                        role: selected.role
+                                                    }).eq('id', profile.id);
+                                                    if (!error) {
+                                                        setProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, user_type: selected.user_type, role: selected.role } : p));
+                                                        logActivity(currentUser.id, 'update', `Updated role for ${profile.name} to ${selected.label}`, '');
+                                                    }
+                                                    setActionLoading(null);
+                                                }}
+                                                className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 focus:outline-none disabled:opacity-50 bg-white"
+                                            >
+                                                {APP_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                                            </select>
+                                        )}
                                     </td>
                                     <td className="px-4 py-3 text-xs text-stone-500">
                                         {profile.created_at ? new Date(profile.created_at).toLocaleDateString('en-IN') : '–'}

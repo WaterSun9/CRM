@@ -3,31 +3,38 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2 } from 'lucide-react';
+import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3 } from 'lucide-react';
 import { logActivity } from '../utils';
 
 export default function ChannelPartnerManagementView({ customers = [], currentUser }) {
     const [partners, setPartners] = useState([]);
     const [brands, setBrands] = useState([]);
+    const [registrations, setRegistrations] = useState([]);
     const [newPartner, setNewPartner] = useState('');
     const [newBrand, setNewBrand] = useState('');
+    const [newRegistration, setNewRegistration] = useState('');
+    const [activeManageCategory, setActiveManageCategory] = useState(null);
+    const [editingId, setEditingId] = useState(null);
+    const [editingLabel, setEditingLabel] = useState('');
     const [loading, setLoading] = useState(true);
 
-    // Fetch partners and brands from metadata table
+    // Fetch partners, brands, and registrations from metadata table
     const fetchMetadata = async () => {
         try {
             const { data, error } = await supabase
                 .from('metadata')
                 .select('id, category, label')
-                .in('category', ['channel_partner', 'module_brand']);
-            
+                .in('category', ['channel_partner', 'module_brand', 'registration_by']);
+
             if (error) throw error;
 
             const partnerList = data.filter(d => d.category === 'channel_partner');
             const brandList = data.filter(d => d.category === 'module_brand');
-            
+            const registrationList = data.filter(d => d.category === 'registration_by');
+
             setPartners(partnerList);
             setBrands(brandList);
+            setRegistrations(registrationList);
         } catch (e) {
             console.error('Error fetching metadata:', e);
         } finally {
@@ -93,6 +100,93 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         }
     };
 
+    // Add new Registration Staff
+    const handleAddRegistration = async () => {
+        const val = newRegistration.trim();
+        if (!val) return;
+
+        // Check for duplicates
+        if (registrations.some(r => r.label.toLowerCase() === val.toLowerCase())) {
+            alert('This Registration Staff already exists.');
+            return;
+        }
+
+        try {
+            const { data, error } = await supabase
+                .from('metadata')
+                .insert({ category: 'registration_by', label: val })
+                .select();
+
+            if (error) throw error;
+
+            setRegistrations(prev => [...prev, ...data]);
+            setNewRegistration('');
+            await logActivity(currentUser.id, 'create', `Added new Registration Staff: "${val}"`);
+        } catch (e) {
+            console.error('Error adding registration staff:', e);
+        }
+    };
+
+    // Edit/Rename metadata entry and cascade updates to admin table
+    const handleEditMetadata = async (id, oldLabel, newLabel, category) => {
+        const trimmed = newLabel.trim();
+        if (!trimmed || trimmed === oldLabel) {
+            setEditingId(null);
+            return;
+        }
+
+        // Check for duplicates
+        let listToCheck = [];
+        if (category === 'channel_partner') listToCheck = partners;
+        else if (category === 'module_brand') listToCheck = brands;
+        else if (category === 'registration_by') listToCheck = registrations;
+
+        if (listToCheck.some(x => x.id !== id && x.label.toLowerCase() === trimmed.toLowerCase())) {
+            alert('This entry already exists.');
+            return;
+        }
+
+        try {
+            // Update in metadata table
+            const { error: metaError } = await supabase
+                .from('metadata')
+                .update({ label: trimmed })
+                .eq('id', id);
+            if (metaError) throw metaError;
+
+            // Map category to column in admin table
+            let dbField = '';
+            if (category === 'channel_partner') dbField = 'channel_partner';
+            else if (category === 'module_brand') dbField = 'module_brand';
+            else if (category === 'registration_by') dbField = 'registration_by';
+
+            // Update in admin table
+            if (dbField) {
+                const { error: adminError } = await supabase
+                    .from('admin')
+                    .update({ [dbField]: trimmed })
+                    .eq(dbField, oldLabel);
+                if (adminError) throw adminError;
+            }
+
+            // Update state
+            if (category === 'channel_partner') {
+                setPartners(prev => prev.map(x => x.id === id ? { ...x, label: trimmed } : x));
+            } else if (category === 'module_brand') {
+                setBrands(prev => prev.map(x => x.id === id ? { ...x, label: trimmed } : x));
+            } else if (category === 'registration_by') {
+                setRegistrations(prev => prev.map(x => x.id === id ? { ...x, label: trimmed } : x));
+            }
+
+            await logActivity(currentUser.id, 'update', `Renamed ${category} from "${oldLabel}" to "${trimmed}"`);
+        } catch (e) {
+            console.error('Error renaming metadata:', e);
+            alert('Error renaming metadata: ' + e.message);
+        } finally {
+            setEditingId(null);
+        }
+    };
+
     // Delete metadata entry
     const handleDeleteMetadata = async (id, category, label) => {
         if (!window.confirm(`Are you sure you want to delete "${label}"?`)) return;
@@ -111,12 +205,18 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     .from('admin')
                     .update({ channel_partner: null })
                     .eq('channel_partner', label);
-            } else {
+            } else if (category === 'module_brand') {
                 setBrands(prev => prev.filter(b => b.id !== id));
                 await supabase
                     .from('admin')
                     .update({ module_brand: null })
                     .eq('module_brand', label);
+            } else if (category === 'registration_by') {
+                setRegistrations(prev => prev.filter(r => r.id !== id));
+                await supabase
+                    .from('admin')
+                    .update({ registration_by: null })
+                    .eq('registration_by', label);
             }
             await logActivity(currentUser.id, 'delete', `Deleted ${category}: "${label}" (cleared from customers)`);
         } catch (e) {
@@ -142,7 +242,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             <div className="flex items-center gap-3 bg-stone-900 text-white p-6 rounded-[32px] shadow-sm">
                 <ShieldCheck className="w-8 h-8 text-amber-400" />
                 <div>
-                    <h2 className="text-lg font-black tracking-tight">Channel Partner & Brand Management</h2>
+                    <h2 className="text-lg font-black tracking-tight">Operations</h2>
                     <p className="text-xs text-stone-400">Admin Control Panel • Configure active directory listings and view top sales performance</p>
                 </div>
             </div>
@@ -153,7 +253,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                 </div>
             ) : (
                 <div className="space-y-8 animate-in fade-in duration-700">
-                    
+
                     {/* Top Performance Ranking Chart - Full Width */}
                     <div className="bg-white rounded-[32px] p-8 border border-stone-100 shadow-sm space-y-6">
                         <div className="flex items-center gap-2 border-b border-stone-50 pb-4">
@@ -190,107 +290,202 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                         </div>
                     </div>
 
-                    {/* Bottom grid: Directory management side-by-side */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        
-                        {/* Channel Partner List & Add form */}
-                        <div className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm space-y-6">
-                            <div className="flex items-center gap-2 border-b border-stone-50 pb-4">
-                                <Users className="w-5 h-5 text-amber-500" />
-                                <h3 className="text-sm font-bold text-stone-800">Channel Partner Directory</h3>
-                                <span className="ml-auto text-[10px] bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">{partners.length} Active</span>
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-                            {/* Add input */}
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder="Enter channel partner name..."
-                                    value={newPartner}
-                                    onChange={e => setNewPartner(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && handleAddPartner()}
-                                    className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2.5 text-sm focus:border-amber-400 outline-none transition"
-                                />
-                                <button
-                                    onClick={handleAddPartner}
-                                    className="flex items-center gap-1 bg-stone-900 text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors"
-                                >
-                                    <Plus className="w-4 h-4" /> Add
-                                </button>
+                        {/* Channel Partners Card */}
+                        <button
+                            onClick={() => setActiveManageCategory('channel_partner')}
+                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                        >
+                            <div className="space-y-3 w-full">
+                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
+                                    <Users className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Channel Partner Directory</h3>
+                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{partners.length} active channel partners</p>
+                                </div>
                             </div>
+                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
+                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
+                            </span>
+                        </button>
 
-                            {/* List layout */}
-                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                                {partners.length > 0 ? (
-                                    partners.map(p => (
-                                        <div key={p.id} className="flex justify-between items-center bg-stone-50 px-4 py-3 rounded-xl hover:bg-stone-100 transition-colors">
-                                            <span className="text-xs font-bold text-stone-700">{p.label}</span>
-                                            <button
-                                                onClick={() => handleDeleteMetadata(p.id, 'channel_partner', p.label)}
-                                                className="text-stone-400 hover:text-red-500 transition-colors p-1"
-                                                title="Delete entry"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <p className="text-xs text-stone-400 italic text-center py-4">No channel partners added yet.</p>
-                                )}
+                        {/* Module Brands Card */}
+                        <button
+                            onClick={() => setActiveManageCategory('module_brand')}
+                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                        >
+                            <div className="space-y-3 w-full">
+                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
+                                    <Tag className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Module Brands Directory</h3>
+                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{brands.length} active module brands</p>
+                                </div>
                             </div>
-                        </div>
+                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
+                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
+                            </span>
+                        </button>
 
-                        {/* Module Brands Directory List & Add form */}
-                        <div className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm space-y-6">
-                            <div className="flex items-center gap-2 border-b border-stone-50 pb-4">
-                                <Tag className="w-5 h-5 text-amber-500" />
-                                <h3 className="text-sm font-bold text-stone-800">Module Brands Directory</h3>
-                                <span className="ml-auto text-[10px] bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">{brands.length} Active</span>
+                        {/* Registration Staff Card */}
+                        <button
+                            onClick={() => setActiveManageCategory('registration_by')}
+                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                        >
+                            <div className="space-y-3 w-full">
+                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
+                                    <Award className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Registration Staff</h3>
+                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{registrations.length} active registration staff</p>
+                                </div>
                             </div>
-
-                            {/* Add input */}
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder="Enter module brand name..."
-                                    value={newBrand}
-                                    onChange={e => setNewBrand(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && handleAddBrand()}
-                                    className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2.5 text-sm focus:border-amber-400 outline-none transition"
-                                />
-                                <button
-                                    onClick={handleAddBrand}
-                                    className="flex items-center gap-1 bg-stone-900 text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors"
-                                >
-                                    <Plus className="w-4 h-4" /> Add
-                                </button>
-                            </div>
-
-                            {/* List layout */}
-                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                                {brands.length > 0 ? (
-                                    brands.map(b => (
-                                        <div key={b.id} className="flex justify-between items-center bg-stone-50 px-4 py-3 rounded-xl hover:bg-stone-100 transition-colors">
-                                            <span className="text-xs font-bold text-stone-700">{b.label}</span>
-                                            <button
-                                                onClick={() => handleDeleteMetadata(b.id, 'module_brand', b.label)}
-                                                className="text-stone-400 hover:text-red-500 transition-colors p-1"
-                                                title="Delete entry"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <p className="text-xs text-stone-400 italic text-center py-4">No brands added yet.</p>
-                                )}
-                            </div>
-                        </div>
+                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
+                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
+                            </span>
+                        </button>
 
                     </div>
 
                 </div>
             )}
+
+            {/* Manage Directory Full Modal */}
+            {activeManageCategory && (() => {
+                let title = '';
+                let list = [];
+                let inputVal = '';
+                let setInputVal = null;
+                let addHandler = null;
+                let placeholder = '';
+
+                if (activeManageCategory === 'channel_partner') {
+                    title = 'Manage Channel Partners';
+                    list = partners;
+                    inputVal = newPartner;
+                    setInputVal = setNewPartner;
+                    addHandler = handleAddPartner;
+                    placeholder = 'Enter channel partner name...';
+                } else if (activeManageCategory === 'module_brand') {
+                    title = 'Manage Module Brands';
+                    list = brands;
+                    inputVal = newBrand;
+                    setInputVal = setNewBrand;
+                    addHandler = handleAddBrand;
+                    placeholder = 'Enter module brand name...';
+                } else if (activeManageCategory === 'registration_by') {
+                    title = 'Manage Registration Staff';
+                    list = registrations;
+                    inputVal = newRegistration;
+                    setInputVal = setNewRegistration;
+                    addHandler = handleAddRegistration;
+                    placeholder = 'Enter processor name...';
+                }
+
+                return (
+                    <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-xl overflow-hidden border border-stone-100 flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
+
+                            {/* Modal Header */}
+                            <div className="bg-stone-900 px-6 py-5 flex justify-between items-center text-white">
+                                <div>
+                                    <h3 className="text-sm font-bold tracking-tight">{title}</h3>
+                                    <p className="text-[10px] text-stone-400 mt-1 uppercase font-bold tracking-wider">{list.length} directory listings</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setActiveManageCategory(null);
+                                        setEditingId(null);
+                                    }}
+                                    className="text-stone-400 hover:text-white p-2 hover:bg-stone-800 rounded-xl transition"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            {/* Add Section */}
+                            <div className="p-4 border-b border-stone-100 bg-stone-50/50 flex gap-2">
+                                <input
+                                    type="text"
+                                    placeholder={placeholder}
+                                    value={inputVal}
+                                    onChange={e => setInputVal(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && addHandler()}
+                                    className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm focus:border-amber-400 outline-none transition"
+                                />
+                                <button
+                                    onClick={addHandler}
+                                    className="flex items-center gap-1.5 bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-md"
+                                >
+                                    <Plus className="w-4 h-4" /> Add
+                                </button>
+                            </div>
+
+                            {/* List Section */}
+                            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                                {list.length > 0 ? (
+                                    list.map(item => {
+                                        const isEditing = editingId === item.id;
+                                        return (
+                                            <div key={item.id} className="flex justify-between items-center bg-stone-50 px-4 py-2.5 rounded-xl border border-stone-100 hover:bg-stone-100/50 transition-colors">
+                                                {isEditing ? (
+                                                    <input
+                                                        type="text"
+                                                        value={editingLabel}
+                                                        onChange={e => setEditingLabel(e.target.value)}
+                                                        onKeyDown={e => e.key === 'Enter' && handleEditMetadata(item.id, item.label, editingLabel, activeManageCategory)}
+                                                        className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-bold text-stone-800 max-w-md"
+                                                        autoFocus
+                                                    />
+                                                ) : (
+                                                    <span className="text-xs font-bold text-stone-700 tracking-tight">{item.label}</span>
+                                                )}
+
+                                                <div className="flex items-center gap-2">
+                                                    {isEditing ? (
+                                                        <button
+                                                            onClick={() => handleEditMetadata(item.id, item.label, editingLabel, activeManageCategory)}
+                                                            className="text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded-lg transition"
+                                                            title="Save changes"
+                                                        >
+                                                            <Check className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => {
+                                                                setEditingId(item.id);
+                                                                setEditingLabel(item.label);
+                                                            }}
+                                                            className="text-stone-400 hover:text-stone-700 hover:bg-stone-200 p-1.5 rounded-lg transition"
+                                                            title="Edit name"
+                                                        >
+                                                            <Edit3 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+
+                                                    <button
+                                                        onClick={() => handleDeleteMetadata(item.id, activeManageCategory, item.label)}
+                                                        className="text-stone-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
+                                                        title="Delete entry"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                ) : (
+                                    <p className="text-xs text-stone-400 italic text-center py-8">No entries found in this directory.</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 }

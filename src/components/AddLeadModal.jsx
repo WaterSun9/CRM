@@ -4,62 +4,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Plus } from 'lucide-react';
 import { supabase } from '../supabase';
-import { DEFAULT_LEAD_FORM, DEFAULT_PROJECT_CHECKLIST } from '../models';
+import { DEFAULT_LEAD_FORM } from '../models';
 import { logActivity } from '../utils';
 
-function AddLeadMetaSelect({ label, field, value, onChange, category, options = [], user }) {
-    const [adding, setAdding] = useState(false);
-    const [newVal, setNewVal] = useState('');
-    const [localOptions, setLocalOptions] = useState(options);
-
-    useEffect(() => {
-        setLocalOptions(options);
-    }, [options.length]);
-
-    const handleAdd = async () => {
-        const trimmed = newVal.trim();
-        if (!trimmed) return;
-        // Persist to Supabase metadata table
-        const { error } = await supabase.from('metadata').insert({ category, label: trimmed });
-        if (error) {
-            alert('Failed to save metadata: ' + error.message);
-            return;
-        }
-        setLocalOptions(prev => [...prev, trimmed]);
-        onChange(field, trimmed);
-        setNewVal('');
-        setAdding(false);
-        if (user) {
-            await logActivity(user.id, 'create', `Added new ${category}: "${trimmed}" (inline from Add Lead Form)`);
-        }
-    };
-
-    if (adding) {
-        return (
-            <div className="space-y-1 bg-stone-50 p-2.5 rounded-xl border border-stone-200">
-                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider">{label} — New</label>
-                <div className="flex gap-1.5">
-                    <input autoFocus value={newVal} onChange={e => setNewVal(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleAdd()}
-                        placeholder={`New ${label}...`}
-                        className="flex-1 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-sm focus:border-amber-400 outline-none transition" />
-                    <button type="button" onClick={handleAdd} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-white rounded-lg text-xs font-bold transition">Add</button>
-                    <button type="button" onClick={() => setAdding(false)} className="px-2 py-1.5 bg-stone-200 text-stone-600 rounded-lg text-xs hover:bg-stone-300 transition">✕</button>
-                </div>
-            </div>
-        );
-    }
-
+function AddLeadMetaSelect({ label, field, value, onChange, options = [] }) {
     return (
         <div>
             <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">{label}</label>
-            <div className="flex gap-1.5">
-                <select value={value || ''} onChange={e => onChange(field, e.target.value)}
-                    className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-sm focus:border-amber-400 outline-none transition">
-                    <option value="">Select {label}</option>
-                    {localOptions.map(o => <option key={o} value={o}>{o}</option>)}
-                </select>
-            </div>
+            <select value={value || ''} onChange={e => onChange(field, e.target.value)}
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-sm focus:border-amber-400 outline-none transition">
+                <option value="">Select {label}</option>
+                {options.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
         </div>
     );
 }
@@ -100,26 +56,6 @@ function ChannelPartnerAutocomplete({ label, value, onChange, suggestions = [], 
         onChange(val);
         setShowSuggestions(true);
     };
-
-    if (!isAdmin) {
-        return (
-            <div className="w-full">
-                <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                    {label} {required && <span className="text-red-500 font-bold">*</span>}
-                </label>
-                <select 
-                    value={inputValue || ''} 
-                    onChange={e => handleSelect(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:border-amber-400 outline-none transition font-semibold text-stone-700"
-                >
-                    <option value="">Select Channel Partner</option>
-                    {suggestions.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                    ))}
-                </select>
-            </div>
-        );
-    }
 
     return (
         <div className="relative w-full" ref={containerRef}>
@@ -173,10 +109,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         if (!formData.channel_partner?.trim()) return alert('Channel Partner Name is required');
         if (!formData.system_capacity_kwp) return alert('System Capacity is required');
 
-        onSave({
-            ...formData,
-            project_checklist: DEFAULT_PROJECT_CHECKLIST,
-        });
+        onSave(formData);
         onClose();
     };
 
@@ -187,13 +120,13 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         { label: 'Email Address', field: 'email_address', type: 'text', required: false },
         { label: 'Sub Channel Partner Name', field: 'sub_channel_partner', type: 'text', required: false },
         { label: 'Channel Partner Name', field: 'channel_partner', type: 'text', required: true },
-        { label: 'Consumer No', field: 'consumer_no', type: 'text', required: false },
+        { label: 'Consumer No', field: 'consumer_no', type: 'number', required: false },
         { label: 'System Capacity (kWp)', field: 'system_capacity_kwp', type: 'number', required: true },
         { label: 'System Brand', field: 'module_brand', type: 'select', category: 'module_brand', required: false },
         { label: 'Module Wp', field: 'module_wp', type: 'number', required: false },
         { label: 'Village', field: 'villages', type: 'text', required: false },
         { label: 'Sub Division', field: 'sub_divisions', type: 'text', required: false },
-        { label: 'File No', field: 'folder_no', type: 'text', required: false },
+        { label: 'File No', field: 'folder_no', type: 'number', required: false },
         { label: 'Payment Type', field: 'payment_type', type: 'select', category: 'payment_type', required: false },
     ];
 
@@ -218,9 +151,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                             field={field}
                                             value={formData[field]}
                                             onChange={handleChange}
-                                            category={category}
                                             options={meta[category] || []}
-                                            user={user}
                                         />
                                     </div>
                                 );
