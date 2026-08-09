@@ -77,12 +77,11 @@ serve(async (req) => {
             }
 
             // Step 3: send them a "set your password" email
-            // Doesn't fail the whole request if the email fails to send —
-            // the account still works with the dummy password either way.
-            const { error: resetError } = await adminClient.auth.resetPasswordForEmail(email, {
+            // Fire-and-forget — don't await. The account works with the
+            // temp password either way, and this shaves seconds off the response.
+            adminClient.auth.resetPasswordForEmail(email, {
                 redirectTo: "https://watersun9.github.io/CRM/"
-            })
-            if (resetError) console.log("Reset email failed:", resetError.message)
+            }).catch(err => console.log("Reset email failed:", err.message))
 
             return new Response(
                 JSON.stringify({ success: true }),
