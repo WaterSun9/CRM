@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { logActivity } from '../utils';
 import { APP_ROLES } from '../constants';
-import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, Mail, KeyRound, Ban } from 'lucide-react';
+import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, KeyRound, Ban } from 'lucide-react';
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
 function CreateUserModal({ onClose, onCreated, currentUser }) {
@@ -184,21 +184,7 @@ export default function UserManagementView({ currentUser }) {
         }
     };
 
-    const handleReinvite = async (email, name) => {
-        setActionLoading(`invite-${email}`);
-        try {
-            const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                redirectTo: 'https://watersun9.github.io/CRM/',
-            });
-            if (error) throw error;
-            showToast('success', `Invite email re-sent to ${name}`);
-            logActivity(currentUser.id, 'update', `Re-invited user: ${name}`, email);
-        } catch (err) {
-            showToast('error', `Failed: ${err.message}`);
-        } finally {
-            setActionLoading(null);
-        }
-    };
+
 
     const deactivateUser = async (userId, name) => {
         if (!confirm(`Deactivate ${name}? They will no longer be able to log in, but their record stays.`)) return;
@@ -436,15 +422,7 @@ export default function UserManagementView({ currentUser }) {
                                                         <KeyRound className="w-3.5 h-3.5" />
                                                         <span className="hidden sm:inline">Reset Pwd</span>
                                                     </button>
-                                                    <button
-                                                        onClick={() => handleReinvite(profile.email, profile.name)}
-                                                        disabled={actionLoading === `invite-${profile.email}`}
-                                                        title="Re-send invite / password setup email"
-                                                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-stone-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors font-medium disabled:opacity-50"
-                                                    >
-                                                        <Mail className="w-3.5 h-3.5" />
-                                                        <span className="hidden sm:inline">Re-invite</span>
-                                                    </button>
+
                                                     <button
                                                         onClick={() => deactivateUser(profile.id, profile.name)}
                                                         disabled={actionLoading === profile.id}
