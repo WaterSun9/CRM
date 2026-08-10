@@ -49,7 +49,7 @@ export default function App() {
             if (session?.user) {
                 const { data: profile } = await supabase
                     .from('profiles').select('*').eq('id', session.user.id).single();
-                if (profile) {
+                if (profile && profile.status !== 'inactive') {
                     setUser({
                         id: session.user.id,
                         email: session.user.email,
@@ -58,7 +58,7 @@ export default function App() {
                         userType: profile.user_type,
                     });
                 } else {
-                    // Profile missing — force sign out so login form shows
+                    // Profile missing or deactivated — force sign out
                     await supabase.auth.signOut();
                 }
             }

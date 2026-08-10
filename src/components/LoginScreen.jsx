@@ -36,6 +36,10 @@ export default function LoginScreen({ onLogin }) {
                 await supabase.auth.signOut();
                 throw new Error('Profile not found. Contact Admin.');
             }
+            if (profile.status === 'inactive') {
+                await supabase.auth.signOut();
+                throw new Error('Your account has been deactivated. Contact Admin.');
+            }
             onLogin({
                 id: authData.user.id,
                 email: authData.user.email,
