@@ -46,6 +46,54 @@ serve(async (req) => {
             )
         }
 
+        // ── REACTIVATE USER ──────────────────────────────────────────────
+        if (action === "reactivate") {
+            const { user_id } = body
+
+            if (!user_id) return new Response(
+                JSON.stringify({ error: "user_id is required" }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+
+            const { error: profileError } = await adminClient
+                .from("profiles")
+                .update({ status: "active" })
+                .eq("id", user_id)
+
+            if (profileError) return new Response(
+                JSON.stringify({ error: profileError.message }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+
+            return new Response(
+                JSON.stringify({ success: true }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+        }
+
+        // ── DELETE USER (permanent) ──────────────────────────────────────
+        if (action === "delete") {
+            const { user_id } = body
+
+            if (!user_id) return new Response(
+                JSON.stringify({ error: "user_id is required" }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+
+            // Delete from auth (profiles row cascades via FK)
+            const { error: authError } = await adminClient.auth.admin.deleteUser(user_id)
+
+            if (authError) return new Response(
+                JSON.stringify({ error: authError.message }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+
+            return new Response(
+                JSON.stringify({ success: true }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+        }
+
         // ── CREATE USER ───────────────────────────────────────────────────
         if (action === "create") {
             console.log("Body:", JSON.stringify(body))

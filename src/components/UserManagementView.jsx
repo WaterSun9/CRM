@@ -151,7 +151,7 @@ export default function UserManagementView({ currentUser }) {
     const fetchProfiles = async () => {
         setLoading(true);
         const { data, error } = await supabase.from('profiles')
-            .select('*').eq('status', 'active').order('created_at', { ascending: false });
+            .select('*').order('created_at', { ascending: false });
         if (!error) setProfiles(data || []);
         setLoading(false);
     };
@@ -201,7 +201,7 @@ export default function UserManagementView({ currentUser }) {
     };
 
     const deactivateUser = async (userId, name) => {
-        if (!confirm(`Are you sure you want to deactivate ${name}? They will no longer be able to log in.`)) return;
+        if (!confirm(`Deactivate ${name}? They will no longer be able to log in, but their record stays.`)) return;
 
         setActionLoading(userId);
         try {
@@ -222,12 +222,74 @@ export default function UserManagementView({ currentUser }) {
                 throw new Error(response.data.error);
             }
 
-            setProfiles(profiles.filter(p => p.id !== userId));
+            setProfiles(prev => prev.map(p => p.id === userId ? { ...p, status: 'inactive' } : p));
             showToast('success', `${name} has been deactivated`);
-            logActivity(currentUser.id, 'delete', `Deactivated user: ${name}`, '');
+            logActivity(currentUser.id, 'update', `Deactivated user: ${name}`, '');
         } catch (err) {
             showToast('error', `Failed to deactivate: ${err.message}`);
-            console.error('Error deactivating user:', err.message);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const reactivateUser = async (userId, name) => {
+        setActionLoading(userId);
+        try {
+            const response = await supabase.functions.invoke('add_user', {
+                body: { action: 'reactivate', user_id: userId },
+            });
+
+            if (response.error) {
+                let message = response.error.message;
+                try {
+                    const body = await response.error.context?.json();
+                    if (body?.error) message = body.error;
+                } catch (_) {}
+                throw new Error(message);
+            }
+
+            if (response.data?.error) {
+                throw new Error(response.data.error);
+            }
+
+            setProfiles(prev => prev.map(p => p.id === userId ? { ...p, status: 'active' } : p));
+            showToast('success', `${name} has been reactivated`);
+            logActivity(currentUser.id, 'update', `Reactivated user: ${name}`, '');
+        } catch (err) {
+            showToast('error', `Failed to reactivate: ${err.message}`);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const deleteUser = async (userId, name) => {
+        if (!confirm(`⚠️ PERMANENTLY DELETE ${name}? This cannot be undone. Their account and profile will be completely removed.`)) return;
+        if (!confirm(`Are you absolutely sure? Type-to-confirm: Delete ${name} forever?`)) return;
+
+        setActionLoading(userId);
+        try {
+            const response = await supabase.functions.invoke('add_user', {
+                body: { action: 'delete', user_id: userId },
+            });
+
+            if (response.error) {
+                let message = response.error.message;
+                try {
+                    const body = await response.error.context?.json();
+                    if (body?.error) message = body.error;
+                } catch (_) {}
+                throw new Error(message);
+            }
+
+            if (response.data?.error) {
+                throw new Error(response.data.error);
+            }
+
+            setProfiles(prev => prev.filter(p => p.id !== userId));
+            showToast('success', `${name} has been permanently deleted`);
+            logActivity(currentUser.id, 'delete', `Permanently deleted user: ${name}`, '');
+        } catch (err) {
+            showToast('error', `Failed to delete: ${err.message}`);
         } finally {
             setActionLoading(null);
         }
@@ -275,26 +337,30 @@ export default function UserManagementView({ currentUser }) {
                             <tr className="border-b border-stone-100 bg-stone-50">
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">User</th>
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Role</th>
+                                <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Status</th>
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Joined</th>
                                 <th className="text-right px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-stone-50">
-                            {profiles.map(profile => (
-                                <tr key={profile.id} className="hover:bg-stone-50 transition-colors">
+                            {profiles.map(profile => {
+                                const isInactive = profile.status === 'inactive';
+                                const isYou = profile.id === currentUser.id;
+                                return (
+                                <tr key={profile.id} className={`transition-colors ${isInactive ? 'bg-stone-50/50 opacity-60' : 'hover:bg-stone-50'}`}>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-stone-900 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${isInactive ? 'bg-stone-400' : 'bg-stone-900'}`}>
                                                 {profile.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}
                                             </div>
                                             <div>
-                                                <p className="font-semibold text-stone-800">{profile.name || 'Unnamed'}</p>
+                                                <p className={`font-semibold ${isInactive ? 'text-stone-400' : 'text-stone-800'}`}>{profile.name || 'Unnamed'}</p>
                                                 <p className="text-xs text-stone-400">{profile.email || '–'}</p>
                                             </div>
                                         </div>
                                     </td>
                                     <td className="px-4 py-3">
-                                        {profile.id === currentUser.id ? (
+                                        {isYou || isInactive ? (
                                             <span className="text-xs font-semibold text-stone-600">
                                                 {APP_ROLES.find(r => r.user_type === profile.user_type)?.label || profile.role || 'Admin'}
                                             </span>
@@ -322,12 +388,44 @@ export default function UserManagementView({ currentUser }) {
                                             </select>
                                         )}
                                     </td>
+                                    <td className="px-4 py-3">
+                                        {isInactive ? (
+                                            <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">Inactive</span>
+                                        ) : (
+                                            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">Active</span>
+                                        )}
+                                    </td>
                                     <td className="px-4 py-3 text-xs text-stone-500">
                                         {profile.created_at ? new Date(profile.created_at).toLocaleDateString('en-IN') : '–'}
                                     </td>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-1 justify-end flex-wrap">
-                                            {profile.id !== currentUser.id ? (
+                                            {isYou ? (
+                                                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">You</span>
+                                            ) : isInactive ? (
+                                                /* ── Inactive user actions ── */
+                                                <>
+                                                    <button
+                                                        onClick={() => reactivateUser(profile.id, profile.name)}
+                                                        disabled={actionLoading === profile.id}
+                                                        title="Reactivate this user"
+                                                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-stone-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors font-medium disabled:opacity-50"
+                                                    >
+                                                        <RefreshCw className="w-3.5 h-3.5" />
+                                                        <span className="hidden sm:inline">Reactivate</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteUser(profile.id, profile.name)}
+                                                        disabled={actionLoading === profile.id}
+                                                        title="Permanently delete this user"
+                                                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-stone-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-medium disabled:opacity-50"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                        <span className="hidden sm:inline">Delete</span>
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                /* ── Active user actions ── */
                                                 <>
                                                     <button
                                                         onClick={() => handleResetPassword(profile.email, profile.name)}
@@ -351,19 +449,18 @@ export default function UserManagementView({ currentUser }) {
                                                         onClick={() => deactivateUser(profile.id, profile.name)}
                                                         disabled={actionLoading === profile.id}
                                                         title="Deactivate this user"
-                                                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-stone-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-medium disabled:opacity-50"
+                                                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-stone-600 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors font-medium disabled:opacity-50"
                                                     >
                                                         <Ban className="w-3.5 h-3.5" />
                                                         <span className="hidden sm:inline">Deactivate</span>
                                                     </button>
                                                 </>
-                                            ) : (
-                                                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">You</span>
                                             )}
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
+                            );
+                            })}
                         </tbody>
                     </table>
                 </div>
