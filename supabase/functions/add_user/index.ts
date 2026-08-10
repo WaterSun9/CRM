@@ -17,10 +17,18 @@ serve(async (req) => {
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     )
 
-    // DELETE - deactivate user
-    if (req.method === "DELETE") {
-        try {
-            const { user_id } = await req.json()
+    try {
+        const body = await req.json()
+        const action = body.action || (req.method === "DELETE" ? "deactivate" : "create")
+
+        // ── DEACTIVATE USER ───────────────────────────────────────────────
+        if (action === "deactivate") {
+            const { user_id } = body
+
+            if (!user_id) return new Response(
+                JSON.stringify({ error: "user_id is required" }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
 
             const { error: profileError } = await adminClient
                 .from("profiles")
@@ -36,18 +44,10 @@ serve(async (req) => {
                 JSON.stringify({ success: true }),
                 { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             )
-        } catch (err) {
-            return new Response(
-                JSON.stringify({ error: err.message }),
-                { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            )
         }
-    }
 
-    // POST - create user
-    if (req.method === "POST") {
-        try {
-            const body = await req.json()
+        // ── CREATE USER ───────────────────────────────────────────────────
+        if (action === "create") {
             console.log("Body:", JSON.stringify(body))
 
             const { name, email, password, role, user_type } = body
@@ -87,17 +87,19 @@ serve(async (req) => {
                 JSON.stringify({ success: true }),
                 { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             )
-        } catch (err) {
-            console.log("Error:", err.message)
-            return new Response(
-                JSON.stringify({ error: err.message }),
-                { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            )
         }
-    }
 
-    return new Response(
-        JSON.stringify({ error: "Method not allowed" }),
-        { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    )
+        // ── UNKNOWN ACTION ────────────────────────────────────────────────
+        return new Response(
+            JSON.stringify({ error: `Unknown action: ${action}` }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        )
+
+    } catch (err) {
+        console.log("Error:", err.message)
+        return new Response(
+            JSON.stringify({ error: err.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        )
+    }
 })

@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { logActivity } from '../utils';
 import { APP_ROLES } from '../constants';
-import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X } from 'lucide-react';
+import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, Mail, KeyRound, Ban } from 'lucide-react';
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
 function CreateUserModal({ onClose, onCreated, currentUser }) {
@@ -33,7 +33,7 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
 
     try {
         const response = await supabase.functions.invoke('add_user', {
-            body: form,
+            body: { ...form, action: 'create' },
         });
 
         if (response.error) {
@@ -141,6 +141,12 @@ export default function UserManagementView({ currentUser }) {
     const [loading, setLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [actionLoading, setActionLoading] = useState(null);
+    const [toast, setToast] = useState(null); // { type: 'success' | 'error', message }
+
+    const showToast = (type, message) => {
+        setToast({ type, message });
+        setTimeout(() => setToast(null), 4000);
+    };
 
     const fetchProfiles = async () => {
         setLoading(true);
@@ -162,17 +168,45 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(null);
     };
 
-    const handleResetPassword = async (email) => {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-        if (!error) alert(`Password reset email sent to ${email}`);
-        else alert(`Error: ${error.message}`);
+    const handleResetPassword = async (email, name) => {
+        setActionLoading(email);
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: 'https://watersun9.github.io/CRM/',
+            });
+            if (error) throw error;
+            showToast('success', `Password reset email sent to ${name}`);
+            logActivity(currentUser.id, 'update', `Sent password reset to ${name}`, email);
+        } catch (err) {
+            showToast('error', `Failed: ${err.message}`);
+        } finally {
+            setActionLoading(null);
+        }
     };
 
-    const deactivateUser = async (userId) => {
+    const handleReinvite = async (email, name) => {
+        setActionLoading(`invite-${email}`);
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: 'https://watersun9.github.io/CRM/',
+            });
+            if (error) throw error;
+            showToast('success', `Invite email re-sent to ${name}`);
+            logActivity(currentUser.id, 'update', `Re-invited user: ${name}`, email);
+        } catch (err) {
+            showToast('error', `Failed: ${err.message}`);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const deactivateUser = async (userId, name) => {
+        if (!confirm(`Are you sure you want to deactivate ${name}? They will no longer be able to log in.`)) return;
+
+        setActionLoading(userId);
         try {
             const response = await supabase.functions.invoke('add_user', {
-                method: 'DELETE',
-                body: { user_id: userId },
+                body: { action: 'deactivate', user_id: userId },
             });
 
             if (response.error) {
@@ -189,8 +223,13 @@ export default function UserManagementView({ currentUser }) {
             }
 
             setProfiles(profiles.filter(p => p.id !== userId));
+            showToast('success', `${name} has been deactivated`);
+            logActivity(currentUser.id, 'delete', `Deactivated user: ${name}`, '');
         } catch (err) {
+            showToast('error', `Failed to deactivate: ${err.message}`);
             console.error('Error deactivating user:', err.message);
+        } finally {
+            setActionLoading(null);
         }
     };
 
@@ -202,6 +241,17 @@ export default function UserManagementView({ currentUser }) {
 
     return (
         <div className="max-w-4xl mx-auto space-y-4">
+            {/* Toast notification */}
+            {toast && (
+                <div className={`fixed top-4 right-4 z-[100] px-4 py-3 rounded-xl shadow-lg border text-sm font-medium flex items-center gap-2 animate-in slide-in-from-right transition-all ${
+                    toast.type === 'success'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                        : 'bg-red-50 border-red-200 text-red-700'
+                }`}>
+                    {toast.type === 'success' ? '✓' : '✕'} {toast.message}
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-stone-400" />
@@ -226,7 +276,7 @@ export default function UserManagementView({ currentUser }) {
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">User</th>
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Role</th>
                                 <th className="text-left px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Joined</th>
-                                <th className="px-4 py-3" />
+                                <th className="text-right px-4 py-3 text-[10px] font-bold text-stone-400 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-stone-50">
@@ -276,16 +326,35 @@ export default function UserManagementView({ currentUser }) {
                                         {profile.created_at ? new Date(profile.created_at).toLocaleDateString('en-IN') : '–'}
                                     </td>
                                     <td className="px-4 py-3">
-                                        <div className="flex items-center gap-1 justify-end">
+                                        <div className="flex items-center gap-1 justify-end flex-wrap">
                                             {profile.id !== currentUser.id ? (
                                                 <>
-                                                    <button onClick={() => handleResetPassword(profile.email)} title="Send password reset"
-                                                        className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                                                        <RefreshCw className="w-3.5 h-3.5" />
+                                                    <button
+                                                        onClick={() => handleResetPassword(profile.email, profile.name)}
+                                                        disabled={actionLoading === profile.email}
+                                                        title="Send password reset email"
+                                                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-stone-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors font-medium disabled:opacity-50"
+                                                    >
+                                                        <KeyRound className="w-3.5 h-3.5" />
+                                                        <span className="hidden sm:inline">Reset Pwd</span>
                                                     </button>
-                                                    <button onClick={() => deactivateUser(profile.id)}
-                                                        className="px-3 py-1.5 text-xs text-stone-700 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors font-medium">
-                                                        Deactivate
+                                                    <button
+                                                        onClick={() => handleReinvite(profile.email, profile.name)}
+                                                        disabled={actionLoading === `invite-${profile.email}`}
+                                                        title="Re-send invite / password setup email"
+                                                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-stone-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors font-medium disabled:opacity-50"
+                                                    >
+                                                        <Mail className="w-3.5 h-3.5" />
+                                                        <span className="hidden sm:inline">Re-invite</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deactivateUser(profile.id, profile.name)}
+                                                        disabled={actionLoading === profile.id}
+                                                        title="Deactivate this user"
+                                                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-stone-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-medium disabled:opacity-50"
+                                                    >
+                                                        <Ban className="w-3.5 h-3.5" />
+                                                        <span className="hidden sm:inline">Deactivate</span>
                                                     </button>
                                                 </>
                                             ) : (
