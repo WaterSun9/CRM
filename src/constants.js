@@ -41,6 +41,22 @@ export const SUBSIDY_TAG_COLORS = {
     'Received': { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  dot: 'bg-indigo-400' },
 };
 
+export const LOAN_TAGS = [
+    { id: 'Sanctioned', label: 'Sanctioned', icon: CheckCircle2 },
+    { id: 'Rejected', label: 'Rejected', icon: AlertTriangle },
+    { id: 'Returned', label: 'Returned', icon: Clock },
+    { id: '1st Payment', label: '1st Payment', icon: Banknote },
+    { id: '2nd Payment', label: '2nd Payment', icon: Banknote },
+];
+
+export const LOAN_TAG_COLORS = {
+    'Sanctioned': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
+    'Rejected':   { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-400' },
+    'Returned':   { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-400' },
+    '1st Payment': { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200',   dot: 'bg-blue-400' },
+    '2nd Payment': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-400' },
+};
+
 // Supabase metadata table categories (one per managed dropdown)
 export const META_CATEGORIES = ['payment_type', 'module_brand', 'payment_method_modes', 'subsidy_approval_status', 'branch_name', 'registration_by'];
 

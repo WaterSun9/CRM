@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { logActivity } from '../utils';
 import { APP_ROLES } from '../constants';
-import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, KeyRound, Ban } from 'lucide-react';
+import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, KeyRound, Ban, Search } from 'lucide-react';
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
 function CreateUserModal({ onClose, onCreated, currentUser }) {
@@ -141,7 +141,13 @@ export default function UserManagementView({ currentUser }) {
     const [loading, setLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [actionLoading, setActionLoading] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
     const [toast, setToast] = useState(null); // { type: 'success' | 'error', message }
+
+    const filteredProfiles = profiles.filter(p => {
+        const q = searchQuery.toLowerCase();
+        return !searchQuery || p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q);
+    });
 
     const showToast = (type, message) => {
         setToast({ type, message });
@@ -303,7 +309,7 @@ export default function UserManagementView({ currentUser }) {
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-stone-400" />
-                    <p className="text-sm text-stone-500">{profiles.length} users registered</p>
+                    <p className="text-sm text-stone-500">{filteredProfiles.length} of {profiles.length} users</p>
                 </div>
                 <div className="flex gap-2">
                     <button onClick={fetchProfiles} className="p-2 border border-stone-200 rounded-xl text-stone-500 hover:bg-stone-50 transition-colors">
@@ -317,6 +323,17 @@ export default function UserManagementView({ currentUser }) {
             </div>
 
             <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+                {/* Search */}
+                <div className="relative border-b border-stone-100 p-4">
+                    <Search className="absolute left-7 top-6 w-4 h-4 text-stone-400" />
+                    <input
+                        type="text"
+                        placeholder="Search users by name or email..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 placeholder:text-stone-400"
+                    />
+                </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
@@ -329,7 +346,7 @@ export default function UserManagementView({ currentUser }) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-stone-50">
-                            {profiles.map(profile => {
+                            {filteredProfiles.map(profile => {
                                 const isInactive = profile.status === 'inactive';
                                 const isYou = profile.id === currentUser.id;
                                 return (

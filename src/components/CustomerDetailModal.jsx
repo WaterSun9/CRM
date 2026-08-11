@@ -15,7 +15,7 @@ import {
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag,
 } from 'lucide-react';
-import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
+import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS } from '../constants';
 import { logActivity, formatLogDate, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
@@ -307,17 +307,21 @@ function PaymentsEditor({ payments = [], onChange, isEditing }) {
 
 // ─── Subsidy status options ───────────────────────────────────────────────────
 const SUBSIDY_STATUS_OPTIONS = ['Approved', 'Returned', 'Rejected', 'Redeemed', 'Received'];
+const LOAN_STATUS_OPTIONS = ['Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
 
 // ─── CustomerDetailModal ──────────────────────────────────────────────────────
 export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab }) {
     const [activeTab, setActiveTab] = useState(() => {
         if (defaultTab) return defaultTab;
-        const regStages = ['REGISTRATION', 'LOAN', 'MATERIAL PROCUREMENT', 'HOLD PROCUREMENT'];
+        const regStages = ['REGISTRATION', 'MATERIAL PROCUREMENT', 'HOLD PROCUREMENT'];
         const checklistStages = [
             'MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO',
             'DISCOM SUBMISSION', 'METER INSTALLATION', 'DISCOM INSPECTION',
             'SUBSIDY STATUS', 'FINAL REVIEW', 'COMPLETED'
         ];
+        if (customer?.stage === 'LOAN') {
+            return 'loan';
+        }
         if (regStages.includes(customer?.stage)) {
             return 'registration';
         }
@@ -345,6 +349,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [draftDate, setDraftDate] = useState('');
     const [draftRemark, setDraftRemark] = useState('');
     const [isAddingEntry, setIsAddingEntry] = useState(false);
+
+    const [loanDraftStatus, setLoanDraftStatus] = useState('Sanctioned');
+    const [loanDraftDate, setLoanDraftDate] = useState('');
+    const [loanDraftRemark, setLoanDraftRemark] = useState('');
+    const [isAddingLoanEntry, setIsAddingLoanEntry] = useState(false);
 
     const ACTION_COLORS = {
         create: 'bg-emerald-100 text-emerald-700', update: 'bg-blue-100 text-blue-700',
@@ -458,6 +467,52 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             user.id,
             'update',
             `${customer.customer_name}: Subsidy Tag saved to ${newTag ? tagLabel : 'None'} (logged to history)`,
+            '',
+            customer.id
+        );
+        
+        fetchLogs();
+    };
+
+    const handleToggleLoanTag = (tagId) => {
+        const newTag = editData.loan_tag === tagId ? null : tagId;
+        setEditData(prev => ({ ...prev, loan_tag: newTag }));
+        if (newTag) {
+            setLoanDraftStatus(newTag);
+        }
+    };
+
+    const handleSaveLoanTag = async () => {
+        const newTag = editData.loan_tag;
+        const entryDate = new Date().toISOString().split('T')[0];
+        let updatedHistory = editData.loan_history || [];
+        
+        if (newTag) {
+            const newEntry = {
+                status: newTag,
+                date: entryDate,
+                remark: 'Status updated via tag selector',
+                created_at: new Date().toISOString()
+            };
+            updatedHistory = [...updatedHistory, newEntry];
+        }
+        
+        setEditData(prev => ({ 
+            ...prev, 
+            loan_history: updatedHistory,
+            loan_tag: newTag
+        }));
+        
+        await onUpdate(customer.id, {
+            loan_tag: newTag,
+            loan_history: updatedHistory
+        });
+        
+        const tagLabel = LOAN_TAGS.find(t => t.id === newTag)?.label || newTag;
+        await logActivity(
+            user.id,
+            'update',
+            `${customer.customer_name}: Loan Tag saved to ${newTag ? tagLabel : 'None'} (logged to history)`,
             '',
             customer.id
         );
@@ -669,6 +724,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     {[
                         { id: 'overview',     label: 'Overview',                icon: LayoutDashboard },
                         { id: 'registration', label: 'Registration',            icon: ClipboardList },
+                        { id: 'loan',         label: 'Loan Tracking',           icon: IndianRupee },
                         { id: 'checklist',    label: 'Installation & Progress', icon: CheckSquare },
                         { id: 'subsidy',      label: 'Subsidy Tracking',        icon: Tag },
                         { id: 'history',      label: 'Notes & History',         icon: History },
@@ -955,6 +1011,187 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             </div>
                         );
                     })()}
+
+                    {/* ── LOAN TRACKING ── */}
+                    {activeTab === 'loan' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            {/* Loan Tag Selector */}
+                            <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                <div className="flex items-center justify-between border-b border-stone-100 pb-2 mb-1">
+                                    <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Loan Tag Tracking</label>
+                                    {!isFrozen && editData.loan_tag !== customer.loan_tag && (
+                                        <button
+                                            onClick={handleSaveLoanTag}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10"
+                                        >
+                                            Save Tag
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 w-full">
+                                    {LOAN_TAGS.map(tag => {
+                                        const isSelected = editData.loan_tag === tag.id;
+                                        const colors = LOAN_TAG_COLORS[tag.id] || {};
+                                        return (
+                                            <button
+                                                key={tag.id}
+                                                disabled={isFrozen}
+                                                onClick={() => handleToggleLoanTag(tag.id)}
+                                                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
+                                                    isSelected
+                                                        ? `${colors.bg} ${colors.text} ${colors.border} shadow-sm shadow-stone-900/5`
+                                                        : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                                                }`}
+                                            >
+                                                <span className={`w-2 h-2 rounded-full ${isSelected ? colors.dot : 'bg-stone-300'}`} />
+                                                {tag.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </section>
+
+                            {/* Loan History Timeline */}
+                            <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                <div className="flex items-center gap-2 mb-2 border-b border-stone-100 pb-2">
+                                    <History size={16} className="text-stone-400" />
+                                    <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Loan Status Timeline</h3>
+                                </div>
+
+                                {(!editData.loan_history || editData.loan_history.length === 0) ? (
+                                    <p className="text-xs text-stone-400 italic">No loan history recorded</p>
+                                ) : (
+                                    <div className="relative border-l border-stone-200 ml-3 pl-5 space-y-4">
+                                        {(editData.loan_history || []).map((e, idx) => {
+                                            const pillColors = {
+                                                Sanctioned: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
+                                                Rejected: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', dot: 'bg-rose-400' },
+                                                Returned: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-400' },
+                                                '1st Payment': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-400' },
+                                                '2nd Payment': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-400' },
+                                            };
+                                            const colors = pillColors[e.status] || { bg: 'bg-stone-50', text: 'text-stone-600', border: 'border-stone-200', dot: 'bg-stone-400' };
+                                            return (
+                                                <div key={idx} className="relative">
+                                                    <span className={`absolute -left-[25.5px] top-1.5 w-2 h-2 rounded-full ring-4 ring-white ${colors.dot}`} />
+                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${colors.bg} ${colors.text} ${colors.border}`}>
+                                                                {e.status}
+                                                            </span>
+                                                            {e.remark && <span className="text-xs text-stone-600 font-medium">{e.remark}</span>}
+                                                        </div>
+                                                        {e.date && <span className="text-[10px] text-stone-400 font-semibold">{e.date}</span>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* Add Loan Entry */}
+                                {!isFrozen && (
+                                    <div className="pt-2">
+                                        {isAddingLoanEntry ? (
+                                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Status</label>
+                                                        <select
+                                                            value={loanDraftStatus}
+                                                            onChange={e => setLoanDraftStatus(e.target.value)}
+                                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
+                                                        >
+                                                            {LOAN_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Date</label>
+                                                        <input
+                                                            type="date"
+                                                            value={loanDraftDate}
+                                                            onChange={e => setLoanDraftDate(e.target.value)}
+                                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Remark</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Remark details..."
+                                                        value={loanDraftRemark}
+                                                        onChange={e => setLoanDraftRemark(e.target.value)}
+                                                        className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
+                                                    />
+                                                </div>
+                                                <div className="flex justify-end gap-2 pt-1.5">
+                                                    <button
+                                                        onClick={() => {
+                                                            setIsAddingLoanEntry(false);
+                                                            setLoanDraftRemark('');
+                                                            setLoanDraftDate('');
+                                                        }}
+                                                        className="px-3.5 py-1.5 rounded-lg text-[10px] font-bold bg-stone-200 hover:bg-stone-300 text-stone-600 transition-colors"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        onClick={async () => {
+                                                            const entryDate = loanDraftDate || new Date().toISOString().split('T')[0];
+                                                            const newEntry = {
+                                                                status: loanDraftStatus,
+                                                                date: entryDate,
+                                                                remark: loanDraftRemark,
+                                                                created_at: new Date().toISOString()
+                                                            };
+                                                            const updatedHistory = [...(editData.loan_history || []), newEntry];
+                                                            
+                                                            setEditData(prev => ({ 
+                                                                ...prev, 
+                                                                loan_history: updatedHistory,
+                                                                loan_tag: loanDraftStatus
+                                                            }));
+                                                            await onUpdate(customer.id, { 
+                                                                loan_history: updatedHistory,
+                                                                loan_tag: loanDraftStatus
+                                                            });
+                                                            
+                                                            await logActivity(
+                                                                user.id,
+                                                                'update',
+                                                                `${customer.customer_name}: Added loan entry (${loanDraftStatus} on ${entryDate}${loanDraftRemark ? `: ${loanDraftRemark}` : ''})`,
+                                                                '',
+                                                                customer.id
+                                                            );
+                                                            
+                                                            setIsAddingLoanEntry(false);
+                                                            setLoanDraftRemark('');
+                                                            setLoanDraftDate('');
+                                                            fetchLogs();
+                                                        }}
+                                                        className="px-3.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/10 transition-colors"
+                                                    >
+                                                        Add Entry
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => {
+                                                    setLoanDraftStatus(LOAN_STATUS_OPTIONS[0]);
+                                                    setIsAddingLoanEntry(true);
+                                                }}
+                                                className="w-full flex items-center justify-center gap-1.5 border border-dashed border-stone-300 rounded-xl py-2.5 text-xs font-bold text-stone-500 hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50/10 transition-all"
+                                            >
+                                                <Plus className="w-3.5 h-3.5" /> Add Loan Entry
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </section>
+                        </div>
+                    )}
 
                     {/* ── SUBSIDY ── */}
                     {activeTab === 'subsidy' && (
