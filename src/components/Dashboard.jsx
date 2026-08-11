@@ -27,7 +27,7 @@ import ChannelPartnerManagementView from './ChannelPartnerManagementView';
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag,
+    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee,
 } from 'lucide-react';
 
 export default function Dashboard({ user, onLogout }) {

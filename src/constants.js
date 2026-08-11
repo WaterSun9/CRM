@@ -30,7 +30,6 @@ export const SUBSIDY_TAGS = [
     { id: 'Returned', label: 'Returned', icon: Clock },
     { id: 'Approved', label: 'Approved', icon: CheckCircle2 },
     { id: 'Received', label: 'Received', icon: CheckCircle2 },
-    { id: 'Rejected', label: 'Rejected', icon: AlertTriangle },
 ];
 
 export const SUBSIDY_TAG_COLORS = {
