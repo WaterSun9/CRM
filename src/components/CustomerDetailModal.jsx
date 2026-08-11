@@ -587,6 +587,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (updates.subsidy_history) {
             updates.subsidy_history = updates.subsidy_history.map(({ isNew, ...rest }) => rest);
         }
+        if (updates.loan_history) {
+            updates.loan_history = updates.loan_history.map(({ isNew, ...rest }) => rest);
+        }
 
         // Compare subsidy_history
         const oldSubsidy = customer.subsidy_history || [];
@@ -623,6 +626,44 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
             if (subChanges.length > 0) {
                 changeSummary.push(`SUBSIDY STATUS: ${subChanges.join(' | ')}`);
+            }
+        }
+
+        // Compare loan_history
+        const oldLoan = customer.loan_history || [];
+        const newLoan = updates.loan_history || [];
+        if (JSON.stringify(oldLoan) !== JSON.stringify(newLoan)) {
+            const loanChanges = [];
+            if (newLoan.length === 0 && oldLoan.length > 0) {
+                loanChanges.push("Cleared all loan entries");
+            } else {
+                const maxLen = Math.max(oldLoan.length, newLoan.length);
+                for (let i = 0; i < maxLen; i++) {
+                    const oldItem = oldLoan[i];
+                    const newItem = newLoan[i];
+                    if (!oldItem && newItem) {
+                        loanChanges.push(`Added Entry ${i + 1} (${newItem.status}${newItem.date ? ` on ${newItem.date}` : ''}${newItem.remark ? `: ${newItem.remark}` : ''})`);
+                    } else if (oldItem && !newItem) {
+                        loanChanges.push(`Removed Entry ${i + 1} (${oldItem.status})`);
+                    } else if (JSON.stringify(oldItem) !== JSON.stringify(newItem)) {
+                        const diffs = [];
+                        if (oldItem.status !== newItem.status) {
+                            diffs.push(`status: "${oldItem.status}" → "${newItem.status}"`);
+                        }
+                        if (oldItem.date !== newItem.date) {
+                            diffs.push(`date: "${oldItem.date || 'None'}" → "${newItem.date || 'None'}"`);
+                        }
+                        if (oldItem.remark !== newItem.remark) {
+                            diffs.push(`remark: "${oldItem.remark || 'None'}" → "${newItem.remark || 'None'}"`);
+                        }
+                        if (diffs.length > 0) {
+                            loanChanges.push(`Updated Entry ${i + 1} (${diffs.join(', ')})`);
+                        }
+                    }
+                }
+            }
+            if (loanChanges.length > 0) {
+                changeSummary.push(`LOAN STATUS: ${loanChanges.join(' | ')}`);
             }
         }
 

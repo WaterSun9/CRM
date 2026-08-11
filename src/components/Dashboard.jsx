@@ -15,6 +15,7 @@ import { PRIMARY_STAGES } from '../constants';
 
 import DashboardView from './DashboardView';
 import SubsidyView from './SubsidyView';
+import LoanView from './LoanView';
 import CustomerCard from './CustomerCard';
 import CustomerDetailModal from './CustomerDetailModal';
 import AddLeadModal from './AddLeadModal';
@@ -335,6 +336,7 @@ export default function Dashboard({ user, onLogout }) {
     // is built from this one channel partner-scoped list
     const channelPartnerScoped = active.filter(c => matchesChannelPartnerFilter(c) && isAuthorized(c));
     const subsidyTagCount = channelPartnerScoped.filter(c => c.subsidy_tag).length;
+    const loanTagCount = channelPartnerScoped.filter(c => c.loan_tag).length;
 
     const stageCounts = PRIMARY_STAGES.reduce((acc, s) => {
         acc[s.id] = channelPartnerScoped.filter(c => c.stage === s.id).length;
@@ -383,6 +385,7 @@ export default function Dashboard({ user, onLogout }) {
     const headerTitle =
         currentView === 'dashboard' ? 'Business Dashboard'
             : currentView === 'subsidy' ? 'Subsidy Tag Tracking'
+                : currentView === 'loan_tags' ? 'Loan Tag Tracking'
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
                     : currentView === 'activity' ? 'Activity Log'
                         : currentView === 'users' ? 'User Management'
@@ -411,6 +414,7 @@ export default function Dashboard({ user, onLogout }) {
                 <div className="flex-1 overflow-y-auto p-3">
                     <NavBtn view="dashboard" icon={LayoutDashboard} label="Dashboard" count={0} />
                     <NavBtn view="subsidy" icon={Tag} label="Subsidy Tags" count={subsidyTagCount} />
+                    <NavBtn view="loan_tags" icon={IndianRupee} label="Loan Tags" count={loanTagCount} />
 
 
 
@@ -571,6 +575,7 @@ export default function Dashboard({ user, onLogout }) {
                 <div className="flex-1 p-4 lg:p-6">
                     {currentView === 'dashboard' && <DashboardView customers={channelPartnerScoped} loading={loading} />}
                     {currentView === 'subsidy' && <SubsidyView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
+                    {currentView === 'loan_tags' && <LoanView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
 
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView customers={customers} currentUser={user} />}
                     {currentView === 'activity' && user.userType === 'admin' && <ActivityLogView />}
@@ -619,7 +624,7 @@ export default function Dashboard({ user, onLogout }) {
                     user={user}
                     meta={meta}
                     channel_partners={uniqueChannelPartners}
-                    defaultTab={currentView === 'subsidy' ? 'subsidy' : undefined}
+                    defaultTab={currentView === 'subsidy' ? 'subsidy' : currentView === 'loan_tags' ? 'loan' : undefined}
                 />
             )}
             {showAddLead && <AddLeadModal isOpen={showAddLead} onClose={() => setShowAddLead(false)} onSave={handleAddLead} meta={meta} channel_partners={uniqueChannelPartners} user={user} />}

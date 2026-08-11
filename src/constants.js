@@ -26,11 +26,11 @@ export const PRIMARY_STAGES = [
 ];
 
 export const SUBSIDY_TAGS = [
-    { id: 'Approved', label: 'Approved', icon: CheckCircle2 },
-    { id: 'Returned', label: 'Returned', icon: Clock },
-    { id: 'Rejected', label: 'Rejected', icon: AlertTriangle },
     { id: 'Redeemed', label: 'Redeemed', icon: Banknote },
+    { id: 'Returned', label: 'Returned', icon: Clock },
+    { id: 'Approved', label: 'Approved', icon: CheckCircle2 },
     { id: 'Received', label: 'Received', icon: CheckCircle2 },
+    { id: 'Rejected', label: 'Rejected', icon: AlertTriangle },
 ];
 
 export const SUBSIDY_TAG_COLORS = {
@@ -43,8 +43,8 @@ export const SUBSIDY_TAG_COLORS = {
 
 export const LOAN_TAGS = [
     { id: 'Sanctioned', label: 'Sanctioned', icon: CheckCircle2 },
-    { id: 'Rejected', label: 'Rejected', icon: AlertTriangle },
     { id: 'Returned', label: 'Returned', icon: Clock },
+    { id: 'Rejected', label: 'Rejected', icon: AlertTriangle },
     { id: '1st Payment', label: '1st Payment', icon: Banknote },
     { id: '2nd Payment', label: '2nd Payment', icon: Banknote },
 ];
