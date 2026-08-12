@@ -124,11 +124,25 @@ function ChannelPartnerAutocomplete({ label, value, onChange, suggestions = [], 
 }
 
 export default function AgentForm({ user, onLogout }) {
-    const [form, setForm] = useState({ ...DEFAULT_LEAD_FORM });
+    const getInitialFormState = () => {
+        const initialForm = { ...DEFAULT_LEAD_FORM };
+        if (user?.userType === 'agent' || user?.role === 'Channel Partners') {
+            initialForm.channel_partner = user.name || '';
+        }
+        return initialForm;
+    };
+
+    const [form, setForm] = useState(getInitialFormState);
     const [meta, setMeta] = useState({});
     const [errors, setErrors] = useState({});
     const [saving, setSaving] = useState(false);
     const [submitted, setSubmitted] = useState(null);
+
+    useEffect(() => {
+        if (user?.name && (user.userType === 'agent' || user.role === 'Channel Partners')) {
+            setForm(prev => ({ ...prev, channel_partner: user.name }));
+        }
+    }, [user]);
 
     useEffect(() => {
         const fetchMetadata = async () => {
@@ -209,7 +223,7 @@ export default function AgentForm({ user, onLogout }) {
             );
 
             setSubmitted({ customerName: form.customer_name.trim() });
-            setForm({ ...DEFAULT_LEAD_FORM });
+            setForm(getInitialFormState());
             setErrors({});
         } catch (err) {
             console.error('Submit error:', err);
@@ -330,14 +344,26 @@ export default function AgentForm({ user, onLogout }) {
                     <SectionHeader icon={<Users className="w-3.5 h-3.5 text-white" />} label="Partner & Payment" />
 
                     <Field label="Channel Partner Name" required error={errors.channel_partner}>
-                        <ChannelPartnerAutocomplete
-                            label="Channel Partner Name"
-                            value={form.channel_partner ?? ''}
-                            onChange={(val) => set('channel_partner', val)}
-                            suggestions={meta['channel_partner'] || []}
-                            required={true}
-                            errors={errors}
-                        />
+                        {user?.userType === 'agent' || user?.role === 'Channel Partners' ? (
+                            <div className="relative">
+                                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
+                                <input
+                                    type="text"
+                                    value={form.channel_partner ?? ''}
+                                    disabled
+                                    className={`${inputClass('channel_partner')} pl-10 bg-gray-900/50 text-gray-400 cursor-not-allowed`}
+                                />
+                            </div>
+                        ) : (
+                            <ChannelPartnerAutocomplete
+                                label="Channel Partner Name"
+                                value={form.channel_partner ?? ''}
+                                onChange={(val) => set('channel_partner', val)}
+                                suggestions={meta['channel_partner'] || []}
+                                required={true}
+                                errors={errors}
+                            />
+                        )}
                     </Field>
 
                     <Field label="Sub Channel Partner Name" error={errors.sub_channel_partner}>

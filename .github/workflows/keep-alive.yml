@@ -23,3 +23,5 @@ jobs:
             exit 1
           fi
           echo "Supabase is alive ✅"
+
+

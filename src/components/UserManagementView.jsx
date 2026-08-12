@@ -18,7 +18,8 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
     const set = (field, val) => setForm(prev => ({ ...prev, [field]: val }));
 
     const handleCreate = async () => {
-    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+    const uppercaseName = form.name.toUpperCase().trim();
+    if (!uppercaseName || !form.email.trim() || !form.password.trim()) {
         setError('Name, email, and password are required.');
         return;
     }
@@ -32,8 +33,9 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
     setError('');
 
     try {
+        const finalForm = { ...form, name: uppercaseName };
         const response = await supabase.functions.invoke('add_user', {
-            body: { ...form, action: 'create' },
+            body: { ...finalForm, action: 'create' },
         });
 
         if (response.error) {
@@ -55,11 +57,27 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
             throw new Error(response.data.error);
         }
 
+        if (finalForm.user_type === 'agent' || finalForm.role === 'Channel Partners') {
+            const partnerName = finalForm.name;
+            const { data: existingMeta } = await supabase
+                .from('metadata')
+                .select('id')
+                .eq('category', 'channel_partner')
+                .eq('label', partnerName)
+                .maybeSingle();
+
+            if (!existingMeta) {
+                await supabase
+                    .from('metadata')
+                    .insert({ category: 'channel_partner', label: partnerName });
+            }
+        }
+
         logActivity(
             currentUser.id,
             'create',
-            `Created new user: ${form.name}`,
-            `${form.role} (${form.user_type})`
+            `Created new user: ${finalForm.name}`,
+            `${finalForm.role} (${finalForm.user_type})`
         );
 
         onCreated();
@@ -89,7 +107,11 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
                     {[{ label: 'Full Name *', field: 'name', type: 'text' }, { label: 'Email *', field: 'email', type: 'email' }].map(({ label, field, type }) => (
                         <div key={field}>
                             <label className="block text-xs font-medium text-stone-600 mb-1">{label}</label>
-                            <input type={type} value={form[field]} onChange={e => set(field, e.target.value)}
+                            <input type={type} value={form[field]}
+                                onChange={e => {
+                                    const val = field === 'name' ? e.target.value.toUpperCase() : e.target.value;
+                                    set(field, val);
+                                }}
                                 className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
                         </div>
                     ))}
@@ -382,6 +404,24 @@ export default function UserManagementView({ currentUser }) {
                                                     if (!error) {
                                                         setProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, user_type: selected.user_type, role: selected.role } : p));
                                                         logActivity(currentUser.id, 'update', `Updated role for ${profile.name} to ${selected.label}`, '');
+
+                                                        if (selected.user_type === 'agent' || selected.role === 'Channel Partners') {
+                                                            const partnerName = (profile.name || '').trim();
+                                                            if (partnerName) {
+                                                                const { data: existingMeta } = await supabase
+                                                                    .from('metadata')
+                                                                    .select('id')
+                                                                    .eq('category', 'channel_partner')
+                                                                    .eq('label', partnerName)
+                                                                    .maybeSingle();
+
+                                                                if (!existingMeta) {
+                                                                    await supabase
+                                                                        .from('metadata')
+                                                                        .insert({ category: 'channel_partner', label: partnerName });
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                     setActionLoading(null);
                                                 }}

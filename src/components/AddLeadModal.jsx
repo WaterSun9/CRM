@@ -96,7 +96,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     useEffect(() => {
         if (isOpen) {
             const defaults = { ...DEFAULT_LEAD_FORM };
-            if (user?.userType === 'agent') {
+            if (user?.userType === 'agent' || user?.role === 'Channel Partners') {
                 defaults.channel_partner = user.name || '';
             }
             setFormData(defaults);
@@ -112,7 +112,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     const handleSave = () => {
         if (!formData.customer_name?.trim()) return alert('Customer Name is required');
         if (!formData.phone_number?.toString().trim()) return alert('Customer Phone Number is required');
-        if (user?.userType !== 'agent' && !formData.channel_partner?.trim()) return alert('Channel Partner Name is required');
+        if (user?.userType !== 'agent' && user?.role !== 'Channel Partners' && !formData.channel_partner?.trim()) return alert('Channel Partner Name is required');
         if (!formData.system_capacity_kwp) return alert('System Capacity is required');
 
         onSave(formData);
@@ -148,7 +148,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
 
                 <div className="p-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {formFields.filter(f => !((['channel_partner', 'sub_channel_partner'].includes(f.field)) && user?.userType === 'agent')).map(({ label, field, type, required, category }) => {
+                        {formFields.filter(f => !((['channel_partner', 'sub_channel_partner'].includes(f.field)) && (user?.userType === 'agent' || user?.role === 'Channel Partners'))).map(({ label, field, type, required, category }) => {
                             if (type === 'select') {
                                 return (
                                     <div key={field}>
