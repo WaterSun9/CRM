@@ -130,9 +130,7 @@ export default function Dashboard({ user, onLogout }) {
         const channelPartnerMatched = channelPartnerFilter
             ? activeNow.filter(c => c.channel_partner?.toLowerCase() === channelPartnerFilter.toLowerCase())
             : activeNow;
-        const authorized = user.userType === 'admin'
-            ? channelPartnerMatched
-            : channelPartnerMatched.filter(c => c.channel_partner === user.name);
+        const authorized = channelPartnerMatched.filter(isAuthorized);
         const results = authorized.filter(c =>
             c.customer_name?.toLowerCase().includes(q) ||
             c.phone_number?.includes(globalSearch.trim()) ||
@@ -320,9 +318,13 @@ export default function Dashboard({ user, onLogout }) {
     // ── Derived data (active = non-deleted only) ───────────────────────────────
     const active = customers.filter(c => !c.deleted_at);
     const trashed = customers.filter(c => !!c.deleted_at);
-    // TEMP: poc-based filtering disabled per Hawk's request — every lead shows
-    // up for every role right now. Revisit this once poc-matching is sorted.
-    const isAuthorized = (c) => true;
+    const isAuthorized = (c) => {
+        if (user.userType === 'admin' || user.userType === 'sales') return true;
+        if (user.userType === 'agent') {
+            return c.channel_partner?.trim().toLowerCase() === user.name?.trim().toLowerCase();
+        }
+        return false;
+    };
 
     // Distinct Channel Partner names from metadata table for dropdowns and top filter suggestions
     const uniqueChannelPartners = [...new Set(meta['channel_partner'] || [])].sort();
@@ -380,7 +382,6 @@ export default function Dashboard({ user, onLogout }) {
     };
 
     // ── Role-based routing (agent only — sales/operations now share this shell) ─
-    if (user.userType === 'agent') return <AgentForm user={user} onLogout={onLogout} />;
 
     const headerTitle =
         currentView === 'dashboard' ? 'Business Dashboard'
@@ -561,7 +562,7 @@ export default function Dashboard({ user, onLogout }) {
                                 <span className="hidden sm:inline text-xs">Export</span>
                             </button>
                         )}
-                        {(user.userType === 'admin' || user.userType === 'sales') && (
+                        {(user.userType === 'admin' || user.userType === 'sales' || user.userType === 'agent') && (
                             <button onClick={() => setShowAddLead(true)}
                                 className="flex items-center gap-1.5 bg-stone-900 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-stone-800 transition-colors">
                                 <Plus className="w-4 h-4" />
@@ -600,7 +601,7 @@ export default function Dashboard({ user, onLogout }) {
                         ) : filtered.length > 0 ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                                 {filtered.map(c => (
-                                    <CustomerCard key={c.id} customer={c} onSelect={setSelectedCustomer} onMoveStage={handleMoveStage} isAdmin={user.userType === 'admin'} />
+                                    <CustomerCard key={c.id} customer={c} onSelect={setSelectedCustomer} onMoveStage={handleMoveStage} currentUser={user} />
                                 ))}
                             </div>
                         ) : (
@@ -624,7 +625,7 @@ export default function Dashboard({ user, onLogout }) {
                     user={user}
                     meta={meta}
                     channel_partners={uniqueChannelPartners}
-                    defaultTab={currentView === 'subsidy' ? 'subsidy' : currentView === 'loan_tags' ? 'loan' : undefined}
+                    defaultTab={currentView === 'subsidy' ? 'SUBSIDY STATUS' : currentView === 'loan_tags' ? 'LOAN' : currentView === 'stages' ? selectedStage : undefined}
                 />
             )}
             {showAddLead && <AddLeadModal isOpen={showAddLead} onClose={() => setShowAddLead(false)} onSave={handleAddLead} meta={meta} channel_partners={uniqueChannelPartners} user={user} />}

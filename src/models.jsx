@@ -12,9 +12,8 @@ export const DEFAULT_LEAD_FORM = {
     module_brand: '',
     module_wp: '',
     registration_date: '',
-    branch_name: '',
-    loan_registration_date: '',
     registration_by: '',
+    registration_no: '',
     panel_serial_no: '',
     inverter_serial_no: '',
     invoice_no: '',
@@ -28,5 +27,7 @@ export const DEFAULT_LEAD_FORM = {
     sub_channel_partner: '',
     consumer_no: '',
     sub_divisions: '',
+    installation_status: false,
+    geo_tag_status: false,
     stage: 'LEADS',
 };

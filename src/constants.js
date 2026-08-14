@@ -12,6 +12,7 @@ export const PRIMARY_STAGES = [
     { id: 'LEADS', label: 'Leads', icon: Users },
     { id: 'REGISTRATION', label: 'Registration', icon: ClipboardList },
     { id: 'LOAN', label: 'Loan', icon: IndianRupee },
+    { id: 'CASH', label: 'Cash', icon: Banknote },
     { id: 'MATERIAL PROCUREMENT', label: 'Material Procurement', icon: Package },
     { id: 'HOLD PROCUREMENT', label: 'Hold Procurement', icon: PauseCircle },
     { id: 'MATERIAL DELIVERY', label: 'Material Delivery', icon: Truck },
@@ -41,6 +42,7 @@ export const SUBSIDY_TAG_COLORS = {
 };
 
 export const LOAN_TAGS = [
+    { id: 'Processed', label: 'Processed', icon: Activity },
     { id: 'Sanctioned', label: 'Sanctioned', icon: CheckCircle2 },
     { id: 'Returned', label: 'Returned', icon: Clock },
     { id: 'Rejected', label: 'Rejected', icon: AlertTriangle },
@@ -49,6 +51,7 @@ export const LOAN_TAGS = [
 ];
 
 export const LOAN_TAG_COLORS = {
+    'Processed':  { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  dot: 'bg-indigo-400' },
     'Sanctioned': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
     'Rejected':   { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-400' },
     'Returned':   { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-400' },
@@ -57,10 +60,96 @@ export const LOAN_TAG_COLORS = {
 };
 
 // Supabase metadata table categories (one per managed dropdown)
-export const META_CATEGORIES = ['payment_type', 'module_brand', 'payment_method_modes', 'subsidy_approval_status', 'branch_name', 'registration_by'];
+export const META_CATEGORIES = ['payment_type', 'module_brand', 'payment_method_modes', 'subsidy_approval_status', 'registration_by'];
 
 export const APP_ROLES = [
     { id: 'admin', label: 'Admin', user_type: 'admin', role: 'Admin' },
     { id: 'office', label: 'Office', user_type: 'sales', role: 'Office' },
     { id: 'channel_partner', label: 'Channel Partners', user_type: 'agent', role: 'Channel Partners' },
+];
+
+export const SHED_BOM_TEMPLATE = [
+  { sr_no: 1, product_name: "Solar Panel", uom: "Nos" },
+  { sr_no: 2, product_name: "Inverter", uom: "Nos" },
+  { sr_no: 3, product_name: "ACDB", uom: "No." },
+  { sr_no: 4, product_name: "DCDB", uom: "No." },
+  { sr_no: 5, product_name: "DC Cable", uom: "MTR" },
+  { sr_no: 6, product_name: "Earthing Cable", uom: "MTR" },
+  { sr_no: 7, product_name: "16sq MM LA Cable", uom: "MTR" },
+  { sr_no: 8, product_name: "AC Cable", uom: "MTR" },
+  { sr_no: 9, product_name: "Isolation Box + MCB", uom: "No." },
+  { sr_no: 10, product_name: "Shadel", uom: "No." },
+  { sr_no: 11, product_name: "Elbow", uom: "No." },
+  { sr_no: 12, product_name: "Tea", uom: "No." },
+  { sr_no: 13, product_name: "Spring + HEX Bolt", uom: "No." },
+  { sr_no: 14, product_name: "L And Key", uom: "No." },
+  { sr_no: 15, product_name: "80*40 J bolt mota", uom: "No." },
+  { sr_no: 16, product_name: "Damar roll", uom: "MTR" },
+  { sr_no: 17, product_name: "jasti khila", uom: "No." },
+  { sr_no: 18, product_name: "m c 4 conectar", uom: "No." },
+  { sr_no: 19, product_name: "16 sq MM Round LUG", uom: "No." },
+  { sr_no: 20, product_name: "4 sq MM Round LUG", uom: "No." },
+  { sr_no: 21, product_name: "4 Sqmm Pin Type Lug", uom: "No." },
+  { sr_no: 22, product_name: "Red/Black Sleeve", uom: "No." },
+  { sr_no: 23, product_name: "5 aani 2inch", uom: "No." },
+  { sr_no: 24, product_name: "Mid Clamp", uom: "No." },
+  { sr_no: 25, product_name: "End Clamp", uom: "No." },
+  { sr_no: 26, product_name: "LA insuletar", uom: "No." },
+  { sr_no: 27, product_name: "cabale ties", uom: "No." },
+  { sr_no: 28, product_name: "Earthing ડોલ / ઢાંકણા", uom: "No." },
+  { sr_no: 29, product_name: "C Chanel", uom: "No." },
+  { sr_no: 30, product_name: "Z mota", uom: "No." },
+  { sr_no: 31, product_name: "Z nana", uom: "No." },
+  { sr_no: 32, product_name: "cabale tre", uom: "No." },
+  { sr_no: 33, product_name: "Earthing Kit + LA", uom: "No." },
+  { sr_no: 34, product_name: "chemical", uom: "No." },
+  { sr_no: 35, product_name: "Conduite Pipe", uom: "No." }
+];
+
+export const ROOF_BOM_TEMPLATE = [
+  { sr_no: 1, product_name: "Solar Panel", uom: "Nos" },
+  { sr_no: 2, product_name: "Inverter", uom: "Nos" },
+  { sr_no: 3, product_name: "ACDB", uom: "No." },
+  { sr_no: 4, product_name: "DCDB", uom: "No." },
+  { sr_no: 5, product_name: "DC Cable", uom: "MTR" },
+  { sr_no: 6, product_name: "Earthing Cable", uom: "MTR" },
+  { sr_no: 7, product_name: "16sq MM LA Cable", uom: "MTR" },
+  { sr_no: 8, product_name: "AC Cable", uom: "MTR" },
+  { sr_no: 9, product_name: "Isolation Box + MCB", uom: "No." },
+  { sr_no: 10, product_name: "Shadel", uom: "No." },
+  { sr_no: 11, product_name: "Elbow", uom: "No." },
+  { sr_no: 12, product_name: "Tea", uom: "No." },
+  { sr_no: 13, product_name: "Wedge Anchor Fast", uom: "No." },
+  { sr_no: 14, product_name: "8 aani 4 inch", uom: "No." },
+  { sr_no: 15, product_name: "6 aani 6 inch", uom: "No." },
+  { sr_no: 16, product_name: "jasti khila", uom: "No." },
+  { sr_no: 17, product_name: "m c 4 conectar", uom: "No." },
+  { sr_no: 18, product_name: "Screw / Tape", uom: "No." },
+  { sr_no: 19, product_name: "16 sq MM Round LUG", uom: "No." },
+  { sr_no: 20, product_name: "4 sq MM Round LUG", uom: "No." },
+  { sr_no: 21, product_name: "4 Sqmm Pin Type Lug", uom: "No." },
+  { sr_no: 22, product_name: "Red/Black Sleeve", uom: "No." },
+  { sr_no: 23, product_name: "5 aani 2inch", uom: "No." },
+  { sr_no: 24, product_name: "Mid Clamp", uom: "No." },
+  { sr_no: 25, product_name: "End Clamp", uom: "No." },
+  { sr_no: 26, product_name: "GI Clamp", uom: "No." },
+  { sr_no: 27, product_name: "u bolt+patti", uom: "No." },
+  { sr_no: 28, product_name: "Chaki+Wisher", uom: "No." },
+  { sr_no: 29, product_name: "Sapot pati", uom: "No." },
+  { sr_no: 30, product_name: "rubar cap", uom: "No." },
+  { sr_no: 31, product_name: "cabale ties", uom: "No." },
+  { sr_no: 32, product_name: "Cable Tie ( Nani )", uom: "No." },
+  { sr_no: 33, product_name: "Earth Pit Doll", uom: "No." },
+  { sr_no: 34, product_name: "40*40 Pipe Perlin", uom: "Feet" },
+  { sr_no: 35, product_name: "60*40 Pipe rafter", uom: "Feet" },
+  { sr_no: 36, product_name: "60*40 front leg", uom: "Feet" },
+  { sr_no: 37, product_name: "60*40 Rear leg", uom: "Feet" },
+  { sr_no: 38, product_name: "LA insuletar", uom: "No." },
+  { sr_no: 39, product_name: "cabale tre", uom: "No." },
+  { sr_no: 40, product_name: "Earthing Kit + LA", uom: "No." },
+  { sr_no: 41, product_name: "chemical", uom: "No." },
+  { sr_no: 42, product_name: "Conduite Pipe", uom: "No." },
+  { sr_no: 43, product_name: "Cement", uom: "Bag" },
+  { sr_no: 44, product_name: "Reti", uom: "Bag (50 kg)" },
+  { sr_no: 45, product_name: "Kapachi", uom: "Bag (50 kg)" }
 ];

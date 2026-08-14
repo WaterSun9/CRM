@@ -62,7 +62,7 @@ export function exportAllToCSV(customers) {
         'Payment Type', 'Bank Name', 'Account #', 'IFSC', 'Loan Application #',
         'Meter Category', 'EB Number', 'DTR Code', 'Sanctioned Load',
         'DISCOM Division', 'Net Metering', 'Vendor', 'Aadhar',
-        'Application #', 'Application Date', 'Google Docs', 'Subsidy Status', 'Created At',
+        'Application #', 'Application Date', 'Google Docs', 'Registration No', 'Subsidy Status', 'Created At',
     ];
     const rows = customers.map(c => {
         const subsidyLabel = SUBSIDY_TAGS.find(f => f.id === c.subsidy_tag)?.label || c.subsidy_tag || '';
@@ -77,6 +77,7 @@ export function exportAllToCSV(customers) {
             c.discom_division || '', c.net_metering || '', c.vendor || '',
             c.aadhar || '', c.application_number || '', c.application_date || '',
             c.google_docs || '',
+            c.registration_no || '',
             subsidyLabel,
             c.created_at ? new Date(c.created_at).toLocaleDateString('en-IN') : '',
         ].join(',');

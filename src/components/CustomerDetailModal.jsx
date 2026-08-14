@@ -15,7 +15,7 @@ import {
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag,
 } from 'lucide-react';
-import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS } from '../constants';
+import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE } from '../constants';
 import { logActivity, formatLogDate, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
@@ -77,6 +77,65 @@ function MetaSelect({ label, field, value, onChange, options = [], isEditing }) 
                 {options.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
         </div>
+    );
+}
+
+// ─── StageRemarkSection ───────────────────────────────────────────────────────
+function StageRemarkSection({ stageId, editData, setEditData, isFrozen, onSave }) {
+    const [localSaved, setLocalSaved] = useState(true);
+    const remark = getStageRemarkFromData(editData.stages_remarks, stageId);
+
+    return (
+        <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-2 mb-1">
+                <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Stage Remark ({stageId})</label>
+                {!isFrozen && !localSaved && (
+                    <button
+                        onClick={async () => {
+                            await onSave(stageId);
+                            setLocalSaved(true);
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10"
+                    >
+                        Save Remark
+                    </button>
+                )}
+            </div>
+            {isFrozen ? (
+                <div className="text-xs text-stone-500 font-medium italic min-h-[36px] bg-stone-50 p-2.5 rounded-xl">
+                    {remark || 'No remarks for this stage.'}
+                </div>
+            ) : (
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        placeholder={`Add remark for ${stageId}...`}
+                        value={remark}
+                        onChange={e => {
+                            const newVal = e.target.value;
+                            setLocalSaved(false);
+                            setEditData(prev => {
+                                const prevObj = typeof prev.stages_remarks === 'object' && prev.stages_remarks ? prev.stages_remarks : {};
+                                return {
+                                    ...prev,
+                                    stages_remarks: {
+                                        ...prevObj,
+                                        [stageId]: newVal
+                                    }
+                                };
+                            });
+                        }}
+                        onKeyDown={async (e) => {
+                            if (e.key === 'Enter') {
+                                await onSave(stageId);
+                                setLocalSaved(true);
+                            }
+                        }}
+                        className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300"
+                    />
+                </div>
+            )}
+        </section>
     );
 }
 
@@ -307,28 +366,13 @@ function PaymentsEditor({ payments = [], onChange, isEditing }) {
 
 // ─── Subsidy status options ───────────────────────────────────────────────────
 const SUBSIDY_STATUS_OPTIONS = ['Approved', 'Returned', 'Rejected', 'Redeemed', 'Received'];
-const LOAN_STATUS_OPTIONS = ['Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
+const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
 
 // ─── CustomerDetailModal ──────────────────────────────────────────────────────
 export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab }) {
     const [activeTab, setActiveTab] = useState(() => {
         if (defaultTab) return defaultTab;
-        const regStages = ['REGISTRATION', 'MATERIAL PROCUREMENT', 'HOLD PROCUREMENT'];
-        const checklistStages = [
-            'MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO',
-            'DISCOM SUBMISSION', 'METER INSTALLATION', 'DISCOM INSPECTION',
-            'SUBSIDY STATUS', 'FINAL REVIEW', 'COMPLETED'
-        ];
-        if (customer?.stage === 'LOAN') {
-            return 'loan';
-        }
-        if (regStages.includes(customer?.stage)) {
-            return 'registration';
-        }
-        if (checklistStages.includes(customer?.stage)) {
-            return 'checklist';
-        }
-        return 'overview';
+        return customer?.stage || 'LEADS';
     });
     const [editingSection, setEditingSection] = useState(null);
     const [isSaved, setIsSaved] = useState(false);
@@ -343,6 +387,27 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     // Frozen for ALL users when completed. Admin can temporarily unlock.
     const isFrozen = isCompleted && !(isAdmin && adminUnlocked);
 
+    const isAgent = user?.userType === 'agent';
+    const isSales = user?.userType === 'sales';
+
+    const isDiscomOrMeterStage = editData.stage === 'DISCOM SUBMISSION' || editData.stage === 'METER INSTALLATION';
+
+    const canUserEdit = (() => {
+        if (isAdmin) return true;
+        if (isAgent) {
+            // Agent can edit if it's their client AND the customer is in DISCOM SUBMISSION or METER INSTALLATION stage
+            const isMyClient = customer.channel_partner?.trim().toLowerCase() === user.name?.trim().toLowerCase();
+            return isMyClient && isDiscomOrMeterStage;
+        }
+        if (isSales) {
+            // Sales can edit if the customer is NOT in DISCOM SUBMISSION or METER INSTALLATION stage
+            return !isDiscomOrMeterStage;
+        }
+        return false;
+    })();
+
+    const isEditable = !isFrozen && canUserEdit;
+
 
 
     const [draftStatus, setDraftStatus] = useState('Approved');
@@ -354,6 +419,273 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [loanDraftDate, setLoanDraftDate] = useState('');
     const [loanDraftRemark, setLoanDraftRemark] = useState('');
     const [isAddingLoanEntry, setIsAddingLoanEntry] = useState(false);
+
+    // ─── BOM States & Handlers ──────────────────────────────────────────────────
+    const [bom, setBom] = useState(null);
+    const [bomItems, setBomItems] = useState([]);
+    const [bomType, setBomType] = useState('');
+    const [paperPreparedBy, setPaperPreparedBy] = useState('');
+    const [paperPreparedDate, setPaperPreparedDate] = useState('');
+    const [materialLoadingDate, setMaterialLoadingDate] = useState('');
+    const [materialLoadedBy, setMaterialLoadedBy] = useState('');
+    const [materialLoadedDate, setMaterialLoadedDate] = useState('');
+    const [bomSaving, setBomSaving] = useState(false);
+
+    const loadBOM = async () => {
+        if (!customer?.id) return;
+        try {
+            const { data: bomData, error: bomError } = await supabase
+                .from('bom')
+                .select('*')
+                .eq('admin_id', customer.id)
+                .maybeSingle();
+
+            if (bomError) {
+                console.error('BOM fetch error:', bomError);
+                return;
+            }
+
+            if (!bomData) {
+                setBom(null);
+                setBomItems([]);
+                setBomType('');
+                setPaperPreparedBy('');
+                setPaperPreparedDate('');
+                setMaterialLoadingDate('');
+                setMaterialLoadedBy('');
+                setMaterialLoadedDate('');
+                return;
+            }
+
+            setBom(bomData);
+            setBomType(bomData.bom_type === 'NONE' ? '' : (bomData.bom_type || ''));
+            setPaperPreparedBy(bomData.paper_prepared_by || '');
+            setPaperPreparedDate(bomData.paper_prepared_date || '');
+            setMaterialLoadingDate(bomData.material_loading_date || '');
+            setMaterialLoadedBy(bomData.material_loaded_by || '');
+            setMaterialLoadedDate(bomData.material_loaded_date || '');
+
+            const { data: itemData, error: itemError } = await supabase
+                .from('bom_items')
+                .select('*')
+                .eq('bom_id', bomData.id)
+                .order('sr_no', { ascending: true });
+
+            if (itemError) {
+                console.error('BOM items fetch error:', itemError);
+                return;
+            }
+
+            const mergedItems = (itemData || []).map(dbItem => {
+                const template = bomData.bom_type === 'ROOF' ? ROOF_BOM_TEMPLATE : SHED_BOM_TEMPLATE;
+                const match = template.find(t => t.product_name === dbItem.product_name || t.sr_no === dbItem.sr_no);
+                return {
+                    ...dbItem,
+                    uom: dbItem.uom || (match ? match.uom : '')
+                };
+            });
+            setBomItems(mergedItems);
+        } catch (err) {
+            console.error('loadBOM exception:', err);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'MATERIAL PROCUREMENT') {
+            loadBOM();
+        }
+    }, [activeTab, customer?.id]);
+
+    const handleBomTypeChange = (type) => {
+        setBomType(type);
+        if (type === 'ROOF') {
+            setBomItems(ROOF_BOM_TEMPLATE.map(t => ({ ...t })));
+        } else if (type === 'SHED') {
+            setBomItems(SHED_BOM_TEMPLATE.map(t => ({ ...t })));
+        } else {
+            setBomItems([]);
+        }
+    };
+
+    const addBomItem = () => {
+        setBomItems(prev => [
+            ...prev,
+            { sr_no: prev.length + 1, product_name: '', uom: '', make: '', integration_by: '', note: '' }
+        ]);
+    };
+
+    const removeBomItem = (index) => {
+        setBomItems(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleItemFieldChange = (index, field, value) => {
+        setBomItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
+    };
+
+    const saveBOM = async () => {
+        if (!customer?.id) {
+            alert("No customer selected");
+            return;
+        }
+
+        setBomSaving(true);
+        try {
+            let bomData, bomError;
+
+            // 1. Create or Update parent BOM
+            if (bom?.id) {
+                // Update
+                const { data, error } = await supabase
+                    .from('bom')
+                    .update({
+                        bom_type: bomType || null,
+                        material_loading_date: materialLoadingDate || null,
+                        paper_prepared_by: paperPreparedBy || null,
+                        paper_prepared_date: paperPreparedDate || null,
+                        material_loaded_by: materialLoadedBy || null,
+                        material_loaded_date: materialLoadedDate || null
+                    })
+                    .eq('id', bom.id)
+                    .select()
+                    .single();
+                
+                bomData = data;
+                bomError = error;
+            } else {
+                // Insert
+                const { data, error } = await supabase
+                    .from('bom')
+                    .insert({
+                        admin_id: customer.id,
+                        bom_type: bomType || null,
+                        material_loading_date: materialLoadingDate || null,
+                        paper_prepared_by: paperPreparedBy || null,
+                        paper_prepared_date: paperPreparedDate || null,
+                        material_loaded_by: materialLoadedBy || null,
+                        material_loaded_date: materialLoadedDate || null
+                    })
+                    .select()
+                    .single();
+
+                bomData = data;
+                bomError = error;
+            }
+
+            if (bomError) {
+                console.error("BOM save error:", bomError);
+                alert("Failed to save BOM parent record: " + bomError.message);
+                setBomSaving(false);
+                return;
+            }
+
+            const currentBomId = bomData.id;
+
+            // 2. Delete existing items associated with this BOM to avoid duplicates
+            const { error: deleteError } = await supabase
+                .from('bom_items')
+                .delete()
+                .eq('bom_id', currentBomId);
+
+            if (deleteError) {
+                console.error("BOM items delete error:", deleteError);
+                alert("Failed to clear old BOM items: " + deleteError.message);
+                setBomSaving(false);
+                return;
+            }
+
+            // 3. Attach every item to the parent BOM
+            if (bomType) {
+                const itemsToInsert = bomItems.map((item, index) => ({
+                    bom_id: currentBomId,
+                    sr_no: index + 1, // enforce clean sequential order
+                    product_name: item.product_name,
+                    make: item.make || null,
+                    integration_by: item.integration_by || null,
+                    note: item.note || null
+                }));
+
+                // 4. Insert BOM items
+                if (itemsToInsert.length > 0) {
+                    const { error: itemsError } = await supabase
+                        .from('bom_items')
+                        .insert(itemsToInsert);
+
+                    if (itemsError) {
+                        console.error("BOM items insertion error:", itemsError);
+                        alert("BOM saved, but items failed to save: " + itemsError.message);
+                        setBomSaving(false);
+                        return;
+                    }
+                }
+            }
+
+            // Log activity
+            await logActivity(
+                user.id,
+                'update',
+                `Saved ${bomType} BOM for ${customer.customer_name}`,
+                '',
+                customer.id
+            );
+
+            await loadBOM();
+        } catch (err) {
+            console.error("saveBOM exception:", err);
+            alert("BOM save failed due to unexpected error.");
+        } finally {
+            setBomSaving(false);
+        }
+    };
+
+    const parsePanelSerials = (raw) => {
+        if (!raw) return [''];
+        if (typeof raw !== 'string') return [String(raw)];
+        
+        // Try parsing as JSON first
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed.length > 0 ? parsed : [''];
+        } catch (e) { }
+
+        // Split by newline if present
+        if (raw.includes('\n')) {
+            return raw.split('\n').map(s => s.trim()).filter(Boolean);
+        }
+        // Split by comma if present
+        if (raw.includes(',')) {
+            return raw.split(',').map(s => s.trim()).filter(Boolean);
+        }
+        return [raw.trim()];
+    };
+
+    const [panelSerials, setPanelSerials] = useState(() => parsePanelSerials(customer?.panel_serial_no));
+
+    useEffect(() => {
+        setPanelSerials(parsePanelSerials(customer?.panel_serial_no));
+    }, [customer?.panel_serial_no]);
+
+    const handlePanelSerialChange = (idx, val) => {
+        const next = [...panelSerials];
+        next[idx] = val;
+        setPanelSerials(next);
+        const filtered = next.filter(Boolean);
+        const serialized = filtered.length > 0 ? filtered.join('\n') : '';
+        setEditData(prev => ({ ...prev, panel_serial_no: serialized }));
+    };
+
+    const addPanelSerial = () => {
+        const next = [...panelSerials, ''];
+        setPanelSerials(next);
+    };
+
+    const removePanelSerial = (idx) => {
+        const next = panelSerials.filter((_, i) => i !== idx);
+        const finalVal = next.length > 0 ? next : [''];
+        setPanelSerials(finalVal);
+        const filtered = finalVal.filter(Boolean);
+        const serialized = filtered.length > 0 ? filtered.join('\n') : '';
+        setEditData(prev => ({ ...prev, panel_serial_no: serialized }));
+    };
 
     const ACTION_COLORS = {
         create: 'bg-emerald-100 text-emerald-700', update: 'bg-blue-100 text-blue-700',
@@ -396,6 +728,39 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         await onUpdate(customer.id, patch);
         if (changes.length > 0) {
             await logActivity(user.id, 'update', `${customer.customer_name}: Registration checklist update - ${changes.join(' | ')}`, '', customer.id);
+        }
+        fetchLogs();
+    };
+
+    const OPERATIONAL_CHECKLIST_FIELDS = [
+        'stamp',
+        'file_status',
+        'geb_inspection',
+        'subsidy_redeem',
+        'sfdc_photo',
+        'warranty_card',
+        'insurance_status',
+    ];
+
+    const isOperationalChecklistDirty = OPERATIONAL_CHECKLIST_FIELDS.some(field => {
+        return !!editData[field] !== !!customer[field];
+    });
+
+    const handleSaveOperationalChecklist = async () => {
+        const patch = {};
+        const changes = [];
+        OPERATIONAL_CHECKLIST_FIELDS.forEach(field => {
+            const oldCheck = !!customer[field];
+            const newCheck = !!editData[field];
+            if (oldCheck !== newCheck) {
+                patch[field] = newCheck;
+                changes.push(`${field}: ${oldCheck ? 'Checked' : 'Unchecked'} → ${newCheck ? 'Checked' : 'Unchecked'}`);
+            }
+        });
+
+        await onUpdate(customer.id, patch);
+        if (changes.length > 0) {
+            await logActivity(user.id, 'update', `${customer.customer_name}: Operational checklist update - ${changes.join(' | ')}`, '', customer.id);
         }
         fetchLogs();
     };
@@ -520,9 +885,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         fetchLogs();
     };
 
-    const handleSaveStageRemark = async () => {
-        const currentRemark = getStageRemarkFromData(editData.stages_remarks, editData.stage);
-        const originalRemark = getStageRemarkFromData(customer.stages_remarks, editData.stage);
+    const handleSaveStageRemark = async (stageId) => {
+        const targetStage = stageId || editData.stage;
+        const currentRemark = getStageRemarkFromData(editData.stages_remarks, targetStage);
+        const originalRemark = getStageRemarkFromData(customer.stages_remarks, targetStage);
         
         if (currentRemark !== originalRemark) {
             let prevObj = {};
@@ -536,13 +902,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
             const updatedRemarks = {
                 ...prevObj,
-                [editData.stage]: currentRemark
+                [targetStage]: currentRemark
             };
 
             // Append the remark update to internal_remarks
             let updatedInternalRemarks = editData.internal_remarks || '';
             const formattedTime = formatDateTime(new Date());
-            const appendText = `${editData.stage} (${formattedTime}): ${currentRemark.trim() || 'Remark cleared'}`;
+            const appendText = `${targetStage} (${formattedTime}): ${currentRemark.trim() || 'Remark cleared'}`;
             updatedInternalRemarks = updatedInternalRemarks
                 ? `${updatedInternalRemarks}\n${appendText}`
                 : appendText;
@@ -562,7 +928,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             await logActivity(
                 user.id,
                 'update',
-                `${customer.customer_name}: Stage remark update for ${editData.stage} - "${currentRemark}"`,
+                `${customer.customer_name}: Stage remark update for ${targetStage} - "${currentRemark}"`,
                 '',
                 customer.id
             );
@@ -572,6 +938,112 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const handleChange = (field, val) => {
         setEditData(prev => ({ ...prev, [field]: val }));
+    };
+
+    const hasNextStage = (() => {
+        const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
+        if (currentIdx === -1) return false;
+        
+        let nextIdx = currentIdx + 1;
+        if (nextIdx >= PRIMARY_STAGES.length) return false;
+        
+        let nextStage = PRIMARY_STAGES[nextIdx];
+        if (nextStage.id === 'LOAN' && editData.payment_type?.trim().toLowerCase() === 'cash') {
+            nextIdx++;
+        }
+        if (nextStage.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') {
+            nextIdx++;
+        }
+        
+        return nextIdx < PRIMARY_STAGES.length;
+    })();
+
+    const nextStageId = (() => {
+        const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
+        if (currentIdx === -1) return null;
+        
+        let nextIdx = currentIdx + 1;
+        if (nextIdx >= PRIMARY_STAGES.length) return null;
+        
+        let nextStage = PRIMARY_STAGES[nextIdx];
+        if (nextStage.id === 'LOAN' && editData.payment_type?.trim().toLowerCase() === 'cash') {
+            nextIdx++;
+        }
+        if (nextStage.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') {
+            nextIdx++;
+        }
+        
+        if (nextIdx < PRIMARY_STAGES.length) {
+            return PRIMARY_STAGES[nextIdx].id;
+        }
+        return null;
+    })();
+
+    const nextStageLabel = nextStageId ? PRIMARY_STAGES.find(s => s.id === nextStageId)?.label : '';
+
+    const isLeadFieldsFilled = !!(
+        editData.customer_name?.trim() &&
+        editData.phone_number?.toString().trim() &&
+        editData.channel_partner?.trim() &&
+        editData.system_capacity_kwp
+    );
+
+    const handleAdvanceStage = async () => {
+        if (!nextStageId) return;
+        
+        setSaving(true);
+        
+        const oldStage = editData.stage;
+        let prevObj = {};
+        if (typeof editData.stages_remarks === 'object' && editData.stages_remarks) {
+            prevObj = editData.stages_remarks;
+        } else if (typeof editData.stages_remarks === 'string') {
+            try {
+                const parsed = JSON.parse(editData.stages_remarks);
+                if (typeof parsed === 'object' && parsed) prevObj = parsed;
+            } catch (e) { }
+        }
+        const updatedRemarks = {
+            ...prevObj,
+            [oldStage]: ''
+        };
+
+        const updates = {
+            ...editData,
+            stage: nextStageId,
+            stages_remarks: updatedRemarks
+        };
+
+        if (updates.subsidy_history) {
+            updates.subsidy_history = updates.subsidy_history.map(({ isNew, ...rest }) => rest);
+        }
+        if (updates.loan_history) {
+            updates.loan_history = updates.loan_history.map(({ isNew, ...rest }) => rest);
+        }
+
+        let changeSummary = [];
+        Object.keys(updates).forEach(key => {
+            if (updates[key] !== customer[key] && key !== 'id' && key !== 'created_at' && key !== 'crn' && key !== 'updated_at' && key !== 'stage' && key !== 'stages_remarks' && typeof updates[key] !== 'object') {
+                changeSummary.push(`${key.replace(/_/g, ' ').toUpperCase()}: ${customer[key] || 'None'} → ${updates[key] || 'None'}`);
+            }
+        });
+
+        delete updates.id; 
+        delete updates.created_at; 
+        delete updates.crn; 
+        delete updates.updated_at;
+
+        await onUpdate(customer.id, updates);
+
+        await logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${nextStageId}`, '', customer.id);
+        if (changeSummary.length > 0) {
+            await logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id);
+        }
+
+        setEditingSection(null);
+        setSaving(false);
+        fetchLogs();
+        setActiveTab(nextStageId);
     };
 
     const handleSave = async () => {
@@ -692,12 +1164,20 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         onClose();
     };
 
+    const isDirty = (() => {
+        if (editingSection) return true;
+        if (editData.payment_type !== customer.payment_type) return true;
+        if (editData.installation_status !== customer.installation_status) return true;
+        if (editData.geo_tag_status !== customer.geo_tag_status) return true;
+        return false;
+    })();
+
     const SectionHeader = ({ title, id, icon: Icon }) => (
         <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-1.5 mt-4">
             <h3 className="text-[9px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-2">
                 <Icon size={12} /> {title}
             </h3>
-            {!isFrozen && (
+            {isEditable && (
                 <button onClick={() => {
                     const isOpening = editingSection !== id;
                     setEditingSection(isOpening ? id : null);
@@ -761,17 +1241,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 </div>
 
                 {/* Tabs */}
-                <div className="flex bg-stone-900 px-6 gap-6 border-t border-white/5 flex-shrink-0">
+                <div className="flex bg-stone-900 px-6 gap-6 border-t border-white/5 flex-shrink-0 overflow-x-auto scrollbar-none whitespace-nowrap">
                     {[
-                        { id: 'overview',     label: 'Overview',                icon: LayoutDashboard },
-                        { id: 'registration', label: 'Registration',            icon: ClipboardList },
-                        { id: 'loan',         label: 'Loan Tracking',           icon: IndianRupee },
-                        { id: 'checklist',    label: 'Installation & Progress', icon: CheckSquare },
-                        { id: 'subsidy',      label: 'Subsidy Tracking',        icon: Tag },
+                        ...PRIMARY_STAGES.map(s => ({ id: s.id, label: s.label, icon: s.icon })),
                         { id: 'history',      label: 'Notes & History',         icon: History },
                     ].map(tab => (
                         <button key={tab.id} onClick={() => { setActiveTab(tab.id); setEditingSection(null); }}
-                            className={`flex items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-widest transition-all border-b-2 ${activeTab === tab.id ? 'text-amber-400 border-amber-400' : 'text-stone-500 border-transparent hover:text-stone-300'}`}>
+                            className={`flex items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-widest transition-all border-b-2 flex-shrink-0 ${activeTab === tab.id ? 'text-amber-400 border-amber-400' : 'text-stone-500 border-transparent hover:text-stone-300'}`}>
                             <tab.icon size={12} /> {tab.label}
                         </button>
                     ))}
@@ -801,58 +1277,25 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     )}
 
                     {activeTab !== 'history' && (
-                        <>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                            {/* Stage select */}
-                            <div className={`p-4 rounded-2xl border shadow-sm ${isCompleted ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-stone-100'}`}>
-                                <label className="text-[9px] text-stone-400 font-bold uppercase mb-2 block">Primary Stage</label>
-                                {isFrozen ? (
-                                    <div className="w-full p-2.5 bg-stone-100 border border-stone-200 rounded-xl font-bold text-stone-500 flex items-center gap-2">
-                                        <Lock className="w-3.5 h-3.5" />
-                                        <span>{PRIMARY_STAGES.find(s => s.id === editData.stage)?.label || editData.stage}</span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            {/* Primary Stage Info */}
+                            <div className={`p-4 rounded-2xl border shadow-sm ${isCompleted ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-stone-100'} flex flex-col justify-between`}>
+                                <div>
+                                    <label className="text-[9px] text-stone-400 font-bold uppercase mb-2 block">Primary Stage</label>
+                                    <div className="flex items-center gap-3 min-h-[38px]">
+                                        <div className="text-xs text-stone-850 font-bold px-3 py-1.5 bg-stone-50 border border-stone-100 rounded-xl flex items-center gap-1.5">
+                                            {PRIMARY_STAGES.find(s => s.id === editData.stage)?.label || editData.stage}
+                                        </div>
                                     </div>
-                                ) : (
-                                    <select value={editData.stage} onChange={async (e) => {
-                                        const newStage = e.target.value;
-                                        const oldStage = editData.stage;
-                                        let prevObj = {};
-                                        if (typeof editData.stages_remarks === 'object' && editData.stages_remarks) {
-                                            prevObj = editData.stages_remarks;
-                                        } else if (typeof editData.stages_remarks === 'string') {
-                                            try {
-                                                const parsed = JSON.parse(editData.stages_remarks);
-                                                if (typeof parsed === 'object' && parsed) prevObj = parsed;
-                                            } catch (e) { }
-                                        }
-                                        const updatedRemarks = {
-                                            ...prevObj,
-                                            [oldStage]: ''
-                                        };
-
-                                        setEditData(prev => ({
-                                            ...prev,
-                                            stage: newStage,
-                                            stages_remarks: updatedRemarks
-                                        }));
-
-                                        await onUpdate(customer.id, {
-                                            stage: newStage,
-                                            stages_remarks: updatedRemarks
-                                        });
-
-                                        await logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${newStage}`, '', customer.id);
-                                        fetchLogs();
-                                    }} className="w-full p-2.5 bg-white border border-stone-200 rounded-xl font-bold text-stone-700 outline-none">
-                                        {PRIMARY_STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                                    </select>
-                                )}
+                                </div>
                             </div>
+
                             {/* Stage Remark */}
                             <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm flex flex-col justify-between">
                                 <div>
                                     <label className="text-[9px] text-stone-400 font-bold uppercase mb-2 block">Stage Remark (Current Stage)</label>
-                                    {isFrozen ? (
-                                        <div className="text-xs text-stone-500 font-medium italic min-h-[36px] bg-stone-50 p-2 rounded-lg">
+                                    {!isEditable ? (
+                                        <div className="text-xs text-stone-500 font-medium italic min-h-[38px] bg-stone-50 p-2 rounded-lg">
                                             {(typeof editData.stages_remarks === 'object' && editData.stages_remarks ? editData.stages_remarks[editData.stage] : '') || 'No remarks for this stage.'}
                                         </div>
                                     ) : (
@@ -879,7 +1322,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                                 className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300"
                                             />
                                             <button
-                                                onClick={handleSaveStageRemark}
+                                                onClick={() => handleSaveStageRemark()}
                                                 disabled={isSaved}
                                                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${isSaved ? 'bg-emerald-600 text-white cursor-default' : 'bg-stone-900 text-white hover:bg-stone-800'}`}
                                             >
@@ -890,19 +1333,16 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                 </div>
                             </div>
                         </div>
-                        </>
                     )}
-
-                    {/* ── OVERVIEW ── */}
-                    {activeTab === 'overview' && (
+                    {/* ── LEADS ── */}
+                    {activeTab === 'LEADS' && (
                         <div className="space-y-6 animate-in fade-in duration-300">
-
                             {/* Customer Info */}
                             <section id="section-cus">
                                 <SectionHeader title="Customer Info" id="cus" icon={User} />
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                     <EditableDetailItem label="Customer Name" field="customer_name" value={editData.customer_name} onChange={handleChange} isEditing={editingSection === 'cus'} />
-                                    <EditableDetailItem label="Phone Number" field="phone" value={editData.phone} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
+                                    <EditableDetailItem label="Phone Number" field="phone_number" value={editData.phone_number} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="Email Address" field="email" value={editData.email} onChange={handleChange} isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="Villages" field="villages" value={editData.villages} onChange={handleChange} isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="Folder No" field="folder_no" value={editData.folder_no} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
@@ -911,337 +1351,742 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     <EditableDetailItem label="System Capacity (kWp)" field="system_capacity_kwp" value={editData.system_capacity_kwp} onChange={handleChange} isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="MODULE BRAND" field="module_brand" value={editData.module_brand} onChange={handleChange} options={meta['module_brand']} category="module_brand" isEditing={editingSection === 'cus'} user={user} />
                                     <EditableDetailItem label="MODULE WP" field="module_wp" value={editData.module_wp} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
-                                    <EditableDetailItem label="PAYMENT TYPE" field="payment_type" value={editData.payment_type} onChange={handleChange} options={meta['payment_type']} category="payment_type" isEditing={editingSection === 'cus'} user={user} />
                                     <EditableDetailItem label="Sub Division" field="sub_divisions" value={editData.sub_divisions} onChange={handleChange} isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="Consumer No" field="consumer_no" value={editData.consumer_no} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
-
-
                                 </div>
                             </section>
 
+                            {/* Document Checklist */}
+                            <section id="section-reg_checklist">
+                                <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-1.5 mt-4">
+                                    <h3 className="text-[9px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-2">
+                                        <ClipboardList size={12} /> Document Checklist
+                                    </h3>
+                                </div>
+                                <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm space-y-4">
+                                    {/* Payment Type Selection at the top */}
+                                    <div className="pb-3 border-b border-stone-100">
+                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Payment Type Selection</label>
+                                        {isEditable ? (
+                                            <select
+                                                value={editData.payment_type || ''}
+                                                onChange={(e) => handleChange('payment_type', e.target.value)}
+                                                className="w-full md:w-1/3 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700"
+                                            >
+                                                <option value="">Select Payment Type...</option>
+                                                {(meta['payment_type'] || []).map((opt) => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <p className="text-xs font-bold text-stone-700">{editData.payment_type || "Not Specified"}</p>
+                                        )}
+                                    </div>
+
+                                    {/* Checklist items only visible if payment_type is selected */}
+                                    {editData.payment_type ? (
+                                        <div className="flex flex-col gap-2">
+                                            {editData.payment_type?.trim().toLowerCase() !== 'cash' && (
+                                                <>
+                                                    <CheckboxRemarkItem label="Adhaar card" field="adhaar_card" value={editData.adhaar_card} onChange={handleChange} isEditing={isEditable} />
+                                                    <CheckboxRemarkItem label="Pan card" field="pan_card" value={editData.pan_card} onChange={handleChange} isEditing={isEditable} />
+                                                    <CheckboxRemarkItem label="Index 2" field="index_2" value={editData.index_2} onChange={handleChange} isEditing={isEditable} />
+                                                </>
+                                            )}
+                                            <CheckboxRemarkItem label="Light Bill" field="light_bill" value={editData.light_bill} onChange={handleChange} isEditing={isEditable} />
+                                            <CheckboxRemarkItem label="Bank details" field="bank_details" value={editData.bank_details} onChange={handleChange} isEditing={isEditable} />
+                                            {editData.payment_type?.trim().toLowerCase() !== 'cash' && (
+                                                <CheckboxRemarkItem label="Bank Passbook" field="bank_passbook" value={editData.bank_passbook} onChange={handleChange} isEditing={isEditable} />
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-stone-400 italic">Please select a Payment Type above to display the Document Checklist.</p>
+                                    )}
+
+                                    {isEditable && isRegChecklistDirty && (
+                                        <div className="mt-4 pt-3 border-t border-stone-100 flex justify-end">
+                                            <button onClick={handleSaveRegChecklist}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10">
+                                                Save Checklist
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
                         </div>
                     )}
 
                     {/* ── REGISTRATION ── */}
-                    {activeTab === 'registration' && (
-                        <div className="space-y-4 animate-in fade-in duration-300">
-                            {/* Registration & Bank Details */}
+                    {activeTab === 'REGISTRATION' && (
+                        <div className="space-y-6 animate-in fade-in duration-300">
+                            {/* Registration Details */}
                             <section id="section-reg_details">
-                                <SectionHeader title="Registration & Bank Details" id="reg_details" icon={Building2} />
+                                <SectionHeader title="Registration Details" id="reg_details" icon={ClipboardList} />
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                     <EditableDetailItem label="Registration date" field="registration_date" value={editData.registration_date} onChange={handleChange} type="date" isEditing={editingSection === 'reg_details'} />
                                     <EditableDetailItem label="Registration By" field="registration_by" value={editData.registration_by} onChange={handleChange} options={meta['registration_by']} category="registration_by" isEditing={editingSection === 'reg_details'} user={user} />
-                                    <EditableDetailItem label="Loan Registration Date" field="loan_registration_date" value={editData.loan_registration_date} onChange={handleChange} type="date" isEditing={editingSection === 'reg_details'} />
-                                    <EditableDetailItem label="Bank Name" field="bank_name" value={editData.bank_name} onChange={handleChange} isEditing={editingSection === 'reg_details'} />
-                                    <EditableDetailItem label="Branch Name" field="branch_name" value={editData.branch_name} onChange={handleChange} options={meta['branch_name']} category="branch_name" isEditing={editingSection === 'reg_details'} user={user} />
+                                    <EditableDetailItem label="Registration No" field="registration_no" value={editData.registration_no} onChange={handleChange} isEditing={editingSection === 'reg_details'} />
                                 </div>
                             </section>
-
-                            {/* Registration Checklist */}
-                            <section id="section-reg_checklist">
-                                <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-1.5 mt-4">
-                                    <h3 className="text-[9px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-2">
-                                        <ClipboardList size={12} /> Registration Checklist
-                                    </h3>
-                                    {!isFrozen && isRegChecklistDirty && (
-                                        <button onClick={handleSaveRegChecklist}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-[9px] font-bold transition-all shadow-md shadow-emerald-600/10">
-                                            Save Checklist
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
-                                    <div className="flex flex-col gap-2">
-                                        {editData.payment_type?.trim().toLowerCase() !== 'cash' && (
-                                            <>
-                                                <CheckboxRemarkItem label="Adhaar card" field="adhaar_card" value={editData.adhaar_card} onChange={handleChange} isEditing={!isFrozen} />
-                                                <CheckboxRemarkItem label="Pan card" field="pan_card" value={editData.pan_card} onChange={handleChange} isEditing={!isFrozen} />
-                                                <CheckboxRemarkItem label="Index 2" field="index_2" value={editData.index_2} onChange={handleChange} isEditing={!isFrozen} />
-                                            </>
-                                        )}
-                                        <CheckboxRemarkItem label="Light Bill" field="light_bill" value={editData.light_bill} onChange={handleChange} isEditing={!isFrozen} />
-                                        <CheckboxRemarkItem label="Bank details" field="bank_details" value={editData.bank_details} onChange={handleChange} isEditing={!isFrozen} />
-                                        {editData.payment_type?.trim().toLowerCase() !== 'cash' && (
-                                            <CheckboxRemarkItem label="Bank Passbook" field="bank_passbook" value={editData.bank_passbook} onChange={handleChange} isEditing={!isFrozen} />
-                                        )}
-                                    </div>
-                                </div>
-                            </section>
-
                         </div>
                     )}
 
-                    {/* ── CHECKLIST ── */}
-                    {activeTab === 'checklist' && (() => {
-                        const OPERATIONAL_CHECKLIST = [
-                            { key: 'stamp', label: 'Stamp' },
-                            { key: 'file_status', label: 'File Status' },
-                            { key: 'geb_inspection', label: 'GEB Inspection' },
-                            { key: 'subsidy_redeem', label: 'Subsidy Redeem' },
-                            { key: 'sfdc_photo', label: 'SFDC Photo' },
-                            { key: 'warranty_card', label: 'Warranty Card' },
-                            { key: 'insurance_status', label: 'Insurance Status' },
-                        ];
-                        const isOperationalChecklistDirty = OPERATIONAL_CHECKLIST.some(item => !!editData[item.key] !== !!customer[item.key]);
-                        const checkedCount = OPERATIONAL_CHECKLIST.filter(item => !!editData[item.key]).length;
 
-                        const handleSaveOperationalChecklist = async () => {
-                            const patch = {};
-                            const changes = [];
-                            OPERATIONAL_CHECKLIST.forEach(item => {
-                                const oldVal = !!customer[item.key];
-                                const newVal = !!editData[item.key];
-                                if (oldVal !== newVal) {
-                                    patch[item.key] = newVal;
-                                    changes.push(`${item.label}: ${oldVal ? 'Checked' : 'Unchecked'} → ${newVal ? 'Checked' : 'Unchecked'}`);
-                                }
-                            });
-
-                            await onUpdate(customer.id, patch);
-                            if (changes.length > 0) {
-                                await logActivity(user.id, 'update', `${customer.customer_name}: Operational checklist update - ${changes.join(' | ')}`, '', customer.id);
-                            }
-                            fetchLogs();
-                        };
-
-                        return (
-                            <div className="space-y-4 animate-in fade-in duration-300">
-                                {/* Material Delivery  */}
-                                <section id="section-equip_details">
-                                    <SectionHeader title="Material Delivery " id="equip_details" icon={Zap} />
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                        <EditableDetailItem label="PANEL SERIAL NO." field="panel_serial_no" value={editData.panel_serial_no} onChange={handleChange} isEditing={editingSection === 'equip_details'} />
-                                        <EditableDetailItem label="INVERTER SERIAL NO." field="inverter_serial_no" value={editData.inverter_serial_no} onChange={handleChange} isEditing={editingSection === 'equip_details'} />
-                                        <EditableDetailItem label="INVOICE NO" field="invoice_no" value={editData.invoice_no} onChange={handleChange} isEditing={editingSection === 'equip_details'} />
-                                    </div>
-                                </section>
-
-                                {/* Operational Progress */}
-                                <section>
-                                    <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-stone-100 shadow-sm mb-3">
-                                        <div>
-                                            <h3 className="text-sm font-bold text-stone-800">Operational Progress</h3>
-                                            <p className="text-[9px] text-stone-400 font-bold uppercase mt-1">{checkedCount} / {OPERATIONAL_CHECKLIST.length} Milestones Cleared</p>
-                                        </div>
-                                        {isOperationalChecklistDirty && (
-                                            <button onClick={handleSaveOperationalChecklist}
-                                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10">
-                                                Save Checklist
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
-                                        <div className="flex flex-col gap-2">
-                                            {OPERATIONAL_CHECKLIST.map(item => (
-                                                <label key={item.key} className="flex items-start gap-3 cursor-pointer group p-1 hover:bg-stone-50 rounded-lg transition-colors">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={!!editData[item.key]} 
-                                                        disabled={isFrozen} 
-                                                        onChange={() => handleChange(item.key, !editData[item.key])} 
-                                                        className="mt-0.5 rounded border-stone-300 text-amber-500 focus:ring-amber-500" 
-                                                    />
-                                                    <div className="flex-1">
-                                                        <span className={`text-xs block ${editData[item.key] ? 'text-stone-400 line-through' : 'text-stone-700 font-semibold'}`}>{item.label}</span>
-                                                    </div>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </section>
-                            </div>
-                        );
-                    })()}
-
-                    {/* ── LOAN TRACKING ── */}
-                    {activeTab === 'loan' && (
+                    {/* ── LOAN ── */}
+                    {activeTab === 'LOAN' && (
                         <div className="space-y-4 animate-in fade-in duration-300">
-                            {/* Loan Tag Selector */}
-                            <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                                <div className="flex items-center justify-between border-b border-stone-100 pb-2 mb-1">
-                                    <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Loan Tag Tracking</label>
-                                    {!isFrozen && editData.loan_tag !== customer.loan_tag && (
-                                        <button
-                                            onClick={handleSaveLoanTag}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10"
-                                        >
-                                            Save Tag
-                                        </button>
-                                    )}
+                            {editData.payment_type?.trim().toLowerCase() !== 'loan' ? (
+                                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center text-xs font-semibold text-amber-700">
+                                    This customer's payment type is "{editData.payment_type || 'not specified'}" (not Loan). Loan tracking is not applicable.
                                 </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 w-full">
-                                    {LOAN_TAGS.map(tag => {
-                                        const isSelected = editData.loan_tag === tag.id;
-                                        const colors = LOAN_TAG_COLORS[tag.id] || {};
-                                        return (
-                                            <button
-                                                key={tag.id}
-                                                disabled={isFrozen}
-                                                onClick={() => handleToggleLoanTag(tag.id)}
-                                                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
-                                                    isSelected
-                                                        ? `${colors.bg} ${colors.text} ${colors.border} shadow-sm shadow-stone-900/5`
-                                                        : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
-                                                }`}
-                                            >
-                                                <span className={`w-2 h-2 rounded-full ${isSelected ? colors.dot : 'bg-stone-300'}`} />
-                                                {tag.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </section>
+                            ) : (
+                                <>
+                                    {/* Loan Tag Selector */}
+                                    <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                        <div className="flex items-center justify-between border-b border-stone-100 pb-2 mb-1">
+                                            <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Loan Tag Tracking</label>
+                                            {isEditable && editData.loan_tag !== customer.loan_tag && (
+                                                <button
+                                                    onClick={handleSaveLoanTag}
+                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10"
+                                                >
+                                                    Save Tag
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 w-full">
+                                            {LOAN_TAGS.map(tag => {
+                                                const isSelected = editData.loan_tag === tag.id;
+                                                const colors = LOAN_TAG_COLORS[tag.id] || {};
+                                                return (
+                                                    <button
+                                                        key={tag.id}
+                                                        disabled={!isEditable}
+                                                        onClick={() => handleToggleLoanTag(tag.id)}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
+                                                            isSelected
+                                                                ? `${colors.bg} ${colors.text} ${colors.border} shadow-sm shadow-stone-900/5`
+                                                                : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                                                        }`}
+                                                    >
+                                                        <span className={`w-2 h-2 rounded-full ${isSelected ? colors.dot : 'bg-stone-300'}`} />
+                                                        {tag.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </section>
 
-                            {/* Loan History Timeline */}
-                            <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                                <div className="flex items-center gap-2 mb-2 border-b border-stone-100 pb-2">
-                                    <History size={16} className="text-stone-400" />
-                                    <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Loan Status Timeline</h3>
-                                </div>
+                                    {/* Loan History Timeline */}
+                                    <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                        <div className="flex items-center gap-2 mb-2 border-b border-stone-100 pb-2">
+                                            <History size={16} className="text-stone-400" />
+                                            <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Loan Status Timeline</h3>
+                                        </div>
 
-                                {(!editData.loan_history || editData.loan_history.length === 0) ? (
-                                    <p className="text-xs text-stone-400 italic">No loan history recorded</p>
-                                ) : (
-                                    <div className="relative border-l border-stone-200 ml-3 pl-5 space-y-4">
-                                        {(editData.loan_history || []).map((e, idx) => {
-                                            const pillColors = {
-                                                Sanctioned: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
-                                                Rejected: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', dot: 'bg-rose-400' },
-                                                Returned: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-400' },
-                                                '1st Payment': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-400' },
-                                                '2nd Payment': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-400' },
-                                            };
-                                            const colors = pillColors[e.status] || { bg: 'bg-stone-50', text: 'text-stone-600', border: 'border-stone-200', dot: 'bg-stone-400' };
-                                            return (
-                                                <div key={idx} className="relative">
-                                                    <span className={`absolute -left-[25.5px] top-1.5 w-2 h-2 rounded-full ring-4 ring-white ${colors.dot}`} />
-                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${colors.bg} ${colors.text} ${colors.border}`}>
-                                                                {e.status}
-                                                            </span>
-                                                            {e.remark && <span className="text-xs text-stone-600 font-medium">{e.remark}</span>}
+                                        {(!editData.loan_history || editData.loan_history.length === 0) ? (
+                                            <p className="text-xs text-stone-400 italic">No loan history recorded</p>
+                                        ) : (
+                                            <div className="relative border-l border-stone-200 ml-3 pl-5 space-y-4">
+                                                {(editData.loan_history || []).map((e, idx) => {
+                                                    const pillColors = {
+                                                        Sanctioned: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
+                                                        Rejected: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', dot: 'bg-rose-400' },
+                                                        Returned: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-400' },
+                                                        '1st Payment': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-400' },
+                                                        '2nd Payment': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-400' },
+                                                    };
+                                                    const colors = pillColors[e.status] || { bg: 'bg-stone-50', text: 'text-stone-600', border: 'border-stone-200', dot: 'bg-stone-400' };
+                                                    return (
+                                                        <div key={idx} className="relative">
+                                                            <span className={`absolute -left-[25.5px] top-1.5 w-2 h-2 rounded-full ring-4 ring-white ${colors.dot}`} />
+                                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${colors.bg} ${colors.text} ${colors.border}`}>
+                                                                        {e.status}
+                                                                    </span>
+                                                                    {e.remark && <span className="text-xs text-stone-600 font-medium">{e.remark}</span>}
+                                                                </div>
+                                                                {e.date && <span className="text-[10px] text-stone-400 font-semibold">{e.date}</span>}
+                                                            </div>
                                                         </div>
-                                                        {e.date && <span className="text-[10px] text-stone-400 font-semibold">{e.date}</span>}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
 
-                                {/* Add Loan Entry */}
-                                {!isFrozen && (
-                                    <div className="pt-2">
-                                        {isAddingLoanEntry ? (
-                                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <div>
-                                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Status</label>
-                                                        <select
-                                                            value={loanDraftStatus}
-                                                            onChange={e => setLoanDraftStatus(e.target.value)}
-                                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
-                                                        >
-                                                            {LOAN_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                                        </select>
+                                        {/* Add Loan Entry */}
+                                        {isEditable && (
+                                            <div className="pt-2">
+                                                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div>
+                                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Status</label>
+                                                            <select
+                                                                value={loanDraftStatus}
+                                                                onChange={e => setLoanDraftStatus(e.target.value)}
+                                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
+                                                            >
+                                                                {LOAN_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Date</label>
+                                                            <input
+                                                                type="date"
+                                                                value={loanDraftDate}
+                                                                onChange={e => setLoanDraftDate(e.target.value)}
+                                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
+                                                            />
+                                                        </div>
                                                     </div>
                                                     <div>
-                                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Date</label>
+                                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Remark</label>
                                                         <input
-                                                            type="date"
-                                                            value={loanDraftDate}
-                                                            onChange={e => setLoanDraftDate(e.target.value)}
+                                                            type="text"
+                                                            placeholder="Remark details..."
+                                                            value={loanDraftRemark}
+                                                            onChange={e => setLoanDraftRemark(e.target.value)}
                                                             className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
                                                         />
                                                     </div>
-                                                </div>
-                                                <div>
-                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Remark</label>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Remark details..."
-                                                        value={loanDraftRemark}
-                                                        onChange={e => setLoanDraftRemark(e.target.value)}
-                                                        className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
-                                                    />
-                                                </div>
-                                                <div className="flex justify-end gap-2 pt-1.5">
-                                                    <button
-                                                        onClick={() => {
-                                                            setIsAddingLoanEntry(false);
-                                                            setLoanDraftRemark('');
-                                                            setLoanDraftDate('');
-                                                        }}
-                                                        className="px-3.5 py-1.5 rounded-lg text-[10px] font-bold bg-stone-200 hover:bg-stone-300 text-stone-600 transition-colors"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button
-                                                        onClick={async () => {
-                                                            const entryDate = loanDraftDate || new Date().toISOString().split('T')[0];
-                                                            const newEntry = {
-                                                                status: loanDraftStatus,
-                                                                date: entryDate,
-                                                                remark: loanDraftRemark,
-                                                                created_at: new Date().toISOString()
-                                                            };
-                                                            const updatedHistory = [...(editData.loan_history || []), newEntry];
-                                                            
-                                                            setEditData(prev => ({ 
-                                                                ...prev, 
-                                                                loan_history: updatedHistory,
-                                                                loan_tag: loanDraftStatus
-                                                            }));
-                                                            await onUpdate(customer.id, { 
-                                                                loan_history: updatedHistory,
-                                                                loan_tag: loanDraftStatus
-                                                            });
-                                                            
-                                                            await logActivity(
-                                                                user.id,
-                                                                'update',
-                                                                `${customer.customer_name}: Added loan entry (${loanDraftStatus} on ${entryDate}${loanDraftRemark ? `: ${loanDraftRemark}` : ''})`,
-                                                                '',
-                                                                customer.id
-                                                            );
-                                                            
-                                                            setIsAddingLoanEntry(false);
-                                                            setLoanDraftRemark('');
-                                                            setLoanDraftDate('');
-                                                            fetchLogs();
-                                                        }}
-                                                        className="px-3.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/10 transition-colors"
-                                                    >
-                                                        Add Entry
-                                                    </button>
+                                                    <div className="flex justify-end gap-2 pt-1.5">
+                                                        <button
+                                                            onClick={async () => {
+                                                                const entryDate = loanDraftDate || new Date().toISOString().split('T')[0];
+                                                                const newEntry = {
+                                                                    status: loanDraftStatus,
+                                                                    date: entryDate,
+                                                                    remark: loanDraftRemark,
+                                                                    created_at: new Date().toISOString()
+                                                                };
+                                                                const updatedHistory = [...(editData.loan_history || []), newEntry];
+                                                                
+                                                                setEditData(prev => ({ 
+                                                                    ...prev, 
+                                                                    loan_history: updatedHistory,
+                                                                    loan_tag: loanDraftStatus
+                                                                }));
+                                                                await onUpdate(customer.id, { 
+                                                                    loan_history: updatedHistory,
+                                                                    loan_tag: loanDraftStatus
+                                                                });
+                                                                
+                                                                await logActivity(
+                                                                    user.id,
+                                                                    'update',
+                                                                    `${customer.customer_name}: Added loan entry (${loanDraftStatus} on ${entryDate}${loanDraftRemark ? `: ${loanDraftRemark}` : ''})`,
+                                                                    '',
+                                                                    customer.id
+                                                                );
+                                                                
+                                                                setLoanDraftRemark('');
+                                                                setLoanDraftDate('');
+                                                                fetchLogs();
+                                                            }}
+                                                            className="px-3.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/10 transition-colors"
+                                                        >
+                                                            Add Entry
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        ) : (
-                                            <button
-                                                onClick={() => {
-                                                    setLoanDraftStatus(LOAN_STATUS_OPTIONS[0]);
-                                                    setIsAddingLoanEntry(true);
-                                                }}
-                                                className="w-full flex items-center justify-center gap-1.5 border border-dashed border-stone-300 rounded-xl py-2.5 text-xs font-bold text-stone-500 hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50/10 transition-all"
-                                            >
-                                                <Plus className="w-3.5 h-3.5" /> Add Loan Entry
-                                            </button>
                                         )}
+                                    </section>
+                                </>
+                            )}
+
+                        </div>
+                    )}
+
+                    {/* ── CASH ── */}
+                    {activeTab === 'CASH' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            {editData.payment_type?.trim().toLowerCase() !== 'cash' ? (
+                                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center text-xs font-semibold text-amber-700">
+                                    This customer's payment type is "{editData.payment_type || 'not specified'}" (not Cash). Cash tracking is not applicable.
+                                </div>
+                            ) : (
+                                <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-2">
+                                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Cash Tracking</h4>
+                                    <p className="text-xs text-stone-500 font-medium">Record stage progress details and cash payment remarks below.</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── MATERIAL PROCUREMENT ── */}
+                    {activeTab === 'MATERIAL PROCUREMENT' && (
+                        <div className="space-y-6 animate-in fade-in duration-300">
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-6">
+                                <div className="flex justify-between items-center border-b border-stone-100 pb-3">
+                                    <div>
+                                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest font-bold">Bill of Materials (BOM)</h4>
+                                        <p className="text-xs text-stone-500 font-medium mt-0.5">Define equipment templates and track material loading milestones.</p>
+                                    </div>
+                                    {bom && (
+                                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                            BOM Saved
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Section 1: Read-only Customer Info */}
+                                <div>
+                                    <h5 className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Customer & Site Reference</h5>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-stone-50 p-4 rounded-xl border border-stone-200">
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Party Name</label>
+                                            <p className="text-xs font-bold text-stone-700">{editData?.customer_name || ""}</p>
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Mobile</label>
+                                            <p className="text-xs font-bold text-stone-700">{editData?.phone_number || ""}</p>
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">kW</label>
+                                            <p className="text-xs font-bold text-stone-700">{editData?.system_capacity_kwp || ""}</p>
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Dealer Name</label>
+                                            <p className="text-xs font-bold text-stone-700">{editData?.channel_partner || ""}</p>
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">File No.</label>
+                                            <p className="text-xs font-bold text-stone-700">{editData?.folder_no || ""}</p>
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Registration Date</label>
+                                            <p className="text-xs font-bold text-stone-700">{editData?.registration_date || ""}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Section 2: Procurement Milestones */}
+                                <div>
+                                    <SectionHeader title="Procurement Milestones" id="proc_milestones" icon={ClipboardList} />
+                                    {editingSection === 'proc_milestones' ? (
+                                        <div className="space-y-3">
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-stone-50 p-4 rounded-xl border border-stone-200">
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">BOM Type</label>
+                                                    <select
+                                                        value={bomType}
+                                                        onChange={(e) => handleBomTypeChange(e.target.value)}
+                                                        disabled={!isEditable}
+                                                        className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold"
+                                                    >
+                                                        <option value="">Select Type...</option>
+                                                        <option value="ROOF">Roof</option>
+                                                        <option value="SHED">Shed</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Paper Prepared By</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Prepared by name..."
+                                                        value={paperPreparedBy}
+                                                        onChange={(e) => setPaperPreparedBy(e.target.value)}
+                                                        disabled={!isEditable}
+                                                        className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Paper Prepared Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={paperPreparedDate}
+                                                        onChange={(e) => setPaperPreparedDate(e.target.value)}
+                                                        disabled={!isEditable}
+                                                        className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loading Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={materialLoadingDate}
+                                                        onChange={(e) => setMaterialLoadingDate(e.target.value)}
+                                                        disabled={!isEditable}
+                                                        className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loaded By</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Loaded by name..."
+                                                        value={materialLoadedBy}
+                                                        onChange={(e) => setMaterialLoadedBy(e.target.value)}
+                                                        disabled={!isEditable}
+                                                        className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loaded Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={materialLoadedDate}
+                                                        onChange={(e) => setMaterialLoadedDate(e.target.value)}
+                                                        disabled={!isEditable}
+                                                        className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        await saveBOM();
+                                                        setEditingSection(null);
+                                                    }}
+                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5"
+                                                >
+                                                    <Save size={12} /> Save
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-stone-50 p-4 rounded-xl border border-stone-200">
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">BOM Type</label>
+                                                <p className="text-xs font-bold text-stone-700">{bomType || ""}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Paper Prepared By</label>
+                                                <p className="text-xs font-bold text-stone-700">{paperPreparedBy || ""}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Paper Prepared Date</label>
+                                                <p className="text-xs font-bold text-stone-700">{paperPreparedDate || ""}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Material Loading Date</label>
+                                                <p className="text-xs font-bold text-stone-700">{materialLoadingDate || ""}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Material Loaded By</label>
+                                                <p className="text-xs font-bold text-stone-700">{materialLoadedBy || ""}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Material Loaded Date</label>
+                                                <p className="text-xs font-bold text-stone-700">{materialLoadedDate || ""}</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Section 3: BOM Items List Table */}
+                                {bomType && (
+                                    <div className="space-y-3">
+                                        <SectionHeader title="BOM Items" id="bom_items" icon={ClipboardList} />
+                                        <div className="overflow-x-auto border border-stone-200 rounded-xl">
+                                            <table className="min-w-full divide-y divide-stone-200 text-xs">
+                                                <thead className="bg-stone-50 text-stone-500 uppercase tracking-wider font-bold text-[9px]">
+                                                    <tr>
+                                                        <th className="px-3 py-2 text-left w-12">Sr. No.</th>
+                                                        <th className="px-3 py-2 text-left">Product Name</th>
+                                                        <th className="px-3 py-2 text-left w-32">Make</th>
+                                                        <th className="px-3 py-2 text-left w-24">UOM</th>
+                                                        <th className="px-3 py-2 text-left w-36">Integration By</th>
+                                                        <th className="px-3 py-2 text-left">Note</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-stone-200 bg-white font-medium text-stone-700">
+                                                    {bomItems.map((item, idx) => (
+                                                        <tr key={idx} className="hover:bg-stone-50/40">
+                                                            <td className="px-3 py-1.5 text-stone-400 font-bold">{idx + 1}</td>
+                                                            <td className="px-3 py-1.5 font-semibold text-stone-700">
+                                                                {item.product_name || ''}
+                                                            </td>
+                                                            <td className="px-3 py-1.5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={item.make || ''}
+                                                                    onChange={(e) => handleItemFieldChange(idx, 'make', e.target.value)}
+                                                                    disabled={!isEditable || editingSection !== 'bom_items'}
+                                                                    className="w-full bg-white border border-stone-200 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-amber-300 disabled:bg-stone-50 disabled:border-transparent"
+                                                                    placeholder="Make..."
+                                                                />
+                                                            </td>
+                                                            <td className="px-3 py-1.5 text-stone-500 font-semibold">
+                                                                {item.uom || ''}
+                                                            </td>
+                                                            <td className="px-3 py-1.5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={item.integration_by || ''}
+                                                                    onChange={(e) => handleItemFieldChange(idx, 'integration_by', e.target.value)}
+                                                                    disabled={!isEditable || editingSection !== 'bom_items'}
+                                                                    className="w-full bg-white border border-stone-200 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-amber-300 disabled:bg-stone-50 disabled:border-transparent"
+                                                                    placeholder="Integration..."
+                                                                />
+                                                            </td>
+                                                            <td className="px-3 py-1.5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={item.note || ''}
+                                                                    onChange={(e) => handleItemFieldChange(idx, 'note', e.target.value)}
+                                                                    disabled={!isEditable || editingSection !== 'bom_items'}
+                                                                    className="w-full bg-white border border-stone-200 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-amber-300 disabled:bg-stone-50 disabled:border-transparent"
+                                                                    placeholder="Notes..."
+                                                                />
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        {isEditable && editingSection === 'bom_items' && (
+                                            <div className="flex justify-end items-center pt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        await saveBOM();
+                                                        setEditingSection(null);
+                                                    }}
+                                                    disabled={bomSaving}
+                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 disabled:bg-stone-300 disabled:cursor-not-allowed"
+                                                >
+                                                    <Save className="w-3.5 h-3.5" /> {bomSaving ? 'Saving BOM...' : 'Save'}
+                                                </button>
+                                            </div>
+                                        )}
+
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── HOLD PROCUREMENT ── */}
+                    {activeTab === 'HOLD PROCUREMENT' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm">
+                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Hold Procurement</h4>
+                                <p className="text-xs text-stone-500 font-medium mt-1">Procurement hold status details.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── MATERIAL DELIVERY ── */}
+                    {activeTab === 'MATERIAL DELIVERY' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            {/* Material Delivery Fields */}
+                            <section id="section-equip_details">
+                                <SectionHeader title="Material Delivery Details" id="equip_details" icon={Zap} />
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    {editingSection === 'equip_details' ? (
+                                        <div className="bg-stone-50 p-3 rounded-xl col-span-2 md:col-span-1 space-y-2">
+                                            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">PANEL SERIAL NO.</p>
+                                            <div className="space-y-1.5 max-h-[150px] overflow-y-auto pr-1">
+                                                {panelSerials.map((serial, idx) => (
+                                                    <div key={idx} className="flex items-center gap-1.5">
+                                                        <input
+                                                            type="text"
+                                                            value={serial}
+                                                            onChange={(e) => handlePanelSerialChange(idx, e.target.value)}
+                                                            className="flex-1 bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300"
+                                                            placeholder={`Serial No #${idx + 1}`}
+                                                        />
+                                                        {panelSerials.length > 1 && (
+                                                            <button
+                                                                onClick={() => removePanelSerial(idx)}
+                                                                className="text-red-400 hover:text-red-600 p-1"
+                                                                type="button"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <button
+                                                onClick={addPanelSerial}
+                                                className="flex items-center gap-1 text-amber-600 hover:text-amber-700 text-[10px] font-bold mt-1"
+                                                type="button"
+                                            >
+                                                <Plus size={12} /> Add Serial No
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-stone-50 p-3 rounded-xl col-span-2 md:col-span-1">
+                                            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">PANEL SERIAL NO.</p>
+                                            <div className="flex flex-col gap-1 mt-1">
+                                                {panelSerials.filter(Boolean).length === 0 ? (
+                                                    <span className="text-xs text-stone-400 italic">No serials entered</span>
+                                                ) : (
+                                                    panelSerials.filter(Boolean).map((serial, idx) => (
+                                                        <div key={idx} className="text-xs text-stone-700 font-semibold">
+                                                            {serial}
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                    <EditableDetailItem label="INVERTER SERIAL NO." field="inverter_serial_no" value={editData.inverter_serial_no} onChange={handleChange} isEditing={editingSection === 'equip_details'} />
+                                    <EditableDetailItem label="INVOICE NO" field="invoice_no" value={editData.invoice_no} onChange={handleChange} isEditing={editingSection === 'equip_details'} />
+                                </div>
                             </section>
                         </div>
                     )}
 
-                    {/* ── SUBSIDY ── */}
-                    {activeTab === 'subsidy' && (
+                    {/* ── INSTALLATION STATUS ── */}
+                    {activeTab === 'INSTALLATION STATUS' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                <div>
+                                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Installation Status</h4>
+                                    <p className="text-xs text-stone-500 font-medium mt-1">Has the physical installation been completed?</p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        disabled={!isEditable}
+                                        onClick={() => {
+                                            setEditData(prev => ({ ...prev, installation_status: true }));
+                                        }}
+                                        className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all ${
+                                            (editData.installation_status === true || String(editData.installation_status).toLowerCase() === 'yes' || String(editData.installation_status).toLowerCase() === 'true')
+                                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/10'
+                                                : 'bg-stone-50 border border-stone-200 text-stone-600 hover:bg-stone-100'
+                                        }`}
+                                    >
+                                        Yes
+                                    </button>
+                                    <button
+                                        disabled={!isEditable}
+                                        onClick={() => {
+                                            setEditData(prev => ({ ...prev, installation_status: false }));
+                                        }}
+                                        className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all ${
+                                            !(editData.installation_status === true || String(editData.installation_status).toLowerCase() === 'yes' || String(editData.installation_status).toLowerCase() === 'true')
+                                                ? 'bg-stone-900 text-white shadow-md'
+                                                : 'bg-stone-50 border border-stone-200 text-stone-600 hover:bg-stone-100'
+                                        }`}
+                                    >
+                                        No
+                                    </button>
+                                </div>
+                                {isEditable && editData.installation_status !== customer.installation_status && (
+                                    <div className="flex justify-end pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                setSaving(true);
+                                                await onUpdate(customer.id, { installation_status: editData.installation_status });
+                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Installation Status to ${editData.installation_status ? 'Yes' : 'No'}`, '', customer.id);
+                                                setSaving(false);
+                                                fetchLogs();
+                                            }}
+                                            disabled={saving}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 disabled:bg-stone-300 disabled:cursor-not-allowed"
+                                        >
+                                            <Save className="w-3.5 h-3.5" /> Save
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── GEO TAG PHOTO ── */}
+                    {activeTab === 'GEO TAG PHOTO' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                <div>
+                                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Geo Tag Photo</h4>
+                                    <p className="text-xs text-stone-500 font-medium mt-1">Has the geo-tagged photograph been uploaded?</p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        disabled={!isEditable}
+                                        onClick={() => {
+                                            setEditData(prev => ({ ...prev, geo_tag_status: true }));
+                                        }}
+                                        className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all ${
+                                            (editData.geo_tag_status === true || String(editData.geo_tag_status).toLowerCase() === 'yes' || String(editData.geo_tag_status).toLowerCase() === 'true')
+                                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/10'
+                                                : 'bg-stone-50 border border-stone-200 text-stone-600 hover:bg-stone-100'
+                                        }`}
+                                    >
+                                        Yes
+                                    </button>
+                                    <button
+                                        disabled={!isEditable}
+                                        onClick={() => {
+                                            setEditData(prev => ({ ...prev, geo_tag_status: false }));
+                                        }}
+                                        className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all ${
+                                            !(editData.geo_tag_status === true || String(editData.geo_tag_status).toLowerCase() === 'yes' || String(editData.geo_tag_status).toLowerCase() === 'true')
+                                                ? 'bg-stone-900 text-white shadow-md'
+                                                : 'bg-stone-50 border border-stone-200 text-stone-600 hover:bg-stone-100'
+                                        }`}
+                                    >
+                                        No
+                                    </button>
+                                </div>
+                                {isEditable && editData.geo_tag_status !== customer.geo_tag_status && (
+                                    <div className="flex justify-end pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                setSaving(true);
+                                                await onUpdate(customer.id, { geo_tag_status: editData.geo_tag_status });
+                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Geo Tag Photo Status to ${editData.geo_tag_status ? 'Yes' : 'No'}`, '', customer.id);
+                                                setSaving(false);
+                                                fetchLogs();
+                                            }}
+                                            disabled={saving}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 disabled:bg-stone-300 disabled:cursor-not-allowed"
+                                        >
+                                            <Save className="w-3.5 h-3.5" /> Save
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── DISCOM SUBMISSION ── */}
+                    {activeTab === 'DISCOM SUBMISSION' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm">
+                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Discom Submission</h4>
+                                <p className="text-xs text-stone-500 font-medium mt-1">Utility submissions and paperwork tracking.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── METER INSTALLATION ── */}
+                    {activeTab === 'METER INSTALLATION' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm">
+                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Meter Installation</h4>
+                                <p className="text-xs text-stone-500 font-medium mt-1">Net meter installation status and parameters.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── DISCOM INSPECTION ── */}
+                    {activeTab === 'DISCOM INSPECTION' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm">
+                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Discom Inspection</h4>
+                                <p className="text-xs text-stone-500 font-medium mt-1">Utility official inspection schedules and updates.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── SUBSIDY STATUS ── */}
+                    {activeTab === 'SUBSIDY STATUS' && (
                         <div className="space-y-4 animate-in fade-in duration-300">
                             {/* Subsidy Tag Selector */}
                             <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
                                 <div className="flex items-center justify-between border-b border-stone-100 pb-2 mb-1">
                                     <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Subsidy Tag Tracking</label>
-                                    {!isFrozen && editData.subsidy_tag !== customer.subsidy_tag && (
+                                    {isEditable && editData.subsidy_tag !== customer.subsidy_tag && (
                                         <button
                                             onClick={handleSaveSubsidyTag}
                                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10"
@@ -1250,14 +2095,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                         </button>
                                     )}
                                 </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 w-full">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
                                     {SUBSIDY_TAGS.map(tag => {
                                         const isSelected = editData.subsidy_tag === tag.id;
                                         const colors = SUBSIDY_TAG_COLORS[tag.id] || {};
                                         return (
                                             <button
                                                 key={tag.id}
-                                                disabled={isFrozen}
+                                                disabled={!isEditable}
                                                 onClick={() => handleToggleSubsidyTag(tag.id)}
                                                 className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
                                                     isSelected
@@ -1271,7 +2116,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                         );
                                     })}
                                 </div>
-                            </section>
+                             </section>
 
                             {/* Subsidy History Timeline */}
                             <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
@@ -1280,7 +2125,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Subsidy Status Timeline</h3>
                                 </div>
 
-                                {/* Compact Timeline list */}
                                 {(!editData.subsidy_history || editData.subsidy_history.length === 0) ? (
                                     <p className="text-xs text-stone-400 italic">No subsidy history recorded</p>
                                 ) : (
@@ -1312,107 +2156,131 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     </div>
                                 )}
 
-                                {/* Add Subsidy Option */}
-                                {!isFrozen && (
+                                {/* Add Subsidy Entry */}
+                                {isEditable && (
                                     <div className="pt-2">
-                                        {isAddingEntry ? (
-                                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <div>
-                                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Status</label>
-                                                        <select
-                                                            value={draftStatus}
-                                                            onChange={e => setDraftStatus(e.target.value)}
-                                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
-                                                        >
-                                                            {SUBSIDY_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Date</label>
-                                                        <input
-                                                            type="date"
-                                                            value={draftDate}
-                                                            onChange={e => setDraftDate(e.target.value)}
-                                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
-                                                        />
-                                                    </div>
+                                        <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Status</label>
+                                                    <select
+                                                        value={draftStatus}
+                                                        onChange={e => setDraftStatus(e.target.value)}
+                                                        className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
+                                                    >
+                                                        <option value="Approved">Approved</option>
+                                                        <option value="Returned">Returned</option>
+                                                        <option value="Rejected">Rejected</option>
+                                                        <option value="Redeemed">Redeemed</option>
+                                                        <option value="Received">Received</option>
+                                                    </select>
                                                 </div>
                                                 <div>
-                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Remark</label>
+                                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Date</label>
                                                     <input
-                                                        type="text"
-                                                        placeholder="Remark details..."
-                                                        value={draftRemark}
-                                                        onChange={e => setDraftRemark(e.target.value)}
+                                                        type="date"
+                                                        value={draftDate}
+                                                        onChange={e => setDraftDate(e.target.value)}
                                                         className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
                                                     />
                                                 </div>
-                                                <div className="flex justify-end gap-2 pt-1.5">
-                                                    <button
-                                                        onClick={() => {
-                                                            setIsAddingEntry(false);
-                                                            setDraftRemark('');
-                                                            setDraftDate('');
-                                                        }}
-                                                        className="px-3.5 py-1.5 rounded-lg text-[10px] font-bold bg-stone-200 hover:bg-stone-300 text-stone-600 transition-colors"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button
-                                                        onClick={async () => {
-                                                            const entryDate = draftDate || new Date().toISOString().split('T')[0];
-                                                            const newEntry = {
-                                                                status: draftStatus,
-                                                                date: entryDate,
-                                                                remark: draftRemark,
-                                                                created_at: new Date().toISOString()
-                                                            };
-                                                            const updatedHistory = [...(editData.subsidy_history || []), newEntry];
-                                                            
-                                                            setEditData(prev => ({ 
-                                                                ...prev, 
-                                                                subsidy_history: updatedHistory,
-                                                                subsidy_tag: draftStatus
-                                                            }));
-                                                            await onUpdate(customer.id, { 
-                                                                subsidy_history: updatedHistory,
-                                                                subsidy_tag: draftStatus
-                                                            });
-                                                            
-                                                            await logActivity(
-                                                                user.id,
-                                                                'update',
-                                                                `${customer.customer_name}: Added subsidy entry (${draftStatus} on ${entryDate}${draftRemark ? `: ${draftRemark}` : ''})`,
-                                                                '',
-                                                                customer.id
-                                                            );
-                                                            
-                                                            setIsAddingEntry(false);
-                                                            setDraftRemark('');
-                                                            setDraftDate('');
-                                                            fetchLogs();
-                                                        }}
-                                                        className="px-3.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/10 transition-colors"
-                                                    >
-                                                        Add Entry
-                                                    </button>
-                                                </div>
                                             </div>
-                                        ) : (
-                                            <button
-                                                onClick={() => {
-                                                    setDraftStatus(SUBSIDY_STATUS_OPTIONS[0]);
-                                                    setIsAddingEntry(true);
-                                                }}
-                                                className="w-full flex items-center justify-center gap-1.5 border border-dashed border-stone-300 rounded-xl py-2.5 text-xs font-bold text-stone-500 hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50/10 transition-all"
-                                            >
-                                                <Plus className="w-3.5 h-3.5" /> Add Subsidy Entry
-                                            </button>
-                                        )}
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Remark</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Remark details..."
+                                                    value={draftRemark}
+                                                    onChange={e => setDraftRemark(e.target.value)}
+                                                    className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
+                                                />
+                                            </div>
+                                            <div className="flex justify-end gap-2 pt-1.5">
+                                                <button
+                                                    onClick={async () => {
+                                                        const entryDate = draftDate || new Date().toISOString().split('T')[0];
+                                                        const newEntry = {
+                                                            status: draftStatus,
+                                                            date: entryDate,
+                                                            remark: draftRemark,
+                                                            created_at: new Date().toISOString()
+                                                        };
+                                                        const updatedHistory = [...(editData.subsidy_history || []), newEntry];
+                                                        
+                                                        setEditData(prev => ({ 
+                                                            ...prev, 
+                                                            subsidy_history: updatedHistory,
+                                                            subsidy_tag: draftStatus
+                                                        }));
+                                                        await onUpdate(customer.id, { 
+                                                            subsidy_history: updatedHistory,
+                                                            subsidy_tag: draftStatus
+                                                        });
+                                                        
+                                                        await logActivity(
+                                                            user.id,
+                                                            'update',
+                                                            `${customer.customer_name}: Added subsidy entry (${draftStatus} on ${entryDate}${draftRemark ? `: ${draftRemark}` : ''})`,
+                                                            '',
+                                                            customer.id
+                                                        );
+                                                        
+                                                        setDraftRemark('');
+                                                        setDraftDate('');
+                                                        fetchLogs();
+                                                    }}
+                                                    className="px-3.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/10 transition-colors"
+                                                >
+                                                    Add Entry
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </section>
+                        </div>
+                    )}
+
+                    {/* ── FINAL REVIEW ── */}
+                    {activeTab === 'FINAL REVIEW' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            {/* Checklist Milestones */}
+                            <section>
+                                <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm mb-3">
+                                    <div>
+                                        <h3 className="text-sm font-bold text-stone-800">Operational Checklist Milestones</h3>
+                                    </div>
+                                </div>
+                                <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
+                                    <div className="flex flex-col gap-2">
+                                        <CheckboxRemarkItem label="Stamp Checked" field="stamp" value={editData.stamp} onChange={handleChange} isEditing={isEditable} />
+                                        <CheckboxRemarkItem label="File Status Checked" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} />
+                                        <CheckboxRemarkItem label="GEB Inspection Checked" field="geb_inspection" value={editData.geb_inspection} onChange={handleChange} isEditing={isEditable} />
+                                        <CheckboxRemarkItem label="Subsidy Redeem Checked" field="subsidy_redeem" value={editData.subsidy_redeem} onChange={handleChange} isEditing={isEditable} />
+                                        <CheckboxRemarkItem label="SFDC Photo Checked" field="sfdc_photo" value={editData.sfdc_photo} onChange={handleChange} isEditing={isEditable} />
+                                        <CheckboxRemarkItem label="Warranty Card Checked" field="warranty_card" value={editData.warranty_card} onChange={handleChange} isEditing={isEditable} />
+                                        <CheckboxRemarkItem label="Insurance Status Checked" field="insurance_status" value={editData.insurance_status} onChange={handleChange} isEditing={isEditable} />
+                                    </div>
+                                    {isEditable && isOperationalChecklistDirty && (
+                                        <div className="mt-4 pt-3 border-t border-stone-100 flex justify-end">
+                                            <button onClick={handleSaveOperationalChecklist}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10">
+                                                Save Checklist
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+                        </div>
+                    )}
+
+                    {/* ── COMPLETED ── */}
+                    {activeTab === 'COMPLETED' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-2">
+                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Project Completion</h4>
+                                <p className="text-xs text-stone-500 font-medium">This project has reached final completion.</p>
+                            </div>
                         </div>
                     )}
 
@@ -1485,13 +2353,31 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     )}
                 </div>
 
-                {/* Save bar */}
-                {(editingSection || editData.payment_type !== customer.payment_type) && (
-                    <div className="p-4 border-t border-stone-100 bg-white flex-shrink-0">
-                        <button onClick={handleSave} disabled={saving}
-                            className="w-full bg-stone-900 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 transition-all">
-                            {saving ? 'Saving Changes...' : <><Save size={16} /> Save Changes</>}
-                        </button>
+                {/* Footer bar */}
+                {(isDirty || (hasNextStage && isEditable && activeTab === customer.stage)) && (
+                    <div className="p-4 border-t border-stone-100 bg-white flex-shrink-0 flex gap-3">
+                        {/* Save Changes button (if editing / changed) */}
+                        {isDirty && (
+                            <button onClick={handleSave} disabled={saving}
+                                className="flex-1 bg-stone-900 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 transition-all text-xs">
+                                {saving ? 'Saving...' : <><Save size={14} /> Save</>}
+                            </button>
+                        )}
+                        {/* Save & Move to Next Stage button (if not frozen & has next stage) */}
+                        {hasNextStage && isEditable && activeTab === customer.stage && (
+                            <button
+                                disabled={editData.stage === 'LEADS' && !isLeadFieldsFilled}
+                                onClick={handleAdvanceStage}
+                                className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs ${
+                                    (editData.stage === 'LEADS' && !isLeadFieldsFilled)
+                                        ? 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
+                                        : 'bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10'
+                                }`}
+                                title={editData.stage === 'LEADS' && !isLeadFieldsFilled ? 'Please fill all required Lead fields (Name, Phone, Channel Partner, Capacity)' : `Advance to ${nextStageLabel}`}
+                            >
+                                Save & Move to {nextStageLabel}
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

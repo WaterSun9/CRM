@@ -5,11 +5,11 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useRef } from 'react';
-import { Zap, MapPin, User, Building2, Package, FolderOpen, ChevronDown, Lock, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Zap, MapPin, User, Building2, Package, FolderOpen, ChevronDown, Lock, ShieldCheck, Phone } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 import { formatINRCompact } from '../utils';
 
-export default function CustomerCard({ customer, onSelect, onMoveStage, isAdmin }) {
+export default function CustomerCard({ customer, onSelect, onMoveStage, currentUser }) {
     const [showStageMenu, setShowStageMenu] = useState(false);
     const [menuDirection, setMenuDirection] = useState('down');
     const dropdownRef = useRef(null);
@@ -23,7 +23,26 @@ export default function CustomerCard({ customer, onSelect, onMoveStage, isAdmin 
         return () => document.removeEventListener('mousedown', handleClick);
     }, [showStageMenu]);
 
-    const isFrozen = customer.stage === 'COMPLETED' && !isAdmin;
+    const isAgent = currentUser?.userType === 'agent';
+    const isSales = currentUser?.userType === 'sales';
+    const isAdmin = currentUser?.userType === 'admin';
+
+    const isCompleted = customer.stage === 'COMPLETED';
+    const isFrozen = isCompleted && !isAdmin;
+
+    const isDiscomOrMeterStage = customer.stage === 'DISCOM SUBMISSION' || customer.stage === 'METER INSTALLATION';
+
+    const canUserMoveStage = (() => {
+        if (isAdmin) return true;
+        if (isAgent) {
+            const isMyClient = customer.channel_partner?.trim().toLowerCase() === currentUser?.name?.trim().toLowerCase();
+            return isMyClient && isDiscomOrMeterStage;
+        }
+        if (isSales) {
+            return !isDiscomOrMeterStage;
+        }
+        return false;
+    })();
     const currentStageRemark = (() => {
         if (!customer.stages_remarks) return '';
         if (typeof customer.stages_remarks === 'object') {
@@ -75,7 +94,7 @@ export default function CustomerCard({ customer, onSelect, onMoveStage, isAdmin 
                     </div>
                     {customer.phone_number && (
                         <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
-                            <span className="text-stone-300">📞</span>
+                            <Phone size={11} className="text-stone-300 flex-shrink-0" />
                             <span>{customer.phone_number}</span>
                         </div>
                     )}
@@ -120,53 +139,41 @@ export default function CustomerCard({ customer, onSelect, onMoveStage, isAdmin 
                             <Lock className="w-3.5 h-3.5" />
                             <span>Completed · Frozen</span>
                         </div>
+                    ) : !canUserMoveStage ? (
+                        <div className="w-full flex items-center justify-center gap-2 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-600 font-bold">
+                            <span>{PRIMARY_STAGES.find(s => s.id === customer.stage)?.label || customer.stage}</span>
+                        </div>
                     ) : (
                         (() => {
-                            const currentStageIdx = PRIMARY_STAGES.findIndex(s => s.id === customer.stage);
-                            const hasNextStage = currentStageIdx !== -1 && currentStageIdx < PRIMARY_STAGES.length - 1;
-                            const nextStageId = hasNextStage ? PRIMARY_STAGES[currentStageIdx + 1].id : null;
-                            const nextStageLabel = hasNextStage ? PRIMARY_STAGES[currentStageIdx + 1].label : '';
-
                             return (
-                                <div className="flex gap-2" ref={dropdownRef}>
-                                    <div className="relative flex-1">
-                                        <button onClick={(e) => {
-                                            const nextShow = !showStageMenu;
-                                            setShowStageMenu(nextShow);
-                                            if (nextShow) {
-                                                const rect = e.currentTarget.getBoundingClientRect();
-                                                const spaceBelow = window.innerHeight - rect.bottom;
-                                                setMenuDirection(spaceBelow < 280 ? 'up' : 'down');
-                                            }
-                                        }}
-                                            className={`w-full h-[38px] flex items-center justify-between border rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${customer.stage === 'COMPLETED' ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700' : 'bg-white hover:bg-stone-100 border-stone-200 text-stone-600'}`}>
-                                            <span className="flex items-center gap-1.5 truncate">
-                                                {customer.stage === 'COMPLETED' && <ShieldCheck className="w-3.5 h-3.5" />}
-                                                {PRIMARY_STAGES.find(s => s.id === customer.stage)?.label || customer.stage || 'Move to Stage'}
-                                            </span>
-                                            <ChevronDown className={`w-4 h-4 flex-shrink-0 ml-1 transition-transform ${showStageMenu ? 'rotate-180' : ''}`} />
-                                        </button>
-                                        {showStageMenu && (
-                                            <div className={`absolute left-0 right-0 bg-white rounded-xl shadow-xl border border-stone-100 py-1 z-20 max-h-64 overflow-y-auto ${menuDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-                                                {PRIMARY_STAGES.map(stage => (
-                                                    <button key={stage.id}
-                                                        onClick={() => { onMoveStage(customer.id, stage.id); setShowStageMenu(false); }}
-                                                        className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-stone-50 transition-colors ${customer.stage === stage.id ? 'bg-amber-50 font-bold text-amber-700' : 'text-stone-600'}`}>
-                                                        <stage.icon className="w-3.5 h-3.5 text-stone-400 flex-shrink-0" />
-                                                        {stage.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                    {hasNextStage && (
-                                        <button
-                                            onClick={() => onMoveStage(customer.id, nextStageId)}
-                                            title={`Move to next stage: ${nextStageLabel}`}
-                                            className="w-9 h-[38px] bg-stone-900 text-white rounded-xl flex items-center justify-center hover:bg-amber-500 transition-colors flex-shrink-0 shadow-sm"
-                                        >
-                                            <ArrowRight size={14} />
-                                        </button>
+                                <div className="relative" ref={dropdownRef}>
+                                    <button onClick={(e) => {
+                                        const nextShow = !showStageMenu;
+                                        setShowStageMenu(nextShow);
+                                        if (nextShow) {
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            const spaceBelow = window.innerHeight - rect.bottom;
+                                            setMenuDirection(spaceBelow < 280 ? 'up' : 'down');
+                                        }
+                                    }}
+                                        className={`w-full h-[38px] flex items-center justify-between border rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${customer.stage === 'COMPLETED' ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700' : 'bg-white hover:bg-stone-100 border-stone-200 text-stone-600'}`}>
+                                        <span className="flex items-center gap-1.5 truncate">
+                                            {customer.stage === 'COMPLETED' && <ShieldCheck className="w-3.5 h-3.5" />}
+                                            {PRIMARY_STAGES.find(s => s.id === customer.stage)?.label || customer.stage || 'Move to Stage'}
+                                        </span>
+                                        <ChevronDown className={`w-4 h-4 flex-shrink-0 ml-1 transition-transform ${showStageMenu ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {showStageMenu && (
+                                        <div className={`absolute left-0 right-0 bg-white rounded-xl shadow-xl border border-stone-100 py-1 z-20 max-h-64 overflow-y-auto ${menuDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+                                            {PRIMARY_STAGES.map(stage => (
+                                                <button key={stage.id}
+                                                    onClick={() => { onMoveStage(customer.id, stage.id); setShowStageMenu(false); }}
+                                                    className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-stone-50 transition-colors ${customer.stage === stage.id ? 'bg-amber-50 font-bold text-amber-700' : 'text-stone-600'}`}>
+                                                    <stage.icon className="w-3.5 h-3.5 text-stone-400 flex-shrink-0" />
+                                                    {stage.label}
+                                                </button>
+                                            ))}
+                                        </div>
                                     )}
                                 </div>
                             );
