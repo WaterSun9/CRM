@@ -19,6 +19,9 @@ import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_C
 import { logActivity, formatLogDate, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
+import { AgreementPreview } from './agreement/AgreementPreview';
+import { Page1 } from './agreement/Page1';
+import { FileText, Printer } from 'lucide-react';
 
 // ─── formatMoney: uses centralized Indian comma system from utils ─────────────
 const fmt = formatINR;
@@ -35,6 +38,16 @@ const formatDateTime = (date) => {
     hours = hours ? hours : 12;
     const h = hours.toString().padStart(2, '0');
     return `${d} ${m}, ${h}:${minutes} ${ampm}`;
+};
+
+// ─── formatDateToDDMMYYYY: formats "YYYY-MM-DD" to "DD/MM/YYYY" ──────────────
+const formatDateToDDMMYYYY = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
 };
 
 // ─── getStageRemarkFromData: robust helper to extract remark ─────────────────
@@ -420,6 +433,64 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [loanDraftRemark, setLoanDraftRemark] = useState('');
     const [isAddingLoanEntry, setIsAddingLoanEntry] = useState(false);
 
+    const [vendors, setVendors] = useState([]);
+    useEffect(() => {
+        const fetchVendorsList = async () => {
+            try {
+                const { data } = await supabase.from('vendors').select('name').order('name');
+                if (data) setVendors(data.map(v => v.name));
+            } catch (e) {
+                console.error('Error fetching vendors in modal:', e);
+            }
+        };
+        fetchVendorsList();
+    }, []);
+
+    const [showAgreementPopup, setShowAgreementPopup] = useState(false);
+    const [agreementData, setAgreementData] = useState({
+        executionDate: '',
+        consumerName: '',
+        consumerNo: '',
+        village: '',
+        taluka: '',
+        district: '',
+        vendorName: 'Watersun Electrical Solutions Pvt Ltd',
+        vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
+        paymentTerms: 'Mutually Agreed Terms of Payment',
+        firstPartySignature: '',
+        secondPartyStamp: '',
+        secondPartySignature: '',
+        highlightColor: '#fef08a',
+        showHighlights: true,
+    });
+
+    useEffect(() => {
+        if (showAgreementPopup) {
+            const rawDate = editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0];
+            const formattedDate = formatDateToDDMMYYYY(rawDate);
+            setAgreementData({
+                executionDate: formattedDate,
+                consumerName: editData.customer_name || '',
+                consumerNo: editData.consumer_no || '',
+                village: editData.villages || '',
+                taluka: editData.villages || '',
+                district: editData.sub_divisions || '',
+                vendorName: 'Watersun Electrical Solutions Pvt Ltd',
+                vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
+                paymentTerms: 'Mutually Agreed Terms of Payment',
+                firstPartySignature: '',
+                secondPartyStamp: '',
+                secondPartySignature: '',
+                highlightColor: '#fef08a',
+                showHighlights: true,
+            });
+        }
+    }, [showAgreementPopup, editData]);
+
+    const [installationDraftStatus, setInstallationDraftStatus] = useState('Pending');
+    const [installationDraftDate, setInstallationDraftDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [installationDraftRemark, setInstallationDraftRemark] = useState('');
+
     // ─── BOM States & Handlers ──────────────────────────────────────────────────
     const [bom, setBom] = useState(null);
     const [bomItems, setBomItems] = useState([]);
@@ -491,7 +562,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     useEffect(() => {
-        if (activeTab === 'MATERIAL PROCUREMENT') {
+        if (activeTab === 'MATERIAL INTEGRATION') {
             loadBOM();
         }
     }, [activeTab, customer?.id]);
@@ -733,11 +804,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const OPERATIONAL_CHECKLIST_FIELDS = [
-        'stamp',
-        'file_status',
-        'geb_inspection',
-        'subsidy_redeem',
-        'sfdc_photo',
         'warranty_card',
         'insurance_status',
     ];
@@ -885,6 +951,50 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         fetchLogs();
     };
 
+    const handleToggleInstallationTag = (tagId) => {
+        const newTag = editData.installation_status === tagId ? null : tagId;
+        setEditData(prev => ({ ...prev, installation_status: newTag }));
+    };
+
+    const handleSaveInstallationDetails = async () => {
+        setSaving(true);
+        const updates = {
+            installation_status: editData.installation_status,
+            installation_date: editData.installation_date || null,
+            installed_by: editData.installed_by || null
+        };
+        await onUpdate(customer.id, updates);
+        
+        let logMsg = `${customer.customer_name}: Updated Installation Status to ${editData.installation_status}`;
+        if (editData.installation_status === 'Yes') {
+            logMsg += ` (Date: ${editData.installation_date || 'N/A'}, Installed By: ${editData.installed_by || 'N/A'})`;
+        }
+        await logActivity(user.id, 'update', logMsg, '', customer.id);
+        
+        setSaving(false);
+        fetchLogs();
+    };
+
+    const handleToggleHoldStatus = (status) => {
+        const newStatus = editData.hold_procurment === status ? null : status;
+        setEditData(prev => ({ ...prev, hold_procurment: newStatus }));
+    };
+
+    const handleSaveHoldStatus = async () => {
+        const newStatus = editData.hold_procurment;
+        setSaving(true);
+        await onUpdate(customer.id, { hold_procurment: newStatus });
+        await logActivity(
+            user.id,
+            'update',
+            `${customer.customer_name}: Hold Procurement status saved to ${newStatus || 'None'}`,
+            '',
+            customer.id
+        );
+        setSaving(false);
+        fetchLogs();
+    };
+
     const handleSaveStageRemark = async (stageId) => {
         const targetStage = stageId || editData.stage;
         const currentRemark = getStageRemarkFromData(editData.stages_remarks, targetStage);
@@ -988,8 +1098,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         editData.system_capacity_kwp
     );
 
-    const handleAdvanceStage = async () => {
-        if (!nextStageId) return;
+    const handleAdvanceStage = async (overrideNextStageId) => {
+        const destStageId = overrideNextStageId || nextStageId;
+        if (!destStageId) return;
         
         setSaving(true);
         
@@ -1010,9 +1121,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
         const updates = {
             ...editData,
-            stage: nextStageId,
+            stage: destStageId,
             stages_remarks: updatedRemarks
         };
+
+        if (destStageId === 'METER INSTALLATION') {
+            const currentMeter = updates.meter_installation || {};
+            updates.meter_installation = {
+                status: currentMeter.status || 'No',
+                no_date: currentMeter.no_date || new Date().toISOString().split('T')[0],
+                yes_date: currentMeter.yes_date || null
+            };
+        }
 
         if (updates.subsidy_history) {
             updates.subsidy_history = updates.subsidy_history.map(({ isNew, ...rest }) => rest);
@@ -1035,7 +1155,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
         await onUpdate(customer.id, updates);
 
-        await logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${nextStageId}`, '', customer.id);
+        await logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${destStageId}`, '', customer.id);
         if (changeSummary.length > 0) {
             await logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id);
         }
@@ -1043,7 +1163,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         setEditingSection(null);
         setSaving(false);
         fetchLogs();
-        setActiveTab(nextStageId);
+        setActiveTab(destStageId);
+    };
+
+    const handleGenerateAgreement = () => {
+        setShowAgreementPopup(true);
     };
 
     const handleSave = async () => {
@@ -1353,6 +1477,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     <EditableDetailItem label="MODULE WP" field="module_wp" value={editData.module_wp} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="Sub Division" field="sub_divisions" value={editData.sub_divisions} onChange={handleChange} isEditing={editingSection === 'cus'} />
                                     <EditableDetailItem label="Consumer No" field="consumer_no" value={editData.consumer_no} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
+                                    <EditableDetailItem label="Vendor Allotment" field="vendor" value={editData.vendor} onChange={handleChange} options={vendors} isEditing={editingSection === 'cus'} />
                                 </div>
                             </section>
 
@@ -1600,23 +1725,170 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     )}
 
                     {/* ── CASH ── */}
-                    {activeTab === 'CASH' && (
-                        <div className="space-y-4 animate-in fade-in duration-300">
-                            {editData.payment_type?.trim().toLowerCase() !== 'cash' ? (
-                                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center text-xs font-semibold text-amber-700">
-                                    This customer's payment type is "{editData.payment_type || 'not specified'}" (not Cash). Cash tracking is not applicable.
-                                </div>
-                            ) : (
-                                <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-2">
-                                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Cash Tracking</h4>
-                                    <p className="text-xs text-stone-500 font-medium">Record stage progress details and cash payment remarks below.</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                    {activeTab === 'CASH' && (() => {
+                        const cashDetails = editData.cash_details || {
+                            total_amount: 0,
+                            payments: [
+                                { name: '1st Payment', amount: 0, type: 'Cash', date: '', transaction_id: '' },
+                                { name: '2nd Payment', amount: 0, type: 'Cash', date: '', transaction_id: '' },
+                                { name: '3rd Payment', amount: 0, type: 'Cash', date: '', transaction_id: '' },
+                            ]
+                        };
 
-                    {/* ── MATERIAL PROCUREMENT ── */}
-                    {activeTab === 'MATERIAL PROCUREMENT' && (
+                        const handleCashFieldChange = (field, val) => {
+                            const updatedDetails = {
+                                ...cashDetails,
+                                [field]: val
+                            };
+                            setEditData(prev => ({ ...prev, cash_details: updatedDetails }));
+                        };
+
+                        const handleCashPaymentChange = (idx, field, val) => {
+                            const newPayments = cashDetails.payments.map((p, i) => 
+                                i === idx ? { ...p, [field]: val } : p
+                            );
+                            const updatedDetails = {
+                                ...cashDetails,
+                                payments: newPayments
+                            };
+                            setEditData(prev => ({ ...prev, cash_details: updatedDetails }));
+                        };
+
+                        const totalReceived = cashDetails.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+                        const leftToReceive = (Number(cashDetails.total_amount) || 0) - totalReceived;
+
+                        const isCashDetailsDirty = JSON.stringify(editData.cash_details) !== JSON.stringify(customer.cash_details);
+
+                        return (
+                            <div className="space-y-4 animate-in fade-in duration-300">
+                                <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                    <div className="border-b border-stone-100 pb-3">
+                                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest flex items-center gap-2">
+                                            <Banknote className="w-4 h-4 text-emerald-600" /> Cash Payment Tracker
+                                        </h4>
+                                        <p className="text-xs text-stone-500 font-medium mt-1">Manage deal valuation, payment modes, and balance reconciliation.</p>
+                                    </div>
+
+                                    {/* Total Deal Amount input */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Total Deal Amount (₹)</label>
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                disabled={!isEditable}
+                                                placeholder="Total Amount"
+                                                value={cashDetails.total_amount ? toIndianCommas(cashDetails.total_amount) : ''}
+                                                onChange={(e) => handleCashFieldChange('total_amount', parseIndianNumber(e.target.value))}
+                                                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Payments Cards (1st, 2nd, 3rd Payment) */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                                        {cashDetails.payments.map((p, idx) => (
+                                            <div key={idx} className="bg-stone-50 p-4 rounded-2xl border border-stone-150 space-y-3">
+                                                <div className="flex justify-between items-center border-b border-stone-200 pb-1.5">
+                                                    <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">{p.name || `Payment ${idx + 1}`}</span>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <div>
+                                                        <label className="text-[8px] font-bold text-stone-400 uppercase block mb-0.5">Amount (₹)</label>
+                                                        <input
+                                                            type="text"
+                                                            inputMode="decimal"
+                                                            disabled={!isEditable}
+                                                            placeholder="0"
+                                                            value={p.amount ? toIndianCommas(p.amount) : ''}
+                                                            onChange={(e) => handleCashPaymentChange(idx, 'amount', parseIndianNumber(e.target.value))}
+                                                            className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[8px] font-bold text-stone-400 uppercase block mb-0.5">Payment Type</label>
+                                                        <select
+                                                            disabled={!isEditable}
+                                                            value={p.type || 'Cash'}
+                                                            onChange={(e) => handleCashPaymentChange(idx, 'type', e.target.value)}
+                                                            className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100"
+                                                        >
+                                                            <option value="Cash">Cash</option>
+                                                            <option value="Online">Online</option>
+                                                            <option value="DD">DD</option>
+                                                            <option value="Cheque">Cheque</option>
+                                                        </select>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[8px] font-bold text-stone-400 uppercase block mb-0.5">Date</label>
+                                                        <input
+                                                            type="date"
+                                                            disabled={!isEditable}
+                                                            value={p.date || ''}
+                                                            onChange={(e) => handleCashPaymentChange(idx, 'date', e.target.value)}
+                                                            className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[8px] font-bold text-stone-400 uppercase block mb-0.5">Transaction ID</label>
+                                                        <input
+                                                            type="text"
+                                                            disabled={!isEditable}
+                                                            placeholder="Txn ID / Ref"
+                                                            value={p.transaction_id || ''}
+                                                            onChange={(e) => handleCashPaymentChange(idx, 'transaction_id', e.target.value)}
+                                                            className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-medium text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Reconciliation Card */}
+                                    <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-center gap-3">
+                                        <div className="flex flex-col sm:flex-row gap-6">
+                                            <div>
+                                                <p className="text-[9px] font-bold text-emerald-800 uppercase tracking-wide">Total Received</p>
+                                                <p className="text-base font-bold text-emerald-800">{formatINR(totalReceived)}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[9px] font-bold text-stone-500 uppercase tracking-wide">Left to Receive</p>
+                                                <p className={`text-base font-bold ${leftToReceive <= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                                    {formatINR(Math.max(0, leftToReceive))}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {isEditable && isCashDetailsDirty && (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    setSaving(true);
+                                                    await onUpdate(customer.id, { cash_details: cashDetails });
+                                                    await logActivity(user.id, 'update', `${customer.customer_name}: Updated Cash Payment ledger details`, '', customer.id);
+                                                    setSaving(false);
+                                                    fetchLogs();
+                                                }}
+                                                disabled={saving}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/10 transition disabled:bg-stone-300 disabled:cursor-not-allowed w-full sm:w-auto justify-center"
+                                            >
+                                                <Save className="w-4 h-4" /> Save Payments
+                                            </button>
+                                        )}
+                                    </div>
+
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* ── MATERIAL INTEGRATION ── */}
+                    {activeTab === 'MATERIAL INTEGRATION' && (
                         <div className="space-y-6 animate-in fade-in duration-300">
                             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-6">
                                 <div className="flex justify-between items-center border-b border-stone-100 pb-3">
@@ -1863,9 +2135,46 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     {/* ── HOLD PROCUREMENT ── */}
                     {activeTab === 'HOLD PROCUREMENT' && (
                         <div className="space-y-4 animate-in fade-in duration-300">
-                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm">
-                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Hold Procurement</h4>
-                                <p className="text-xs text-stone-500 font-medium mt-1">Procurement hold status details.</p>
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
+                                    <div>
+                                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Hold Procurement</h4>
+                                        <p className="text-[11px] text-stone-500 font-medium mt-0.5">Procurement hold status details.</p>
+                                    </div>
+                                    {isEditable && editData.hold_procurment !== customer.hold_procurment && (
+                                        <button
+                                            onClick={handleSaveHoldStatus}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex-shrink-0"
+                                        >
+                                            Save Status
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2 w-full pt-1">
+                                    {[
+                                        { id: 'Project Win', label: 'Project Win', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
+                                        { id: 'Project Lost', label: 'Project Lost', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' },
+                                        { id: 'Project Return', label: 'Project Return', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
+                                    ].map(tag => {
+                                        const isSelected = editData.hold_procurment === tag.id;
+                                        return (
+                                            <button
+                                                key={tag.id}
+                                                disabled={!isEditable}
+                                                onClick={() => handleToggleHoldStatus(tag.id)}
+                                                className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
+                                                    isSelected
+                                                        ? tag.activeClass
+                                                        : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                                                }`}
+                                            >
+                                                <span className={`w-2 h-2 rounded-full ${isSelected ? tag.dotClass : 'bg-stone-300'}`} />
+                                                {tag.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1928,6 +2237,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     )}
                                     <EditableDetailItem label="INVERTER SERIAL NO." field="inverter_serial_no" value={editData.inverter_serial_no} onChange={handleChange} isEditing={editingSection === 'equip_details'} />
                                     <EditableDetailItem label="INVOICE NO" field="invoice_no" value={editData.invoice_no} onChange={handleChange} isEditing={editingSection === 'equip_details'} />
+                                    <EditableDetailItem label="DRIVER NAME" field="driver_name" value={editData.driver_name} onChange={handleChange} isEditing={editingSection === 'equip_details'} />
+                                    <EditableDetailItem label="DRIVER PHONE NUMBER" field="driver_phone_number" value={editData.driver_phone_number} onChange={handleChange} isEditing={editingSection === 'equip_details'} />
                                 </div>
                             </section>
                         </div>
@@ -1936,55 +2247,103 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     {/* ── INSTALLATION STATUS ── */}
                     {activeTab === 'INSTALLATION STATUS' && (
                         <div className="space-y-4 animate-in fade-in duration-300">
+                            {/* SFDC Photo Checklist Card */}
                             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                                <div>
-                                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Installation Status</h4>
-                                    <p className="text-xs text-stone-500 font-medium mt-1">Has the physical installation been completed?</p>
+                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest flex items-center gap-2">
+                                    <ClipboardList className="w-4 h-4 text-amber-500" /> SFDC Photo Checklist
+                                </h4>
+                                <div className="flex flex-col gap-2">
+                                    <CheckboxRemarkItem label="SFDC Photo Checked" field="sfdc_photo" value={editData.sfdc_photo} onChange={handleChange} isEditing={isEditable} />
                                 </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        disabled={!isEditable}
-                                        onClick={() => {
-                                            setEditData(prev => ({ ...prev, installation_status: true }));
-                                        }}
-                                        className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all ${
-                                            (editData.installation_status === true || String(editData.installation_status).toLowerCase() === 'yes' || String(editData.installation_status).toLowerCase() === 'true')
-                                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/10'
-                                                : 'bg-stone-50 border border-stone-200 text-stone-600 hover:bg-stone-100'
-                                        }`}
-                                    >
-                                        Yes
-                                    </button>
-                                    <button
-                                        disabled={!isEditable}
-                                        onClick={() => {
-                                            setEditData(prev => ({ ...prev, installation_status: false }));
-                                        }}
-                                        className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all ${
-                                            !(editData.installation_status === true || String(editData.installation_status).toLowerCase() === 'yes' || String(editData.installation_status).toLowerCase() === 'true')
-                                                ? 'bg-stone-900 text-white shadow-md'
-                                                : 'bg-stone-50 border border-stone-200 text-stone-600 hover:bg-stone-100'
-                                        }`}
-                                    >
-                                        No
-                                    </button>
-                                </div>
-                                {isEditable && editData.installation_status !== customer.installation_status && (
+                                {isEditable && editData.sfdc_photo !== customer.sfdc_photo && (
                                     <div className="flex justify-end pt-2">
                                         <button
                                             type="button"
                                             onClick={async () => {
                                                 setSaving(true);
-                                                await onUpdate(customer.id, { installation_status: editData.installation_status });
-                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Installation Status to ${editData.installation_status ? 'Yes' : 'No'}`, '', customer.id);
+                                                await onUpdate(customer.id, { sfdc_photo: editData.sfdc_photo });
+                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated SFDC Photo status to ${editData.sfdc_photo ? 'Checked' : 'Unchecked'}`, '', customer.id);
                                                 setSaving(false);
                                                 fetchLogs();
                                             }}
                                             disabled={saving}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 disabled:bg-stone-300 disabled:cursor-not-allowed"
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 disabled:bg-stone-300 disabled:cursor-not-allowed"
                                         >
-                                            <Save className="w-3.5 h-3.5" /> Save
+                                            <Save className="w-4 h-4" /> Save SFDC Photo
                                         </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Main Tag Selector Card */}
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
+                                    <div>
+                                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Installation Status</h4>
+                                        <p className="text-[11px] text-stone-500 font-medium mt-0.5">Has the physical installation been completed?</p>
+                                    </div>
+                                    {isEditable && (
+                                        (editData.installation_status !== customer.installation_status) ||
+                                        (editData.installation_date !== customer.installation_date) ||
+                                        (editData.installed_by !== customer.installed_by)
+                                    ) && (
+                                        <button
+                                            onClick={handleSaveInstallationDetails}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex-shrink-0"
+                                        >
+                                            Save Details
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 w-full pt-1">
+                                    {[
+                                        { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
+                                        { id: 'No', label: 'No', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' },
+                                        { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
+                                    ].map(tag => {
+                                        const isSelected = editData.installation_status === tag.id;
+                                        return (
+                                            <button
+                                                key={tag.id}
+                                                disabled={!isEditable}
+                                                onClick={() => handleToggleInstallationTag(tag.id)}
+                                                className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
+                                                    isSelected
+                                                        ? tag.activeClass
+                                                        : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                                                }`}
+                                            >
+                                                <span className={`w-2 h-2 rounded-full ${isSelected ? tag.dotClass : 'bg-stone-300'}`} />
+                                                {tag.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Installation Details Form — Only visible when status is Yes */}
+                                {editData.installation_status === 'Yes' && (
+                                    <div className="pt-4 border-t border-stone-100 grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-300">
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Installation Date</label>
+                                            <input
+                                                type="date"
+                                                disabled={!isEditable}
+                                                value={editData.installation_date || ''}
+                                                onChange={e => setEditData(prev => ({ ...prev, installation_date: e.target.value }))}
+                                                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Installed By (Person in Charge)</label>
+                                            <input
+                                                type="text"
+                                                disabled={!isEditable}
+                                                placeholder="Enter name..."
+                                                value={editData.installed_by || ''}
+                                                onChange={e => setEditData(prev => ({ ...prev, installed_by: e.target.value }))}
+                                                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                            />
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -1995,56 +2354,54 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     {activeTab === 'GEO TAG PHOTO' && (
                         <div className="space-y-4 animate-in fade-in duration-300">
                             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                                <div>
-                                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Geo Tag Photo</h4>
-                                    <p className="text-xs text-stone-500 font-medium mt-1">Has the geo-tagged photograph been uploaded?</p>
-                                </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        disabled={!isEditable}
-                                        onClick={() => {
-                                            setEditData(prev => ({ ...prev, geo_tag_status: true }));
-                                        }}
-                                        className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all ${
-                                            (editData.geo_tag_status === true || String(editData.geo_tag_status).toLowerCase() === 'yes' || String(editData.geo_tag_status).toLowerCase() === 'true')
-                                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/10'
-                                                : 'bg-stone-50 border border-stone-200 text-stone-600 hover:bg-stone-100'
-                                        }`}
-                                    >
-                                        Yes
-                                    </button>
-                                    <button
-                                        disabled={!isEditable}
-                                        onClick={() => {
-                                            setEditData(prev => ({ ...prev, geo_tag_status: false }));
-                                        }}
-                                        className={`flex-1 py-3.5 rounded-xl font-bold text-xs transition-all ${
-                                            !(editData.geo_tag_status === true || String(editData.geo_tag_status).toLowerCase() === 'yes' || String(editData.geo_tag_status).toLowerCase() === 'true')
-                                                ? 'bg-stone-900 text-white shadow-md'
-                                                : 'bg-stone-50 border border-stone-200 text-stone-600 hover:bg-stone-100'
-                                        }`}
-                                    >
-                                        No
-                                    </button>
-                                </div>
-                                {isEditable && editData.geo_tag_status !== customer.geo_tag_status && (
-                                    <div className="flex justify-end pt-2">
+                                <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
+                                    <div>
+                                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Geo Tag Photo</h4>
+                                        <p className="text-[11px] text-stone-500 font-medium mt-0.5">Has the geo-tagged photograph been uploaded?</p>
+                                    </div>
+                                    {isEditable && editData.geo_tag_status !== customer.geo_tag_status && (
                                         <button
-                                            type="button"
                                             onClick={async () => {
                                                 setSaving(true);
                                                 await onUpdate(customer.id, { geo_tag_status: editData.geo_tag_status });
-                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Geo Tag Photo Status to ${editData.geo_tag_status ? 'Yes' : 'No'}`, '', customer.id);
+                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Geo Tag Photo Status to ${editData.geo_tag_status || 'None'}`, '', customer.id);
                                                 setSaving(false);
                                                 fetchLogs();
                                             }}
-                                            disabled={saving}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 disabled:bg-stone-300 disabled:cursor-not-allowed"
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex-shrink-0"
                                         >
-                                            <Save className="w-3.5 h-3.5" /> Save
+                                            Save Tag
                                         </button>
-                                    </div>
-                                )}
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-4 gap-2 w-full pt-1">
+                                    {[
+                                        { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
+                                        { id: 'No', label: 'No', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' },
+                                        { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' },
+                                        { id: 'Proceed', label: 'Proceed', activeClass: 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/10', dotClass: 'bg-white' }
+                                    ].map(tag => {
+                                        const isSelected = editData.geo_tag_status === tag.id;
+                                        return (
+                                            <button
+                                                key={tag.id}
+                                                disabled={!isEditable}
+                                                onClick={() => {
+                                                    const newTag = editData.geo_tag_status === tag.id ? null : tag.id;
+                                                    setEditData(prev => ({ ...prev, geo_tag_status: newTag }));
+                                                }}
+                                                className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
+                                                    isSelected
+                                                        ? tag.activeClass
+                                                        : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                                                }`}
+                                            >
+                                                <span className={`w-2 h-2 rounded-full ${isSelected ? tag.dotClass : 'bg-stone-300'}`} />
+                                                {tag.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -2052,22 +2409,325 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     {/* ── DISCOM SUBMISSION ── */}
                     {activeTab === 'DISCOM SUBMISSION' && (
                         <div className="space-y-4 animate-in fade-in duration-300">
-                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm">
-                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Discom Submission</h4>
-                                <p className="text-xs text-stone-500 font-medium mt-1">Utility submissions and paperwork tracking.</p>
+
+                            {/* File & DCR Checklist Card */}
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest flex items-center gap-2">
+                                    <ClipboardList className="w-4 h-4 text-amber-500" /> Utility File Checklist
+                                </h4>
+                                <div className="flex flex-col gap-2">
+                                    <CheckboxRemarkItem label="File Status Checked" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} />
+                                    <CheckboxRemarkItem label="DCR Certificate Checked" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} />
+                                </div>
+                                {isEditable && (editData.file_status !== customer.file_status || editData.dcr_certificate !== customer.dcr_certificate) && (
+                                    <div className="flex justify-end pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                setSaving(true);
+                                                await onUpdate(customer.id, { 
+                                                    file_status: editData.file_status,
+                                                    dcr_certificate: editData.dcr_certificate
+                                                });
+                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Utility File Checklist (File Status: ${editData.file_status ? 'Checked' : 'Unchecked'}, DCR Certificate: ${editData.dcr_certificate ? 'Checked' : 'Unchecked'})`, '', customer.id);
+                                                setSaving(false);
+                                                fetchLogs();
+                                            }}
+                                            disabled={saving}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 disabled:bg-stone-300 disabled:cursor-not-allowed"
+                                        >
+                                            <Save className="w-4 h-4" /> Save Checklist
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Discom Submission Details Card */}
+                            {(() => {
+                                const submissionData = editData.discom_submission || {
+                                    submitted_by: '',
+                                    date: ''
+                                };
+
+                                const handleSubmissionFieldChange = (field, val) => {
+                                    const updated = {
+                                        ...submissionData,
+                                        [field]: val
+                                    };
+                                    setEditData(prev => ({ ...prev, discom_submission: updated }));
+                                };
+
+                                const isSubmissionDirty = JSON.stringify(editData.discom_submission) !== JSON.stringify(customer.discom_submission);
+
+                                return (
+                                    <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4 animate-in fade-in duration-300">
+                                        <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
+                                            <div>
+                                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest font-bold">Discom Submission Details</h4>
+                                                <p className="text-[11px] text-stone-500 font-medium mt-0.5">Track paperwork submission handler and date.</p>
+                                            </div>
+                                            {isEditable && isSubmissionDirty && (
+                                                <button
+                                                    onClick={async () => {
+                                                        setSaving(true);
+                                                        await onUpdate(customer.id, { discom_submission: submissionData });
+                                                        await logActivity(
+                                                            user.id,
+                                                            'update',
+                                                            `${customer.customer_name}: Updated Discom Submission details (Submitted By: ${submissionData.submitted_by || 'N/A'}, Date: ${submissionData.date || 'N/A'})`,
+                                                            '',
+                                                            customer.id
+                                                        );
+                                                        setSaving(false);
+                                                        fetchLogs();
+                                                    }}
+                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex-shrink-0"
+                                                >
+                                                    Save Details
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">File Submitted By</label>
+                                                <input
+                                                    type="text"
+                                                    disabled={!isEditable}
+                                                    placeholder="Enter name..."
+                                                    value={submissionData.submitted_by || ''}
+                                                    onChange={e => handleSubmissionFieldChange('submitted_by', e.target.value)}
+                                                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Submission Date</label>
+                                                <input
+                                                    type="date"
+                                                    disabled={!isEditable}
+                                                    value={submissionData.date || ''}
+                                                    onChange={e => handleSubmissionFieldChange('date', e.target.value)}
+                                                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Agreement Generator Card */}
+                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                <div>
+                                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest flex items-center gap-2">
+                                        <FileText className="w-4 h-4 text-blue-600" /> PM Surya Ghar Model Agreement
+                                    </h4>
+                                    <p className="text-xs text-stone-500 font-medium mt-1">
+                                        Generate and print the official model agreement pre-filled with this client's details.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Agreement Execution Date</label>
+                                            <input
+                                                type="date"
+                                                disabled={!isEditable}
+                                                value={editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0]}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setEditData(prev => {
+                                                        const prevObj = typeof prev.stages_remarks === 'object' && prev.stages_remarks ? prev.stages_remarks : {};
+                                                        return {
+                                                            ...prev,
+                                                            stages_remarks: {
+                                                                ...prevObj,
+                                                                discom_agreement_date: val
+                                                            }
+                                                        };
+                                                    });
+                                                }}
+                                                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Inline Document Preview Box */}
+                                    <div className="border border-stone-150 rounded-[20px] bg-stone-50 p-4 shadow-inner">
+                                        <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-2">Live Document Preview (Page 1)</p>
+                                        <div className="w-full overflow-x-auto overflow-y-hidden max-h-[350px] border border-stone-200 rounded-xl bg-white flex justify-center py-4">
+                                            <div className="origin-top scale-[0.6] -my-24" style={{ width: '210mm', height: '297mm' }}>
+                                                <Page1
+                                                    data={{
+                                                        executionDate: formatDateToDDMMYYYY(editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0]),
+                                                        consumerName: editData.customer_name || '',
+                                                        consumerNo: editData.consumer_no || '',
+                                                        village: editData.villages || '',
+                                                        taluka: editData.villages || '',
+                                                        district: editData.sub_divisions || '',
+                                                        vendorName: 'Watersun Electrical Solutions Pvt Ltd',
+                                                        vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
+                                                        paymentTerms: 'Mutually Agreed Terms of Payment',
+                                                        showHighlights: true,
+                                                        highlightColor: '#fef08a'
+                                                    }}
+                                                    fontSizeClass="text-[14px]"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-2 flex justify-start gap-3">
+                                        {/* Save Agreement Date button */}
+                                        {isEditable && editData.stages_remarks?.discom_agreement_date !== customer.stages_remarks?.discom_agreement_date && (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    setSaving(true);
+                                                    const updatedRemarks = {
+                                                        ...(typeof editData.stages_remarks === 'object' && editData.stages_remarks ? editData.stages_remarks : {}),
+                                                        discom_agreement_date: editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0]
+                                                    };
+                                                    await onUpdate(customer.id, { stages_remarks: updatedRemarks });
+                                                    await logActivity(user.id, 'update', `${customer.customer_name}: Updated Agreement Execution Date`, '', customer.id);
+                                                    setSaving(false);
+                                                    fetchLogs();
+                                                }}
+                                                disabled={saving}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 disabled:bg-stone-300 disabled:cursor-not-allowed"
+                                            >
+                                                <Save className="w-4 h-4" /> Save Date
+                                            </button>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={handleGenerateAgreement}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/10 flex items-center gap-1.5 cursor-pointer"
+                                        >
+                                            <Printer className="w-4 h-4" /> Pop Open & Print Agreement
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
 
                     {/* ── METER INSTALLATION ── */}
-                    {activeTab === 'METER INSTALLATION' && (
-                        <div className="space-y-4 animate-in fade-in duration-300">
-                            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm">
-                                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Meter Installation</h4>
-                                <p className="text-xs text-stone-500 font-medium mt-1">Net meter installation status and parameters.</p>
+                    {activeTab === 'METER INSTALLATION' && (() => {
+                        const meterData = editData.meter_installation || {
+                            status: 'No',
+                            no_date: '',
+                            yes_date: ''
+                        };
+
+                        const handleMeterFieldChange = (field, val) => {
+                            const updated = {
+                                ...meterData,
+                                [field]: val
+                            };
+                            setEditData(prev => ({ ...prev, meter_installation: updated }));
+                        };
+
+                        const isMeterDirty = JSON.stringify(editData.meter_installation) !== JSON.stringify(customer.meter_installation);
+
+                        return (
+                            <div className="space-y-4 animate-in fade-in duration-300">
+                                <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                    <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
+                                        <div>
+                                            <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest font-bold">Meter Installation</h4>
+                                            <p className="text-[11px] text-stone-500 font-medium mt-0.5">Net meter installation status and verification dates.</p>
+                                        </div>
+                                        {isEditable && isMeterDirty && (
+                                            <button
+                                                onClick={async () => {
+                                                    setSaving(true);
+                                                    await onUpdate(customer.id, { meter_installation: meterData });
+                                                    await logActivity(
+                                                        user.id,
+                                                        'update',
+                                                        `${customer.customer_name}: Updated Meter Installation details (Status: ${meterData.status}, No Date: ${meterData.no_date || 'N/A'}, Yes Date: ${meterData.yes_date || 'N/A'})`,
+                                                        '',
+                                                        customer.id
+                                                    );
+                                                    setSaving(false);
+                                                    fetchLogs();
+                                                }}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex-shrink-0"
+                                            >
+                                                Save Details
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 w-full pt-1">
+                                        {[
+                                            { id: 'No', label: 'No', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' },
+                                            { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' }
+                                        ].map(tag => {
+                                            const isSelected = meterData.status === tag.id;
+                                            return (
+                                                <button
+                                                    key={tag.id}
+                                                    disabled={!isEditable}
+                                                    onClick={() => {
+                                                        if (meterData.status === tag.id) return;
+                                                        const todayStr = new Date().toISOString().split('T')[0];
+                                                        const updated = {
+                                                            ...meterData,
+                                                            status: tag.id
+                                                        };
+                                                        if (tag.id === 'Yes') {
+                                                            updated.yes_date = todayStr;
+                                                        } else {
+                                                            updated.no_date = todayStr;
+                                                        }
+                                                        setEditData(prev => ({ ...prev, meter_installation: updated }));
+                                                    }}
+                                                    className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
+                                                        isSelected
+                                                            ? tag.activeClass
+                                                            : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                                                    }`}
+                                                >
+                                                    <span className={`w-2 h-2 rounded-full ${isSelected ? tag.dotClass : 'bg-stone-300'}`} />
+                                                    {tag.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Conditional Date Inputs */}
+                                    <div className="pt-4 border-t border-stone-100 grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-300">
+                                        <div>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">"No" Date (Initial Stage Move)</label>
+                                            <input
+                                                type="date"
+                                                disabled={!isEditable}
+                                                value={meterData.no_date || ''}
+                                                onChange={e => handleMeterFieldChange('no_date', e.target.value)}
+                                                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                            />
+                                        </div>
+
+                                        {(meterData.status === 'Yes') && (
+                                            <div className="animate-in slide-in-from-left-2 duration-300">
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">"Yes" Date (Completion Date)</label>
+                                                <input
+                                                    type="date"
+                                                    disabled={!isEditable}
+                                                    value={meterData.yes_date || ''}
+                                                    onChange={e => handleMeterFieldChange('yes_date', e.target.value)}
+                                                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* ── DISCOM INSPECTION ── */}
                     {activeTab === 'DISCOM INSPECTION' && (
@@ -2253,11 +2913,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                 </div>
                                 <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
                                     <div className="flex flex-col gap-2">
-                                        <CheckboxRemarkItem label="Stamp Checked" field="stamp" value={editData.stamp} onChange={handleChange} isEditing={isEditable} />
-                                        <CheckboxRemarkItem label="File Status Checked" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} />
-                                        <CheckboxRemarkItem label="GEB Inspection Checked" field="geb_inspection" value={editData.geb_inspection} onChange={handleChange} isEditing={isEditable} />
-                                        <CheckboxRemarkItem label="Subsidy Redeem Checked" field="subsidy_redeem" value={editData.subsidy_redeem} onChange={handleChange} isEditing={isEditable} />
-                                        <CheckboxRemarkItem label="SFDC Photo Checked" field="sfdc_photo" value={editData.sfdc_photo} onChange={handleChange} isEditing={isEditable} />
                                         <CheckboxRemarkItem label="Warranty Card Checked" field="warranty_card" value={editData.warranty_card} onChange={handleChange} isEditing={isEditable} />
                                         <CheckboxRemarkItem label="Insurance Status Checked" field="insurance_status" value={editData.insurance_status} onChange={handleChange} isEditing={isEditable} />
                                     </div>
@@ -2365,18 +3020,62 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         )}
                         {/* Save & Move to Next Stage button (if not frozen & has next stage) */}
                         {hasNextStage && isEditable && activeTab === customer.stage && (
-                            <button
-                                disabled={editData.stage === 'LEADS' && !isLeadFieldsFilled}
-                                onClick={handleAdvanceStage}
-                                className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs ${
-                                    (editData.stage === 'LEADS' && !isLeadFieldsFilled)
-                                        ? 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
-                                        : 'bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10'
-                                }`}
-                                title={editData.stage === 'LEADS' && !isLeadFieldsFilled ? 'Please fill all required Lead fields (Name, Phone, Channel Partner, Capacity)' : `Advance to ${nextStageLabel}`}
-                            >
-                                Save & Move to {nextStageLabel}
-                            </button>
+                            editData.stage === 'MATERIAL INTEGRATION' ? (
+                                <>
+                                    <button
+                                        onClick={() => handleAdvanceStage('HOLD PROCUREMENT')}
+                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
+                                    >
+                                        Move to Hold
+                                    </button>
+                                    <button
+                                        onClick={() => handleAdvanceStage('MATERIAL DELIVERY')}
+                                        className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-blue-600/10"
+                                    >
+                                        Move to Material Delivery
+                                    </button>
+                                </>
+                            ) : editData.stage === 'HOLD PROCUREMENT' ? (
+                                (editData.hold_procurment === 'Project Win' || editData.hold_procurment === 'Project Return') && (
+                                    <button
+                                        onClick={() => handleAdvanceStage('MATERIAL DELIVERY')}
+                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
+                                    >
+                                        Save & Move to Material Delivery
+                                    </button>
+                                )
+                            ) : editData.stage === 'GEO TAG PHOTO' ? (
+                                editData.geo_tag_status === 'Proceed' && (
+                                    <button
+                                        onClick={() => handleAdvanceStage()}
+                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
+                                    >
+                                        Save & Move to {nextStageLabel}
+                                    </button>
+                                )
+                            ) : editData.stage === 'METER INSTALLATION' ? (
+                                editData.meter_installation?.status === 'Yes' && (
+                                    <button
+                                        onClick={() => handleAdvanceStage()}
+                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
+                                    >
+                                        Save & Move to {nextStageLabel}
+                                    </button>
+                                )
+                            ) : (
+                                <button
+                                    disabled={editData.stage === 'LEADS' && !isLeadFieldsFilled}
+                                    onClick={() => handleAdvanceStage()}
+                                    className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs ${
+                                        (editData.stage === 'LEADS' && !isLeadFieldsFilled)
+                                            ? 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
+                                            : 'bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10'
+                                    }`}
+                                    title={editData.stage === 'LEADS' && !isLeadFieldsFilled ? 'Please fill all required Lead fields (Name, Phone, Channel Partner, Capacity)' : `Advance to ${nextStageLabel}`}
+                                >
+                                    Save & Move to {nextStageLabel}
+                                </button>
+                            )
                         )}
                     </div>
                 )}
@@ -2401,6 +3100,15 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* PM Surya Ghar Agreement Popup Modal */}
+            {showAgreementPopup && (
+                <AgreementPreview
+                    data={agreementData}
+                    onChange={setAgreementData}
+                    onClose={() => setShowAgreementPopup(false)}
+                />
             )}
         </div>
     );

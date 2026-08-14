@@ -13,7 +13,7 @@ export const PRIMARY_STAGES = [
     { id: 'REGISTRATION', label: 'Registration', icon: ClipboardList },
     { id: 'LOAN', label: 'Loan', icon: IndianRupee },
     { id: 'CASH', label: 'Cash', icon: Banknote },
-    { id: 'MATERIAL PROCUREMENT', label: 'Material Procurement', icon: Package },
+    { id: 'MATERIAL INTEGRATION', label: 'Material Integration', icon: Package },
     { id: 'HOLD PROCUREMENT', label: 'Hold Procurement', icon: PauseCircle },
     { id: 'MATERIAL DELIVERY', label: 'Material Delivery', icon: Truck },
     { id: 'INSTALLATION STATUS', label: 'Installation Status', icon: Wrench },
@@ -66,6 +66,7 @@ export const APP_ROLES = [
     { id: 'admin', label: 'Admin', user_type: 'admin', role: 'Admin' },
     { id: 'office', label: 'Office', user_type: 'sales', role: 'Office' },
     { id: 'channel_partner', label: 'Channel Partners', user_type: 'agent', role: 'Channel Partners' },
+    { id: 'vendor', label: 'Vendors', user_type: 'vendor', role: 'Vendors' },
 ];
 
 export const SHED_BOM_TEMPLATE = [

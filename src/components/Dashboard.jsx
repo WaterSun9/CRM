@@ -16,6 +16,7 @@ import { PRIMARY_STAGES } from '../constants';
 import DashboardView from './DashboardView';
 import SubsidyView from './SubsidyView';
 import LoanView from './LoanView';
+import InstallationView from './InstallationView';
 import CustomerCard from './CustomerCard';
 import CustomerDetailModal from './CustomerDetailModal';
 import AddLeadModal from './AddLeadModal';
@@ -27,7 +28,7 @@ import ChannelPartnerManagementView from './ChannelPartnerManagementView';
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee,
+    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee, Wrench,
 } from 'lucide-react';
 
 export default function Dashboard({ user, onLogout }) {
@@ -339,6 +340,7 @@ export default function Dashboard({ user, onLogout }) {
     const channelPartnerScoped = active.filter(c => matchesChannelPartnerFilter(c) && isAuthorized(c));
     const subsidyTagCount = channelPartnerScoped.filter(c => c.subsidy_tag).length;
     const loanTagCount = channelPartnerScoped.filter(c => c.loan_tag).length;
+    const installationTagCount = channelPartnerScoped.filter(c => c.installation_status).length;
 
     const stageCounts = PRIMARY_STAGES.reduce((acc, s) => {
         acc[s.id] = channelPartnerScoped.filter(c => c.stage === s.id).length;
@@ -387,6 +389,7 @@ export default function Dashboard({ user, onLogout }) {
         currentView === 'dashboard' ? 'Business Dashboard'
             : currentView === 'subsidy' ? 'Subsidy Tag Tracking'
                 : currentView === 'loan_tags' ? 'Loan Tag Tracking'
+                : currentView === 'installation_tags' ? 'Installation Tag Tracking'
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
                     : currentView === 'activity' ? 'Activity Log'
                         : currentView === 'users' ? 'User Management'
@@ -416,6 +419,7 @@ export default function Dashboard({ user, onLogout }) {
                     <NavBtn view="dashboard" icon={LayoutDashboard} label="Dashboard" count={0} />
                     <NavBtn view="subsidy" icon={Tag} label="Subsidy Tags" count={subsidyTagCount} />
                     <NavBtn view="loan_tags" icon={IndianRupee} label="Loan Tags" count={loanTagCount} />
+                    <NavBtn view="installation_tags" icon={Wrench} label="Installation Tags" count={installationTagCount} />
 
 
 
@@ -577,6 +581,7 @@ export default function Dashboard({ user, onLogout }) {
                     {currentView === 'dashboard' && <DashboardView customers={channelPartnerScoped} loading={loading} />}
                     {currentView === 'subsidy' && <SubsidyView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
                     {currentView === 'loan_tags' && <LoanView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
+                    {currentView === 'installation_tags' && <InstallationView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
 
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView customers={customers} currentUser={user} />}
                     {currentView === 'activity' && user.userType === 'admin' && <ActivityLogView />}
@@ -625,7 +630,7 @@ export default function Dashboard({ user, onLogout }) {
                     user={user}
                     meta={meta}
                     channel_partners={uniqueChannelPartners}
-                    defaultTab={currentView === 'subsidy' ? 'SUBSIDY STATUS' : currentView === 'loan_tags' ? 'LOAN' : currentView === 'stages' ? selectedStage : undefined}
+                    defaultTab={currentView === 'subsidy' ? 'SUBSIDY STATUS' : currentView === 'loan_tags' ? 'LOAN' : currentView === 'installation_tags' ? 'INSTALLATION STATUS' : currentView === 'stages' ? selectedStage : undefined}
                 />
             )}
             {showAddLead && <AddLeadModal isOpen={showAddLead} onClose={() => setShowAddLead(false)} onSave={handleAddLead} meta={meta} channel_partners={uniqueChannelPartners} user={user} />}

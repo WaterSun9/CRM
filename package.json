@@ -5,10 +5,10 @@
   "type": "module",
   "homepage": "https://github.com/WaterSun9/CRM/",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "ROLLDOWN_OPTIONS_VALIDATION=loose vite",
+    "build": "ROLLDOWN_OPTIONS_VALIDATION=loose vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
+    "preview": "ROLLDOWN_OPTIONS_VALIDATION=loose vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },

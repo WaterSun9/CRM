@@ -18,6 +18,12 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [editingLabel, setEditingLabel] = useState('');
     const [loading, setLoading] = useState(true);
 
+    const [vendors, setVendors] = useState([]);
+    const [newVendorName, setNewVendorName] = useState('');
+    const [newVendorEmail, setNewVendorEmail] = useState('');
+    const [editingVendorName, setEditingVendorName] = useState('');
+    const [editingVendorEmail, setEditingVendorEmail] = useState('');
+
     // Fetch partners, brands, and registrations from metadata table
     const fetchMetadata = async () => {
         try {
@@ -42,8 +48,18 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         }
     };
 
+    const fetchVendors = async () => {
+        try {
+            const { data, error } = await supabase.from('vendors').select('*').order('name');
+            if (!error && data) setVendors(data);
+        } catch (e) {
+            console.error('Error fetching vendors:', e);
+        }
+    };
+
     useEffect(() => {
         fetchMetadata();
+        fetchVendors();
     }, []);
 
     // Add new Channel Partner
@@ -124,6 +140,89 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Registration Staff: "${val}"`);
         } catch (e) {
             console.error('Error adding registration staff:', e);
+        }
+    };
+
+    // Add new Vendor
+    const handleAddVendor = async () => {
+        const name = newVendorName.trim();
+        const email = newVendorEmail.trim();
+        if (!name || !email) {
+            alert('Please enter both Vendor Name and Email.');
+            return;
+        }
+
+        if (vendors.some(v => v.name.toLowerCase() === name.toLowerCase())) {
+            alert('A Vendor with this name already exists.');
+            return;
+        }
+
+        try {
+            const { data, error } = await supabase
+                .from('vendors')
+                .insert({ name, email })
+                .select();
+
+            if (error) throw error;
+
+            setVendors(prev => [...prev, ...data]);
+            setNewVendorName('');
+            setNewVendorEmail('');
+            await logActivity(currentUser.id, 'create', `Added new Vendor: "${name}" (${email})`);
+        } catch (e) {
+            console.error('Error adding vendor:', e);
+            alert('Error adding vendor: ' + e.message);
+        }
+    };
+
+    // Edit/Rename Vendor
+    const handleEditVendor = async (id, oldName, oldEmail) => {
+        const name = editingVendorName.trim();
+        const email = editingVendorEmail.trim();
+        if (!name || !email) {
+            alert('Vendor Name and Email cannot be empty.');
+            return;
+        }
+
+        if (name === oldName && email === oldEmail) {
+            setEditingId(null);
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('vendors')
+                .update({ name, email })
+                .eq('id', id);
+
+            if (error) throw error;
+
+            setVendors(prev => prev.map(v => v.id === id ? { ...v, name, email } : v));
+            setEditingId(null);
+            await logActivity(currentUser.id, 'update', `Updated Vendor: "${oldName}" → "${name}" (${email})`);
+        } catch (e) {
+            console.error('Error updating vendor:', e);
+            alert('Error updating vendor: ' + e.message);
+        }
+    };
+
+    // Delete Vendor
+    const handleDeleteVendor = async (id, name) => {
+        if (!window.confirm(`Are you sure you want to delete vendor "${name}"?`)) return;
+
+        try {
+            const { error } = await supabase
+                .from('vendors')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+
+            setVendors(prev => prev.filter(v => v.id !== id));
+            await logActivity(currentUser.id, 'delete', `Deleted Vendor: "${name}"`);
+        } catch (e) {
+            console.error('Error deleting vendor:', e);
+            alert('Error deleting vendor: ' + e.message);
         }
     };
 
@@ -290,7 +389,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 
                         {/* Channel Partners Card */}
                         <button
@@ -349,6 +448,25 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                             </span>
                         </button>
 
+                        {/* Vendors Card */}
+                        <button
+                            onClick={() => setActiveManageCategory('vendor')}
+                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                        >
+                            <div className="space-y-3 w-full">
+                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
+                                    <Users className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Vendors Allotment</h3>
+                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{vendors.length} active vendors</p>
+                                </div>
+                            </div>
+                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
+                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
+                            </span>
+                        </button>
+
                     </div>
 
                 </div>
@@ -384,7 +502,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     setInputVal = setNewRegistration;
                     addHandler = handleAddRegistration;
                     placeholder = 'Enter processor name...';
+                } else if (activeManageCategory === 'vendor') {
+                    title = 'Manage Vendors Allotment';
+                    list = vendors;
+                    placeholder = 'Enter vendor name...';
                 }
+
+                const isVendorCat = activeManageCategory === 'vendor';
 
                 return (
                     <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -408,22 +532,47 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                             </div>
 
                             {/* Add Section */}
-                            <div className="p-4 border-b border-stone-100 bg-stone-50/50 flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder={placeholder}
-                                    value={inputVal}
-                                    onChange={e => setInputVal(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && addHandler()}
-                                    className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm focus:border-amber-400 outline-none transition"
-                                />
-                                <button
-                                    onClick={addHandler}
-                                    className="flex items-center gap-1.5 bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-md"
-                                >
-                                    <Plus className="w-4 h-4" /> Add
-                                </button>
-                            </div>
+                            {isVendorCat ? (
+                                <div className="p-4 border-b border-stone-100 bg-stone-50/50 flex flex-col sm:flex-row gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Vendor Name..."
+                                        value={newVendorName}
+                                        onChange={e => setNewVendorName(e.target.value)}
+                                        className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm focus:border-amber-400 outline-none transition"
+                                    />
+                                    <input
+                                        type="email"
+                                        placeholder="Vendor Email..."
+                                        value={newVendorEmail}
+                                        onChange={e => setNewVendorEmail(e.target.value)}
+                                        className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm focus:border-amber-400 outline-none transition"
+                                    />
+                                    <button
+                                        onClick={handleAddVendor}
+                                        className="flex items-center justify-center gap-1.5 bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-md"
+                                    >
+                                        <Plus className="w-4 h-4" /> Add
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="p-4 border-b border-stone-100 bg-stone-50/50 flex gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder={placeholder}
+                                        value={inputVal}
+                                        onChange={e => setInputVal(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && addHandler()}
+                                        className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm focus:border-amber-400 outline-none transition"
+                                    />
+                                    <button
+                                        onClick={addHandler}
+                                        className="flex items-center gap-1.5 bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-md"
+                                    >
+                                        <Plus className="w-4 h-4" /> Add
+                                    </button>
+                                </div>
+                            )}
 
                             {/* List Section */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -433,22 +582,48 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                         return (
                                             <div key={item.id} className="flex justify-between items-center bg-stone-50 px-4 py-2.5 rounded-xl border border-stone-100 hover:bg-stone-100/50 transition-colors">
                                                 {isEditing ? (
-                                                    <input
-                                                        type="text"
-                                                        value={editingLabel}
-                                                        onChange={e => setEditingLabel(e.target.value)}
-                                                        onKeyDown={e => e.key === 'Enter' && handleEditMetadata(item.id, item.label, editingLabel, activeManageCategory)}
-                                                        className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-bold text-stone-800 max-w-md"
-                                                        autoFocus
-                                                    />
+                                                    isVendorCat ? (
+                                                        <div className="flex-1 flex gap-2 max-w-md">
+                                                            <input
+                                                                type="text"
+                                                                value={editingVendorName}
+                                                                onChange={e => setEditingVendorName(e.target.value)}
+                                                                className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-bold text-stone-800"
+                                                                placeholder="Name"
+                                                            />
+                                                            <input
+                                                                type="email"
+                                                                value={editingVendorEmail}
+                                                                onChange={e => setEditingVendorEmail(e.target.value)}
+                                                                className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium text-stone-700"
+                                                                placeholder="Email"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <input
+                                                            type="text"
+                                                            value={editingLabel}
+                                                            onChange={e => setEditingLabel(e.target.value)}
+                                                            onKeyDown={e => e.key === 'Enter' && handleEditMetadata(item.id, item.label, editingLabel, activeManageCategory)}
+                                                            className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-bold text-stone-800 max-w-md"
+                                                            autoFocus
+                                                        />
+                                                    )
                                                 ) : (
-                                                    <span className="text-xs font-bold text-stone-700 tracking-tight">{item.label}</span>
+                                                    isVendorCat ? (
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-bold text-stone-700 tracking-tight">{item.name}</span>
+                                                            <span className="text-[10px] text-stone-400 font-medium">{item.email}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs font-bold text-stone-700 tracking-tight">{item.label}</span>
+                                                    )
                                                 )}
 
                                                 <div className="flex items-center gap-2">
                                                     {isEditing ? (
                                                         <button
-                                                            onClick={() => handleEditMetadata(item.id, item.label, editingLabel, activeManageCategory)}
+                                                            onClick={() => isVendorCat ? handleEditVendor(item.id, item.name, item.email) : handleEditMetadata(item.id, item.label, editingLabel, activeManageCategory)}
                                                             className="text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded-lg transition"
                                                             title="Save changes"
                                                         >
@@ -458,7 +633,12 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                         <button
                                                             onClick={() => {
                                                                 setEditingId(item.id);
-                                                                setEditingLabel(item.label);
+                                                                if (isVendorCat) {
+                                                                    setEditingVendorName(item.name);
+                                                                    setEditingVendorEmail(item.email);
+                                                                } else {
+                                                                    setEditingLabel(item.label);
+                                                                }
                                                             }}
                                                             className="text-stone-400 hover:text-stone-700 hover:bg-stone-200 p-1.5 rounded-lg transition"
                                                             title="Edit name"
@@ -468,7 +648,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                     )}
 
                                                     <button
-                                                        onClick={() => handleDeleteMetadata(item.id, activeManageCategory, item.label)}
+                                                        onClick={() => isVendorCat ? handleDeleteVendor(item.id, item.name) : handleDeleteMetadata(item.id, activeManageCategory, item.label)}
                                                         className="text-stone-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
                                                         title="Delete entry"
                                                     >
