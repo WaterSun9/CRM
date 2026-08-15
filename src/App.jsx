@@ -23,6 +23,7 @@ import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import SetPasswordPage from './components/SetPassword';
 import AgentPortal from './components/AgentPortal';
+import VendorPortal from './components/VendorPortal';
 
 export default function App() {
     const [user, setUser] = useState(null);
@@ -91,13 +92,27 @@ export default function App() {
     if (!user) return <LoginScreen onLogin={setUser} />;
 
     const isAgent = user.userType === 'agent' || user.role === 'Channel Partners';
+    const isVendor = user.userType === 'vendor' || user.role === 'Vendors';
 
-    return isAgent ? (
-        <AgentPortal
-            user={user}
-            onLogout={async () => { await supabase.auth.signOut(); setUser(null); }}
-        />
-    ) : (
+    if (isAgent) {
+        return (
+            <AgentPortal
+                user={user}
+                onLogout={async () => { await supabase.auth.signOut(); setUser(null); }}
+            />
+        );
+    }
+
+    if (isVendor) {
+        return (
+            <VendorPortal
+                user={user}
+                onLogout={async () => { await supabase.auth.signOut(); setUser(null); }}
+            />
+        );
+    }
+
+    return (
         <Dashboard
             user={user}
             onLogout={async () => { await supabase.auth.signOut(); setUser(null); }}

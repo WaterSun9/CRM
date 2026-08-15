@@ -34,7 +34,7 @@ export const DEFAULT_LEAD_FORM = {
     cash_details: null,
     installation_date: null,
     installed_by: null,
-    meter_installation: null,
+    meter_installation: 'No',
     driver_name: '',
     driver_phone_number: '',
     dcr_certificate: false,

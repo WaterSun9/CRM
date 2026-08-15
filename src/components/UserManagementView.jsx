@@ -73,6 +73,22 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
             }
         }
 
+        if (finalForm.user_type === 'vendor' || finalForm.role === 'Vendors') {
+            const vendorName = finalForm.name;
+            const vendorEmail = finalForm.email;
+            const { data: existingVendor } = await supabase
+                .from('vendors')
+                .select('id')
+                .eq('email', vendorEmail)
+                .maybeSingle();
+
+            if (!existingVendor) {
+                await supabase
+                    .from('vendors')
+                    .insert({ name: vendorName, email: vendorEmail });
+            }
+        }
+
         logActivity(
             currentUser.id,
             'create',
@@ -419,6 +435,24 @@ export default function UserManagementView({ currentUser }) {
                                                                     await supabase
                                                                         .from('metadata')
                                                                         .insert({ category: 'channel_partner', label: partnerName });
+                                                                }
+                                                            }
+                                                        }
+
+                                                        if (selected.user_type === 'vendor' || selected.role === 'Vendors') {
+                                                            const vendorName = (profile.name || '').trim();
+                                                            const vendorEmail = (profile.email || '').trim();
+                                                            if (vendorName && vendorEmail) {
+                                                                const { data: existingVendor } = await supabase
+                                                                    .from('vendors')
+                                                                    .select('id')
+                                                                    .eq('email', vendorEmail)
+                                                                    .maybeSingle();
+
+                                                                if (!existingVendor) {
+                                                                    await supabase
+                                                                        .from('vendors')
+                                                                        .insert({ name: vendorName, email: vendorEmail });
                                                                 }
                                                             }
                                                         }
