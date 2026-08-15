@@ -353,8 +353,8 @@ export default function AgentPortal({ user, onLogout }) {
                                         <Mail className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
                                         <input
                                             type="email"
-                                            value={form.email || ''}
-                                            onChange={e => handleFormChange('email', e.target.value)}
+                                            value={form.email_address || ''}
+                                            onChange={e => handleFormChange('email_address', e.target.value)}
                                             placeholder="Enter email address"
                                             className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
                                         />
@@ -455,6 +455,137 @@ export default function AgentPortal({ user, onLogout }) {
                                         />
                                     </div>
                                 </div>
+
+                                {/* Sub Channel Partner */}
+                                <div>
+                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Sub Channel Partner Name</label>
+                                    <div className="relative">
+                                        <User className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
+                                        <input
+                                            type="text"
+                                            value={form.sub_channel_partner || ''}
+                                            onChange={e => handleFormChange('sub_channel_partner', e.target.value)}
+                                            placeholder="Enter sub channel partner"
+                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Sub Division */}
+                                <div>
+                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Sub Division</label>
+                                    <div className="relative">
+                                        <MapPin className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
+                                        <input
+                                            type="text"
+                                            value={form.sub_divisions || ''}
+                                            onChange={e => handleFormChange('sub_divisions', e.target.value)}
+                                            placeholder="Enter sub division"
+                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Payment Type */}
+                                <div>
+                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Payment Type</label>
+                                    <div className="relative">
+                                        <Banknote className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
+                                        <select
+                                            value={form.payment_type || ''}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                handleFormChange('payment_type', val);
+                                                handleFormChange('adhaar_card', false);
+                                                handleFormChange('pan_card', false);
+                                                handleFormChange('index_2', false);
+                                                handleFormChange('light_bill', false);
+                                                handleFormChange('bank_details', false);
+                                                handleFormChange('bank_passbook', false);
+                                            }}
+                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold text-stone-700"
+                                        >
+                                            <option value="">Select Payment Type...</option>
+                                            {(meta['payment_type'] || []).map(p => (
+                                                <option key={p} value={p}>{p}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Document Checklist (Conditional) */}
+                                {form.payment_type && (
+                                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-150 space-y-2 mt-2">
+                                        <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-2 font-bold flex items-center gap-1">
+                                            <ClipboardList className="w-3.5 h-3.5 text-amber-500" /> Document Checklist
+                                        </p>
+                                        <div className="flex flex-col gap-2">
+                                            {form.payment_type.trim().toLowerCase() !== 'cash' && (
+                                                <>
+                                                    <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!form.adhaar_card}
+                                                            onChange={e => handleFormChange('adhaar_card', e.target.checked)}
+                                                            className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
+                                                        />
+                                                        Aadhaar Card
+                                                    </label>
+                                                    <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!form.pan_card}
+                                                            onChange={e => handleFormChange('pan_card', e.target.checked)}
+                                                            className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
+                                                        />
+                                                        PAN Card
+                                                    </label>
+                                                    <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!form.index_2}
+                                                            onChange={e => handleFormChange('index_2', e.target.checked)}
+                                                            className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
+                                                        />
+                                                        Index 2
+                                                    </label>
+                                                </>
+                                            )}
+                                            
+                                            <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={!!form.light_bill}
+                                                    onChange={e => handleFormChange('light_bill', e.target.checked)}
+                                                    className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
+                                                />
+                                                Light Bill
+                                            </label>
+
+                                            <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={!!form.bank_details}
+                                                    onChange={e => handleFormChange('bank_details', e.target.checked)}
+                                                    className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
+                                                />
+                                                Bank Details
+                                            </label>
+
+                                            {form.payment_type.trim().toLowerCase() !== 'cash' && (
+                                                <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!!form.bank_passbook}
+                                                        onChange={e => handleFormChange('bank_passbook', e.target.checked)}
+                                                        className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
+                                                    />
+                                                    Bank Passbook
+                                                </label>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {errors.submit && (
@@ -655,7 +786,7 @@ export default function AgentPortal({ user, onLogout }) {
                                     </div>
                                     <div>
                                         <p className="text-[8px] font-bold text-stone-400 uppercase">Email Address</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5 truncate">{selectedCust.email || '–'}</p>
+                                        <p className="font-semibold text-stone-800 mt-0.5 truncate">{selectedCust.email_address || '–'}</p>
                                     </div>
                                     <div>
                                         <p className="text-[8px] font-bold text-stone-400 uppercase">Village / Address</p>
@@ -664,6 +795,14 @@ export default function AgentPortal({ user, onLogout }) {
                                     <div>
                                         <p className="text-[8px] font-bold text-stone-400 uppercase">File / Folder No</p>
                                         <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.folder_no || '–'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Sub Channel Partner</p>
+                                        <p className="font-semibold text-stone-800 mt-0.5 truncate">{selectedCust.sub_channel_partner || '–'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Sub Division</p>
+                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.sub_divisions || '–'}</p>
                                     </div>
                                 </div>
                             </div>
@@ -713,6 +852,59 @@ export default function AgentPortal({ user, onLogout }) {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Section: Document Checklist */}
+                            {selectedCust.payment_type && (
+                                <div className="bg-stone-50 p-4 rounded-2xl space-y-2 border border-stone-100">
+                                    <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-1 flex items-center gap-1.5">
+                                        <ClipboardList size={10} /> Document Checklist ({selectedCust.payment_type})
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-stone-700">
+                                        {selectedCust.payment_type.trim().toLowerCase() !== 'cash' && (
+                                            <>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className={selectedCust.adhaar_card ? 'text-emerald-600' : 'text-stone-400'}>
+                                                        {selectedCust.adhaar_card ? '✓' : '✗'}
+                                                    </span>
+                                                    <span>Aadhaar Card</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className={selectedCust.pan_card ? 'text-emerald-600' : 'text-stone-400'}>
+                                                        {selectedCust.pan_card ? '✓' : '✗'}
+                                                    </span>
+                                                    <span>PAN Card</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className={selectedCust.index_2 ? 'text-emerald-600' : 'text-stone-400'}>
+                                                        {selectedCust.index_2 ? '✓' : '✗'}
+                                                    </span>
+                                                    <span>Index 2</span>
+                                                </div>
+                                            </>
+                                        )}
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={selectedCust.light_bill ? 'text-emerald-600' : 'text-stone-400'}>
+                                                {selectedCust.light_bill ? '✓' : '✗'}
+                                            </span>
+                                            <span>Light Bill</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={selectedCust.bank_details ? 'text-emerald-600' : 'text-stone-400'}>
+                                                {selectedCust.bank_details ? '✓' : '✗'}
+                                            </span>
+                                            <span>Bank Details</span>
+                                        </div>
+                                        {selectedCust.payment_type.trim().toLowerCase() !== 'cash' && (
+                                            <div className="flex items-center gap-1.5">
+                                                <span className={selectedCust.bank_passbook ? 'text-emerald-600' : 'text-stone-400'}>
+                                                    {selectedCust.bank_passbook ? '✓' : '✗'}
+                                                </span>
+                                                <span>Bank Passbook</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
