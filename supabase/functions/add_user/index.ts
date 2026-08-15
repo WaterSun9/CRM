@@ -94,6 +94,43 @@ serve(async (req) => {
             )
         }
 
+        // ── UPDATE USER EMAIL ─────────────────────────────────────────────
+        if (action === "update_email") {
+            const { user_id, new_email } = body
+
+            if (!user_id || !new_email) return new Response(
+                JSON.stringify({ error: "user_id and new_email are required" }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+
+            // Step 1: Update Auth user email using service role adminClient
+            const { error: authError } = await adminClient.auth.admin.updateUserById(user_id, {
+                email: new_email,
+                email_confirm: true
+            })
+
+            if (authError) return new Response(
+                JSON.stringify({ error: authError.message }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+
+            // Step 2: Update Profile email
+            const { error: profileError } = await adminClient
+                .from("profiles")
+                .update({ email: new_email })
+                .eq("id", user_id)
+
+            if (profileError) return new Response(
+                JSON.stringify({ error: profileError.message }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+
+            return new Response(
+                JSON.stringify({ success: true }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+        }
+
         // ── CREATE USER ───────────────────────────────────────────────────
         if (action === "create") {
             console.log("Body:", JSON.stringify(body))
