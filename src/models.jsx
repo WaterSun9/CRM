@@ -14,6 +14,8 @@ export const DEFAULT_LEAD_FORM = {
     registration_date: '',
     registration_by: '',
     registration_no: '',
+    feasibilty_document: false,
+    subsidy_token_photo: false,
     panel_serial_no: '',
     inverter_serial_no: '',
     invoice_no: '',
@@ -39,5 +41,8 @@ export const DEFAULT_LEAD_FORM = {
     discom_submission: null,
     discom_inspection: 'No',
     hold_procurement: null,
+    vendor_payment_status: 'Pending',
+    vendor_paid_date: null,
+    vendor_paid_by: null,
     stage: 'LEADS',
 };

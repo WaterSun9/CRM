@@ -1552,7 +1552,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             </section>
                         </div>
                     )}
-
                     {/* ── REGISTRATION ── */}
                     {activeTab === 'REGISTRATION' && (
                         <div className="space-y-6 animate-in fade-in duration-300">
@@ -1564,11 +1563,31 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     <EditableDetailItem label="Registration By" field="registration_by" value={editData.registration_by} onChange={handleChange} options={meta['registration_by']} category="registration_by" isEditing={editingSection === 'reg_details'} user={user} />
                                     <EditableDetailItem label="Registration No" field="registration_no" value={editData.registration_no} onChange={handleChange} isEditing={editingSection === 'reg_details'} />
                                 </div>
+
+                                <div className="mt-4 bg-white p-4 rounded-2xl border border-stone-100 shadow-sm space-y-3">
+                                    <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <ClipboardList size={12} /> Registration Checklists
+                                    </h4>
+                                    <div className="flex flex-col gap-2">
+                                        <CheckboxRemarkItem
+                                            label="Feasibility Document Checked"
+                                            field="feasibilty_document"
+                                            value={editData.feasibilty_document}
+                                            onChange={handleChange}
+                                            isEditing={editingSection === 'reg_details'}
+                                        />
+                                        <CheckboxRemarkItem
+                                            label="Subsidy Token Photo Checked"
+                                            field="subsidy_token_photo"
+                                            value={editData.subsidy_token_photo}
+                                            onChange={handleChange}
+                                            isEditing={editingSection === 'reg_details'}
+                                        />
+                                    </div>
+                                </div>
                             </section>
                         </div>
                     )}
-
-
                     {/* ── LOAN ── */}
                     {activeTab === 'LOAN' && (
                         <div className="space-y-4 animate-in fade-in duration-300">

@@ -25,10 +25,11 @@ import UserManagementView from './UserManagementView';
 import TrashView from './TrashView';
 import AgentForm from './agentform';
 import ChannelPartnerManagementView from './ChannelPartnerManagementView';
+import InstallationPaymentsView from './InstallationPaymentsView';
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee, Wrench,
+    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard
 } from 'lucide-react';
 
 export default function Dashboard({ user, onLogout }) {
@@ -391,6 +392,7 @@ export default function Dashboard({ user, onLogout }) {
                 : currentView === 'loan_tags' ? 'Loan Tag Tracking'
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
+                    : currentView === 'installation_payments' ? 'Installation Payments'
                     : currentView === 'activity' ? 'Activity Log'
                         : currentView === 'users' ? 'User Management'
                             : currentView === 'trash' ? 'Trash'
@@ -434,6 +436,7 @@ export default function Dashboard({ user, onLogout }) {
                         <>
                             <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-5 pb-2 tracking-widest">System</div>
                             <NavBtn view="channel_partner_mgmt" icon={Users} label="Operations" count={0} />
+                            <NavBtn view="installation_payments" icon={CreditCard} label="Installation Payments" count={0} />
                             <NavBtn view="activity" icon={Activity} label="Activity Log" count={0} />
                             <NavBtn view="users" icon={UserCog} label="User Management" count={0} />
                             <NavBtn view="trash" icon={Trash2} label="Trash" count={trashCount} redBadge />
@@ -584,6 +587,7 @@ export default function Dashboard({ user, onLogout }) {
                     {currentView === 'installation_tags' && <InstallationView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
 
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView customers={customers} currentUser={user} />}
+                    {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView customers={customers} onSelectCustomer={setSelectedCustomer} currentUser={user} />}
                     {currentView === 'activity' && user.userType === 'admin' && <ActivityLogView />}
                     {currentView === 'users' && user.userType === 'admin' && <UserManagementView currentUser={user} />}
 

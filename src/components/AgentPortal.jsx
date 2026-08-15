@@ -905,6 +905,27 @@ export default function AgentPortal({ user, onLogout }) {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Section: Registration Checklist */}
+                            <div className="bg-stone-50 p-4 rounded-2xl space-y-2 border border-stone-100">
+                                <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-1 flex items-center gap-1.5">
+                                    <ClipboardList size={10} /> Registration Checklists
+                                </h4>
+                                <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-stone-700">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={selectedCust.feasibilty_document ? 'text-emerald-600' : 'text-stone-400'}>
+                                            {selectedCust.feasibilty_document ? '✓' : '✗'}
+                                        </span>
+                                        <span>Feasibility Document</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={selectedCust.subsidy_token_photo ? 'text-emerald-600' : 'text-stone-400'}>
+                                            {selectedCust.subsidy_token_photo ? '✓' : '✗'}
+                                        </span>
+                                        <span>Subsidy Token Photo</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
