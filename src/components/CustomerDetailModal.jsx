@@ -978,14 +978,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleToggleHoldStatus = (status) => {
-        const newStatus = editData.hold_procurment === status ? null : status;
-        setEditData(prev => ({ ...prev, hold_procurment: newStatus }));
+        const newStatus = editData.hold_procurement === status ? null : status;
+        setEditData(prev => ({ ...prev, hold_procurement: newStatus }));
     };
 
     const handleSaveHoldStatus = async () => {
-        const newStatus = editData.hold_procurment;
+        const newStatus = editData.hold_procurement;
         setSaving(true);
-        await onUpdate(customer.id, { hold_procurment: newStatus });
+        await onUpdate(customer.id, { hold_procurement: newStatus });
         await logActivity(
             user.id,
             'update',
@@ -2153,7 +2153,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                         <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Hold Procurement</h4>
                                         <p className="text-[11px] text-stone-500 font-medium mt-0.5">Procurement hold status details.</p>
                                     </div>
-                                    {isEditable && editData.hold_procurment !== customer.hold_procurment && (
+                                    {isEditable && editData.hold_procurement !== customer.hold_procurement && (
                                         <button
                                             onClick={handleSaveHoldStatus}
                                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex-shrink-0"
@@ -2169,7 +2169,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                         { id: 'Project Lost', label: 'Project Lost', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' },
                                         { id: 'Project Return', label: 'Project Return', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
                                     ].map(tag => {
-                                        const isSelected = editData.hold_procurment === tag.id;
+                                        const isSelected = editData.hold_procurement === tag.id;
                                         return (
                                             <button
                                                 key={tag.id}
@@ -3191,7 +3191,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     </button>
                                 </>
                             ) : editData.stage === 'HOLD PROCUREMENT' ? (
-                                (editData.hold_procurment === 'Project Win' || editData.hold_procurment === 'Project Return') && (
+                                (editData.hold_procurement === 'Project Win' || editData.hold_procurement === 'Project Return') && (
                                     <button
                                         onClick={() => handleAdvanceStage('MATERIAL DELIVERY')}
                                         className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import {
-    User, Phone, Mail, MapPin, Zap, Building2,
+    User, Phone, Mail, MapPin, Zap, Building2, Sun,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle,
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert
 } from 'lucide-react';
@@ -181,7 +181,7 @@ export default function AgentPortal({ user, onLogout }) {
             <header className="bg-white border-b border-stone-100 px-4 py-3 sticky top-0 z-30 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 bg-amber-500 rounded-xl flex items-center justify-center text-white shadow-md shadow-amber-500/10">
-                        <Zap className="w-4 h-4 fill-white" />
+                        <Sun className="w-4 h-4 fill-white" />
                     </div>
                     <div>
                         <h1 className="text-xs font-black tracking-widest text-stone-900 uppercase">Watersun</h1>
@@ -206,7 +206,7 @@ export default function AgentPortal({ user, onLogout }) {
                     {/* Welcome Banner */}
                     <div className="bg-gradient-to-br from-stone-900 to-stone-800 text-white p-6 rounded-[24px] shadow-lg relative overflow-hidden">
                         <div className="absolute right-0 bottom-0 translate-x-4 translate-y-4 opacity-10">
-                            <Zap className="w-40 h-40" />
+                            <Sun className="w-40 h-40" />
                         </div>
                         <p className="text-[10px] uppercase tracking-widest text-amber-400 font-bold">Welcome Back</p>
                         <h2 className="text-xl font-bold mt-1">{user.name}</h2>
@@ -704,7 +704,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                                     {/* Meter status */}
                                                                     {cust.stage === 'METER INSTALLATION' && (
                                                                         <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-stone-900 text-white flex items-center gap-0.5">
-                                                                            <Hash className="w-2 h-2" /> Meter: {cust.meter_installation ? 'Complete' : 'Pending'}
+                                                                            <Hash className="w-2 h-2" /> Meter: {cust.meter_installation?.status === 'Yes' ? 'Complete' : 'Pending'}
                                                                         </span>
                                                                     )}
                                                                     {/* Subsidy Tag */}
@@ -848,7 +848,7 @@ export default function AgentPortal({ user, onLogout }) {
                                     </div>
                                     <div>
                                         <p className="text-[8px] font-bold text-stone-400 uppercase">Meter Installation</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.meter_installation ? 'Complete' : 'Pending'}</p>
+                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.meter_installation?.status === 'Yes' ? 'Complete' : 'Pending'}</p>
                                     </div>
                                 </div>
                             </div>

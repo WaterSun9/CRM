@@ -30,7 +30,6 @@ export const DEFAULT_LEAD_FORM = {
     installation_status: 'Pending',
     geo_tag_status: 'Pending',
     cash_details: null,
-    installation_history: [],
     installation_date: null,
     installed_by: null,
     meter_installation: null,
@@ -39,6 +38,6 @@ export const DEFAULT_LEAD_FORM = {
     dcr_certificate: false,
     discom_submission: null,
     discom_inspection: 'No',
-    hold_procurment: null,
+    hold_procurement: null,
     stage: 'LEADS',
 };
