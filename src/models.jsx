@@ -38,6 +38,7 @@ export const DEFAULT_LEAD_FORM = {
     driver_phone_number: '',
     dcr_certificate: false,
     discom_submission: null,
+    discom_inspection: 'No',
     hold_procurment: null,
     stage: 'LEADS',
 };

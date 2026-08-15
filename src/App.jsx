@@ -22,6 +22,7 @@ import { Sun } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import SetPasswordPage from './components/SetPassword';
+import AgentPortal from './components/AgentPortal';
 
 export default function App() {
     const [user, setUser] = useState(null);
@@ -87,10 +88,19 @@ export default function App() {
         return <SetPasswordPage />;
     }
 
-    return !user
-        ? <LoginScreen onLogin={setUser} />
-        : <Dashboard
+    if (!user) return <LoginScreen onLogin={setUser} />;
+
+    const isAgent = user.userType === 'agent' || user.role === 'Channel Partners';
+
+    return isAgent ? (
+        <AgentPortal
             user={user}
             onLogout={async () => { await supabase.auth.signOut(); setUser(null); }}
-        />;
+        />
+    ) : (
+        <Dashboard
+            user={user}
+            onLogout={async () => { await supabase.auth.signOut(); setUser(null); }}
+        />
+    );
 }
