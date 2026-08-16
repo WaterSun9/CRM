@@ -192,12 +192,21 @@ export const getCustomerDocuments = async (customerId) => {
 };
 
 
+export const getViewUrl = async (storagePath) => {
+    const { data, error } = await supabase.storage
+        .from('customer-documents')
+        .createSignedUrl(storagePath, 3600);
+
+    if (error) console.error('Failed to get view URL:', error);
+    return data?.signedUrl;
+};
+
 export const getDownloadUrl = async (storagePath, fileName) => {
     const { data, error } = await supabase.storage
         .from('customer-documents')
-        .createSignedUrl(storagePath, 3600, { download: fileName });
+        .createSignedUrl(storagePath, 3600, { download: fileName || true });
 
-    if (error) console.error('Failed to get URL:', error);
+    if (error) console.error('Failed to get download URL:', error);
     return data?.signedUrl;
 };
 

@@ -1,90 +1,6 @@
 import React from 'react';
-import { User, ClipboardList, Upload, Eye, Trash2 } from 'lucide-react';
+import { User, ClipboardList } from 'lucide-react';
 import { SectionHeader, EditableDetailItem, CheckboxRemarkItem } from './shared';
-
-// ─── DocumentChecklistItem ─────────────────────────────────────────────────
-// Checkbox row + attach file + list of attached files (view/delete) for one
-// checklist field. `field` doubles as the doc_type tag on the documents table.
-function DocumentChecklistItem({
-    label,
-    field,
-    value,
-    onChange,
-    isEditing,
-    documents = [],
-    uploading,
-    onFileUpload,
-    onViewDocument,
-    onDeleteDocument,
-}) {
-    const attached = documents.filter(d => d.doc_type === field);
-
-    return (
-        <div className="py-2 flex flex-col gap-2 border-b border-stone-50 last:border-b-0">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2.5">
-                    {isEditing ? (
-                        <input
-                            type="checkbox"
-                            id={field}
-                            checked={!!value}
-                            onChange={e => onChange(field, e.target.checked)}
-                            className="w-4 h-4 text-amber-500 border-stone-300 rounded focus:ring-amber-500 cursor-pointer"
-                        />
-                    ) : (
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${value ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-stone-100 border-stone-300 text-transparent'}`}>
-                            {value && <svg className="w-2.5 h-2.5 stroke-[3] stroke-current" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
-                        </div>
-                    )}
-                    <label htmlFor={field} className={`text-xs font-semibold cursor-pointer select-none ${!isEditing && value ? 'text-stone-400 line-through' : 'text-stone-700'}`}>
-                        {label}
-                    </label>
-                </div>
-
-                {isEditing && (
-                    <label className="flex items-center gap-1 text-[10px] font-bold text-amber-600 hover:text-amber-700 cursor-pointer">
-                        <Upload size={12} />
-                        {uploading ? 'Uploading...' : 'Attach File'}
-                        <input
-                            type="file"
-                            className="hidden"
-                            disabled={uploading}
-                            onChange={(e) => onFileUpload(e, field)}
-                        />
-                    </label>
-                )}
-            </div>
-
-            {attached.length > 0 && (
-                <div className="ml-6 flex flex-col gap-1">
-                    {attached.map(doc => (
-                        <div key={doc.id} className="flex items-center justify-between gap-2 bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1.5">
-                            <span className="text-[11px] text-stone-600 font-medium truncate">{doc.file_name}</span>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                                <button
-                                    onClick={() => onViewDocument(doc)}
-                                    className="p-1 text-stone-400 hover:text-amber-600 transition-colors"
-                                    title="View"
-                                >
-                                    <Eye size={13} />
-                                </button>
-                                {isEditing && (
-                                    <button
-                                        onClick={() => onDeleteDocument(doc)}
-                                        className="p-1 text-stone-400 hover:text-red-500 transition-colors"
-                                        title="Delete"
-                                    >
-                                        <Trash2 size={13} />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
 
 export default function LeadsTab({
     editData,
@@ -98,7 +14,7 @@ export default function LeadsTab({
     isEditable,
     isRegChecklistDirty,
     handleSaveRegChecklist,
-    documents,
+    documents = [],
     uploading,
     onFileUpload,
     onViewDocument,
@@ -155,48 +71,18 @@ export default function LeadsTab({
 
                     {/* Checklist items only visible if payment_type is selected */}
                     {editData.payment_type ? (
-                        <div className="flex flex-col">
+                        <div className="flex flex-col gap-2">
                             {editData.payment_type?.trim().toLowerCase() !== 'cash' && (
                                 <>
-                                    <DocumentChecklistItem
-                                        label="Adhaar card" field="adhaar_card" value={editData.adhaar_card}
-                                        onChange={handleChange} isEditing={isEditable}
-                                        documents={documents} uploading={uploading}
-                                        onFileUpload={onFileUpload} onViewDocument={onViewDocument} onDeleteDocument={onDeleteDocument}
-                                    />
-                                    <DocumentChecklistItem
-                                        label="Pan card" field="pan_card" value={editData.pan_card}
-                                        onChange={handleChange} isEditing={isEditable}
-                                        documents={documents} uploading={uploading}
-                                        onFileUpload={onFileUpload} onViewDocument={onViewDocument} onDeleteDocument={onDeleteDocument}
-                                    />
-                                    <DocumentChecklistItem
-                                        label="Index 2" field="index_2" value={editData.index_2}
-                                        onChange={handleChange} isEditing={isEditable}
-                                        documents={documents} uploading={uploading}
-                                        onFileUpload={onFileUpload} onViewDocument={onViewDocument} onDeleteDocument={onDeleteDocument}
-                                    />
+                                    <CheckboxRemarkItem label="Adhaar card" field="adhaar_card" value={editData.adhaar_card} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onDeleteDocument} onPreview={onViewDocument} />
+                                    <CheckboxRemarkItem label="Pan card" field="pan_card" value={editData.pan_card} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onDeleteDocument} onPreview={onViewDocument} />
+                                    <CheckboxRemarkItem label="Index 2" field="index_2" value={editData.index_2} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onDeleteDocument} onPreview={onViewDocument} />
                                 </>
                             )}
-                            <DocumentChecklistItem
-                                label="Light Bill" field="light_bill" value={editData.light_bill}
-                                onChange={handleChange} isEditing={isEditable}
-                                documents={documents} uploading={uploading}
-                                onFileUpload={onFileUpload} onViewDocument={onViewDocument} onDeleteDocument={onDeleteDocument}
-                            />
-                            <DocumentChecklistItem
-                                label="Bank details" field="bank_details" value={editData.bank_details}
-                                onChange={handleChange} isEditing={isEditable}
-                                documents={documents} uploading={uploading}
-                                onFileUpload={onFileUpload} onViewDocument={onViewDocument} onDeleteDocument={onDeleteDocument}
-                            />
+                            <CheckboxRemarkItem label="Light Bill" field="light_bill" value={editData.light_bill} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onDeleteDocument} onPreview={onViewDocument} />
+                            <CheckboxRemarkItem label="Bank details" field="bank_details" value={editData.bank_details} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onDeleteDocument} onPreview={onViewDocument} />
                             {editData.payment_type?.trim().toLowerCase() !== 'cash' && (
-                                <DocumentChecklistItem
-                                    label="Bank Passbook" field="bank_passbook" value={editData.bank_passbook}
-                                    onChange={handleChange} isEditing={isEditable}
-                                    documents={documents} uploading={uploading}
-                                    onFileUpload={onFileUpload} onViewDocument={onViewDocument} onDeleteDocument={onDeleteDocument}
-                                />
+                                <CheckboxRemarkItem label="Bank Passbook" field="bank_passbook" value={editData.bank_passbook} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onDeleteDocument} onPreview={onViewDocument} />
                             )}
                         </div>
                     ) : (

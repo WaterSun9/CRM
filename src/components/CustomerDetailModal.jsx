@@ -22,7 +22,7 @@ import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
 import { Page1 } from './agreement/Page1';
 import { FileText, Printer } from 'lucide-react';
-import { uploadDocument, getCustomerDocuments, getDownloadUrl, deleteDocument } from '../utils';
+import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument } from '../utils';
 
 import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
@@ -544,7 +544,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handlePreviewDoc = async (doc) => {
-        const url = await getDownloadUrl(doc.storage_path);
+        const url = await getViewUrl(doc.storage_path);
         if (url) setFilePreview({ doc, url });
     };
 
@@ -1278,6 +1278,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             user={user}
                             isRegChecklistDirty={isRegChecklistDirty}
                             handleSaveRegChecklist={handleSaveRegChecklist}
+                            documents={documents}
+                            uploading={uploading}
+                            onFileUpload={handleFileUpload}
+                            onViewDocument={handlePreviewDoc}
+                            onDeleteDocument={handleDeleteDoc}
                         />
                     )}
 
