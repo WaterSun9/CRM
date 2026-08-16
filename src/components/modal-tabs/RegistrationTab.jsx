@@ -9,7 +9,11 @@ export default function RegistrationTab({
     setEditingSection,
     meta,
     user,
-    isEditable
+    isEditable,
+    documents = [],
+    onFileUpload,
+    onFileDelete,
+    onFilePreview
 }) {
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -33,6 +37,10 @@ export default function RegistrationTab({
                             value={editData.feasibilty_document}
                             onChange={handleChange}
                             isEditing={editingSection === 'reg_details'}
+                            documents={documents}
+                            onUpload={onFileUpload}
+                            onDelete={onFileDelete}
+                            onPreview={onFilePreview}
                         />
                         <CheckboxRemarkItem
                             label="Subsidy Token Photo Checked"
@@ -40,6 +48,10 @@ export default function RegistrationTab({
                             value={editData.subsidy_token_photo}
                             onChange={handleChange}
                             isEditing={editingSection === 'reg_details'}
+                            documents={documents}
+                            onUpload={onFileUpload}
+                            onDelete={onFileDelete}
+                            onPreview={onFilePreview}
                         />
                     </div>
                 </div>

@@ -24,7 +24,11 @@ export default function DiscomSubmissionTab({
     handleChange,
     saving,
     setSaving,
-    onGenerateAgreement
+    onGenerateAgreement,
+    documents = [],
+    onFileUpload,
+    onFileDelete,
+    onFilePreview
 }) {
     const submissionData = editData.discom_submission || {
         submitted_by: '',
@@ -49,9 +53,9 @@ export default function DiscomSubmissionTab({
                     <ClipboardList className="w-4 h-4 text-amber-500" /> Utility File Checklist
                 </h4>
                 <div className="flex flex-col gap-2">
-                    <CheckboxRemarkItem label="File Status Checked" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} />
-                    <CheckboxRemarkItem label="DCR Certificate Checked" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} />
-                    <CheckboxRemarkItem label="Signature Photo Checked" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} />
+                    <CheckboxRemarkItem label="File Status Checked" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
+                    <CheckboxRemarkItem label="DCR Certificate Checked" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
+                    <CheckboxRemarkItem label="Signature Photo Checked" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
                 </div>
                 {isEditable && (editData.file_status !== customer.file_status || editData.dcr_certificate !== customer.dcr_certificate || editData.signature_pic !== customer.signature_pic) && (
                     <div className="flex justify-end pt-2">

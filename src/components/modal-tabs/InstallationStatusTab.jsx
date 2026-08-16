@@ -13,7 +13,11 @@ export default function InstallationStatusTab({
     user,
     handleChange,
     saving,
-    setSaving
+    setSaving,
+    documents = [],
+    onFileUpload,
+    onFileDelete,
+    onFilePreview
 }) {
     const handleToggleInstallationTag = (tagId) => {
         const newTag = editData.installation_status === tagId ? null : tagId;
@@ -47,7 +51,7 @@ export default function InstallationStatusTab({
                     <ClipboardList className="w-4 h-4 text-amber-500" /> SFDC Photo Checklist
                 </h4>
                 <div className="flex flex-col gap-2">
-                    <CheckboxRemarkItem label="SFDC Photo Checked" field="sfdc_photo" value={editData.sfdc_photo} onChange={handleChange} isEditing={isEditable} />
+                    <CheckboxRemarkItem label="SFDC Photo Checked" field="sfdc_photo" value={editData.sfdc_photo} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
                 </div>
                 {isEditable && editData.sfdc_photo !== customer.sfdc_photo && (
                     <div className="flex justify-end pt-2">

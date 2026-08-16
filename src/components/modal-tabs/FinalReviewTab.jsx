@@ -6,7 +6,11 @@ export default function FinalReviewTab({
     handleChange,
     isEditable,
     isOperationalChecklistDirty,
-    handleSaveOperationalChecklist
+    handleSaveOperationalChecklist,
+    documents = [],
+    onFileUpload,
+    onFileDelete,
+    onFilePreview
 }) {
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
@@ -19,8 +23,8 @@ export default function FinalReviewTab({
                 </div>
                 <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
                     <div className="flex flex-col gap-2">
-                        <CheckboxRemarkItem label="Warranty Card Checked" field="warranty_card" value={editData.warranty_card} onChange={handleChange} isEditing={isEditable} />
-                        <CheckboxRemarkItem label="Insurance Status Checked" field="insurance_status" value={editData.insurance_status} onChange={handleChange} isEditing={isEditable} />
+                        <CheckboxRemarkItem label="Warranty Card Checked" field="warranty_card" value={editData.warranty_card} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
+                        <CheckboxRemarkItem label="Insurance Status Checked" field="insurance_status" value={editData.insurance_status} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
                     </div>
                     {isEditable && isOperationalChecklistDirty && (
                         <div className="mt-4 pt-3 border-t border-stone-100 flex justify-end">

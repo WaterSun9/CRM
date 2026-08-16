@@ -22,6 +22,7 @@ import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
 import { Page1 } from './agreement/Page1';
 import { FileText, Printer } from 'lucide-react';
+import { uploadDocument, getCustomerDocuments, getDownloadUrl, deleteDocument } from '../utils';
 
 import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
@@ -37,8 +38,8 @@ import MeterInstallationTab from './modal-tabs/MeterInstallationTab';
 import DiscomInspectionTab from './modal-tabs/DiscomInspectionTab';
 import SubsidyStatusTab from './modal-tabs/SubsidyStatusTab';
 import FinalReviewTab from './modal-tabs/FinalReviewTab';
-import CompletedTab from './modal-tabs/CompletedTab';
 import HistoryTab from './modal-tabs/HistoryTab';
+import { FilePreviewModal } from './modal-tabs/shared';
 
 // ─── formatMoney: uses centralized Indian comma system from utils ─────────────
 const fmt = formatINR;
@@ -412,7 +413,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [sendingInfo, setSendingInfo] = useState(false);
     const [infoSentStatus, setInfoSentStatus] = useState(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [showCompletedConfirm, setShowCompletedConfirm] = useState(false);
     const [activityLogs, setActivityLogs] = useState([]);
+    const [documents, setDocuments] = useState([]);
+    const [uploading, setUploading] = useState(false);
+    const [filePreview, setFilePreview] = useState({ doc: null, url: null });
     const isAdmin = user?.userType === 'admin';
     const isCompleted = customer.stage === 'COMPLETED';
     const [adminUnlocked, setAdminUnlocked] = useState(false);
@@ -496,6 +501,64 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             .or(`new_value.eq.${customer.id},message.ilike.%${customer.customer_name}%`)
             .order('created_at', { ascending: false }).limit(25);
         if (data) setActivityLogs(data);
+    };
+
+    useEffect(() => {
+        if (customer?.id) {
+            getCustomerDocuments(customer.id).then(setDocuments);
+        }
+    }, [customer?.id]);
+
+    const handleFileUpload = async (e, docType = null) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setUploading(true);
+        const newDoc = await uploadDocument(file, customer.id, docType);
+        if (newDoc) {
+            setDocuments(prev => [newDoc, ...prev]);
+            await logActivity(
+                user.id,
+                'update',
+                `${customer.customer_name}: Uploaded document (${file.name})`,
+                '',
+                customer.id
+            );
+            fetchLogs();
+        }
+        setUploading(false);
+        e.target.value = '';
+    };
+
+    const handleDownloadDoc = async (doc) => {
+        const url = await getDownloadUrl(doc.storage_path, doc.file_name);
+        if (url) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = doc.file_name;
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    };
+
+    const handlePreviewDoc = async (doc) => {
+        const url = await getDownloadUrl(doc.storage_path);
+        if (url) setFilePreview({ doc, url });
+    };
+
+    const handleDeleteDoc = async (doc) => {
+        await deleteDocument(doc.id, doc.storage_path);
+        setDocuments(prev => prev.filter(d => d.id !== doc.id));
+        await logActivity(
+            user.id,
+            'update',
+            `${customer.customer_name}: Deleted document (${doc.file_name})`,
+            '',
+            customer.id
+        );
+        fetchLogs();
     };
 
     const REG_CHECKLIST_FIELDS = [
@@ -598,7 +661,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const newTag = editData.subsidy_tag;
         const entryDate = new Date().toISOString().split('T')[0];
         let updatedHistory = editData.subsidy_history || [];
-        
+
         if (newTag) {
             const newEntry = {
                 status: newTag,
@@ -608,18 +671,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             };
             updatedHistory = [...updatedHistory, newEntry];
         }
-        
-        setEditData(prev => ({ 
-            ...prev, 
+
+        setEditData(prev => ({
+            ...prev,
             subsidy_history: updatedHistory,
             subsidy_tag: newTag
         }));
-        
+
         await onUpdate(customer.id, {
             subsidy_tag: newTag,
             subsidy_history: updatedHistory
         });
-        
+
         const tagLabel = SUBSIDY_TAGS.find(t => t.id === newTag)?.label || newTag;
         await logActivity(
             user.id,
@@ -628,7 +691,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             '',
             customer.id
         );
-        
+
         fetchLogs();
     };
 
@@ -644,7 +707,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const newTag = editData.loan_tag;
         const entryDate = new Date().toISOString().split('T')[0];
         let updatedHistory = editData.loan_history || [];
-        
+
         if (newTag) {
             const newEntry = {
                 status: newTag,
@@ -654,18 +717,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             };
             updatedHistory = [...updatedHistory, newEntry];
         }
-        
-        setEditData(prev => ({ 
-            ...prev, 
+
+        setEditData(prev => ({
+            ...prev,
             loan_history: updatedHistory,
             loan_tag: newTag
         }));
-        
+
         await onUpdate(customer.id, {
             loan_tag: newTag,
             loan_history: updatedHistory
         });
-        
+
         const tagLabel = LOAN_TAGS.find(t => t.id === newTag)?.label || newTag;
         await logActivity(
             user.id,
@@ -674,7 +737,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             '',
             customer.id
         );
-        
+
         fetchLogs();
     };
 
@@ -691,13 +754,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             installed_by: editData.installed_by || null
         };
         await onUpdate(customer.id, updates);
-        
+
         let logMsg = `${customer.customer_name}: Updated Installation Status to ${editData.installation_status}`;
         if (editData.installation_status === 'Yes') {
             logMsg += ` (Date: ${editData.installation_date || 'N/A'}, Installed By: ${editData.installed_by || 'N/A'})`;
         }
         await logActivity(user.id, 'update', logMsg, '', customer.id);
-        
+
         setSaving(false);
         fetchLogs();
     };
@@ -726,7 +789,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const targetStage = stageId || editData.stage;
         const currentRemark = getStageRemarkFromData(editData.stages_remarks, targetStage);
         const originalRemark = getStageRemarkFromData(customer.stages_remarks, targetStage);
-        
+
         if (currentRemark !== originalRemark) {
             let prevObj = {};
             if (typeof customer.stages_remarks === 'object' && customer.stages_remarks) {
@@ -756,11 +819,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 internal_remarks: updatedInternalRemarks
             }));
 
-            await onUpdate(customer.id, { 
+            await onUpdate(customer.id, {
                 stages_remarks: updatedRemarks,
                 internal_remarks: updatedInternalRemarks
             });
-            
+
             setIsSaved(true);
             await logActivity(
                 user.id,
@@ -780,10 +843,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const hasNextStage = (() => {
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return false;
-        
+
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return false;
-        
+
         let nextStage = PRIMARY_STAGES[nextIdx];
         if (nextStage.id === 'LOAN' && editData.payment_type?.trim().toLowerCase() === 'cash') {
             nextIdx++;
@@ -791,17 +854,17 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (nextStage.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') {
             nextIdx++;
         }
-        
+
         return nextIdx < PRIMARY_STAGES.length;
     })();
 
     const nextStageId = (() => {
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return null;
-        
+
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return null;
-        
+
         let nextStage = PRIMARY_STAGES[nextIdx];
         if (nextStage.id === 'LOAN' && editData.payment_type?.trim().toLowerCase() === 'cash') {
             nextIdx++;
@@ -809,7 +872,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (nextStage.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') {
             nextIdx++;
         }
-        
+
         if (nextIdx < PRIMARY_STAGES.length) {
             return PRIMARY_STAGES[nextIdx].id;
         }
@@ -828,9 +891,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const handleAdvanceStage = async (overrideNextStageId) => {
         const destStageId = overrideNextStageId || nextStageId;
         if (!destStageId) return;
-        
+
         setSaving(true);
-        
+
         const oldStage = editData.stage;
         let prevObj = {};
         if (typeof editData.stages_remarks === 'object' && editData.stages_remarks) {
@@ -881,9 +944,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
         });
 
-        delete updates.id; 
-        delete updates.created_at; 
-        delete updates.crn; 
+        delete updates.id;
+        delete updates.created_at;
+        delete updates.crn;
         delete updates.updated_at;
 
         await onUpdate(customer.id, updates);
@@ -1105,9 +1168,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         ...PRIMARY_STAGES.filter(s => {
                             if (s.id === 'LOAN' && editData.payment_type?.trim().toLowerCase() === 'cash') return false;
                             if (s.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') return false;
+                            if (s.id === 'COMPLETED') return false;
                             return true;
                         }).map(s => ({ id: s.id, label: s.label, icon: s.icon })),
-                        { id: 'history',      label: 'Notes & History',         icon: History },
+                        { id: 'DOCUMENTS', label: 'Documents', icon: FolderOpen },
+                        { id: 'history', label: 'Notes & History', icon: History },
                     ].map(tab => (
                         <button key={tab.id} onClick={() => { setActiveTab(tab.id); setEditingSection(null); }}
                             className={`flex items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-widest transition-all border-b-2 flex-shrink-0 ${activeTab === tab.id ? 'text-amber-400 border-amber-400' : 'text-stone-500 border-transparent hover:text-stone-300'}`}>
@@ -1232,6 +1297,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             fetchLogs={fetchLogs}
                             saving={saving}
                             setSaving={setSaving}
+                            documents={documents}
+                            onFileUpload={handleFileUpload}
+                            onFileDelete={handleDeleteDoc}
+                            onFilePreview={handlePreviewDoc}
                         />
                     )}
 
@@ -1327,6 +1396,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             handleChange={handleChange}
                             saving={saving}
                             setSaving={setSaving}
+                            documents={documents}
+                            onFileUpload={handleFileUpload}
+                            onFileDelete={handleDeleteDoc}
+                            onFilePreview={handlePreviewDoc}
                         />
                     )}
 
@@ -1361,6 +1434,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             saving={saving}
                             setSaving={setSaving}
                             onGenerateAgreement={handleGenerateAgreement}
+                            documents={documents}
+                            onFileUpload={handleFileUpload}
+                            onFileDelete={handleDeleteDoc}
+                            onFilePreview={handlePreviewDoc}
                         />
                     )}
 
@@ -1420,12 +1497,70 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             isEditable={isEditable}
                             isOperationalChecklistDirty={isOperationalChecklistDirty}
                             handleSaveOperationalChecklist={handleSaveOperationalChecklist}
+                            documents={documents}
+                            onFileUpload={handleFileUpload}
+                            onFileDelete={handleDeleteDoc}
+                            onFilePreview={handlePreviewDoc}
                         />
                     )}
 
-                    {/* ── COMPLETED ── */}
-                    {activeTab === 'COMPLETED' && (
-                        <CompletedTab />
+
+
+                    {/* ── DOCUMENTS ── */}
+                    {activeTab === 'DOCUMENTS' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                <div className="flex items-center justify-between border-b border-stone-100 pb-2 mb-1">
+                                    <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest flex items-center gap-2">
+                                        <FolderOpen size={14} className="text-stone-400" /> Documents
+                                    </h3>
+                                    {isEditable && (
+                                        <label className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 cursor-pointer">
+                                            {uploading ? 'Uploading...' : 'Upload File'}
+                                            <input
+                                                type="file"
+                                                onChange={handleFileUpload}
+                                                disabled={uploading}
+                                                className="hidden"
+                                            />
+                                        </label>
+                                    )}
+                                </div>
+
+                                {documents.length === 0 ? (
+                                    <p className="text-xs text-stone-400 italic">No documents uploaded yet</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {documents.map(doc => (
+                                            <div key={doc.id} className="flex items-center justify-between gap-2 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs font-semibold text-stone-700 truncate">{doc.file_name}</p>
+                                                    {doc.doc_type && (
+                                                        <p className="text-[9px] text-stone-400 uppercase tracking-wide font-bold mt-0.5">{doc.doc_type}</p>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                    <button
+                                                        onClick={() => handleDownloadDoc(doc)}
+                                                        className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-stone-900 hover:bg-stone-800 text-white transition-colors"
+                                                    >
+                                                        Download
+                                                    </button>
+                                                    {isEditable && (
+                                                        <button
+                                                            onClick={() => handleDeleteDoc(doc)}
+                                                            className="p-1.5 text-stone-400 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </section>
+                        </div>
                     )}
 
                     {/* ── NOTES & HISTORY ── */}
@@ -1507,15 +1642,29 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                         Save & Move to {nextStageLabel}
                                     </button>
                                 )
+                            ) : editData.stage === 'INSTALLATION STATUS' ? (
+                                editData.installation_status === 'Yes' && (
+                                    <button
+                                        onClick={() => handleAdvanceStage()}
+                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
+                                    >
+                                        Save & Move to {nextStageLabel}
+                                    </button>
+                                )
                             ) : (
                                 <button
                                     disabled={editData.stage === 'LEADS' && !isLeadFieldsFilled}
-                                    onClick={() => handleAdvanceStage()}
-                                    className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs ${
-                                        (editData.stage === 'LEADS' && !isLeadFieldsFilled)
+                                    onClick={() => {
+                                        if (nextStageId === 'COMPLETED') {
+                                            setShowCompletedConfirm(true);
+                                        } else {
+                                            handleAdvanceStage();
+                                        }
+                                    }}
+                                    className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs ${(editData.stage === 'LEADS' && !isLeadFieldsFilled)
                                             ? 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
                                             : 'bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10'
-                                    }`}
+                                        }`}
                                     title={editData.stage === 'LEADS' && !isLeadFieldsFilled ? 'Please fill all required Lead fields (Name, Phone, Channel Partner, Capacity)' : `Advance to ${nextStageLabel}`}
                                 >
                                     Save & Move to {nextStageLabel}
@@ -1547,12 +1696,49 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 </div>
             )}
 
+            {/* Move-to-Completed lock confirm */}
+            {showCompletedConfirm && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 bg-amber-100 rounded-full"><Lock className="w-5 h-5 text-amber-600" /></div>
+                            <h3 className="font-bold text-stone-800">Mark as Completed?</h3>
+                        </div>
+                        <p className="text-sm text-stone-600 mb-5">
+                            Moving <strong>{customer.customer_name}</strong> to Completed will lock this record. Only an admin will be able to unlock it for further edits. Do you want to proceed?
+                        </p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setShowCompletedConfirm(false)} className="flex-1 py-2.5 border border-stone-300 text-stone-700 rounded-xl text-sm font-medium">Cancel</button>
+                            <button
+                                onClick={() => {
+                                    setShowCompletedConfirm(false);
+                                    handleAdvanceStage();
+                                }}
+                                className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-medium flex items-center justify-center gap-2"
+                            >
+                                <Lock className="w-4 h-4" /> Proceed & Lock
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* PM Surya Ghar Agreement Popup Modal */}
             {showAgreementPopup && (
                 <AgreementPreview
                     data={agreementData}
                     onChange={setAgreementData}
                     onClose={() => setShowAgreementPopup(false)}
+                />
+            )}
+
+            {/* File Preview Modal */}
+            {filePreview.doc && (
+                <FilePreviewModal
+                    file={filePreview.doc}
+                    fileUrl={filePreview.url}
+                    onClose={() => setFilePreview({ doc: null, url: null })}
+                    onDownload={() => handleDownloadDoc(filePreview.doc)}
                 />
             )}
         </div>

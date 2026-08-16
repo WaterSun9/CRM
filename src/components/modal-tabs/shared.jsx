@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Plus, Edit3, X } from 'lucide-react';
+import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as ImageIcon, Download } from 'lucide-react';
 import { formatINR, toIndianCommas, parseIndianNumber } from '../../utils';
 
 const fmt = formatINR;
@@ -207,23 +207,104 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
     );
 }
 
+// ─── FilePreviewModal ─────────────────────────────────────────────────────────
+export function FilePreviewModal({ file, fileUrl, onClose, onDownload }) {
+    if (!file) return null;
+    const isImage = file.file_type?.startsWith('image/');
+    const isPdf = file.file_type === 'application/pdf';
+
+    return (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-4 border-b border-stone-100">
+                    <div className="flex items-center gap-2 min-w-0">
+                        {isImage ? <ImageIcon size={16} className="text-stone-400 flex-shrink-0" /> : <FileText size={16} className="text-stone-400 flex-shrink-0" />}
+                        <p className="text-sm font-bold text-stone-800 truncate">{file.file_name}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                            onClick={onDownload}
+                            className="flex items-center gap-1.5 bg-stone-900 hover:bg-stone-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors"
+                        >
+                            <Download size={12} /> Download
+                        </button>
+                        <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg transition-colors">
+                            <X size={16} className="text-stone-400" />
+                        </button>
+                    </div>
+                </div>
+                <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-stone-50">
+                    {isImage && fileUrl && (
+                        <img src={fileUrl} alt={file.file_name} className="max-w-full max-h-[65vh] object-contain rounded-lg shadow-sm" />
+                    )}
+                    {isPdf && fileUrl && (
+                        <iframe src={fileUrl} title={file.file_name} className="w-full h-[65vh] rounded-lg border border-stone-200" />
+                    )}
+                    {!isImage && !isPdf && (
+                        <div className="flex flex-col items-center gap-3 py-12 text-stone-400">
+                            <FileText size={48} className="text-stone-300" />
+                            <p className="text-sm font-semibold">Preview not available</p>
+                            <p className="text-xs">Click Download to view this file</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── CheckboxRemarkItem ───────────────────────────────────────────────────────
-export function CheckboxRemarkItem({ label, field, value, onChange, isEditing }) {
+export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview }) {
+    const fieldDocs = documents.filter(d => d.doc_type === field);
+    const fileInputRef = React.useRef(null);
+    const [replacingDocId, setReplacingDocId] = React.useState(null);
+
+    const handleUploadClick = (existingDocId = null) => {
+        setReplacingDocId(existingDocId);
+        fileInputRef.current?.click();
+    };
+
+    const handleFileSelected = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (replacingDocId && onDelete) {
+            const oldDoc = fieldDocs.find(d => d.id === replacingDocId);
+            if (oldDoc) await onDelete(oldDoc);
+        }
+        if (onUpload) await onUpload(e, field);
+        setReplacingDocId(null);
+    };
+
     if (!isEditing) {
         return (
-            <div className="py-1.5 flex items-start gap-3 group">
-                <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${value ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-stone-100 border-stone-300 text-transparent'}`}>
-                    {value && <svg className="w-2.5 h-2.5 stroke-[3] stroke-current" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
+            <div className="py-1.5">
+                <div className="flex items-start gap-3 group">
+                    <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${value ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-stone-100 border-stone-300 text-transparent'}`}>
+                        {value && <svg className="w-2.5 h-2.5 stroke-[3] stroke-current" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <span className={`text-xs block ${value ? 'text-stone-400 line-through' : 'text-stone-700 font-semibold'}`}>{label}</span>
+                    </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                    <span className={`text-xs block ${value ? 'text-stone-400 line-through' : 'text-stone-700 font-semibold'}`}>{label}</span>
-                </div>
+                {fieldDocs.length > 0 && (
+                    <div className="ml-7 mt-1.5 space-y-1">
+                        {fieldDocs.map(doc => (
+                            <div key={doc.id} className="flex items-center gap-2 bg-stone-50 border border-stone-100 rounded-lg px-2.5 py-1.5">
+                                <Paperclip size={11} className="text-stone-400 flex-shrink-0" />
+                                <span className="text-[10px] text-stone-600 font-medium truncate flex-1">{doc.file_name}</span>
+                                {onPreview && (
+                                    <button onClick={() => onPreview(doc)} className="text-[9px] font-bold text-amber-600 hover:text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-50 transition-colors">View</button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         );
     }
 
     return (
-        <div className="py-1.5 flex flex-col gap-2">
+        <div className="py-1.5">
             <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
                     <input
@@ -237,6 +318,46 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing })
                         {label}
                     </label>
                 </div>
+            </div>
+
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf"
+                onChange={handleFileSelected}
+                className="hidden"
+            />
+
+            <div className="ml-7 mt-1.5 space-y-1.5">
+                {fieldDocs.map(doc => (
+                    <div key={doc.id} className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1.5">
+                        <Paperclip size={11} className="text-stone-400 flex-shrink-0" />
+                        <span className="text-[10px] text-stone-600 font-medium truncate flex-1">{doc.file_name}</span>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                            {onPreview && (
+                                <button onClick={() => onPreview(doc)} className="text-[9px] font-bold text-amber-600 hover:text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-50 transition-colors flex items-center gap-0.5">
+                                    <Eye size={10} /> View
+                                </button>
+                            )}
+                            <button onClick={() => handleUploadClick(doc.id)} className="text-[9px] font-bold text-blue-600 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors flex items-center gap-0.5">
+                                <Upload size={10} /> Change
+                            </button>
+                            {onDelete && (
+                                <button onClick={() => onDelete(doc)} className="text-[9px] font-bold text-red-500 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50 transition-colors flex items-center gap-0.5">
+                                    <Trash2 size={10} /> Remove
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                ))}
+                {fieldDocs.length === 0 && onUpload && (
+                    <button
+                        onClick={() => handleUploadClick()}
+                        className="flex items-center gap-1.5 text-[10px] font-bold text-stone-400 hover:text-amber-600 px-2 py-1 rounded-lg border border-dashed border-stone-200 hover:border-amber-300 hover:bg-amber-50/30 transition-all"
+                    >
+                        <Paperclip size={11} /> Attach File
+                    </button>
+                )}
             </div>
         </div>
     );

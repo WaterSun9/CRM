@@ -150,3 +150,59 @@ export function formatLogDate(dateStr) {
 export function formatDate(dateStr) {
     return new Date(dateStr).toLocaleDateString('en-IN');
 }
+
+export const uploadDocument = async (file, customerId, docType = null) => {
+    const filePath = `${customerId}/${Date.now()}_${file.name}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from('customer-documents')
+        .upload(filePath, file);
+
+    if (uploadError) {
+        console.error('Upload failed:', uploadError);
+        return null;
+    }
+
+    const { data, error } = await supabase
+        .from('documents')
+        .insert({
+            customer_id: customerId,
+            file_name: file.name,
+            storage_path: filePath,
+            file_type: file.type,
+            doc_type: docType,
+            uploaded_by: (await supabase.auth.getUser()).data.user?.id
+        })
+        .select()
+        .single();
+
+    if (error) console.error('Failed to record document:', error);
+    return data;
+};
+
+export const getCustomerDocuments = async (customerId) => {
+    const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('customer_id', customerId)
+        .order('uploaded_at', { ascending: false });
+
+    if (error) console.error('Failed to fetch documents:', error);
+    return data || [];
+};
+
+
+export const getDownloadUrl = async (storagePath, fileName) => {
+    const { data, error } = await supabase.storage
+        .from('customer-documents')
+        .createSignedUrl(storagePath, 3600, { download: fileName });
+
+    if (error) console.error('Failed to get URL:', error);
+    return data?.signedUrl;
+};
+
+export const deleteDocument = async (documentId, storagePath) => {
+    await supabase.storage.from('customer-documents').remove([storagePath]);
+    const { error } = await supabase.from('documents').delete().eq('id', documentId);
+    if (error) console.error('Failed to delete document:', error);
+};
