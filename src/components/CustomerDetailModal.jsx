@@ -503,9 +503,21 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (data) setActivityLogs(data);
     };
 
+    const urlCacheRef = useRef({});
+
     useEffect(() => {
         if (customer?.id) {
-            getCustomerDocuments(customer.id).then(setDocuments);
+            getCustomerDocuments(customer.id).then(docs => {
+                setDocuments(docs);
+                // Pre-generate signed view URLs in the background for instant preview
+                docs.forEach(doc => {
+                    if (!urlCacheRef.current[doc.storage_path]) {
+                        getViewUrl(doc.storage_path).then(url => {
+                            if (url) urlCacheRef.current[doc.storage_path] = url;
+                        });
+                    }
+                });
+            });
         }
     }, [customer?.id]);
 
@@ -517,6 +529,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const newDoc = await uploadDocument(file, customer.id, docType);
         if (newDoc) {
             setDocuments(prev => [newDoc, ...prev]);
+            // Pre-cache the new doc URL
+            getViewUrl(newDoc.storage_path).then(url => {
+                if (url) urlCacheRef.current[newDoc.storage_path] = url;
+            });
             await logActivity(
                 user.id,
                 'update',
@@ -544,7 +560,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handlePreviewDoc = async (doc) => {
-        const url = await getViewUrl(doc.storage_path);
+        // Use cached URL if available (instant), otherwise fetch
+        let url = urlCacheRef.current[doc.storage_path];
+        if (!url) {
+            url = await getViewUrl(doc.storage_path);
+            if (url) urlCacheRef.current[doc.storage_path] = url;
+        }
         if (url) setFilePreview({ doc, url });
     };
 

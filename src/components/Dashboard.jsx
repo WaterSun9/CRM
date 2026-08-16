@@ -54,24 +54,24 @@ export default function Dashboard({ user, onLogout }) {
     // ── Data fetching ──────────────────────────────────────────────────────────
     const fetchData = async (showSpinner = true) => {
         if (showSpinner) setLoading(true);
-        // Load customers
-        const { data, error } = await supabase
-            .from('admin').select('*').order('created_at', { ascending: false });
-        if (!error) setCustomers(data || []);
-        else console.error('Fetch error:', error);
+        // Load customers and metadata in parallel
+        const [customersRes, metaRes] = await Promise.all([
+            supabase.from('admin').select('*').order('created_at', { ascending: false }),
+            supabase.from('metadata').select('category, label'),
+        ]);
 
-        // Load metadata
-        const { data: metaData, error: metaErr } = await supabase
-            .from('metadata').select('category, label');
-        if (!metaErr && metaData) {
+        if (!customersRes.error) setCustomers(customersRes.data || []);
+        else console.error('Fetch error:', customersRes.error);
+
+        if (!metaRes.error && metaRes.data) {
             const grouped = {};
-            metaData.forEach(({ category, label }) => {
+            metaRes.data.forEach(({ category, label }) => {
                 if (!grouped[category]) grouped[category] = [];
                 grouped[category].push(label);
             });
             setMeta(grouped);
         } else {
-            console.error('Metadata fetch error:', metaErr);
+            console.error('Metadata fetch error:', metaRes.error);
         }
         if (showSpinner) setLoading(false);
     };
