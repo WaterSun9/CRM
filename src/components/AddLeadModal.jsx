@@ -194,6 +194,47 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             );
                         })}
                     </div>
+
+                    {/* Document Checklist — appears after payment type is selected */}
+                    {formData.payment_type && (
+                        <div className="mt-6 bg-stone-50 p-4 rounded-2xl border border-stone-100">
+                            <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-3">Document Checklist</h4>
+                            <div className="flex flex-col gap-2">
+                                {formData.payment_type?.trim().toLowerCase() !== 'cash' && (
+                                    <>
+                                        {[
+                                            { label: 'Adhaar Card', field: 'adhaar_card' },
+                                            { label: 'Pan Card', field: 'pan_card' },
+                                            { label: 'Index 2', field: 'index_2' },
+                                        ].map(item => (
+                                            <label key={item.field} className="flex items-center gap-2.5 cursor-pointer py-1">
+                                                <input type="checkbox" checked={!!formData[item.field]} onChange={e => handleChange(item.field, e.target.checked)}
+                                                    className="w-4 h-4 text-amber-500 border-stone-300 rounded focus:ring-amber-500" />
+                                                <span className="text-xs font-semibold text-stone-700">{item.label}</span>
+                                            </label>
+                                        ))}
+                                    </>
+                                )}
+                                {[
+                                    { label: 'Light Bill', field: 'light_bill' },
+                                    { label: 'Bank Details', field: 'bank_details' },
+                                ].map(item => (
+                                    <label key={item.field} className="flex items-center gap-2.5 cursor-pointer py-1">
+                                        <input type="checkbox" checked={!!formData[item.field]} onChange={e => handleChange(item.field, e.target.checked)}
+                                            className="w-4 h-4 text-amber-500 border-stone-300 rounded focus:ring-amber-500" />
+                                        <span className="text-xs font-semibold text-stone-700">{item.label}</span>
+                                    </label>
+                                ))}
+                                {formData.payment_type?.trim().toLowerCase() !== 'cash' && (
+                                    <label className="flex items-center gap-2.5 cursor-pointer py-1">
+                                        <input type="checkbox" checked={!!formData.bank_passbook} onChange={e => handleChange('bank_passbook', e.target.checked)}
+                                            className="w-4 h-4 text-amber-500 border-stone-300 rounded focus:ring-amber-500" />
+                                        <span className="text-xs font-semibold text-stone-700">Bank Passbook</span>
+                                    </label>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex gap-2 p-5 border-t border-stone-100 sticky bottom-0 bg-white rounded-b-2xl">
