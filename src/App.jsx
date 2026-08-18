@@ -96,10 +96,15 @@ export default function App() {
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
-        // Clear all Supabase auth tokens from localStorage to prevent stale auto-login
-        Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('sb-')) localStorage.removeItem(key);
-        });
+        // Clear all Supabase auth tokens from both sessionStorage and localStorage
+        if (typeof window !== 'undefined') {
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('sb-')) localStorage.removeItem(key);
+            });
+            Object.keys(sessionStorage).forEach(key => {
+                if (key.startsWith('sb-')) sessionStorage.removeItem(key);
+            });
+        }
         setUser(null);
     };
 

@@ -5,7 +5,7 @@
 import {
     Users, ClipboardList, IndianRupee, Package, PauseCircle, Truck,
     Wrench, Camera, Send, Gauge, Zap, Activity, ClipboardCheck, CheckCircle2,
-    Clock, AlertTriangle, Banknote, Tag,
+    Clock, AlertTriangle, Banknote, Tag, ShoppingBag
 } from 'lucide-react';
 
 export const PRIMARY_STAGES = [
@@ -13,6 +13,7 @@ export const PRIMARY_STAGES = [
     { id: 'REGISTRATION', label: 'Registration', icon: ClipboardList },
     { id: 'LOAN', label: 'Loan', icon: IndianRupee },
     { id: 'CASH', label: 'Cash', icon: Banknote },
+    { id: 'MATERIAL ORDER', label: 'Material Order', icon: ShoppingBag },
     { id: 'MATERIAL INTEGRATION', label: 'Material Integration', icon: Package },
     { id: 'HOLD PROCUREMENT', label: 'Hold Procurement', icon: PauseCircle },
     { id: 'MATERIAL DELIVERY', label: 'Material Delivery', icon: Truck },

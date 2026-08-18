@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument } from '../utils';
+import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas } from '../utils';
 import { 
     User, Phone, Mail, MapPin, Zap, Building2, Sun,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle,
     Hash, Folder, Tag, ChevronLeft, Search, ClipboardList, Banknote, Calendar, ClipboardCheck,
-    Camera, Paperclip, Eye, Trash2, Upload, Image as ImageIcon, X
+    Camera, Paperclip, Eye, Trash2, Upload, Image as ImageIcon, X,
+    Printer, ShoppingBag, Layers, Ruler, IndianRupee
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
 
@@ -31,6 +32,48 @@ export default function VendorPortal({ user, onLogout }) {
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const [previewDoc, setPreviewDoc] = useState(null);
     const fileInputRef = useRef(null);
+
+    // BOM Print Modal for Vendor (Read-Only)
+    const [showBomModal, setShowBomModal] = useState(false);
+    const [targetBomCust, setTargetBomCust] = useState(null);
+    const [bomData, setBomData] = useState(null);
+    const [bomItems, setBomItems] = useState([]);
+    const [loadingBom, setLoadingBom] = useState(false);
+
+    // Fetch BOM for Print (Read-Only)
+    const handleOpenBomModal = async (cust) => {
+        const target = cust || selectedCust;
+        if (!target?.id) return;
+        setTargetBomCust(target);
+        setShowBomModal(true);
+        setLoadingBom(true);
+        try {
+            const { data: bom, error: bomErr } = await supabase
+                .from('bom')
+                .select('*')
+                .eq('admin_id', target.id)
+                .maybeSingle();
+
+            if (bom) {
+                setBomData(bom);
+                const { data: items, error: itemsErr } = await supabase
+                    .from('bom_items')
+                    .select('*')
+                    .eq('bom_id', bom.id)
+                    .order('sr_no', { ascending: true });
+                setBomItems(items || []);
+            } else {
+                setBomData(null);
+                setBomItems([]);
+            }
+        } catch (e) {
+            console.error('Error fetching BOM for vendor:', e);
+            setBomData(null);
+            setBomItems([]);
+        } finally {
+            setLoadingBom(false);
+        }
+    };
 
     // Fetch customer leads assigned to this vendor
     const fetchCustomers = async () => {
@@ -388,7 +431,20 @@ export default function VendorPortal({ user, onLogout }) {
                                                 </span>
                                             </div>
                                         </div>
-                                        <ChevronRight className="w-5 h-5 text-stone-300 flex-shrink-0 group-hover:text-stone-700 transition-colors" />
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleOpenBomModal(cust);
+                                                }}
+                                                className="text-[10px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                                title="View & Print BOM"
+                                            >
+                                                <Printer size={11} /> Print BOM
+                                            </button>
+                                            <ChevronRight className="w-4.5 h-4.5 text-stone-300 group-hover:text-stone-700 transition-colors" />
+                                        </div>
                                     </div>
                                 );
                             })
@@ -403,12 +459,21 @@ export default function VendorPortal({ user, onLogout }) {
             ) : (
                 /* Customer Details & Editing View */
                 <main className="flex-1 p-4 max-w-md mx-auto w-full space-y-4 animate-in slide-in-from-right duration-300">
-                    <button
-                        onClick={() => setView('list')}
-                        className="flex items-center gap-1 text-xs font-bold text-stone-500 hover:text-stone-800 transition-colors py-1 cursor-pointer"
-                    >
-                        <ChevronLeft className="w-4.5 h-4.5" /> Back to Dashboard
-                    </button>
+                    <div className="flex items-center justify-between">
+                        <button
+                            onClick={() => setView('list')}
+                            className="flex items-center gap-1 text-xs font-bold text-stone-500 hover:text-stone-800 transition-colors py-1 cursor-pointer"
+                        >
+                            <ChevronLeft className="w-4.5 h-4.5" /> Back to Dashboard
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleOpenBomModal(selectedCust)}
+                            className="text-[11px] font-bold text-stone-800 hover:text-stone-950 bg-white hover:bg-stone-50 border border-stone-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                            <Printer size={12} className="text-amber-600" /> Print BOM
+                        </button>
+                    </div>
 
                     <div className="bg-white p-5 rounded-[24px] border border-stone-150 shadow-sm space-y-4">
                         <div className="border-b border-stone-100 pb-3">
@@ -770,6 +835,192 @@ export default function VendorPortal({ user, onLogout }) {
                     onDownload={() => window.open(previewDoc.url, '_blank')}
                 />
             )}
+
+            {/* BOM View & Print Modal for Vendor (Read-Only) */}
+            {showBomModal && targetBomCust && (
+                <div className="fixed inset-0 z-[999] bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+                        {/* Modal Top Bar */}
+                        <div className="px-5 py-4 bg-stone-900 text-white flex items-center justify-between no-print">
+                            <div className="flex items-center gap-2">
+                                <Printer size={16} className="text-amber-400" />
+                                <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider">
+                                    Bill of Materials (BOM) — {targetBomCust.customer_name}
+                                </h3>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => window.print()}
+                                    className="bg-amber-500 hover:bg-amber-400 text-stone-950 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md"
+                                >
+                                    <Printer size={13} /> Print Document
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowBomModal(false)}
+                                    className="text-stone-400 hover:text-white p-1 rounded-lg transition"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="flex-1 overflow-y-auto p-6 bg-white text-stone-900 print-document" id="printable-vendor-bom">
+                            {loadingBom ? (
+                                <div className="py-16 flex flex-col items-center justify-center text-stone-400">
+                                    <Loader2 className="w-7 h-7 animate-spin text-amber-500 mb-2" />
+                                    <p className="text-xs font-bold">Loading Bill of Materials...</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Company Header */}
+                                    <div className="border-b-2 border-stone-900 pb-3 mb-5 text-center">
+                                        <h1 className="text-lg font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
+                                        <p className="text-[11px] font-semibold text-stone-600">Solar PV Project Integration & Material Loading Checklist</p>
+                                        <div className="inline-block mt-2 px-2.5 py-0.5 bg-stone-100 border border-stone-300 rounded text-[10px] font-black uppercase tracking-widest text-stone-800">
+                                            BILL OF MATERIALS (BOM) — {bomData?.bom_type ? `${bomData.bom_type} TYPE` : 'GENERAL'}
+                                        </div>
+                                    </div>
+
+                                    {/* Customer Reference */}
+                                    <div className="mb-4">
+                                        <h3 className="text-[11px] font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">1. Customer & Site Details</h3>
+                                        <table className="w-full text-[11px] border border-stone-300">
+                                            <tbody>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Party Name:</td>
+                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.customer_name || '–'}</td>
+                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Contact Number:</td>
+                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.phone_number || '–'}</td>
+                                                </tr>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">System Capacity:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.system_capacity_kwp ? `${targetBomCust.system_capacity_kwp} kWp` : '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Channel Partner:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.channel_partner || '–'}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">File No / Folder No:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.folder_no || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Consumer No:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.consumer_no || '–'}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Material Order Specifications */}
+                                    <div className="mb-4">
+                                        <h3 className="text-[11px] font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">2. Material Order Specifications</h3>
+                                        <table className="w-full text-[11px] border border-stone-300">
+                                            <tbody>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Roof / Shed:</td>
+                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.roof_shed || '–'}</td>
+                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Structure Leg Height:</td>
+                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.structure_leg_height || '–'}</td>
+                                                </tr>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">DC Cable Length:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.dc_cable ? `${targetBomCust.dc_cable} Meters` : '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">AC Cable Length:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.ac_cable ? `${targetBomCust.ac_cable} Meters` : '–'}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Invoice Value:</td>
+                                                    <td colSpan={3} className="p-1.5 font-bold text-stone-900">{targetBomCust.invoice_value ? `₹ ${toIndianCommas(targetBomCust.invoice_value)}` : '–'}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* BOM Items Table */}
+                                    <div className="mb-6">
+                                        <h3 className="text-[11px] font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">3. BOM Equipment Checklist</h3>
+                                        {bomItems.length > 0 ? (
+                                            <table className="w-full text-[11px] border-collapse border border-stone-400">
+                                                <thead>
+                                                    <tr className="bg-stone-100 text-stone-900 uppercase font-black text-[9px]">
+                                                        <th className="border border-stone-400 p-1.5 text-center w-8">#</th>
+                                                        <th className="border border-stone-400 p-1.5 text-left">Product Name</th>
+                                                        <th className="border border-stone-400 p-1.5 text-left w-24">Make</th>
+                                                        <th className="border border-stone-400 p-1.5 text-center w-14">UOM</th>
+                                                        <th className="border border-stone-400 p-1.5 text-left w-28">Integration By</th>
+                                                        <th className="border border-stone-400 p-1.5 text-left">Note</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {bomItems.map((item, idx) => (
+                                                        <tr key={idx} className="border-b border-stone-300">
+                                                            <td className="border border-stone-400 p-1.5 text-center font-bold text-stone-500">{idx + 1}</td>
+                                                            <td className="border border-stone-400 p-1.5 font-bold text-stone-900">{item.product_name || '–'}</td>
+                                                            <td className="border border-stone-400 p-1.5 font-medium">{item.make || '–'}</td>
+                                                            <td className="border border-stone-400 p-1.5 text-center font-semibold">{item.uom || '–'}</td>
+                                                            <td className="border border-stone-400 p-1.5 font-medium">{item.integration_by || '–'}</td>
+                                                            <td className="border border-stone-400 p-1.5 text-stone-600">{item.note || '–'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <p className="text-xs text-stone-400 italic text-center py-4 bg-stone-50 rounded-xl border border-stone-200">
+                                                No BOM checklist items configured yet for this customer.
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* Signatures */}
+                                    <div className="grid grid-cols-3 gap-4 pt-6 text-center border-t border-stone-300 text-[10px]">
+                                        <div>
+                                            <div className="border-b border-stone-400 pb-6 mb-1 font-bold text-stone-700">
+                                                {bomData?.paper_prepared_by || ''}
+                                            </div>
+                                            <p className="font-black uppercase text-stone-900">Prepared By</p>
+                                        </div>
+                                        <div>
+                                            <div className="border-b border-stone-400 pb-6 mb-1 font-bold text-stone-700">
+                                                {bomData?.material_loaded_by || ''}
+                                            </div>
+                                            <p className="font-black uppercase text-stone-900">Loaded By</p>
+                                        </div>
+                                        <div>
+                                            <div className="border-b border-stone-400 pb-6 mb-1"></div>
+                                            <p className="font-black uppercase text-stone-900">Vendor Signature</p>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Print Styles for Vendor BOM */}
+            <style>{`
+                @media print {
+                    body * {
+                        visibility: hidden;
+                    }
+                    #printable-vendor-bom, #printable-vendor-bom * {
+                        visibility: visible;
+                    }
+                    #printable-vendor-bom {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                        margin: 0;
+                        padding: 15px;
+                        background: #ffffff !important;
+                        color: #000000 !important;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
+                }
+            `}</style>
         </div>
     );
 }

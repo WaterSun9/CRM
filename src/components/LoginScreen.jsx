@@ -84,20 +84,22 @@ export default function LoginScreen({ onLogin }) {
 
                 {!showForgot ? (
                     /* ─── Login Form ─── */
-                    <form onSubmit={handleLogin}>
+                    <form onSubmit={handleLogin} autoComplete="off">
                         <div className="space-y-4 mb-4">
                             <div className="relative">
                                 <Mail className="absolute left-4 top-3.5 w-4 h-4 text-stone-400" />
                                 <input type="email" placeholder="Email Address" required value={email}
+                                    autoComplete="off"
                                     onChange={e => setEmail(e.target.value)}
                                     className="w-full pl-11 p-3.5 bg-stone-50 rounded-2xl border border-stone-100 outline-none font-medium focus:border-amber-400 transition-all text-sm" />
                             </div>
                             <div className="relative">
                                 <User className="absolute left-4 top-3.5 w-4 h-4 text-stone-400" />
                                 <input type={showPw ? 'text' : 'password'} placeholder="Password" required value={password}
+                                    autoComplete="current-password"
                                     onChange={e => setPassword(e.target.value)}
                                     className="w-full pl-11 pr-11 p-3.5 bg-stone-50 rounded-2xl border border-stone-100 outline-none font-medium focus:border-amber-400 transition-all text-sm" />
-                                <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-4 top-3.5 text-stone-400 hover:text-stone-600">
+                                <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-4 top-3.5 text-stone-400 hover:text-stone-600 cursor-pointer">
                                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                 </button>
                             </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { ShieldAlert, ClipboardCheck } from 'lucide-react';
 
 export default function DiscomInspectionTab({
     customer,
@@ -14,12 +14,22 @@ export default function DiscomInspectionTab({
     saving,
     setSaving
 }) {
+    const isVendor = user?.userType === 'vendor' || user?.role === 'Vendors';
+    const isAdmin = user?.userType === 'admin' || user?.role === 'Super Admin' || user?.role === 'Admin';
+    const canEditInspection = isVendor || (isAdmin && isEditable);
+
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
-            {isOffice && (
-                <div className="p-3.5 bg-red-50 border border-red-100 text-red-800 rounded-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in duration-300">
-                    <AlertTriangle className="w-4.5 h-4.5 text-red-600 flex-shrink-0" />
-                    <span>You do not have permission to edit this stage</span>
+            {/* Vendor permission info banner if not vendor */}
+            {!isVendor && (
+                <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 flex items-center gap-3">
+                    <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                    <div>
+                        <p className="text-xs font-bold text-amber-900">Vendor Controlled Stage</p>
+                        <p className="text-[11px] text-amber-700 font-medium">
+                            Discom Inspection verification reports are configured directly by the Allotted Vendor. Office users have view-only access.
+                        </p>
+                    </div>
                 </div>
             )}
             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
@@ -28,7 +38,7 @@ export default function DiscomInspectionTab({
                         <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest font-bold">Discom Inspection</h4>
                         <p className="text-[11px] text-stone-500 font-medium mt-0.5">Utility official inspection schedules and updates.</p>
                     </div>
-                    {isEditable && editData.discom_inspection !== customer.discom_inspection && (
+                    {canEditInspection && editData.discom_inspection !== customer.discom_inspection && (
                         <button
                             onClick={async () => {
                                 setSaving(true);
@@ -60,7 +70,7 @@ export default function DiscomInspectionTab({
                         return (
                             <button
                                 key={tag.id}
-                                disabled={!isEditable}
+                                disabled={!canEditInspection}
                                 onClick={() => {
                                     setEditData(prev => ({ ...prev, discom_inspection: tag.id }));
                                 }}

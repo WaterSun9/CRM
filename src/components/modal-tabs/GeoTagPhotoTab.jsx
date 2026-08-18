@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, ClipboardList } from 'lucide-react';
+import { Camera, ClipboardList, ShieldAlert } from 'lucide-react';
 import { CheckboxRemarkItem } from './shared';
 
 export default function GeoTagPhotoTab({
@@ -20,7 +20,8 @@ export default function GeoTagPhotoTab({
 }) {
     // Vendor can edit geo tag, office can only view
     const isVendor = user?.userType === 'vendor' || user?.role === 'Vendors';
-    const canEditGeoTag = isEditable || isVendor;
+    const isAdmin = user?.userType === 'admin' || user?.role === 'Super Admin' || user?.role === 'Admin';
+    const canEditGeoTag = isVendor || (isAdmin && isEditable);
 
     const handleChange = (field, val) => {
         setEditData(prev => ({ ...prev, [field]: val }));
@@ -31,6 +32,19 @@ export default function GeoTagPhotoTab({
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
+            {/* Vendor permission info banner if not vendor */}
+            {!isVendor && (
+                <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 flex items-center gap-3">
+                    <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                    <div>
+                        <p className="text-xs font-bold text-amber-900">Vendor Controlled Stage</p>
+                        <p className="text-[11px] text-amber-700 font-medium">
+                            Geo Tag Photo specifications and photographs are configured directly by the Allotted Vendor. Office users have view-only access.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Geo Tag Status Card */}
             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
                 <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">

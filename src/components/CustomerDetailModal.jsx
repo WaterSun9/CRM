@@ -28,6 +28,7 @@ import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
 import LoanTab from './modal-tabs/LoanTab';
 import CashTab from './modal-tabs/CashTab';
+import MaterialOrderTab from './modal-tabs/MaterialOrderTab';
 import MaterialIntegrationTab from './modal-tabs/MaterialIntegrationTab';
 import HoldProcurementTab from './modal-tabs/HoldProcurementTab';
 import MaterialDeliveryTab from './modal-tabs/MaterialDeliveryTab';
@@ -1206,6 +1207,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (editData.payment_type !== customer.payment_type) return true;
         if (editData.installation_status !== customer.installation_status) return true;
         if (editData.geo_tag_status !== customer.geo_tag_status) return true;
+        if ((editData.roof_shed || '') !== (customer.roof_shed || '')) return true;
+        if ((editData.dc_cable || '') !== (customer.dc_cable || '')) return true;
+        if ((editData.ac_cable || '') !== (customer.ac_cable || '')) return true;
+        if ((editData.structure_leg_height || '') !== (customer.structure_leg_height || '')) return true;
+        if ((editData.invoice_value || '') !== (customer.invoice_value || '')) return true;
         return false;
     })();
 
@@ -1456,6 +1462,23 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         />
                     )}
 
+                    {/* ── MATERIAL ORDER ── */}
+                    {activeTab === 'MATERIAL ORDER' && (
+                        <MaterialOrderTab
+                            customer={customer}
+                            editData={editData}
+                            setEditData={setEditData}
+                            isEditable={isEditable}
+                            onUpdate={onUpdate}
+                            logActivity={logActivity}
+                            fetchLogs={fetchLogs}
+                            user={user}
+                            meta={meta}
+                            saving={saving}
+                            setSaving={setSaving}
+                        />
+                    )}
+
                     {/* ── MATERIAL INTEGRATION ── */}
                     {activeTab === 'MATERIAL INTEGRATION' && (
                         <MaterialIntegrationTab
@@ -1463,6 +1486,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             editData={editData}
                             isEditable={isEditable}
                             user={user}
+                            meta={meta}
                             logActivity={logActivity}
                             editingSection={editingSection}
                             setEditingSection={setEditingSection}

@@ -4,9 +4,10 @@ import {
     User, Phone, Mail, MapPin, Zap, Building2, Sun,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle,
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
-    ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X
+    ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
+    ShoppingBag, Ruler, IndianRupee, Layers, Save
 } from 'lucide-react';
-import { logActivity } from '../utils';
+import { logActivity, toIndianCommas, parseIndianNumber } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES } from '../constants';
 import AddLeadModal from './AddLeadModal';
@@ -25,11 +26,22 @@ export default function AgentPortal({ user, onLogout }) {
         'LEADS': true
     });
     
-    // Customer details view (read-only)
+    // Customer details view (read-only with Material Order editing)
     const [selectedCust, setSelectedCust] = useState(null);
     const [custDocs, setCustDocs] = useState([]);
     const [loadingDocs, setLoadingDocs] = useState(false);
     const [previewDoc, setPreviewDoc] = useState(null);
+
+    // Material Order State for Agent Editing
+    const [agentOrderData, setAgentOrderData] = useState({
+        roof_shed: '',
+        dc_cable: '',
+        ac_cable: '',
+        structure_leg_height: '',
+        invoice_value: ''
+    });
+    const [savingOrder, setSavingOrder] = useState(false);
+    const [orderSavedSuccess, setOrderSavedSuccess] = useState(false);
 
     // Metadata
     const [meta, setMeta] = useState({});
@@ -78,17 +90,69 @@ export default function AgentPortal({ user, onLogout }) {
         fetchMetadata();
     }, []);
 
-    // Load documents when a customer profile is opened
+    // Load documents and sync Material Order data when a customer profile is opened
     useEffect(() => {
         if (selectedCust?.id) {
             setLoadingDocs(true);
             getCustomerDocuments(selectedCust.id)
                 .then(docs => setCustDocs(docs || []))
                 .finally(() => setLoadingDocs(false));
+
+            setAgentOrderData({
+                roof_shed: selectedCust.roof_shed || '',
+                dc_cable: selectedCust.dc_cable ?? '',
+                ac_cable: selectedCust.ac_cable ?? '',
+                structure_leg_height: selectedCust.structure_leg_height || '',
+                invoice_value: selectedCust.invoice_value ?? ''
+            });
+            setOrderSavedSuccess(false);
         } else {
             setCustDocs([]);
         }
     }, [selectedCust?.id]);
+
+    const handleSaveAgentMaterialOrder = async (nextStage = null) => {
+        if (!selectedCust) return;
+        setSavingOrder(true);
+        setOrderSavedSuccess(false);
+        try {
+            const updates = {
+                roof_shed: agentOrderData.roof_shed || null,
+                dc_cable: agentOrderData.dc_cable ? Number(agentOrderData.dc_cable) : null,
+                ac_cable: agentOrderData.ac_cable ? Number(agentOrderData.ac_cable) : null,
+                structure_leg_height: agentOrderData.structure_leg_height || null,
+                invoice_value: agentOrderData.invoice_value ? Number(agentOrderData.invoice_value) : null
+            };
+
+            if (nextStage) {
+                updates.stage = nextStage;
+            }
+
+            const { error } = await supabase
+                .from('admin')
+                .update(updates)
+                .eq('id', selectedCust.id);
+
+            if (!error) {
+                let logMsg = `Channel Partner ${user.name} configured Material Order (Roof: ${updates.roof_shed || 'N/A'}, DC: ${updates.dc_cable || 0}m, AC: ${updates.ac_cable || 0}m, Height: ${updates.structure_leg_height || 'N/A'}, Invoice: ₹${updates.invoice_value || 0})`;
+                if (nextStage) {
+                    logMsg += ` and advanced stage to ${nextStage}`;
+                }
+
+                await logActivity(user.id, 'update', `${selectedCust.customer_name}: ${logMsg}`, '', selectedCust.id);
+                setOrderSavedSuccess(true);
+                setSelectedCust(prev => ({ ...prev, ...updates }));
+                fetchCustomers();
+            } else {
+                alert('Error saving Material Order: ' + error.message);
+            }
+        } catch (err) {
+            console.error('Failed to save material order:', err);
+            alert('Failed to save material order.');
+        } finally {
+            setSavingOrder(false);
+        }
+    };
 
     // Submit new lead from AddLeadModal
     const handleSubmitLead = async (formData, attachedFiles = []) => {
@@ -570,6 +634,136 @@ export default function AgentPortal({ user, onLogout }) {
                                     <div className="flex items-center justify-between py-2">
                                         <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Meter Installation</span>
                                         <span className="font-semibold text-stone-900">{selectedCust.meter_installation?.status === 'Yes' ? 'Complete' : 'Pending'}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section: Material Order Specifications (Configured by Agent / Channel Partner) */}
+                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-150/80 space-y-3.5">
+                                <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                                    <div>
+                                        <h4 className="text-[9px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1.5">
+                                            <ShoppingBag size={11} /> Material Order Specifications
+                                        </h4>
+                                        <p className="text-[10px] text-stone-400 font-medium">Configured by you as Channel Partner</p>
+                                    </div>
+                                    {orderSavedSuccess && (
+                                        <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                            <CheckCircle2 size={11} /> Saved!
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="space-y-3 text-xs">
+                                    {/* Roof / Shed Type */}
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide flex items-center gap-1">
+                                            <Layers size={11} className="text-amber-500" /> Roof / Shed Type
+                                        </label>
+                                        <select
+                                            value={agentOrderData.roof_shed}
+                                            onChange={(e) => setAgentOrderData(prev => ({ ...prev, roof_shed: e.target.value }))}
+                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                        >
+                                            <option value="">Select Roof / Shed...</option>
+                                            {['Roof', 'Shed'].map(opt => (
+                                                <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* DC Cable & AC Cable */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide flex items-center gap-1">
+                                                <Zap size={11} className="text-amber-500" /> DC Cable (m)
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder="e.g. 50"
+                                                    value={agentOrderData.dc_cable}
+                                                    onChange={(e) => setAgentOrderData(prev => ({ ...prev, dc_cable: e.target.value }))}
+                                                    className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 pr-8"
+                                                />
+                                                <span className="absolute right-3 top-2 text-[10px] font-bold text-stone-400 select-none">m</span>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide flex items-center gap-1">
+                                                <Zap size={11} className="text-amber-500" /> AC Cable (m)
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder="e.g. 30"
+                                                    value={agentOrderData.ac_cable}
+                                                    onChange={(e) => setAgentOrderData(prev => ({ ...prev, ac_cable: e.target.value }))}
+                                                    className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 pr-8"
+                                                />
+                                                <span className="absolute right-3 top-2 text-[10px] font-bold text-stone-400 select-none">m</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Structure Leg Height */}
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide flex items-center gap-1">
+                                            <Ruler size={11} className="text-amber-500" /> Structure Leg Height
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. 4 ft, 6 ft, 8 ft..."
+                                            value={agentOrderData.structure_leg_height}
+                                            onChange={(e) => setAgentOrderData(prev => ({ ...prev, structure_leg_height: e.target.value }))}
+                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                        />
+                                    </div>
+
+                                    {/* Invoice Value */}
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide flex items-center gap-1">
+                                            <IndianRupee size={11} className="text-amber-500" /> Invoice Value (₹)
+                                        </label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-2 text-[11px] font-bold text-stone-400 select-none">₹</span>
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                placeholder="e.g. 150000"
+                                                value={agentOrderData.invoice_value ? toIndianCommas(agentOrderData.invoice_value) : ''}
+                                                onChange={(e) => setAgentOrderData(prev => ({ ...prev, invoice_value: parseIndianNumber(e.target.value) }))}
+                                                className="w-full bg-white border border-stone-200 rounded-xl pl-7 pr-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                                        <button
+                                            type="button"
+                                            disabled={savingOrder}
+                                            onClick={() => handleSaveAgentMaterialOrder(null)}
+                                            className="flex-1 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                        >
+                                            {savingOrder ? (
+                                                <><Loader2 size={12} className="animate-spin" /> Saving...</>
+                                            ) : (
+                                                <><Save size={12} /> Save Material Order</>
+                                            )}
+                                        </button>
+                                        {selectedCust.stage === 'MATERIAL ORDER' && (
+                                            <button
+                                                type="button"
+                                                disabled={savingOrder}
+                                                onClick={() => handleSaveAgentMaterialOrder('MATERIAL INTEGRATION')}
+                                                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 cursor-pointer disabled:opacity-50"
+                                            >
+                                                <CheckCircle2 size={12} /> Move to Material Integration
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>

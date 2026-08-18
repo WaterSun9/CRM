@@ -3,16 +3,18 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3 } from 'lucide-react';
+import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck } from 'lucide-react';
 import { logActivity } from '../utils';
 
 export default function ChannelPartnerManagementView({ customers = [], currentUser }) {
     const [partners, setPartners] = useState([]);
     const [brands, setBrands] = useState([]);
     const [registrations, setRegistrations] = useState([]);
+    const [integrations, setIntegrations] = useState([]);
     const [newPartner, setNewPartner] = useState('');
     const [newBrand, setNewBrand] = useState('');
     const [newRegistration, setNewRegistration] = useState('');
+    const [newIntegration, setNewIntegration] = useState('');
     const [activeManageCategory, setActiveManageCategory] = useState(null);
     const [editingId, setEditingId] = useState(null);
     const [editingLabel, setEditingLabel] = useState('');
@@ -24,23 +26,25 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [editingVendorName, setEditingVendorName] = useState('');
     const [editingVendorEmail, setEditingVendorEmail] = useState('');
 
-    // Fetch partners, brands, and registrations from metadata table
+    // Fetch partners, brands, registrations, and integrations from metadata table
     const fetchMetadata = async () => {
         try {
             const { data, error } = await supabase
                 .from('metadata')
                 .select('id, category, label')
-                .in('category', ['channel_partner', 'module_brand', 'registration_by']);
+                .in('category', ['channel_partner', 'module_brand', 'registration_by', 'integration_by']);
 
             if (error) throw error;
 
             const partnerList = data.filter(d => d.category === 'channel_partner');
             const brandList = data.filter(d => d.category === 'module_brand');
             const registrationList = data.filter(d => d.category === 'registration_by');
+            const integrationList = data.filter(d => d.category === 'integration_by');
 
             setPartners(partnerList);
             setBrands(brandList);
             setRegistrations(registrationList);
+            setIntegrations(integrationList);
         } catch (e) {
             console.error('Error fetching metadata:', e);
         } finally {
@@ -143,6 +147,33 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         }
     };
 
+    // Add new Integration Staff
+    const handleAddIntegration = async () => {
+        const val = newIntegration.trim();
+        if (!val) return;
+
+        // Check for duplicates
+        if (integrations.some(i => i.label.toLowerCase() === val.toLowerCase())) {
+            alert('This Integration Staff member already exists.');
+            return;
+        }
+
+        try {
+            const { data, error } = await supabase
+                .from('metadata')
+                .insert({ category: 'integration_by', label: val })
+                .select();
+
+            if (error) throw error;
+
+            setIntegrations(prev => [...prev, ...data]);
+            setNewIntegration('');
+            await logActivity(currentUser.id, 'create', `Added new Integration Staff: "${val}"`);
+        } catch (e) {
+            console.error('Error adding integration staff:', e);
+        }
+    };
+
     // Add new Vendor
     const handleAddVendor = async () => {
         const name = newVendorName.trim();
@@ -239,6 +270,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         if (category === 'channel_partner') listToCheck = partners;
         else if (category === 'module_brand') listToCheck = brands;
         else if (category === 'registration_by') listToCheck = registrations;
+        else if (category === 'integration_by') listToCheck = integrations;
 
         if (listToCheck.some(x => x.id !== id && x.label.toLowerCase() === trimmed.toLowerCase())) {
             alert('This entry already exists.');
@@ -268,6 +300,14 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                 if (adminError) throw adminError;
             }
 
+            // Update in bom_items table if integration_by
+            if (category === 'integration_by') {
+                await supabase
+                    .from('bom_items')
+                    .update({ integration_by: trimmed })
+                    .eq('integration_by', oldLabel);
+            }
+
             // Update state
             if (category === 'channel_partner') {
                 setPartners(prev => prev.map(x => x.id === id ? { ...x, label: trimmed } : x));
@@ -275,6 +315,8 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                 setBrands(prev => prev.map(x => x.id === id ? { ...x, label: trimmed } : x));
             } else if (category === 'registration_by') {
                 setRegistrations(prev => prev.map(x => x.id === id ? { ...x, label: trimmed } : x));
+            } else if (category === 'integration_by') {
+                setIntegrations(prev => prev.map(x => x.id === id ? { ...x, label: trimmed } : x));
             }
 
             await logActivity(currentUser.id, 'update', `Renamed ${category} from "${oldLabel}" to "${trimmed}"`);
@@ -316,6 +358,12 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     .from('admin')
                     .update({ registration_by: null })
                     .eq('registration_by', label);
+            } else if (category === 'integration_by') {
+                setIntegrations(prev => prev.filter(i => i.id !== id));
+                await supabase
+                    .from('bom_items')
+                    .update({ integration_by: null })
+                    .eq('integration_by', label);
             }
             await logActivity(currentUser.id, 'delete', `Deleted ${category}: "${label}" (cleared from customers)`);
         } catch (e) {
@@ -389,7 +437,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
 
                         {/* Channel Partners Card */}
                         <button
@@ -441,6 +489,25 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                 <div>
                                     <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Registration Staff</h3>
                                     <p className="text-xs text-stone-400 font-medium mt-0.5">{registrations.length} active registration staff</p>
+                                </div>
+                            </div>
+                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
+                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
+                            </span>
+                        </button>
+
+                        {/* Integration Staff Card */}
+                        <button
+                            onClick={() => setActiveManageCategory('integration_by')}
+                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                        >
+                            <div className="space-y-3 w-full">
+                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
+                                    <UserCheck className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Integration Staff</h3>
+                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{integrations.length} active integration staff</p>
                                 </div>
                             </div>
                             <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
@@ -502,6 +569,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     setInputVal = setNewRegistration;
                     addHandler = handleAddRegistration;
                     placeholder = 'Enter processor name...';
+                } else if (activeManageCategory === 'integration_by') {
+                    title = 'Manage Integration Staff';
+                    list = integrations;
+                    inputVal = newIntegration;
+                    setInputVal = setNewIntegration;
+                    addHandler = handleAddIntegration;
+                    placeholder = 'Enter integration staff name...';
                 } else if (activeManageCategory === 'vendor') {
                     title = 'Manage Vendors Allotment';
                     list = vendors;
