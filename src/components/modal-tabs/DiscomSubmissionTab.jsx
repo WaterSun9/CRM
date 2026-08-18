@@ -56,8 +56,9 @@ export default function DiscomSubmissionTab({
                     <CheckboxRemarkItem label="File Status Checked" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
                     <CheckboxRemarkItem label="DCR Certificate Checked" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
                     <CheckboxRemarkItem label="Signature Photo Checked" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
+                    <CheckboxRemarkItem label="Stamp Checked" field="stamp" value={editData.stamp} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
                 </div>
-                {isEditable && (editData.file_status !== customer.file_status || editData.dcr_certificate !== customer.dcr_certificate || editData.signature_pic !== customer.signature_pic) && (
+                {isEditable && (editData.file_status !== customer.file_status || editData.dcr_certificate !== customer.dcr_certificate || editData.signature_pic !== customer.signature_pic || editData.stamp !== customer.stamp) && (
                     <div className="flex justify-end pt-2">
                         <button
                             type="button"
@@ -66,9 +67,10 @@ export default function DiscomSubmissionTab({
                                 await onUpdate(customer.id, { 
                                     file_status: editData.file_status,
                                     dcr_certificate: editData.dcr_certificate,
-                                    signature_pic: editData.signature_pic
+                                    signature_pic: editData.signature_pic,
+                                    stamp: editData.stamp
                                 });
-                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Utility File Checklist (File Status: ${editData.file_status ? 'Checked' : 'Unchecked'}, DCR Certificate: ${editData.dcr_certificate ? 'Checked' : 'Unchecked'}, Signature Photo: ${editData.signature_pic ? 'Checked' : 'Unchecked'})`, '', customer.id);
+                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Utility File Checklist (File Status: ${editData.file_status ? 'Checked' : 'Unchecked'}, DCR Certificate: ${editData.dcr_certificate ? 'Checked' : 'Unchecked'}, Signature Photo: ${editData.signature_pic ? 'Checked' : 'Unchecked'}, Stamp: ${editData.stamp ? 'Checked' : 'Unchecked'})`, '', customer.id);
                                 setSaving(false);
                                 fetchLogs();
                             }}

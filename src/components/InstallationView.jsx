@@ -13,14 +13,29 @@ const INSTALLATION_TAG_COLORS = {
     'Pending': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' }
 };
 
+export const normalizeInstallationStatus = (status) => {
+    if (!status) return null;
+    const s = String(status).trim().toLowerCase();
+    if (s === 'yes' || s === 'completed' || s === 'done' || s === 'installed') return 'Yes';
+    if (s === 'no' || s === 'rejected' || s === 'cancelled') return 'No';
+    if (s === 'pending' || s === 'in progress' || s === 'waiting') return 'Pending';
+    return 'Pending'; // fallback so any truthy installation status is accurately categorized
+};
+
 export default function InstallationView({ customers, onSelectCustomer }) {
     const [activeFilter, setActiveFilter] = useState(null);
 
-    const tagged = customers.filter(c => c.installation_status);
+    // Normalize customer installation statuses for consistent grouping
+    const normalizedCustomers = (customers || []).map(c => ({
+        ...c,
+        normalized_installation_status: normalizeInstallationStatus(c.installation_status)
+    }));
+
+    const tagged = normalizedCustomers.filter(c => c.normalized_installation_status);
 
     const grouped = INSTALLATION_TAGS.reduce((acc, tag) => {
-        const group = tagged.filter(c => c.installation_status === tag.id);
-        if (group.length > 0) acc[tag.id] = group;
+        const group = tagged.filter(c => c.normalized_installation_status === tag.id);
+        acc[tag.id] = group;
         return acc;
     }, {});
 

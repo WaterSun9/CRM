@@ -468,6 +468,24 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (showAgreementPopup) {
             const rawDate = editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0];
             const formattedDate = formatDateToDDMMYYYY(rawDate);
+
+            // Find signature and stamp documents
+            const sigDoc = documents.find(d => 
+                d.doc_type === 'signature_pic' || 
+                d.doc_type === 'signature' || 
+                d.doc_type === 'firstPartySignature' || 
+                d.doc_type === 'customer_signature'
+            );
+            const stampDoc = documents.find(d => 
+                d.doc_type === 'stamp' || 
+                d.doc_type === 'stamp_pic' || 
+                d.doc_type === 'vendor_stamp' || 
+                d.doc_type === 'secondPartyStamp'
+            );
+
+            const initialSigUrl = sigDoc ? (urlCacheRef.current[sigDoc.storage_path] || '') : '';
+            const initialStampUrl = stampDoc ? (urlCacheRef.current[stampDoc.storage_path] || '') : '';
+
             setAgreementData({
                 executionDate: formattedDate,
                 consumerName: editData.customer_name || '',
@@ -478,16 +496,87 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 vendorName: 'Watersun Electrical Solutions Pvt Ltd',
                 vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
                 paymentTerms: 'Mutually Agreed Terms of Payment',
-                firstPartySignature: '',
-                secondPartyStamp: '',
+                firstPartySignature: initialSigUrl,
+                secondPartyStamp: initialStampUrl,
                 secondPartySignature: '',
+                signatureUrl: initialSigUrl,
+                stampUrl: initialStampUrl,
                 highlightColor: '#fef08a',
                 showHighlights: true,
             });
-        }
-    }, [showAgreementPopup, editData]);
 
-    const handleGenerateAgreement = () => {
+            // If not yet in cache, fetch and update state
+            if (sigDoc && !initialSigUrl) {
+                getViewUrl(sigDoc.storage_path).then(url => {
+                    if (url) {
+                        urlCacheRef.current[sigDoc.storage_path] = url;
+                        setAgreementData(prev => ({
+                            ...prev,
+                            firstPartySignature: url,
+                            signatureUrl: url,
+                        }));
+                    }
+                });
+            }
+
+            if (stampDoc && !initialStampUrl) {
+                getViewUrl(stampDoc.storage_path).then(url => {
+                    if (url) {
+                        urlCacheRef.current[stampDoc.storage_path] = url;
+                        setAgreementData(prev => ({
+                            ...prev,
+                            secondPartyStamp: url,
+                            stampUrl: url,
+                        }));
+                    }
+                });
+            }
+        }
+    }, [showAgreementPopup, editData, documents]);
+
+    const handleGenerateAgreement = async () => {
+        // Find signature and stamp documents
+        const sigDoc = documents.find(d => 
+            d.doc_type === 'signature_pic' || 
+            d.doc_type === 'signature' || 
+            d.doc_type === 'firstPartySignature' || 
+            d.doc_type === 'customer_signature'
+        );
+        const stampDoc = documents.find(d => 
+            d.doc_type === 'stamp' || 
+            d.doc_type === 'stamp_pic' || 
+            d.doc_type === 'vendor_stamp' || 
+            d.doc_type === 'secondPartyStamp'
+        );
+
+        let sigUrl = sigDoc ? (urlCacheRef.current[sigDoc.storage_path] || await getViewUrl(sigDoc.storage_path)) : '';
+        let stampUrl = stampDoc ? (urlCacheRef.current[stampDoc.storage_path] || await getViewUrl(stampDoc.storage_path)) : '';
+
+        if (sigDoc && sigUrl) urlCacheRef.current[sigDoc.storage_path] = sigUrl;
+        if (stampDoc && stampUrl) urlCacheRef.current[stampDoc.storage_path] = stampUrl;
+
+        const rawDate = editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0];
+        const formattedDate = formatDateToDDMMYYYY(rawDate);
+
+        setAgreementData({
+            executionDate: formattedDate,
+            consumerName: editData.customer_name || '',
+            consumerNo: editData.consumer_no || '',
+            village: editData.villages || '',
+            taluka: editData.villages || '',
+            district: editData.sub_divisions || '',
+            vendorName: 'Watersun Electrical Solutions Pvt Ltd',
+            vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
+            paymentTerms: 'Mutually Agreed Terms of Payment',
+            firstPartySignature: sigUrl || '',
+            secondPartyStamp: stampUrl || '',
+            secondPartySignature: '',
+            signatureUrl: sigUrl || '',
+            stampUrl: stampUrl || '',
+            highlightColor: '#fef08a',
+            showHighlights: true,
+        });
+
         setShowAgreementPopup(true);
     };
     const ACTION_COLORS = {
@@ -533,6 +622,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             getViewUrl(newDoc.storage_path).then(url => {
                 if (url) urlCacheRef.current[newDoc.storage_path] = url;
             });
+            // Automatically mark checklist field as true and persist
+            if (docType) {
+                setEditData(prev => ({ ...prev, [docType]: true }));
+                await onUpdate(customer.id, { [docType]: true });
+            }
             await logActivity(
                 user.id,
                 'update',
@@ -1442,6 +1536,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             user={user}
                             saving={saving}
                             setSaving={setSaving}
+                            documents={documents}
+                            onFileUpload={handleFileUpload}
+                            onFileDelete={handleDeleteDoc}
+                            onFilePreview={handlePreviewDoc}
                         />
                     )}
 

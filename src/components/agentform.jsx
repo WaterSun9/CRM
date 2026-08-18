@@ -431,13 +431,16 @@ export default function AgentForm({ user, onLogout }) {
                     <Field label="Module Wp" error={errors.module_wp}>
                         <div className="relative">
                             <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
-                            <input
-                                type="number"
+                            <select
                                 value={form.module_wp ?? ''}
                                 onChange={e => set('module_wp', e.target.value)}
-                                placeholder="Module Wp"
-                                className={`${inputClass('module_wp')} pl-10`}
-                            />
+                                className={`${inputClass('module_wp')} pl-10 bg-white`}
+                            >
+                                <option value="">Select Module Wp...</option>
+                                {(meta['module_wp'] && meta['module_wp'].length > 0 ? meta['module_wp'] : ['540', '545', '550', '570', '575', '580', '585', '590', '600', '610', '615', '620']).map(wp => (
+                                    <option key={wp} value={wp}>{wp} Wp</option>
+                                ))}
+                            </select>
                         </div>
                     </Field>
 

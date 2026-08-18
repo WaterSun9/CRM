@@ -272,6 +272,10 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
             if (oldDoc) await onDelete(oldDoc);
         }
         if (onUpload) await onUpload(e, field);
+        // Automatically check the checkbox when a file is uploaded
+        if (onChange) {
+            onChange(field, true);
+        }
         setReplacingDocId(null);
     };
 

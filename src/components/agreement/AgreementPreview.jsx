@@ -78,10 +78,17 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
             ${printContainer.innerHTML}
           </div>
           <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 400);
+            };
+            // Fallback timeout in case onload event was already triggered
             setTimeout(() => {
               window.print();
               window.close();
-            }, 600);
+            }, 1200);
           </script>
         </body>
       </html>

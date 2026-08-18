@@ -91,10 +91,20 @@ export const Page4 = ({ data, fontSizeClass = 'text-[17px]' }) => {
             {/* Signature Box */}
             <div className="pt-2">
               <span className="font-semibold block mb-1">SIGN:</span>
-              <div 
-                className="w-full min-h-[65px]"
-                style={{ backgroundColor: data.showHighlights ? (data.highlightColor || '#fef08a') : 'transparent' }}
-              />
+              {data.firstPartySignature || data.signatureUrl ? (
+                <div className="w-full min-h-[85px] h-[85px] flex items-center justify-start">
+                  <img 
+                    src={data.firstPartySignature || data.signatureUrl} 
+                    alt="Consumer Signature" 
+                    className="max-h-[78px] max-w-[200px] object-contain" 
+                  />
+                </div>
+              ) : (
+                <div 
+                  className="w-full min-h-[85px]"
+                  style={{ backgroundColor: data.showHighlights ? (data.highlightColor || '#fef08a') : 'transparent' }}
+                />
+              )}
             </div>
 
             <div className="pt-2">
@@ -119,10 +129,27 @@ export const Page4 = ({ data, fontSizeClass = 'text-[17px]' }) => {
               <span className="font-normal">{data.vendorAddress || 'Plot No 40 GIDC Estate Radhanpur'}</span>
             </div>
 
-            {/* Vendor Stamp & Signature Box */}
+            {/* Vendor Stamp & Signature Box — Enlarged by 30% and shifted center-right */}
             <div className="pt-2">
               <span className="font-semibold block mb-1">Stamp & Sign:</span>
-              <div className="w-full min-h-[65px]" />
+              {data.secondPartyStamp || data.stampUrl ? (
+                <div className="w-full min-h-[85px] h-[85px] flex items-center justify-center pl-6 sm:pl-10 gap-2">
+                  <img 
+                    src={data.secondPartyStamp || data.stampUrl} 
+                    alt="Vendor Stamp" 
+                    className="max-h-[82px] max-w-[240px] object-contain" 
+                  />
+                  {(data.secondPartySignature || data.vendorSignatureUrl) && (
+                    <img 
+                      src={data.secondPartySignature || data.vendorSignatureUrl} 
+                      alt="Vendor Sign" 
+                      className="max-h-[75px] max-w-[140px] object-contain" 
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="w-full min-h-[85px]" />
+              )}
             </div>
 
             <div className="pt-2 text-right">

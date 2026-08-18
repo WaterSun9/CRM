@@ -3,40 +3,36 @@ import { supabase } from '../supabase';
 import {
     User, Phone, Mail, MapPin, Zap, Building2, Sun,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle,
-    Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert
+    Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
+    ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X
 } from 'lucide-react';
 import { logActivity } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES } from '../constants';
+import AddLeadModal from './AddLeadModal';
+import { FilePreviewModal } from './modal-tabs/shared';
+import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl } from '../utils';
 
 export default function AgentPortal({ user, onLogout }) {
-    const [view, setView] = useState('menu'); // 'menu', 'add_lead', 'my_customers'
+    const [view, setView] = useState('menu'); // 'menu', 'my_customers'
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [showAddLead, setShowAddLead] = useState(false);
     
-    // Customer search & accordion states
+    // Customer search & accordion states — only LEADS expanded by default
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedStages, setExpandedStages] = useState({
-        'LEADS': true,
-        'METER INSTALLATION': true
+        'LEADS': true
     });
     
-    // Customer details view
+    // Customer details view (read-only)
     const [selectedCust, setSelectedCust] = useState(null);
+    const [custDocs, setCustDocs] = useState([]);
+    const [loadingDocs, setLoadingDocs] = useState(false);
+    const [previewDoc, setPreviewDoc] = useState(null);
 
-    // Form states
-    const getInitialFormState = () => {
-        const initialForm = { ...DEFAULT_LEAD_FORM };
-        if (user?.userType === 'agent' || user?.role === 'Channel Partners') {
-            initialForm.channel_partner = user.name || '';
-        }
-        return initialForm;
-    };
-    const [form, setForm] = useState(getInitialFormState);
+    // Metadata
     const [meta, setMeta] = useState({});
-    const [errors, setErrors] = useState({});
-    const [saving, setSaving] = useState(false);
-    const [submitted, setSubmitted] = useState(null);
 
     // Load agent's customers & metadata
     const fetchCustomers = async () => {
@@ -82,77 +78,80 @@ export default function AgentPortal({ user, onLogout }) {
         fetchMetadata();
     }, []);
 
-    // Form submission
-    const handleFormChange = (field, val) => {
-        setForm(prev => ({ ...prev, [field]: val }));
-        if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
-    };
-
-    const validateForm = () => {
-        const e = {};
-        if (!form.customer_name?.trim()) e.customer_name = 'Customer Name is required';
-        if (!form.phone_number?.toString().trim()) e.phone_number = 'Phone Number is required';
-        if (!form.system_capacity_kwp) e.system_capacity_kwp = 'System Capacity is required';
-        return e;
-    };
-
-    const handleSubmitLead = async () => {
-        const e = validateForm();
-        if (Object.keys(e).length > 0) { setErrors(e); return; }
-
-        setSaving(true);
-        try {
-            const leadData = {
-                ...form,
-                channel_partner: user.name,
-                application_done_by: user.name,
-                created_at: new Date().toISOString()
-            };
-
-            // Clean up or format numeric values
-            if (leadData.system_capacity_kwp) {
-                leadData.system_capacity_kwp = Number(leadData.system_capacity_kwp);
-            }
-            if (leadData.module_wp) {
-                leadData.module_wp = Number(leadData.module_wp);
-            }
-
-            // Map empty strings to null to avoid database numeric/type syntax errors
-            const insertData = {};
-            Object.keys(leadData).forEach(key => {
-                if (leadData[key] === '') {
-                    insertData[key] = null;
-                } else {
-                    insertData[key] = leadData[key];
-                }
-            });
-
-            const { data: newCustomer, error } = await supabase
-                .from('admin')
-                .insert(insertData)
-                .select()
-                .single();
-
-            if (error) throw error;
-
-            await logActivity(
-                user.id,
-                'create',
-                `Added new lead: ${form.customer_name}`,
-                `Done by Agent: ${user.name}`,
-                newCustomer.id
-            );
-
-            setSubmitted({ customerName: form.customer_name.trim() });
-            setForm(getInitialFormState());
-            setErrors({});
-            fetchCustomers(); // Refresh list
-        } catch (err) {
-            console.error('Submit error:', err);
-            setErrors({ submit: err.message || 'Failed to submit. Please try again.' });
-        } finally {
-            setSaving(false);
+    // Load documents when a customer profile is opened
+    useEffect(() => {
+        if (selectedCust?.id) {
+            setLoadingDocs(true);
+            getCustomerDocuments(selectedCust.id)
+                .then(docs => setCustDocs(docs || []))
+                .finally(() => setLoadingDocs(false));
+        } else {
+            setCustDocs([]);
         }
+    }, [selectedCust?.id]);
+
+    // Submit new lead from AddLeadModal
+    const handleSubmitLead = async (formData, attachedFiles = []) => {
+        const leadData = {
+            ...formData,
+            channel_partner: user.name,
+            application_done_by: user.name,
+            created_at: new Date().toISOString()
+        };
+
+        // Clean up or format numeric values
+        if (leadData.system_capacity_kwp) {
+            leadData.system_capacity_kwp = Number(leadData.system_capacity_kwp);
+        }
+        if (leadData.module_wp) {
+            leadData.module_wp = Number(leadData.module_wp);
+        }
+
+        // Map empty strings to null to avoid database numeric/type syntax errors
+        const insertData = {};
+        Object.keys(leadData).forEach(key => {
+            if (leadData[key] === '') {
+                insertData[key] = null;
+            } else {
+                insertData[key] = leadData[key];
+            }
+        });
+
+        const { data: newCustomer, error } = await supabase
+            .from('admin')
+            .insert(insertData)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Submit error:', error);
+            throw error;
+        }
+
+        // Upload attached files to storage & documents table
+        if (attachedFiles && attachedFiles.length > 0) {
+            for (const item of attachedFiles) {
+                if (item.file) {
+                    try {
+                        await uploadDocument(item.file, newCustomer.id, item.doc_type);
+                    } catch (uploadErr) {
+                        console.error('Failed to upload file for lead:', uploadErr);
+                    }
+                }
+            }
+        }
+
+        await logActivity(
+            user.id,
+            'create',
+            `Added new lead: ${formData.customer_name}`,
+            `Done by Agent: ${user.name}`,
+            newCustomer.id
+        );
+
+        setShowAddLead(false);
+        fetchCustomers(); // Refresh list
+        return newCustomer;
     };
 
     // Filter customers
@@ -173,6 +172,24 @@ export default function AgentPortal({ user, onLogout }) {
 
     const toggleStage = (stageId) => {
         setExpandedStages(prev => ({ ...prev, [stageId]: !prev[stageId] }));
+    };
+
+    const handlePreviewFile = async (doc) => {
+        const url = await getViewUrl(doc.storage_path);
+        if (url) setPreviewDoc({ doc, url });
+    };
+
+    const handleDownloadDoc = async (doc) => {
+        const url = await getDownloadUrl(doc.storage_path, doc.file_name);
+        if (url) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = doc.file_name;
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
     };
 
     return (
@@ -236,7 +253,7 @@ export default function AgentPortal({ user, onLogout }) {
                     {/* Portal Menu Actions */}
                     <div className="space-y-3">
                         <button
-                            onClick={() => { setView('add_lead'); setSubmitted(null); }}
+                            onClick={() => setShowAddLead(true)}
                             className="w-full bg-amber-500 hover:bg-amber-600 text-white p-5 rounded-[24px] shadow-md shadow-amber-500/10 flex items-center justify-between transition-all active:scale-[0.98]"
                         >
                             <div className="flex items-center gap-3.5 text-left">
@@ -245,7 +262,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-sm">Add New Customer</h3>
-                                    <p className="text-[10px] text-amber-100 font-medium mt-0.5">Register a lead in CRM pipeline</p>
+                                    <p className="text-[10px] text-amber-100 font-medium mt-0.5">Register a lead in CRM pipeline with documents</p>
                                 </div>
                             </div>
                             <ChevronRight className="w-5 h-5 text-amber-100" />
@@ -272,345 +289,6 @@ export default function AgentPortal({ user, onLogout }) {
                 </main>
             )}
 
-            {/* Add Lead Form View */}
-            {view === 'add_lead' && (
-                <main className="flex-1 p-4 max-w-md mx-auto w-full animate-in slide-in-from-right duration-300">
-                    <button
-                        onClick={() => setView('menu')}
-                        className="mb-4 flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 font-bold"
-                    >
-                        <ChevronLeft className="w-4 h-4" /> Back to Dashboard
-                    </button>
-
-                    {submitted ? (
-                        <div className="bg-white border border-stone-100 p-6 rounded-[24px] shadow-sm text-center py-10">
-                            <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-500 shadow-inner">
-                                <CheckCircle2 className="w-8 h-8" />
-                            </div>
-                            <h3 className="text-base font-bold text-stone-900">Lead Submitted!</h3>
-                            <p className="text-xs text-stone-400 font-medium mt-1">
-                                {submitted.customerName} has been successfully added.
-                            </p>
-                            <div className="flex flex-col gap-2 mt-6">
-                                <button
-                                    onClick={() => setSubmitted(null)}
-                                    className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3 rounded-xl transition-all active:scale-[0.98]"
-                                >
-                                    Add Another Lead
-                                </button>
-                                <button
-                                    onClick={() => setView('my_customers')}
-                                    className="bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs py-3 rounded-xl transition-all active:scale-[0.98]"
-                                >
-                                    View Customer Directory
-                                </button>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="bg-white border border-stone-100 p-5 rounded-[24px] shadow-sm space-y-4">
-                            <div>
-                                <h2 className="text-sm font-black text-stone-900 uppercase tracking-widest">New Customer Details</h2>
-                                <p className="text-[10px] text-stone-400 font-semibold mt-0.5">Please provide accurate pipeline details.</p>
-                            </div>
-
-                            <div className="space-y-3.5">
-                                {/* Customer Name */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Customer Name *</label>
-                                    <div className="relative">
-                                        <User className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <input
-                                            type="text"
-                                            value={form.customer_name || ''}
-                                            onChange={e => handleFormChange('customer_name', e.target.value)}
-                                            placeholder="Enter customer name"
-                                            className={`pl-9 pr-3 py-2 bg-stone-50 border rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium ${errors.customer_name ? 'border-red-300 bg-red-50/10' : 'border-stone-200'}`}
-                                        />
-                                    </div>
-                                    {errors.customer_name && <p className="text-[9px] text-red-500 font-semibold mt-0.5">{errors.customer_name}</p>}
-                                </div>
-
-                                {/* Phone */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Phone Number *</label>
-                                    <div className="relative">
-                                        <Phone className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <input
-                                            type="number"
-                                            value={form.phone_number || ''}
-                                            onChange={e => handleFormChange('phone_number', e.target.value)}
-                                            placeholder="Enter phone number"
-                                            className={`pl-9 pr-3 py-2 bg-stone-50 border rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium ${errors.phone_number ? 'border-red-300 bg-red-50/10' : 'border-stone-200'}`}
-                                        />
-                                    </div>
-                                    {errors.phone_number && <p className="text-[9px] text-red-500 font-semibold mt-0.5">{errors.phone_number}</p>}
-                                </div>
-
-                                {/* Email */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Email Address</label>
-                                    <div className="relative">
-                                        <Mail className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <input
-                                            type="email"
-                                            value={form.email_address || ''}
-                                            onChange={e => handleFormChange('email_address', e.target.value)}
-                                            placeholder="Enter email address"
-                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Villages */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Village / Address</label>
-                                    <div className="relative">
-                                        <MapPin className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <input
-                                            type="text"
-                                            value={form.villages || ''}
-                                            onChange={e => handleFormChange('villages', e.target.value)}
-                                            placeholder="Enter village or address"
-                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Capacity */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">System Capacity (kWp) *</label>
-                                    <div className="relative">
-                                        <Zap className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            value={form.system_capacity_kwp || ''}
-                                            onChange={e => handleFormChange('system_capacity_kwp', e.target.value)}
-                                            placeholder="Enter capacity (e.g. 5)"
-                                            className={`pl-9 pr-3 py-2 bg-stone-50 border rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium ${errors.system_capacity_kwp ? 'border-red-300 bg-red-50/10' : 'border-stone-200'}`}
-                                        />
-                                    </div>
-                                    {errors.system_capacity_kwp && <p className="text-[9px] text-red-500 font-semibold mt-0.5">{errors.system_capacity_kwp}</p>}
-                                </div>
-
-                                {/* Brand */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Module Brand</label>
-                                    <div className="relative">
-                                        <Tag className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <select
-                                            value={form.module_brand || ''}
-                                            onChange={e => handleFormChange('module_brand', e.target.value)}
-                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold text-stone-700"
-                                        >
-                                            <option value="">Select Brand...</option>
-                                            {(meta['module_brand'] || []).map(b => (
-                                                <option key={b} value={b}>{b}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Module Wp */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Module Wp</label>
-                                    <div className="relative">
-                                        <Hash className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <input
-                                            type="number"
-                                            value={form.module_wp || ''}
-                                            onChange={e => handleFormChange('module_wp', e.target.value)}
-                                            placeholder="Enter Wp (e.g. 540)"
-                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Consumer No */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Consumer Number</label>
-                                    <div className="relative">
-                                        <Hash className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <input
-                                            type="number"
-                                            value={form.consumer_no || ''}
-                                            onChange={e => handleFormChange('consumer_no', e.target.value)}
-                                            placeholder="Enter consumer number"
-                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Folder No */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">File Number</label>
-                                    <div className="relative">
-                                        <Folder className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <input
-                                            type="number"
-                                            value={form.folder_no || ''}
-                                            onChange={e => handleFormChange('folder_no', e.target.value)}
-                                            placeholder="Enter file/folder number"
-                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Sub Channel Partner */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Sub Channel Partner Name</label>
-                                    <div className="relative">
-                                        <User className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <input
-                                            type="text"
-                                            value={form.sub_channel_partner || ''}
-                                            onChange={e => handleFormChange('sub_channel_partner', e.target.value)}
-                                            placeholder="Enter sub channel partner"
-                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Sub Division */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Sub Division</label>
-                                    <div className="relative">
-                                        <MapPin className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <input
-                                            type="text"
-                                            value={form.sub_divisions || ''}
-                                            onChange={e => handleFormChange('sub_divisions', e.target.value)}
-                                            placeholder="Enter sub division"
-                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Payment Type */}
-                                <div>
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1">Payment Type</label>
-                                    <div className="relative">
-                                        <Banknote className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                        <select
-                                            value={form.payment_type || ''}
-                                            onChange={e => {
-                                                const val = e.target.value;
-                                                handleFormChange('payment_type', val);
-                                                handleFormChange('adhaar_card', false);
-                                                handleFormChange('pan_card', false);
-                                                handleFormChange('index_2', false);
-                                                handleFormChange('light_bill', false);
-                                                handleFormChange('bank_details', false);
-                                                handleFormChange('bank_passbook', false);
-                                            }}
-                                            className="pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold text-stone-700"
-                                        >
-                                            <option value="">Select Payment Type...</option>
-                                            {(meta['payment_type'] || []).map(p => (
-                                                <option key={p} value={p}>{p}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Document Checklist (Conditional) */}
-                                {form.payment_type && (
-                                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-150 space-y-2 mt-2">
-                                        <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-2 font-bold flex items-center gap-1">
-                                            <ClipboardList className="w-3.5 h-3.5 text-amber-500" /> Document Checklist
-                                        </p>
-                                        <div className="flex flex-col gap-2">
-                                            {form.payment_type.trim().toLowerCase() !== 'cash' && (
-                                                <>
-                                                    <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={!!form.adhaar_card}
-                                                            onChange={e => handleFormChange('adhaar_card', e.target.checked)}
-                                                            className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
-                                                        />
-                                                        Aadhaar Card
-                                                    </label>
-                                                    <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={!!form.pan_card}
-                                                            onChange={e => handleFormChange('pan_card', e.target.checked)}
-                                                            className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
-                                                        />
-                                                        PAN Card
-                                                    </label>
-                                                    <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={!!form.index_2}
-                                                            onChange={e => handleFormChange('index_2', e.target.checked)}
-                                                            className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
-                                                        />
-                                                        Index 2
-                                                    </label>
-                                                </>
-                                            )}
-                                            
-                                            <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!!form.light_bill}
-                                                    onChange={e => handleFormChange('light_bill', e.target.checked)}
-                                                    className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
-                                                />
-                                                Light Bill
-                                            </label>
-
-                                            <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!!form.bank_details}
-                                                    onChange={e => handleFormChange('bank_details', e.target.checked)}
-                                                    className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
-                                                />
-                                                Bank Details
-                                            </label>
-
-                                            {form.payment_type.trim().toLowerCase() !== 'cash' && (
-                                                <label className="flex items-center gap-2 text-xs font-semibold text-stone-750 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={!!form.bank_passbook}
-                                                        onChange={e => handleFormChange('bank_passbook', e.target.checked)}
-                                                        className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
-                                                    />
-                                                    Bank Passbook
-                                                </label>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {errors.submit && (
-                                <div className="p-3 bg-red-50 border border-red-100 text-red-500 rounded-xl text-[10px] font-bold flex items-start gap-1.5 mt-2 animate-in fade-in duration-200">
-                                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                                    <span>{errors.submit}</span>
-                                </div>
-                            )}
-
-                            <button
-                                onClick={handleSubmitLead}
-                                disabled={saving}
-                                className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md disabled:opacity-50 mt-4 transition-all active:scale-[0.98]"
-                            >
-                                {saving ? (
-                                    <><Loader2 className="w-4 h-4 animate-spin" /> Submitting Lead...</>
-                                ) : (
-                                    <>Submit Lead <ChevronRight className="w-4.5 h-4.5" /></>
-                                )}
-                            </button>
-                        </div>
-                    )}
-                </main>
-            )}
-
             {/* My Customers / Directory View */}
             {view === 'my_customers' && (
                 <main className="flex-1 p-4 max-w-md mx-auto w-full animate-in slide-in-from-right duration-300">
@@ -623,9 +301,17 @@ export default function AgentPortal({ user, onLogout }) {
 
                     <div className="space-y-4">
                         {/* Search and Header */}
-                        <div>
-                            <h2 className="text-sm font-black text-stone-900 uppercase tracking-widest">My Customers</h2>
-                            <p className="text-[10px] text-stone-400 font-semibold mt-0.5">Directory of leads registered under {user.name}.</p>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-sm font-black text-stone-900 uppercase tracking-widest">My Customers</h2>
+                                <p className="text-[10px] text-stone-400 font-semibold mt-0.5">Directory of leads registered under {user.name}.</p>
+                            </div>
+                            <button
+                                onClick={() => setShowAddLead(true)}
+                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs transition"
+                            >
+                                <Plus size={14} /> Add Lead
+                            </button>
                         </div>
 
                         <div className="relative">
@@ -677,30 +363,47 @@ export default function AgentPortal({ user, onLogout }) {
 
                                             {/* Stage Accordion Content */}
                                             {expanded && (
-                                                <div className="p-3 space-y-2.5 divide-y divide-stone-50">
+                                                <div className="p-3 space-y-3 divide-y divide-stone-100">
                                                     {stageCustomers.length === 0 ? (
                                                         <p className="text-[10px] text-stone-400 italic py-2 text-center">No leads in this stage match search criteria.</p>
                                                     ) : (
-                                                        stageCustomers.map((cust, idx) => (
+                                                        stageCustomers.map((cust) => (
                                                             <div
                                                                 key={cust.id}
-                                                                className={`pt-2.5 first:pt-0 flex flex-col gap-2`}
+                                                                className="pt-3 first:pt-0 space-y-2"
                                                             >
-                                                                <div className="flex justify-between items-start gap-2">
-                                                                    <div>
-                                                                        <h4 className="text-xs font-bold text-stone-900">{cust.customer_name}</h4>
-                                                                        <p className="text-[10px] text-stone-500 font-medium mt-0.5">{cust.phone_number} · {cust.system_capacity_kwp} kWp</p>
-                                                                    </div>
+                                                                {/* Line 1: Name and Details Button */}
+                                                                <div className="flex justify-between items-center gap-2">
+                                                                    <h4 className="text-xs font-black text-stone-900 leading-snug">{cust.customer_name}</h4>
                                                                     <button
                                                                         onClick={() => setSelectedCust(cust)}
-                                                                        className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 text-[9px] font-bold rounded-lg transition-all"
+                                                                        className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 text-[10px] font-bold rounded-lg transition-all flex-shrink-0"
                                                                     >
                                                                         Details
                                                                     </button>
                                                                 </div>
 
-                                                                {/* Status / Tracking Tags */}
-                                                                <div className="flex flex-wrap gap-1">
+                                                                {/* Line 2: Phone & Capacity */}
+                                                                <div className="flex items-center gap-2 text-[11px] text-stone-600 font-medium">
+                                                                    <span className="flex items-center gap-1">
+                                                                        <Phone size={11} className="text-stone-400" /> {cust.phone_number || '–'}
+                                                                    </span>
+                                                                    <span className="text-stone-300">•</span>
+                                                                    <span className="font-bold text-amber-600 flex items-center gap-0.5">
+                                                                        <Zap size={11} /> {cust.system_capacity_kwp ? `${cust.system_capacity_kwp} kWp` : '–'}
+                                                                    </span>
+                                                                </div>
+
+                                                                {/* Line 3: Village / Address (if exists) */}
+                                                                {cust.villages && (
+                                                                    <div className="flex items-start gap-1 text-[10px] text-stone-500 font-medium">
+                                                                        <MapPin size={10} className="text-stone-400 mt-0.5 flex-shrink-0" />
+                                                                        <span className="break-words">{cust.villages}</span>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Line 4: Status / Tracking Tags */}
+                                                                <div className="flex flex-wrap gap-1 pt-0.5">
                                                                     {/* Meter status */}
                                                                     {cust.stage === 'METER INSTALLATION' && (
                                                                         <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-stone-900 text-white flex items-center gap-0.5">
@@ -744,26 +447,38 @@ export default function AgentPortal({ user, onLogout }) {
                 </main>
             )}
 
-            {/* Read-Only Details Dialog Card */}
+            {/* Unified Add Lead Modal */}
+            {showAddLead && (
+                <AddLeadModal
+                    isOpen={showAddLead}
+                    onClose={() => setShowAddLead(false)}
+                    onSave={handleSubmitLead}
+                    meta={meta}
+                    channel_partners={[]}
+                    user={user}
+                />
+            )}
+
+            {/* Read-Only Customer Profile Modal (Optimized Line-by-Line for Mobile) */}
             {selectedCust && (
-                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-                    <div className="w-full sm:max-w-md bg-white rounded-t-[28px] sm:rounded-[28px] shadow-2xl overflow-hidden max-h-[85vh] flex flex-col animate-in slide-in-from-bottom-5 duration-300">
+                <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+                    <div className="w-full sm:max-w-lg bg-white rounded-t-[28px] sm:rounded-[28px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in slide-in-from-bottom-5 duration-300">
                         {/* Detail Header */}
-                        <div className="p-5 border-b border-stone-100 bg-stone-50/50 flex justify-between items-center">
+                        <div className="px-5 py-4 border-b border-stone-100 bg-stone-50/50 flex justify-between items-center">
                             <div>
-                                <p className="text-[8px] font-black uppercase text-amber-600 tracking-widest">Customer Profile</p>
+                                <p className="text-[8px] font-black uppercase text-amber-600 tracking-widest">Customer Profile (Read-Only)</p>
                                 <h3 className="text-sm font-black text-stone-900 uppercase mt-0.5">{selectedCust.customer_name}</h3>
                             </div>
                             <button
                                 onClick={() => setSelectedCust(null)}
                                 className="w-7 h-7 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 hover:bg-stone-200 transition-colors font-bold text-xs"
                             >
-                                ✕
+                                <X size={14} />
                             </button>
                         </div>
 
-                        {/* Detail Body */}
-                        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                        {/* Detail Body (Pure Line-by-Line Flow) */}
+                        <div className="flex-1 overflow-y-auto p-5 space-y-4">
                             {/* Tags overview */}
                             <div className="flex flex-wrap gap-1.5">
                                 <span className="text-[8px] font-black tracking-widest uppercase px-2 py-0.5 bg-stone-900 text-white rounded">
@@ -776,160 +491,198 @@ export default function AgentPortal({ user, onLogout }) {
                                 )}
                             </div>
 
-                            {/* Section: Profile Info */}
-                            <div className="bg-stone-50 p-4 rounded-2xl space-y-2 border border-stone-100">
-                                <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-1 flex items-center gap-1.5"><User size={10} /> Profile Details</h4>
-                                <div className="grid grid-cols-2 gap-3 text-xs">
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Phone Number</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.phone_number || '–'}</p>
+                            {/* Section: Profile Info (Line-by-Line) */}
+                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-150/60">
+                                <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
+                                    <User size={10} /> Profile Details
+                                </h4>
+                                <div className="divide-y divide-stone-200/50 text-xs">
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Phone Number</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.phone_number || '–'}</span>
                                     </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Email Address</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5 truncate">{selectedCust.email_address || '–'}</p>
+                                    <div className="flex items-start justify-between py-2 gap-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide flex-shrink-0">Email</span>
+                                        <span className="font-semibold text-stone-900 break-all text-right">{selectedCust.email_address || selectedCust.email || '–'}</span>
                                     </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Village / Address</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.villages || '–'}</p>
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Consumer Number</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.consumer_no || '–'}</span>
                                     </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">File / Folder No</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.folder_no || '–'}</p>
+                                    <div className="flex items-start justify-between py-2 gap-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide flex-shrink-0">Village / Address</span>
+                                        <span className="font-semibold text-stone-900 text-right break-words">{selectedCust.villages || '–'}</span>
                                     </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Sub Channel Partner</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5 truncate">{selectedCust.sub_channel_partner || '–'}</p>
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Folder No</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.folder_no || '–'}</span>
                                     </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Sub Division</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.sub_divisions || '–'}</p>
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Channel Partner</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.sub_channel_partner || '–'}</span>
                                     </div>
-                                </div>
-                            </div>
-
-                            {/* Section: Capacity / Solar Brand */}
-                            <div className="bg-stone-50 p-4 rounded-2xl space-y-2 border border-stone-100">
-                                <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-1 flex items-center gap-1.5"><Zap size={10} /> Solar System</h4>
-                                <div className="grid grid-cols-2 gap-3 text-xs">
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">System Capacity (kWp)</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.system_capacity_kwp || '–'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Module Brand</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.module_brand || '–'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Module Wp</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.module_wp || '–'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Consumer Number</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.consumer_no || '–'}</p>
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Division</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.sub_divisions || '–'}</span>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Section: Tracking Tags */}
-                            <div className="bg-stone-50 p-4 rounded-2xl space-y-2 border border-stone-100">
-                                <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-1 flex items-center gap-1.5"><ClipboardList size={10} /> Pipeline Tracking</h4>
-                                <div className="grid grid-cols-2 gap-3 text-xs">
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Subsidy Tag</p>
-                                        <p className="font-semibold text-stone-850 mt-0.5">{selectedCust.subsidy_tag || '–'}</p>
+                            {/* Section: Capacity / Solar Brand (Line-by-Line) */}
+                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-150/60">
+                                <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
+                                    <Zap size={10} /> Solar System
+                                </h4>
+                                <div className="divide-y divide-stone-200/50 text-xs">
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">System Capacity</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : '–'}</span>
                                     </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Loan Status Tag</p>
-                                        <p className="font-semibold text-stone-850 mt-0.5">{selectedCust.loan_tag || '–'}</p>
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Module Brand</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.module_brand || '–'}</span>
                                     </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Installation Tag</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.installation_status || '–'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[8px] font-bold text-stone-400 uppercase">Meter Installation</p>
-                                        <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.meter_installation?.status === 'Yes' ? 'Complete' : 'Pending'}</p>
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Module Wp</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.module_wp ? `${selectedCust.module_wp} Wp` : '–'}</span>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Section: Document Checklist */}
+                            {/* Section: Pipeline Tracking (Line-by-Line) */}
+                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-150/60">
+                                <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
+                                    <ClipboardList size={10} /> Pipeline Tracking
+                                </h4>
+                                <div className="divide-y divide-stone-200/50 text-xs">
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Subsidy Tag</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.subsidy_tag || '–'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Loan Status Tag</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.loan_tag || '–'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Installation Tag</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.installation_status || '–'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between py-2">
+                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Meter Installation</span>
+                                        <span className="font-semibold text-stone-900">{selectedCust.meter_installation?.status === 'Yes' ? 'Complete' : 'Pending'}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section: Document Checklist (Line-by-Line) */}
                             {selectedCust.payment_type && (
-                                <div className="bg-stone-50 p-4 rounded-2xl space-y-2 border border-stone-100">
-                                    <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-1 flex items-center gap-1.5">
+                                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-150/60">
+                                    <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <ClipboardList size={10} /> Document Checklist ({selectedCust.payment_type})
                                     </h4>
-                                    <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-stone-700">
+                                    <div className="divide-y divide-stone-200/50 text-xs">
                                         {selectedCust.payment_type.trim().toLowerCase() !== 'cash' && (
                                             <>
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className={selectedCust.adhaar_card ? 'text-emerald-600' : 'text-stone-400'}>
-                                                        {selectedCust.adhaar_card ? '✓' : '✗'}
+                                                <div className="flex items-center justify-between py-2">
+                                                    <span className="font-semibold text-stone-800">Aadhaar Card</span>
+                                                    <span className={selectedCust.adhaar_card ? 'px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold rounded text-[10px]' : 'px-2 py-0.5 bg-stone-100 text-stone-400 font-bold rounded text-[10px]'}>
+                                                        {selectedCust.adhaar_card ? '✓ Verified' : '✗ Missing'}
                                                     </span>
-                                                    <span>Aadhaar Card</span>
                                                 </div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className={selectedCust.pan_card ? 'text-emerald-600' : 'text-stone-400'}>
-                                                        {selectedCust.pan_card ? '✓' : '✗'}
+                                                <div className="flex items-center justify-between py-2">
+                                                    <span className="font-semibold text-stone-800">PAN Card</span>
+                                                    <span className={selectedCust.pan_card ? 'px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold rounded text-[10px]' : 'px-2 py-0.5 bg-stone-100 text-stone-400 font-bold rounded text-[10px]'}>
+                                                        {selectedCust.pan_card ? '✓ Verified' : '✗ Missing'}
                                                     </span>
-                                                    <span>PAN Card</span>
                                                 </div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className={selectedCust.index_2 ? 'text-emerald-600' : 'text-stone-400'}>
-                                                        {selectedCust.index_2 ? '✓' : '✗'}
+                                                <div className="flex items-center justify-between py-2">
+                                                    <span className="font-semibold text-stone-800">Index 2</span>
+                                                    <span className={selectedCust.index_2 ? 'px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold rounded text-[10px]' : 'px-2 py-0.5 bg-stone-100 text-stone-400 font-bold rounded text-[10px]'}>
+                                                        {selectedCust.index_2 ? '✓ Verified' : '✗ Missing'}
                                                     </span>
-                                                    <span>Index 2</span>
                                                 </div>
                                             </>
                                         )}
-                                        <div className="flex items-center gap-1.5">
-                                            <span className={selectedCust.light_bill ? 'text-emerald-600' : 'text-stone-400'}>
-                                                {selectedCust.light_bill ? '✓' : '✗'}
+                                        <div className="flex items-center justify-between py-2">
+                                            <span className="font-semibold text-stone-800">Light Bill</span>
+                                            <span className={selectedCust.light_bill ? 'px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold rounded text-[10px]' : 'px-2 py-0.5 bg-stone-100 text-stone-400 font-bold rounded text-[10px]'}>
+                                                {selectedCust.light_bill ? '✓ Verified' : '✗ Missing'}
                                             </span>
-                                            <span>Light Bill</span>
                                         </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <span className={selectedCust.bank_details ? 'text-emerald-600' : 'text-stone-400'}>
-                                                {selectedCust.bank_details ? '✓' : '✗'}
+                                        <div className="flex items-center justify-between py-2">
+                                            <span className="font-semibold text-stone-800">Bank Details</span>
+                                            <span className={selectedCust.bank_details ? 'px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold rounded text-[10px]' : 'px-2 py-0.5 bg-stone-100 text-stone-400 font-bold rounded text-[10px]'}>
+                                                {selectedCust.bank_details ? '✓ Verified' : '✗ Missing'}
                                             </span>
-                                            <span>Bank Details</span>
                                         </div>
                                         {selectedCust.payment_type.trim().toLowerCase() !== 'cash' && (
-                                            <div className="flex items-center gap-1.5">
-                                                <span className={selectedCust.bank_passbook ? 'text-emerald-600' : 'text-stone-400'}>
-                                                    {selectedCust.bank_passbook ? '✓' : '✗'}
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="font-semibold text-stone-800">Bank Passbook</span>
+                                                <span className={selectedCust.bank_passbook ? 'px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold rounded text-[10px]' : 'px-2 py-0.5 bg-stone-100 text-stone-400 font-bold rounded text-[10px]'}>
+                                                    {selectedCust.bank_passbook ? '✓ Verified' : '✗ Missing'}
                                                 </span>
-                                                <span>Bank Passbook</span>
                                             </div>
                                         )}
                                     </div>
                                 </div>
                             )}
 
-                            {/* Section: Registration Checklist */}
-                            <div className="bg-stone-50 p-4 rounded-2xl space-y-2 border border-stone-100">
-                                <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-1 flex items-center gap-1.5">
-                                    <ClipboardList size={10} /> Registration Checklists
+                            {/* Section: Uploaded Customer Documents (Line-by-Line) */}
+                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-150/60">
+                                <h4 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-2 flex items-center gap-1.5">
+                                    <Paperclip size={10} /> Attached Documents ({custDocs.length})
                                 </h4>
-                                <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-stone-700">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className={selectedCust.feasibilty_document ? 'text-emerald-600' : 'text-stone-400'}>
-                                            {selectedCust.feasibilty_document ? '✓' : '✗'}
-                                        </span>
-                                        <span>Feasibility Document</span>
+                                {loadingDocs ? (
+                                    <div className="py-3 flex justify-center">
+                                        <Loader2 size={16} className="text-amber-500 animate-spin" />
                                     </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <span className={selectedCust.subsidy_token_photo ? 'text-emerald-600' : 'text-stone-400'}>
-                                            {selectedCust.subsidy_token_photo ? '✓' : '✗'}
-                                        </span>
-                                        <span>Subsidy Token Photo</span>
+                                ) : custDocs.length === 0 ? (
+                                    <p className="text-[10px] text-stone-400 italic py-1">No uploaded documents found for this customer.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {custDocs.map(doc => (
+                                            <div key={doc.id} className="flex items-center justify-between bg-white border border-stone-200/80 rounded-xl px-3 py-2">
+                                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                    <Paperclip size={12} className="text-stone-400 flex-shrink-0" />
+                                                    <span className="text-[11px] font-semibold text-stone-800 truncate">{doc.file_name}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handlePreviewFile(doc)}
+                                                        className="text-[10px] font-bold text-amber-600 hover:text-amber-700 px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 transition-colors flex items-center gap-1"
+                                                    >
+                                                        <Eye size={11} /> View
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDownloadDoc(doc)}
+                                                        className="text-[10px] font-bold text-stone-700 hover:text-stone-900 px-2 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 transition-colors flex items-center gap-1"
+                                                    >
+                                                        <Download size={11} /> Download
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
-                                </div>
+                                )}
                             </div>
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* Document Preview Modal */}
+            {previewDoc && (
+                <FilePreviewModal
+                    file={previewDoc.doc}
+                    fileUrl={previewDoc.url}
+                    onClose={() => setPreviewDoc(null)}
+                    onDownload={() => handleDownloadDoc(previewDoc.doc)}
+                />
+            )}
         </div>
     );
 }
+
+

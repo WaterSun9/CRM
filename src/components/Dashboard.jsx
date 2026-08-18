@@ -10,13 +10,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, exportAllToCSV } from '../utils';
+import { logActivity, exportAllToCSV, uploadDocument } from '../utils';
 import { PRIMARY_STAGES } from '../constants';
 
 import DashboardView from './DashboardView';
 import SubsidyView from './SubsidyView';
 import LoanView from './LoanView';
-import InstallationView from './InstallationView';
+import InstallationView, { normalizeInstallationStatus } from './InstallationView';
 import CustomerCard from './CustomerCard';
 import CustomerDetailModal from './CustomerDetailModal';
 import AddLeadModal from './AddLeadModal';
@@ -102,10 +102,8 @@ export default function Dashboard({ user, onLogout }) {
     useEffect(() => {
         if (selectedCustomer) {
             const fresh = customers.find(c => c.id === selectedCustomer.id);
-            if (fresh) {
-                if (JSON.stringify(fresh) !== JSON.stringify(selectedCustomer)) {
-                    setSelectedCustomer(fresh);
-                }
+            if (fresh && fresh !== selectedCustomer) {
+                setSelectedCustomer(fresh);
             }
         }
     }, [customers, selectedCustomer]);
@@ -135,8 +133,8 @@ export default function Dashboard({ user, onLogout }) {
         const authorized = channelPartnerMatched.filter(isAuthorized);
         const results = authorized.filter(c =>
             c.customer_name?.toLowerCase().includes(q) ||
-            c.phone_number?.includes(globalSearch.trim()) ||
-            c.crn?.toLowerCase().includes(q)
+            c.phone_number?.toString().includes(globalSearch.trim()) ||
+            c.consumer_no?.toString().toLowerCase().includes(q)
         ).slice(0, 8);
         setGlobalResults(results);
         setShowGlobalDrop(results.length > 0);
@@ -287,12 +285,15 @@ export default function Dashboard({ user, onLogout }) {
         );
     };
 
-    const handleAddLead = async (data) => {
+    const handleAddLead = async (data, attachedFiles = []) => {
         const leadData = { ...data, application_done_by: user.name, created_at: new Date().toISOString() };
 
         // Clean up or format values
         if (leadData.system_capacity_kwp) {
             leadData.system_capacity_kwp = Number(leadData.system_capacity_kwp);
+        }
+        if (leadData.module_wp) {
+            leadData.module_wp = Number(leadData.module_wp);
         }
 
         // Map empty strings to null to avoid database numeric/type syntax errors
@@ -309,11 +310,26 @@ export default function Dashboard({ user, onLogout }) {
         if (error) {
             console.error("Error adding lead to Supabase:", error);
             alert(`Failed to add lead: ${error.message} (Code: ${error.code})`);
+            throw error;
         } else {
+            // Upload any attached files
+            if (attachedFiles && attachedFiles.length > 0) {
+                for (const item of attachedFiles) {
+                    if (item.file) {
+                        try {
+                            await uploadDocument(item.file, newCustomer.id, item.doc_type);
+                        } catch (uploadErr) {
+                            console.error('Failed to upload file for new lead:', uploadErr);
+                        }
+                    }
+                }
+            }
+
             logActivity(user.id, 'create', `Added new lead: ${data.customer_name}`, `Done by: ${user.name}`, newCustomer.id);
             setShowAddLead(false);
             fetchData(false); // silent refresh — Realtime handles the instant update
             syncMetadata(insertData);
+            return newCustomer;
         }
     };
 
@@ -341,7 +357,7 @@ export default function Dashboard({ user, onLogout }) {
     const channelPartnerScoped = active.filter(c => matchesChannelPartnerFilter(c) && isAuthorized(c));
     const subsidyTagCount = channelPartnerScoped.filter(c => c.subsidy_tag).length;
     const loanTagCount = channelPartnerScoped.filter(c => c.loan_tag).length;
-    const installationTagCount = channelPartnerScoped.filter(c => c.installation_status).length;
+    const installationTagCount = channelPartnerScoped.filter(c => normalizeInstallationStatus(c.installation_status)).length;
 
     const stageCounts = PRIMARY_STAGES.reduce((acc, s) => {
         acc[s.id] = channelPartnerScoped.filter(c => c.stage === s.id).length;
@@ -354,8 +370,8 @@ export default function Dashboard({ user, onLogout }) {
         const q = stageSearch.toLowerCase();
         const matchesSearch = !stageSearch ||
             c.customer_name?.toLowerCase().includes(q) ||
-            c.phone_number?.includes(stageSearch) ||
-            c.crn?.toLowerCase().includes(q);
+            c.phone_number?.toString().includes(stageSearch) ||
+            c.consumer_no?.toString().toLowerCase().includes(q);
         return c.stage === selectedStage && matchesSearch;
     });
 
@@ -370,7 +386,6 @@ export default function Dashboard({ user, onLogout }) {
                     if (view === 'stages') { setCurrentView('stages'); setSelectedStage(stage); }
                     else setCurrentView(view);
                     setSidebarOpen(false);
-                    fetchData();
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold mb-0.5 transition-colors ${isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
                 <Icon className="w-4 h-4 flex-shrink-0" />

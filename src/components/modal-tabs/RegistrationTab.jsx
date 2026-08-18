@@ -24,6 +24,7 @@ export default function RegistrationTab({
                     <EditableDetailItem label="Registration date" field="registration_date" value={editData.registration_date} onChange={handleChange} type="date" isEditing={editingSection === 'reg_details'} />
                     <EditableDetailItem label="Registration By" field="registration_by" value={editData.registration_by} onChange={handleChange} options={meta['registration_by']} category="registration_by" isEditing={editingSection === 'reg_details'} user={user} />
                     <EditableDetailItem label="Registration No" field="registration_no" value={editData.registration_no} onChange={handleChange} isEditing={editingSection === 'reg_details'} />
+                    <EditableDetailItem label="File No" field="folder_no" value={editData.folder_no} onChange={handleChange} type="number" isEditing={editingSection === 'reg_details'} />
                 </div>
 
                 <div className="mt-4 bg-white p-4 rounded-2xl border border-stone-100 shadow-sm space-y-3">

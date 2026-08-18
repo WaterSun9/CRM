@@ -152,32 +152,52 @@ export function formatDate(dateStr) {
 }
 
 export const uploadDocument = async (file, customerId, docType = null) => {
-    const filePath = `${customerId}/${Date.now()}_${file.name}`;
+    try {
+        const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filePath = `${customerId}/${Date.now()}_${cleanName}`;
 
-    const { error: uploadError } = await supabase.storage
-        .from('customer-documents')
-        .upload(filePath, file);
+        const { error: uploadError } = await supabase.storage
+            .from('customer-documents')
+            .upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: true
+            });
 
-    if (uploadError) {
-        console.error('Upload failed:', uploadError);
-        return null;
+        if (uploadError) {
+            console.error('Storage upload failed:', uploadError);
+            throw new Error(uploadError.message || 'Storage upload failed');
+        }
+
+        let userId = null;
+        try {
+            const { data: authData } = await supabase.auth.getUser();
+            userId = authData?.user?.id || null;
+        } catch {
+            userId = null;
+        }
+
+        const { data, error } = await supabase
+            .from('documents')
+            .insert({
+                customer_id: customerId,
+                file_name: file.name,
+                storage_path: filePath,
+                file_type: file.type || 'image/jpeg',
+                doc_type: docType,
+                uploaded_by: userId
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Failed to record document in DB:', error);
+            throw new Error(error.message || 'Database insert failed');
+        }
+        return data;
+    } catch (err) {
+        console.error('Error in uploadDocument:', err);
+        throw err;
     }
-
-    const { data, error } = await supabase
-        .from('documents')
-        .insert({
-            customer_id: customerId,
-            file_name: file.name,
-            storage_path: filePath,
-            file_type: file.type,
-            doc_type: docType,
-            uploaded_by: (await supabase.auth.getUser()).data.user?.id
-        })
-        .select()
-        .single();
-
-    if (error) console.error('Failed to record document:', error);
-    return data;
 };
 
 export const getCustomerDocuments = async (customerId) => {
@@ -191,27 +211,34 @@ export const getCustomerDocuments = async (customerId) => {
     return data || [];
 };
 
-
 export const getViewUrl = async (storagePath) => {
+    if (!storagePath) return null;
     const { data, error } = await supabase.storage
         .from('customer-documents')
         .createSignedUrl(storagePath, 3600);
 
     if (error) console.error('Failed to get view URL:', error);
-    return data?.signedUrl;
+    return data?.signedUrl || null;
 };
 
 export const getDownloadUrl = async (storagePath, fileName) => {
+    if (!storagePath) return null;
     const { data, error } = await supabase.storage
         .from('customer-documents')
         .createSignedUrl(storagePath, 3600, { download: fileName || true });
 
     if (error) console.error('Failed to get download URL:', error);
-    return data?.signedUrl;
+    return data?.signedUrl || null;
 };
 
 export const deleteDocument = async (documentId, storagePath) => {
-    await supabase.storage.from('customer-documents').remove([storagePath]);
-    const { error } = await supabase.from('documents').delete().eq('id', documentId);
-    if (error) console.error('Failed to delete document:', error);
+    const id = typeof documentId === 'object' && documentId !== null ? documentId.id : documentId;
+    const path = typeof documentId === 'object' && documentId !== null ? documentId.storage_path : storagePath;
+    if (path) {
+        await supabase.storage.from('customer-documents').remove([path]);
+    }
+    if (id) {
+        const { error } = await supabase.from('documents').delete().eq('id', id);
+        if (error) console.error('Failed to delete document:', error);
+    }
 };

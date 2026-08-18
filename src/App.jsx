@@ -94,11 +94,20 @@ export default function App() {
     const isAgent = user.userType === 'agent' || user.role === 'Channel Partners';
     const isVendor = user.userType === 'vendor' || user.role === 'Vendors';
 
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        // Clear all Supabase auth tokens from localStorage to prevent stale auto-login
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('sb-')) localStorage.removeItem(key);
+        });
+        setUser(null);
+    };
+
     if (isAgent) {
         return (
             <AgentPortal
                 user={user}
-                onLogout={async () => { await supabase.auth.signOut(); setUser(null); }}
+                onLogout={handleLogout}
             />
         );
     }
@@ -107,7 +116,7 @@ export default function App() {
         return (
             <VendorPortal
                 user={user}
-                onLogout={async () => { await supabase.auth.signOut(); setUser(null); }}
+                onLogout={handleLogout}
             />
         );
     }
@@ -115,7 +124,7 @@ export default function App() {
     return (
         <Dashboard
             user={user}
-            onLogout={async () => { await supabase.auth.signOut(); setUser(null); }}
+            onLogout={handleLogout}
         />
     );
 }
