@@ -6,24 +6,49 @@ import {
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle,
     Hash, Folder, Tag, ChevronLeft, Search, ClipboardList, Banknote, Calendar, ClipboardCheck,
     Camera, Paperclip, Eye, Trash2, Upload, Image as ImageIcon, X,
-    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText
+    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, ClipboardPaste, Plus, Check, Copy
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
+
+const parsePanelSerials = (raw) => {
+    if (!raw) return [''];
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.length > 0 ? parsed : [''];
+    } catch (e) { }
+
+    if (raw.includes('\n')) {
+        return raw.split('\n').map(s => s.trim()).filter(Boolean);
+    }
+    if (raw.includes(',')) {
+        return raw.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    return [raw.trim()];
+};
 
 export default function VendorPortal({ user, onLogout }) {
     const [view, setView] = useState('list'); // 'list', 'details'
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState('MATERIAL'); // 'MATERIAL', 'GEO', 'METER', 'INSPECTION'
+    const [activeTab, setActiveTab] = useState('MATERIAL'); // 'MATERIAL', 'DELIVERY', 'GEO'
     const [selectedCust, setSelectedCust] = useState(null);
     
     // Edit Form State (for selected customer)
     const [geoTagStatus, setGeoTagStatus] = useState('Pending');
     const [geoTagImage, setGeoTagImage] = useState(false);
-    const [meterStatus, setMeterStatus] = useState('No');
-    const [installationDate, setInstallationDate] = useState('');
-    const [discomInspection, setDiscomInspection] = useState('No');
+    
+    // Material Delivery State
+    const [inverterSerialNo, setInverterSerialNo] = useState('');
+    const [invoiceNo, setInvoiceNo] = useState('');
+    const [driverName, setDriverName] = useState('');
+    const [driverPhone, setDriverPhone] = useState('');
+    const [panelSerials, setPanelSerials] = useState(['']);
+    const [showBulkPaste, setShowBulkPaste] = useState(false);
+    const [bulkText, setBulkText] = useState('');
+    const [copiedIdx, setCopiedIdx] = useState(null);
+    const [copiedAll, setCopiedAll] = useState(false);
+    
     const [saving, setSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -112,16 +137,25 @@ export default function VendorPortal({ user, onLogout }) {
     const handleSelectCustomer = async (cust) => {
         setSelectedCust(cust);
         
+        // Match active tab to customer stage
+        if (cust.stage === 'MATERIAL INTEGRATION') {
+            setActiveTab('MATERIAL');
+        } else if (cust.stage === 'MATERIAL DELIVERY') {
+            setActiveTab('DELIVERY');
+        } else if (cust.stage === 'GEO TAG PHOTO') {
+            setActiveTab('GEO');
+        }
+
+        // Pre-fill Material Delivery Details
+        setInverterSerialNo(cust.inverter_serial_no || '');
+        setInvoiceNo(cust.invoice_no || '');
+        setDriverName(cust.driver_name || '');
+        setDriverPhone(cust.driver_phone_number || '');
+        setPanelSerials(parsePanelSerials(cust.panel_serial_no));
+        
         // Pre-fill geo tag status
         setGeoTagStatus(cust.geo_tag_status || 'Pending');
         setGeoTagImage(!!cust.geo_tag_image);
-
-        // Pre-fill meter installation
-        setMeterStatus(cust.meter_installation || 'No');
-        setInstallationDate(cust.installation_date || new Date().toISOString().split('T')[0]);
-        
-        // Pre-fill discom inspection
-        setDiscomInspection(cust.discom_inspection || 'No');
         
         setView('details');
         setSaveSuccess(false);
@@ -134,6 +168,56 @@ export default function VendorPortal({ user, onLogout }) {
             console.error('Failed to fetch documents for customer:', err);
             setDocuments([]);
         }
+    };
+
+    // Panel serials helper functions
+    const handlePanelSerialChange = (idx, val) => {
+        const next = [...panelSerials];
+        next[idx] = val;
+        setPanelSerials(next);
+    };
+
+    const addPanelSerial = (count = 1) => {
+        if (panelSerials.length >= 100) return;
+        const toAdd = Math.min(count, 100 - panelSerials.length);
+        const newItems = Array(toAdd).fill('');
+        setPanelSerials(prev => [...prev, ...newItems]);
+    };
+
+    const removePanelSerial = (idx) => {
+        const next = panelSerials.filter((_, i) => i !== idx);
+        const finalVal = next.length > 0 ? next : [''];
+        setPanelSerials(finalVal);
+    };
+
+    const handleApplyBulkPaste = () => {
+        if (!bulkText.trim()) return;
+        const parsed = bulkText
+            .split(/[\n,;\t]+/)
+            .map(s => s.trim())
+            .filter(Boolean);
+        
+        if (parsed.length > 0) {
+            const finalSerials = parsed.slice(0, 100);
+            setPanelSerials(finalSerials);
+            setBulkText('');
+            setShowBulkPaste(false);
+        }
+    };
+
+    const handleCopySerial = (serial, idx) => {
+        if (!serial) return;
+        navigator.clipboard.writeText(serial);
+        setCopiedIdx(idx);
+        setTimeout(() => setCopiedIdx(null), 1500);
+    };
+
+    const handleCopyAll = () => {
+        const valid = panelSerials.filter(Boolean);
+        if (valid.length === 0) return;
+        navigator.clipboard.writeText(valid.join('\n'));
+        setCopiedAll(true);
+        setTimeout(() => setCopiedAll(false), 2000);
     };
 
     // Upload geo tag photo handler
@@ -211,14 +295,17 @@ export default function VendorPortal({ user, onLogout }) {
         setSaving(true);
         setSaveSuccess(false);
         try {
-            const computedInstDate = meterStatus === 'Yes' ? (installationDate || new Date().toISOString().split('T')[0]) : null;
+            const filteredPanels = panelSerials.filter(Boolean);
+            const serializedPanels = filteredPanels.length > 0 ? filteredPanels.join('\n') : null;
 
             const updatePayload = {
+                inverter_serial_no: inverterSerialNo || null,
+                invoice_no: invoiceNo || null,
+                driver_name: driverName || null,
+                driver_phone_number: driverPhone || null,
+                panel_serial_no: serializedPanels,
                 geo_tag_status: geoTagStatus,
                 geo_tag_image: geoTagImage,
-                meter_installation: meterStatus,
-                discom_inspection: discomInspection,
-                installation_date: computedInstDate
             };
 
             if (nextStage) {
@@ -231,7 +318,7 @@ export default function VendorPortal({ user, onLogout }) {
                 .eq('id', selectedCust.id);
 
             if (!error) {
-                let logMsg = `Vendor ${user.name} updated Geo Tag (${geoTagStatus}), Meter (${meterStatus}) & Discom Inspection (${discomInspection})`;
+                let logMsg = `Vendor ${user.name} updated ${activeTab === 'DELIVERY' ? 'Material Delivery Details' : 'Geo Tag Report'}`;
                 if (nextStage) {
                     logMsg += ` and advanced stage to ${nextStage}`;
                 }
@@ -245,17 +332,12 @@ export default function VendorPortal({ user, onLogout }) {
                 );
                 
                 setSaveSuccess(true);
-                // Refresh list locally
                 fetchCustomers();
                 
                 // Update selectedCust reference in view
                 setSelectedCust(prev => ({
                     ...prev,
-                    geo_tag_status: geoTagStatus,
-                    geo_tag_image: geoTagImage,
-                    meter_installation: meterStatus,
-                    discom_inspection: discomInspection,
-                    installation_date: computedInstDate,
+                    ...updatePayload,
                     stage: nextStage || prev.stage
                 }));
 
@@ -274,9 +356,8 @@ export default function VendorPortal({ user, onLogout }) {
 
     // Stats calculations
     const materialCount = customers.filter(c => c.stage === 'MATERIAL INTEGRATION').length;
+    const deliveryCount = customers.filter(c => c.stage === 'MATERIAL DELIVERY').length;
     const geoPendingCount = customers.filter(c => c.stage === 'GEO TAG PHOTO' && (c.geo_tag_status || 'Pending') !== 'Yes' && (c.geo_tag_status || 'Pending') !== 'Proceed').length;
-    const meterPendingCount = customers.filter(c => c.stage === 'METER INSTALLATION' && c.meter_installation !== 'Yes').length;
-    const inspectionPendingCount = customers.filter(c => c.stage === 'DISCOM INSPECTION' && (c.discom_inspection || 'No') !== 'Yes').length;
 
     // Filtered lists: search across all fields safely and across all stages if a query is typed
     const filteredCustomers = customers.filter(c => {
@@ -288,6 +369,7 @@ export default function VendorPortal({ user, onLogout }) {
             String(c.consumer_no || '').toLowerCase().includes(q) ||
             String(c.folder_no || '').toLowerCase().includes(q) ||
             String(c.villages || '').toLowerCase().includes(q) ||
+            String(c.inverter_serial_no || '').toLowerCase().includes(q) ||
             String(c.sub_channel_partner || '').toLowerCase().includes(q)
         );
 
@@ -299,12 +381,10 @@ export default function VendorPortal({ user, onLogout }) {
         // When not searching, filter by active tab stage
         if (activeTab === 'MATERIAL') {
             return c.stage === 'MATERIAL INTEGRATION';
-        } else if (activeTab === 'GEO') {
-            return c.stage === 'GEO TAG PHOTO';
-        } else if (activeTab === 'METER') {
-            return c.stage === 'METER INSTALLATION';
+        } else if (activeTab === 'DELIVERY') {
+            return c.stage === 'MATERIAL DELIVERY';
         } else {
-            return c.stage === 'DISCOM INSPECTION';
+            return c.stage === 'GEO TAG PHOTO';
         }
     });
 
@@ -345,11 +425,11 @@ export default function VendorPortal({ user, onLogout }) {
                         </div>
                         <p className="text-[9px] uppercase tracking-widest text-amber-400 font-bold">Allotted Vendor</p>
                         <h2 className="text-lg font-bold mt-0.5">{user.name}</h2>
-                        <p className="text-[11px] text-stone-300 mt-2 font-medium">Access Material Integration BOMs, geo tagging, meter installations, and inspection reports.</p>
+                        <p className="text-[11px] text-stone-300 mt-2 font-medium">Manage Material Integration BOMs, material deliveries, and site geo tagging.</p>
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                         <div 
                             className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'MATERIAL' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
                             onClick={() => setActiveTab('MATERIAL')}
@@ -358,25 +438,18 @@ export default function VendorPortal({ user, onLogout }) {
                             <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'MATERIAL' ? 'text-white' : 'text-stone-850'}`}>{materialCount}</p>
                         </div>
                         <div 
+                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'DELIVERY' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
+                            onClick={() => setActiveTab('DELIVERY')}
+                        >
+                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'DELIVERY' ? 'text-amber-100' : 'text-stone-400'}`}>Delivery</p>
+                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'DELIVERY' ? 'text-white' : 'text-stone-850'}`}>{deliveryCount}</p>
+                        </div>
+                        <div 
                             className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'GEO' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
                             onClick={() => setActiveTab('GEO')}
                         >
-                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'GEO' ? 'text-amber-100' : 'text-stone-400'}`}>Geo Pending</p>
+                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'GEO' ? 'text-amber-100' : 'text-stone-400'}`}>Geo Tag</p>
                             <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'GEO' ? 'text-white' : 'text-stone-850'}`}>{geoPendingCount}</p>
-                        </div>
-                        <div 
-                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'METER' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
-                            onClick={() => setActiveTab('METER')}
-                        >
-                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'METER' ? 'text-amber-100' : 'text-stone-400'}`}>Meter Pending</p>
-                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'METER' ? 'text-white' : 'text-stone-850'}`}>{meterPendingCount}</p>
-                        </div>
-                        <div 
-                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'INSPECTION' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
-                            onClick={() => setActiveTab('INSPECTION')}
-                        >
-                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'INSPECTION' ? 'text-amber-100' : 'text-stone-400'}`}>Insp Pending</p>
-                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'INSPECTION' ? 'text-white' : 'text-stone-850'}`}>{inspectionPendingCount}</p>
                         </div>
                     </div>
 
@@ -386,7 +459,7 @@ export default function VendorPortal({ user, onLogout }) {
                             <Search className="absolute left-3 top-2.5 text-stone-400 w-4.5 h-4.5" />
                             <input
                                 type="text"
-                                placeholder="Search by name, phone, consumer no, folder..."
+                                placeholder="Search by name, phone, consumer no, serial..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
                                 className="pl-9 pr-8 py-2.5 bg-white border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium shadow-xs"
@@ -467,9 +540,36 @@ export default function VendorPortal({ user, onLogout }) {
                                     );
                                 }
 
+                                if (cust.stage === 'MATERIAL DELIVERY') {
+                                    const panels = parsePanelSerials(cust.panel_serial_no).filter(Boolean);
+                                    return (
+                                        <div 
+                                            key={cust.id} 
+                                            onClick={() => handleSelectCustomer(cust)}
+                                            className="bg-white p-3.5 rounded-2xl border border-stone-150 shadow-sm hover:border-amber-400 hover:shadow-md transition-all space-y-2 cursor-pointer active:scale-[0.99] group"
+                                        >
+                                            <div className="flex justify-between items-start gap-2">
+                                                <div className="space-y-1 min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className="text-xs font-bold text-stone-900 truncate group-hover:text-amber-600 transition-colors">{cust.customer_name}</h4>
+                                                        <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded-md">
+                                                            Delivery Stage
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[10px] text-stone-400 font-medium truncate">{cust.villages || 'Address not specified'}</p>
+                                                    <div className="flex flex-wrap gap-2 text-[9px] text-stone-500 pt-0.5">
+                                                        {cust.consumer_no && <span>Cons: <b>{cust.consumer_no}</b></span>}
+                                                        {cust.inverter_serial_no && <span>Inv: <b>{cust.inverter_serial_no}</b></span>}
+                                                        <span>Panels: <b>{panels.length} serials</b></span>
+                                                    </div>
+                                                </div>
+                                                <ChevronRight className="w-4.5 h-4.5 text-stone-300 group-hover:text-stone-700 transition-colors flex-shrink-0" />
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
                                 const isGeoOk = cust.geo_tag_status === 'Yes' || cust.geo_tag_status === 'Proceed';
-                                const isMeterOk = cust.meter_installation === 'Yes';
-                                const isInspOk = cust.discom_inspection === 'Yes';
 
                                 return (
                                     <div 
@@ -496,16 +596,6 @@ export default function VendorPortal({ user, onLogout }) {
                                                 }`}>
                                                     Geo: {cust.geo_tag_status || 'Pending'}
                                                 </span>
-                                                <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${
-                                                    isMeterOk ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'
-                                                }`}>
-                                                    Meter: {cust.meter_installation || 'No'}
-                                                </span>
-                                                <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${
-                                                    isInspOk ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'
-                                                }`}>
-                                                    Insp: {cust.discom_inspection || 'No'}
-                                                </span>
                                             </div>
                                         </div>
                                         <ChevronRight className="w-4.5 h-4.5 text-stone-300 group-hover:text-stone-700 transition-colors flex-shrink-0" />
@@ -530,15 +620,6 @@ export default function VendorPortal({ user, onLogout }) {
                         >
                             <ChevronLeft className="w-4.5 h-4.5" /> Back to Dashboard
                         </button>
-                        {activeTab === 'MATERIAL' && (
-                            <button
-                                type="button"
-                                onClick={() => handleOpenBomModal(selectedCust)}
-                                className="text-[11px] font-bold text-stone-800 hover:text-stone-950 bg-white hover:bg-stone-50 border border-stone-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                            >
-                                <Printer size={12} className="text-amber-600" /> Print BOM
-                            </button>
-                        )}
                     </div>
 
                     <div className="bg-white p-5 rounded-[24px] border border-stone-150 shadow-sm space-y-4">
@@ -548,12 +629,11 @@ export default function VendorPortal({ user, onLogout }) {
                         </div>
 
                         {/* Stage Tabs inside Customer View */}
-                        <div className="grid grid-cols-4 gap-1 p-1 bg-stone-100/80 rounded-xl border border-stone-200/60">
+                        <div className="grid grid-cols-3 gap-1 p-1 bg-stone-100/80 rounded-xl border border-stone-200/60">
                             {[
                                 { id: 'MATERIAL', label: 'Material (BOM)', icon: Package },
+                                { id: 'DELIVERY', label: 'Material Delivery', icon: Truck },
                                 { id: 'GEO', label: 'Geo Tag', icon: Camera },
-                                { id: 'METER', label: 'Meter', icon: Zap },
-                                { id: 'INSPECTION', label: 'Inspection', icon: ClipboardCheck },
                             ].map(tab => {
                                 const Icon = tab.icon;
                                 const isCurrent = activeTab === tab.id;
@@ -570,7 +650,7 @@ export default function VendorPortal({ user, onLogout }) {
                                     >
                                         <Icon size={11} />
                                         <span className="hidden sm:inline">{tab.label}</span>
-                                        <span className="sm:hidden">{tab.id === 'MATERIAL' ? 'BOM' : tab.label}</span>
+                                        <span className="sm:hidden">{tab.id === 'MATERIAL' ? 'BOM' : tab.id === 'DELIVERY' ? 'Delivery' : 'Geo'}</span>
                                     </button>
                                 );
                             })}
@@ -581,11 +661,9 @@ export default function VendorPortal({ user, onLogout }) {
                             <h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest border-b border-stone-100 pb-1.5">
                                 {activeTab === 'MATERIAL'
                                     ? 'Material Integration & BOM Specification'
-                                    : activeTab === 'GEO' 
-                                        ? 'Geo Tag Photo Report' 
-                                        : activeTab === 'METER' 
-                                            ? 'Meter Installation Report' 
-                                            : 'Discom Inspection Report'}
+                                    : activeTab === 'DELIVERY'
+                                        ? 'Material Delivery Equipment Details'
+                                        : 'Geo Tag Photo Report'}
                             </h3>
 
                             {/* ─── Active Tab: MATERIAL INTEGRATION & BOM ─── */}
@@ -631,6 +709,189 @@ export default function VendorPortal({ user, onLogout }) {
                                                 <span className="font-semibold text-stone-850">{selectedCust.invoice_value ? `₹${toIndianCommas(selectedCust.invoice_value)}` : '–'}</span>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ─── Active Tab: MATERIAL DELIVERY ─── */}
+                            {activeTab === 'DELIVERY' && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Inverter Serial No</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. INV-98765432"
+                                                value={inverterSerialNo}
+                                                onChange={e => setInverterSerialNo(e.target.value)}
+                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Invoice No</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. INV-2026-001"
+                                                value={invoiceNo}
+                                                onChange={e => setInvoiceNo(e.target.value)}
+                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Driver Name</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. Ramesh Kumar"
+                                                value={driverName}
+                                                onChange={e => setDriverName(e.target.value)}
+                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Driver Phone Number</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. 9876543210"
+                                                value={driverPhone}
+                                                onChange={e => setDriverPhone(e.target.value)}
+                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Panel Serial Numbers List */}
+                                    <div className="bg-stone-50 p-4 rounded-2xl border border-stone-150/80 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h4 className="text-[10px] font-black text-stone-800 uppercase tracking-wide flex items-center gap-1.5">
+                                                    <Layers size={12} className="text-amber-500" /> Panel Serial Numbers ({panelSerials.filter(Boolean).length})
+                                                </h4>
+                                                <p className="text-[9px] text-stone-400 font-medium">Record all delivered solar panel serial codes.</p>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowBulkPaste(prev => !prev)}
+                                                    className="text-[9px] font-bold px-2 py-1 bg-white hover:bg-stone-100 border border-stone-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <ClipboardPaste size={10} /> {showBulkPaste ? 'Hide Paste' : 'Bulk Paste'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addPanelSerial(1)}
+                                                    className="text-[9px] font-bold px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition flex items-center gap-1 cursor-pointer shadow-xs"
+                                                >
+                                                    <Plus size={10} /> Add 1
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {showBulkPaste && (
+                                            <div className="p-3 bg-white rounded-xl border border-amber-200 space-y-2">
+                                                <p className="text-[9px] font-bold text-stone-500">Paste serial numbers (separated by lines, commas, or tabs):</p>
+                                                <textarea
+                                                    rows={3}
+                                                    value={bulkText}
+                                                    onChange={e => setBulkText(e.target.value)}
+                                                    placeholder="Paste multiple serials here..."
+                                                    className="w-full text-xs font-mono p-2 border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                                />
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowBulkPaste(false)}
+                                                        className="text-[10px] font-bold px-2.5 py-1 text-stone-500 hover:bg-stone-100 rounded-lg"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleApplyBulkPaste}
+                                                        className="text-[10px] font-bold px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow-xs"
+                                                    >
+                                                        Apply Serials
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                                            {panelSerials.map((serial, idx) => (
+                                                <div key={idx} className="flex items-center gap-1.5">
+                                                    <span className="text-[9px] font-bold text-stone-400 w-5 text-right flex-shrink-0">{idx + 1}.</span>
+                                                    <input
+                                                        type="text"
+                                                        placeholder={`Panel #${idx + 1} Serial`}
+                                                        value={serial}
+                                                        onChange={e => handlePanelSerialChange(idx, e.target.value)}
+                                                        className="flex-1 bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                                    />
+                                                    {serial && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleCopySerial(serial, idx)}
+                                                            className="p-1.5 text-stone-400 hover:text-stone-700 bg-white border border-stone-200 rounded-lg"
+                                                            title="Copy serial"
+                                                        >
+                                                            {copiedIdx === idx ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                                                        </button>
+                                                    )}
+                                                    {panelSerials.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removePanelSerial(idx)}
+                                                            className="p-1.5 text-red-400 hover:text-red-600 bg-white border border-stone-200 rounded-lg"
+                                                            title="Remove serial"
+                                                        >
+                                                            <Trash2 size={11} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {panelSerials.filter(Boolean).length > 0 && (
+                                            <div className="flex justify-end pt-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleCopyAll}
+                                                    className="text-[9px] font-bold text-stone-600 hover:text-stone-900 flex items-center gap-1"
+                                                >
+                                                    {copiedAll ? <Check size={10} className="text-emerald-600" /> : <Copy size={10} />}
+                                                    {copiedAll ? 'Copied all serials!' : 'Copy All Serials'}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {saveSuccess && (
+                                        <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl text-[10px] font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
+                                            <CheckCircle2 className="w-4.5 h-4.5 flex-shrink-0" />
+                                            <span>Material delivery saved successfully!</span>
+                                        </div>
+                                    )}
+
+                                    <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSaveChanges(null)}
+                                            disabled={saving}
+                                            className="flex-1 bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                        >
+                                            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check size={12} />}
+                                            Save Delivery Info
+                                        </button>
+                                        {selectedCust.stage === 'MATERIAL DELIVERY' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveChanges('INSTALLATION STATUS')}
+                                                disabled={saving}
+                                                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                            >
+                                                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight size={14} />}
+                                                Save & Move to Installation
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -745,178 +1006,45 @@ export default function VendorPortal({ user, onLogout }) {
                                             </div>
                                         )}
                                     </div>
-                                </div>
-                            )}
 
-                            {/* ─── Active Tab: METER INSTALLATION ─── */}
-                            {activeTab === 'METER' && (
-                                <div className="space-y-3">
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider">Meter Installation Status</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setMeterStatus('No')}
-                                            className={`py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
-                                                meterStatus === 'No'
-                                                    ? 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10'
-                                                    : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
-                                            }`}
-                                        >
-                                            <span className={`w-1.5 h-1.5 rounded-full ${meterStatus === 'No' ? 'bg-white' : 'bg-stone-300'}`} />
-                                            No
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setMeterStatus('Yes');
-                                                if (!installationDate) setInstallationDate(new Date().toISOString().split('T')[0]);
-                                            }}
-                                            className={`py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
-                                                meterStatus === 'Yes'
-                                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10'
-                                                    : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
-                                            }`}
-                                        >
-                                            <span className={`w-1.5 h-1.5 rounded-full ${meterStatus === 'Yes' ? 'bg-white' : 'bg-stone-300'}`} />
-                                            Yes
-                                        </button>
-                                    </div>
-
-                                    {meterStatus === 'Yes' && (
-                                        <div className="pt-2">
-                                            <label className="block text-[8px] font-bold text-stone-400 uppercase tracking-wider mb-1">Installation Date</label>
-                                            <input
-                                                type="date"
-                                                value={installationDate}
-                                                onChange={e => setInstallationDate(e.target.value)}
-                                                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold text-stone-700"
-                                            />
+                                    {saveSuccess && (
+                                        <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl text-[10px] font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
+                                            <CheckCircle2 className="w-4.5 h-4.5 flex-shrink-0" />
+                                            <span>Geo tag report saved successfully!</span>
                                         </div>
                                     )}
-                                </div>
-                            )}
 
-                            {/* ─── Active Tab: DISCOM INSPECTION ─── */}
-                            {activeTab === 'INSPECTION' && (
-                                <div className="space-y-3">
-                                    <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider">Discom Inspection Status</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setDiscomInspection('No')}
-                                            className={`py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
-                                                discomInspection === 'No'
-                                                    ? 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10'
-                                                    : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
-                                            }`}
-                                        >
-                                            <span className={`w-1.5 h-1.5 rounded-full ${discomInspection === 'No' ? 'bg-white' : 'bg-stone-300'}`} />
-                                            No
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setDiscomInspection('Yes')}
-                                            className={`py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
-                                                discomInspection === 'Yes'
-                                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10'
-                                                    : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
-                                            }`}
-                                        >
-                                            <span className={`w-1.5 h-1.5 rounded-full ${discomInspection === 'Yes' ? 'bg-white' : 'bg-stone-300'}`} />
-                                            Yes
-                                        </button>
+                                    <div className="pt-2">
+                                        {(geoTagStatus === 'Yes' || geoTagStatus === 'Proceed') ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveChanges('DISCOM SUBMISSION')}
+                                                disabled={saving}
+                                                className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                            >
+                                                {saving ? (
+                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Moving Stage...</>
+                                                ) : (
+                                                    'Move to Discom Submission'
+                                                )}
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveChanges(null)}
+                                                disabled={saving}
+                                                className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                            >
+                                                {saving ? (
+                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+                                                ) : (
+                                                    'Save Geo Tag Report'
+                                                )}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )}
-
-                            {saveSuccess && (
-                                <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl text-[10px] font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
-                                    <CheckCircle2 className="w-4.5 h-4.5 flex-shrink-0" />
-                                    <span>Changes saved successfully!</span>
-                                </div>
-                            )}
-
-                            <div className="pt-2">
-                                {activeTab === 'GEO' ? (
-                                    (geoTagStatus === 'Yes' || geoTagStatus === 'Proceed') ? (
-                                        <button
-                                            onClick={() => handleSaveChanges('DISCOM SUBMISSION')}
-                                            disabled={saving}
-                                            className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                        >
-                                            {saving ? (
-                                                <><Loader2 className="w-4 h-4 animate-spin" /> Moving Stage...</>
-                                            ) : (
-                                                'Move to Discom Submission'
-                                            )}
-                                        </button>
-                                    ) : (
-                                        <button
-                                            onClick={() => handleSaveChanges(null)}
-                                            disabled={saving}
-                                            className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                        >
-                                            {saving ? (
-                                                <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
-                                            ) : (
-                                                'Save Changes'
-                                            )}
-                                        </button>
-                                    )
-                                ) : activeTab === 'METER' ? (
-                                    meterStatus === 'Yes' ? (
-                                        <button
-                                            onClick={() => handleSaveChanges('DISCOM INSPECTION')}
-                                            disabled={saving}
-                                            className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                        >
-                                            {saving ? (
-                                                <><Loader2 className="w-4 h-4 animate-spin" /> Moving Stage...</>
-                                            ) : (
-                                                'Move to Discom Inspection'
-                                            )}
-                                        </button>
-                                    ) : (
-                                        <button
-                                            onClick={() => handleSaveChanges(null)}
-                                            disabled={saving}
-                                            className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                        >
-                                            {saving ? (
-                                                <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
-                                            ) : (
-                                                'Save Changes'
-                                            )}
-                                        </button>
-                                    )
-                                ) : (
-                                    discomInspection === 'Yes' ? (
-                                        <button
-                                            onClick={() => handleSaveChanges('SUBSIDY STATUS')}
-                                            disabled={saving}
-                                            className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                        >
-                                            {saving ? (
-                                                <><Loader2 className="w-4 h-4 animate-spin" /> Moving Stage...</>
-                                            ) : (
-                                                'Move to Subsidy Status'
-                                            )}
-                                        </button>
-                                    ) : (
-                                        <button
-                                            onClick={() => handleSaveChanges(null)}
-                                            disabled={saving}
-                                            className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                        >
-                                            {saving ? (
-                                                <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
-                                            ) : (
-                                                'Save Changes'
-                                            )}
-                                        </button>
-                                    )
-                                )}
-                            </div>
                         </div>
                     </div>
 
