@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ClipboardList, Save, Printer, ShoppingBag, Layers, Zap, Ruler, IndianRupee, User, CheckCircle2, X } from 'lucide-react';
 import { supabase } from '../../supabase';
-import { SectionHeader } from './shared';
+import { SectionHeader, EditableDetailItem } from './shared';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE } from '../../constants';
 import { toIndianCommas } from '../../utils';
 
@@ -277,7 +277,11 @@ export default function MaterialIntegrationTab({
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
                                 <Ruler size={10} className="text-amber-600" /> Leg Height
                             </label>
-                            <p className="text-xs font-bold text-stone-800">{editData?.structure_leg_height || '–'}</p>
+                            <p className="text-xs font-bold text-stone-800">
+                                {editData?.structure_front_leg_height && editData?.structure_rear_leg_height 
+                                    ? `F: ${editData.structure_front_leg_height} ft / R: ${editData.structure_rear_leg_height} ft`
+                                    : (editData?.structure_leg_height || '–')}
+                            </p>
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
@@ -288,34 +292,28 @@ export default function MaterialIntegrationTab({
                     </div>
                 </div>
 
-                {/* Section 2: Read-only Customer Info */}
-                <div>
-                    <h5 className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Customer & Site Reference</h5>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-stone-50 p-4 rounded-xl border border-stone-200">
-                        <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Party Name</label>
-                            <p className="text-xs font-bold text-stone-700">{editData?.customer_name || "–"}</p>
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Mobile</label>
-                            <p className="text-xs font-bold text-stone-700">{editData?.phone_number || "–"}</p>
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">kW Capacity</label>
-                            <p className="text-xs font-bold text-stone-700">{editData?.system_capacity_kwp ? `${editData.system_capacity_kwp} kWp` : "–"}</p>
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Dealer Name</label>
-                            <p className="text-xs font-bold text-stone-700">{editData?.channel_partner || "–"}</p>
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">File No. (Folder No)</label>
-                            <p className="text-xs font-bold text-stone-700">{editData?.folder_no || "–"}</p>
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Registration Date</label>
-                            <p className="text-xs font-bold text-stone-700">{editData?.registration_date || "–"}</p>
-                        </div>
+                {/* Section 2: Read-only Customer & Site Reference */}
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-stone-100 pb-1.5">
+                        <h5 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
+                            <User size={12} className="text-amber-500" /> Customer & Site Reference
+                        </h5>
+                        <span className="text-[9px] font-semibold text-stone-400 uppercase">View Only</span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <EditableDetailItem label="Customer Name" field="customer_name" value={customer?.customer_name || editData?.customer_name} isEditing={false} />
+                        <EditableDetailItem label="Phone Number" field="phone_number" value={customer?.phone_number || editData?.phone_number} isEditing={false} />
+                        <EditableDetailItem label="Email Address" field="email" value={customer?.email_address || customer?.email || editData?.email_address || editData?.email} isEditing={false} />
+                        <EditableDetailItem label="Consumer No" field="consumer_no" value={customer?.consumer_no || editData?.consumer_no} isEditing={false} />
+                        <EditableDetailItem label="Villages" field="villages" value={customer?.villages || editData?.villages} isEditing={false} />
+                        <EditableDetailItem label="Sub Division" field="sub_divisions" value={customer?.sub_divisions || editData?.sub_divisions} isEditing={false} />
+                        <EditableDetailItem label="Channel Partner Name" field="channel_partner" value={customer?.channel_partner || editData?.channel_partner} isEditing={false} />
+                        <EditableDetailItem label="Sub Channel Partner Name" field="sub_channel_partner" value={customer?.sub_channel_partner || editData?.sub_channel_partner} isEditing={false} />
+                        <EditableDetailItem label="MODULE BRAND" field="module_brand" value={customer?.module_brand || editData?.module_brand} isEditing={false} />
+                        <EditableDetailItem label="MODULE WP" field="module_wp" value={customer?.module_wp || editData?.module_wp} isEditing={false} />
+                        <EditableDetailItem label="No of Modules" field="no_of_modules" value={customer?.no_of_modules || editData?.no_of_modules} isEditing={false} />
+                        <EditableDetailItem label="System Capacity (kWp)" field="system_capacity_kwp" value={customer?.system_capacity_kwp || editData?.system_capacity_kwp} isEditing={false} />
+                        <EditableDetailItem label="Payment Type" field="payment_type" value={customer?.payment_type || editData?.payment_type} isEditing={false} />
                     </div>
                 </div>
 

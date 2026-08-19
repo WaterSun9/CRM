@@ -4,10 +4,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
     X, Plus, User, ClipboardList, Paperclip, Eye, Trash2, 
-    Upload, FileText, Image as ImageIcon, Loader2, Banknote 
+    Upload, FileText, Image as ImageIcon, Loader2, Banknote, Sparkles 
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
+import { toIndianCommas } from '../utils';
 
 // Dropdown component for metadata fields (clean single outline)
 function AddLeadMetaSelect({ label, field, value, onChange, options = [] }) {
@@ -207,7 +208,18 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners';
 
     const handleChange = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+        setFormData(prev => {
+            const next = { ...prev, [field]: value };
+            if (field === 'module_wp' || field === 'no_of_modules') {
+                const wp = parseFloat(String(field === 'module_wp' ? value : next.module_wp).replace(/,/g, ''));
+                const count = parseFloat(String(field === 'no_of_modules' ? value : next.no_of_modules).replace(/,/g, ''));
+                if (!isNaN(wp) && !isNaN(count) && wp > 0 && count > 0) {
+                    const totalVal = Math.round(wp * count);
+                    next.system_capacity_kwp = toIndianCommas(totalVal);
+                }
+            }
+            return next;
+        });
     };
 
     const handleFileAttach = (docType, file) => {
@@ -240,13 +252,21 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
 
     const handleSave = async (e) => {
         if (e) e.preventDefault();
+        if (saving) return; // Prevent double-submission from fast clicking
         
         if (!formData.customer_name?.trim()) return alert('Customer Name is required');
         if (!formData.phone_number?.toString().trim()) return alert('Customer Phone Number is required');
         if (!formData.email_address?.trim()) return alert('Email Address is required');
         if (!formData.consumer_no?.toString().trim()) return alert('Consumer Number is required');
+        if (!formData.villages?.trim()) return alert('Villages / Address is required');
         if (!isAgent && !formData.channel_partner?.trim()) return alert('Channel Partner Name is required');
+        if (!isAgent && !formData.sub_channel_partner?.trim()) return alert('Sub Channel Partner Name is required');
+        if (!formData.module_brand?.trim()) return alert('Module Brand is required');
+        if (!formData.module_wp?.toString().trim()) return alert('Module Wp is required');
+        if (!formData.no_of_modules?.toString().trim()) return alert('No of Modules is required');
         if (!formData.system_capacity_kwp) return alert('System Capacity is required');
+        if (!formData.sub_divisions?.trim()) return alert('Sub Division is required');
+        if (!formData.payment_type?.trim()) return alert('Payment Type Selection is required');
 
         // Package attached files as list of { file, doc_type }
         const filesToUpload = Object.entries(pendingFiles).map(([doc_type, file]) => ({
@@ -270,6 +290,32 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         ? meta['module_wp']
         : ['540', '545', '550', '570', '575', '580', '585', '590', '600', '610', '615', '620'];
 
+    const handleFillTestData = () => {
+        const randId = Math.floor(1000 + Math.random() * 9000);
+        const demoBrand = meta['module_brand']?.[0] || 'Adani';
+        const demoCp = channel_partners?.[0] || 'Watersun Direct';
+        const demoWp = moduleWpOptions[0] || '540';
+        const demoModules = 20;
+        const demoKwp = toIndianCommas(Number(demoWp) * demoModules);
+
+        setFormData(prev => ({
+            ...prev,
+            customer_name: `Test Lead ${randId}`,
+            phone_number: `98765${randId}`,
+            email_address: `testlead${randId}@gmail.com`,
+            consumer_no: `100200${randId}`,
+            villages: `Test Village ${randId}`,
+            sub_divisions: `Test Division`,
+            channel_partner: isAgent ? (user?.name || user?.email || 'Channel Partner') : demoCp,
+            sub_channel_partner: `Direct Sub Partner`,
+            module_brand: demoBrand,
+            module_wp: String(demoWp),
+            no_of_modules: String(demoModules),
+            system_capacity_kwp: demoKwp,
+            payment_type: 'CASH',
+        }));
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4">
             <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
@@ -283,12 +329,22 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             Register a new customer lead with complete details and document attachments.
                         </p>
                     </div>
-                    <button 
-                        onClick={onClose} 
-                        className="p-2 hover:bg-stone-100 text-stone-400 hover:text-stone-700 rounded-xl transition cursor-pointer"
-                    >
-                        <X size={18} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleFillTestData}
+                            title="Auto-fill sample test data"
+                            className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                            <Sparkles size={13} className="text-amber-500" /> Fill Test Data
+                        </button>
+                        <button 
+                            onClick={onClose} 
+                            className="p-2 hover:bg-stone-100 text-stone-400 hover:text-stone-700 rounded-xl transition cursor-pointer"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Modal Scrollable Body */}
@@ -366,7 +422,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             {/* Villages */}
                             <div className="space-y-1">
                                 <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
-                                    Villages / Address
+                                    Villages / Address <span className="text-red-500 font-bold">*</span>
                                 </label>
                                 <input
                                     type="text"
@@ -374,6 +430,22 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     onChange={e => handleChange('villages', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                     placeholder="Village or address"
+                                    required
+                                />
+                            </div>
+
+                            {/* Sub Division */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
+                                    Sub Division <span className="text-red-500 font-bold">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.sub_divisions || ''}
+                                    onChange={e => handleChange('sub_divisions', e.target.value)}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                    placeholder="Sub division"
+                                    required
                                 />
                             </div>
 
@@ -393,7 +465,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             {!isAgent && (
                                 <div className="space-y-1">
                                     <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
-                                        Sub Channel Partner Name
+                                        Sub Channel Partner Name <span className="text-red-500 font-bold">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -401,55 +473,71 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         onChange={e => handleChange('sub_channel_partner', e.target.value)}
                                         className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                         placeholder="Sub channel partner"
+                                        required
                                     />
                                 </div>
                             )}
 
-                            {/* System Capacity */}
+                            {/* MODULE BRAND */}
+                            <div className="space-y-1">
+                                 <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
+                                     MODULE BRAND <span className="text-red-500 font-bold">*</span>
+                                 </label>
+                                 <select
+                                     value={formData.module_brand || ''}
+                                     onChange={e => handleChange('module_brand', e.target.value)}
+                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                     required
+                                 >
+                                     <option value="">Select MODULE BRAND...</option>
+                                     {(meta['module_brand'] || []).map(o => <option key={o} value={o}>{o}</option>)}
+                                 </select>
+                            </div>
+
+                            {/* MODULE WP */}
+                            <div className="space-y-1">
+                                 <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
+                                     MODULE WP <span className="text-red-500 font-bold">*</span>
+                                 </label>
+                                 <select
+                                     value={formData.module_wp || ''}
+                                     onChange={e => handleChange('module_wp', e.target.value)}
+                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                     required
+                                 >
+                                     <option value="">Select MODULE WP...</option>
+                                     {moduleWpOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                                 </select>
+                            </div>
+
+                            {/* No of Modules */}
                             <div className="space-y-1">
                                 <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
-                                    System Capacity (kWp) <span className="text-red-500 font-bold">*</span>
+                                    No of Modules <span className="text-red-500 font-bold">*</span>
                                 </label>
                                 <input
                                     type="number"
-                                    step="0.01"
-                                    value={formData.system_capacity_kwp || ''}
-                                    onChange={e => handleChange('system_capacity_kwp', e.target.value)}
+                                    min="1"
+                                    value={formData.no_of_modules || ''}
+                                    onChange={e => handleChange('no_of_modules', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                                    placeholder="e.g. 5"
+                                    placeholder="e.g. 10"
                                     required
                                 />
                             </div>
 
-                            {/* MODULE BRAND */}
-                            <AddLeadMetaSelect
-                                label="MODULE BRAND"
-                                field="module_brand"
-                                value={formData.module_brand}
-                                onChange={handleChange}
-                                options={meta['module_brand'] || []}
-                            />
-
-                            {/* MODULE WP */}
-                            <AddLeadMetaSelect
-                                label="MODULE WP"
-                                field="module_wp"
-                                value={formData.module_wp}
-                                onChange={handleChange}
-                                options={moduleWpOptions}
-                            />
-
-                            {/* Sub Division */}
+                            {/* System Capacity */}
                             <div className="space-y-1">
                                 <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
-                                    Sub Division
+                                    System Capacity <span className="text-red-500 font-bold">*</span>
                                 </label>
                                 <input
                                     type="text"
-                                    value={formData.sub_divisions || ''}
-                                    onChange={e => handleChange('sub_divisions', e.target.value)}
+                                    value={formData.system_capacity_kwp || ''}
+                                    onChange={e => handleChange('system_capacity_kwp', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                                    placeholder="Sub division"
+                                    placeholder="e.g. 10,800"
+                                    required
                                 />
                             </div>
                         </div>
@@ -468,7 +556,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             {/* Payment Type Selection at the top */}
                             <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-                                    Payment Type Selection
+                                    Payment Type Selection <span className="text-red-500 font-bold">*</span>
                                 </label>
                                 <select
                                     value={formData.payment_type || ''}
@@ -477,6 +565,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         handleChange('payment_type', val);
                                     }}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 font-semibold text-stone-800 transition-all"
+                                    required
                                 >
                                     <option value="">Select Payment Type...</option>
                                     {(meta['payment_type'] || ['CASH', 'LOAN']).map((opt) => (
@@ -491,17 +580,27 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     {formData.payment_type?.trim().toLowerCase() !== 'cash' && (
                                         <>
                                             <AddLeadChecklistItem
-                                                label="Adhaar card"
-                                                field="adhaar_card"
-                                                checked={formData.adhaar_card}
+                                                label="Aadhar Card Front"
+                                                field="adhaar_card_front"
+                                                checked={formData.adhaar_card_front}
                                                 onToggle={handleChange}
-                                                pendingFile={pendingFiles['adhaar_card']}
+                                                pendingFile={pendingFiles['adhaar_card_front']}
                                                 onFileAttach={handleFileAttach}
                                                 onFileRemove={handleFileRemove}
                                                 onPreview={handlePreviewFile}
                                             />
                                             <AddLeadChecklistItem
-                                                label="Pan card"
+                                                label="Aadhar Card Back"
+                                                field="adhaar_card_back"
+                                                checked={formData.adhaar_card_back}
+                                                onToggle={handleChange}
+                                                pendingFile={pendingFiles['adhaar_card_back']}
+                                                onFileAttach={handleFileAttach}
+                                                onFileRemove={handleFileRemove}
+                                                onPreview={handlePreviewFile}
+                                            />
+                                            <AddLeadChecklistItem
+                                                label="PAN Card"
                                                 field="pan_card"
                                                 checked={formData.pan_card}
                                                 onToggle={handleChange}
@@ -535,7 +634,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     />
 
                                     <AddLeadChecklistItem
-                                        label="Bank details"
+                                        label="Bank Details"
                                         field="bank_details"
                                         checked={formData.bank_details}
                                         onToggle={handleChange}
@@ -545,18 +644,27 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         onPreview={handlePreviewFile}
                                     />
 
-                                    {formData.payment_type?.trim().toLowerCase() !== 'cash' && (
-                                        <AddLeadChecklistItem
-                                            label="Bank Passbook"
-                                            field="bank_passbook"
-                                            checked={formData.bank_passbook}
-                                            onToggle={handleChange}
-                                            pendingFile={pendingFiles['bank_passbook']}
-                                            onFileAttach={handleFileAttach}
-                                            onFileRemove={handleFileRemove}
-                                            onPreview={handlePreviewFile}
-                                        />
-                                    )}
+                                    <AddLeadChecklistItem
+                                        label="House Geo Tag Photo"
+                                        field="house_geo_tag_photo"
+                                        checked={formData.house_geo_tag_photo}
+                                        onToggle={handleChange}
+                                        pendingFile={pendingFiles['house_geo_tag_photo']}
+                                        onFileAttach={handleFileAttach}
+                                        onFileRemove={handleFileRemove}
+                                        onPreview={handlePreviewFile}
+                                    />
+
+                                    <AddLeadChecklistItem
+                                        label="Extra Documents"
+                                        field="extra_docs"
+                                        checked={formData.extra_docs}
+                                        onToggle={handleChange}
+                                        pendingFile={pendingFiles['extra_docs']}
+                                        onFileAttach={handleFileAttach}
+                                        onFileRemove={handleFileRemove}
+                                        onPreview={handlePreviewFile}
+                                    />
                                 </div>
                             ) : (
                                 <p className="text-xs text-stone-400 italic py-2">

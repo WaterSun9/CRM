@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, exportAllToCSV, uploadDocument } from '../utils';
+import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber } from '../utils';
 import { PRIMARY_STAGES } from '../constants';
 
 import DashboardView from './DashboardView';
@@ -83,7 +83,10 @@ export default function Dashboard({ user, onLogout }) {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, (payload) => {
                 // Handle each event type directly to avoid full refetch flicker
                 if (payload.eventType === 'INSERT') {
-                    setCustomers(prev => [payload.new, ...prev]);
+                    setCustomers(prev => {
+                        if (prev.some(c => c.id === payload.new.id)) return prev;
+                        return [payload.new, ...prev];
+                    });
                 } else if (payload.eventType === 'UPDATE') {
                     setCustomers(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
                 } else if (payload.eventType === 'DELETE') {
@@ -190,11 +193,30 @@ export default function Dashboard({ user, onLogout }) {
     };
 
     const handleUpdateCustomer = async (id, updates) => {
-        const { error } = await supabase.from('admin').update(updates).eq('id', id);
+        const cleanUpdates = { ...updates };
+        if (cleanUpdates.system_capacity_kwp !== undefined && cleanUpdates.system_capacity_kwp !== null && cleanUpdates.system_capacity_kwp !== '') {
+            cleanUpdates.system_capacity_kwp = parseIndianNumber(cleanUpdates.system_capacity_kwp);
+        }
+        if (cleanUpdates.module_wp !== undefined && cleanUpdates.module_wp !== null && cleanUpdates.module_wp !== '') {
+            cleanUpdates.module_wp = parseIndianNumber(cleanUpdates.module_wp);
+        }
+        if (cleanUpdates.no_of_modules !== undefined && cleanUpdates.no_of_modules !== null && cleanUpdates.no_of_modules !== '') {
+            cleanUpdates.no_of_modules = parseIndianNumber(cleanUpdates.no_of_modules);
+        }
+        if (cleanUpdates.invoice_value !== undefined && cleanUpdates.invoice_value !== null && cleanUpdates.invoice_value !== '') {
+            cleanUpdates.invoice_value = parseIndianNumber(cleanUpdates.invoice_value);
+        }
+        if (cleanUpdates.dc_cable !== undefined && cleanUpdates.dc_cable !== null && cleanUpdates.dc_cable !== '') {
+            cleanUpdates.dc_cable = parseIndianNumber(cleanUpdates.dc_cable);
+        }
+        if (cleanUpdates.ac_cable !== undefined && cleanUpdates.ac_cable !== null && cleanUpdates.ac_cable !== '') {
+            cleanUpdates.ac_cable = parseIndianNumber(cleanUpdates.ac_cable);
+        }
+        const { error } = await supabase.from('admin').update(cleanUpdates).eq('id', id);
         if (!error) {
-            setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-            if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...updates }));
-            syncMetadata(updates);
+            setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...cleanUpdates } : c));
+            if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...cleanUpdates }));
+            syncMetadata(cleanUpdates);
         } else {
             console.error('Error updating customer:', error);
             alert('Database Save Error: ' + error.message + '\nDetails: ' + error.details);
@@ -288,12 +310,15 @@ export default function Dashboard({ user, onLogout }) {
     const handleAddLead = async (data, attachedFiles = []) => {
         const leadData = { ...data, application_done_by: user.name, created_at: new Date().toISOString() };
 
-        // Clean up or format values
-        if (leadData.system_capacity_kwp) {
-            leadData.system_capacity_kwp = Number(leadData.system_capacity_kwp);
+        // Clean up or format numeric values safely
+        if (leadData.system_capacity_kwp !== undefined && leadData.system_capacity_kwp !== null && leadData.system_capacity_kwp !== '') {
+            leadData.system_capacity_kwp = parseIndianNumber(leadData.system_capacity_kwp);
         }
-        if (leadData.module_wp) {
-            leadData.module_wp = Number(leadData.module_wp);
+        if (leadData.module_wp !== undefined && leadData.module_wp !== null && leadData.module_wp !== '') {
+            leadData.module_wp = parseIndianNumber(leadData.module_wp);
+        }
+        if (leadData.no_of_modules !== undefined && leadData.no_of_modules !== null && leadData.no_of_modules !== '') {
+            leadData.no_of_modules = parseIndianNumber(leadData.no_of_modules);
         }
 
         // Map empty strings to null to avoid database numeric/type syntax errors

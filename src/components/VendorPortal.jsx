@@ -1015,17 +1015,17 @@ export default function VendorPortal({ user, onLogout }) {
                                     )}
 
                                     <div className="pt-2">
-                                        {(geoTagStatus === 'Yes' || geoTagStatus === 'Proceed') ? (
+                                        {(geoTagStatus === 'Proceed' && geoDocs.length > 0) ? (
                                             <button
                                                 type="button"
                                                 onClick={() => handleSaveChanges('DISCOM SUBMISSION')}
                                                 disabled={saving}
-                                                className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
                                             >
                                                 {saving ? (
                                                     <><Loader2 className="w-4 h-4 animate-spin" /> Moving Stage...</>
                                                 ) : (
-                                                    'Move to Discom Submission'
+                                                    <><CheckCircle2 size={14} /> Save & Move to Discom Submission</>
                                                 )}
                                             </button>
                                         ) : (

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as ImageIcon, Download } from 'lucide-react';
-import { formatINR, toIndianCommas, parseIndianNumber } from '../../utils';
+import { formatINR, toIndianCommas, parseIndianNumber, formatInputValue } from '../../utils';
 
 const fmt = formatINR;
 
@@ -96,11 +96,15 @@ export function StageRemarkSection({ stageId, editData, setEditData, isFrozen, o
 
 // ─── DetailItem / EditableDetailItem ──────────────────────────────────────────
 export function DetailItem({ label, value, isMoney = false, isEnergy = false }) {
+    let displayVal = value;
+    if (label && label.toLowerCase().includes('capacity') && value) {
+        displayVal = toIndianCommas(value);
+    }
     return (
-        <div className="bg-stone-50 p-3 rounded-xl">
-            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
+        <div className="bg-stone-50 p-2.5 rounded-xl">
+            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-0.5 font-bold">{label}</p>
             <p className={`text-sm font-semibold truncate ${isMoney ? 'text-emerald-600' : isEnergy ? 'text-amber-600' : 'text-stone-800'}`}>
-                {isMoney ? fmt(value) : (value || '–')}
+                {isMoney ? fmt(value) : (displayVal || '–')}
             </p>
         </div>
     );
@@ -179,7 +183,7 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
 
     if (field === 'channel_partner') {
         return (
-            <div className="bg-stone-50 p-3 rounded-xl">
+            <div className="bg-stone-50 p-2.5 rounded-xl">
                 <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
                 <ChannelPartnerAutocomplete label={label} value={value} onChange={(val) => onChange(field, val)} suggestions={channel_partners} isAdmin={isAdmin} />
             </div>
@@ -187,7 +191,7 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
     }
 
     return (
-        <div className="bg-stone-50 p-3 rounded-xl">
+        <div className="bg-stone-50 p-2.5 rounded-xl">
             <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
             {options ? (
                 <select value={value || ''} onChange={e => onChange(field, e.target.value)}
@@ -195,9 +199,9 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
                     <option value="">Select...</option>
                     {options.map(o => <option key={o}>{o}</option>)}
                 </select>
-            ) : isMoney ? (
-                <input type="text" inputMode="decimal" value={value ? toIndianCommas(value) : ''}
-                    onChange={e => onChange(field, parseIndianNumber(e.target.value))}
+            ) : isMoney || field === 'invoice_value' ? (
+                <input type="text" inputMode="decimal" value={value ? formatInputValue(value) : ''}
+                    onChange={e => onChange(field, formatInputValue(e.target.value))}
                     className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300" />
             ) : (
                 <input type={type} value={value || ''} onChange={e => onChange(field, e.target.value)}

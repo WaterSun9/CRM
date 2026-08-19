@@ -1,4 +1,27 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { PauseCircle, AlertTriangle, CheckCircle2, MessageSquare, CornerUpLeft, Save, Sparkles } from 'lucide-react';
+import { PRIMARY_STAGES } from '../../constants';
+
+const HOLD_STATUS_TAGS = [
+    { 
+        id: 'Project Win', 
+        label: 'Project Win', 
+        activeClass: 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-500 ring-offset-2 shadow-md shadow-emerald-600/25 font-bold scale-[1.02]', 
+        dotClass: 'bg-white shadow-xs' 
+    },
+    { 
+        id: 'Project Lost', 
+        label: 'Project Lost', 
+        activeClass: 'bg-rose-600 text-white border-rose-600 ring-2 ring-rose-500 ring-offset-2 shadow-md shadow-rose-600/25 font-bold scale-[1.02]', 
+        dotClass: 'bg-white shadow-xs' 
+    },
+    { 
+        id: 'Project Return Win', 
+        label: 'Project Return Win', 
+        activeClass: 'bg-amber-500 text-white border-amber-500 ring-2 ring-amber-400 ring-offset-2 shadow-md shadow-amber-500/25 font-bold scale-[1.02]', 
+        dotClass: 'bg-white shadow-xs' 
+    }
+];
 
 export default function HoldProcurementTab({
     customer,
@@ -12,69 +35,282 @@ export default function HoldProcurementTab({
     saving,
     setSaving
 }) {
-    const handleToggleHoldStatus = (status) => {
-        const newStatus = editData.hold_procurement === status ? null : status;
-        setEditData(prev => ({ ...prev, hold_procurement: newStatus }));
+    const today = new Date().toISOString().split('T')[0];
+
+    // Normalize hold_procurement object safely from editData or customer
+    const getHoldState = () => {
+        const raw = editData.hold_procurement ?? customer.hold_procurement;
+        let defaultOrigin = customer.stage !== 'HOLD PROCUREMENT' ? customer.stage : 'LEADS';
+        
+        if (!raw) {
+            return {
+                previous_stage: defaultOrigin,
+                hold_status: '',
+                comment: '',
+                hold_date: today
+            };
+        }
+        if (typeof raw === 'string') {
+            try {
+                const parsed = JSON.parse(raw);
+                if (typeof parsed === 'object' && parsed) {
+                    return {
+                        previous_stage: parsed.previous_stage || defaultOrigin,
+                        hold_status: parsed.hold_status || '',
+                        comment: parsed.comment || '',
+                        hold_date: parsed.hold_date || today
+                    };
+                }
+            } catch (e) {
+                // If raw string is a status like "Project Win"
+                return {
+                    previous_stage: defaultOrigin,
+                    hold_status: raw,
+                    comment: '',
+                    hold_date: today
+                };
+            }
+        }
+        return {
+            previous_stage: raw.previous_stage || defaultOrigin,
+            hold_status: raw.hold_status || '',
+            comment: raw.comment || '',
+            hold_date: raw.hold_date || today
+        };
     };
 
-    const handleSaveHoldStatus = async () => {
-        const newStatus = editData.hold_procurement;
-        setSaving(true);
-        await onUpdate(customer.id, { hold_procurement: newStatus });
-        await logActivity(
-            user.id,
-            'update',
-            `${customer.customer_name}: Hold Procurement status saved to ${newStatus || 'None'}`,
-            '',
-            customer.id
-        );
-        setSaving(false);
-        fetchLogs();
+    const holdData = getHoldState();
+    const [savedSuccess, setSavedSuccess] = useState(false);
+
+    const updateHoldField = async (field, value, autoSave = false) => {
+        const updated = {
+            ...holdData,
+            [field]: value
+        };
+        setEditData(prev => ({
+            ...prev,
+            hold_procurement: updated
+        }));
+
+        if (autoSave) {
+            await onUpdate(customer.id, { hold_procurement: updated });
+            if (logActivity && user?.id) {
+                await logActivity(
+                    user.id,
+                    'update',
+                    `${customer.customer_name}: Selected Hold Tag: ${value || 'Cleared'}`,
+                    '',
+                    customer.id
+                );
+            }
+            setSavedSuccess(true);
+            setTimeout(() => setSavedSuccess(false), 2500);
+            if (fetchLogs) fetchLogs();
+        }
     };
+
+    const handleToggleStatus = async (statusId) => {
+        const nextStatus = holdData.hold_status === statusId ? '' : statusId;
+        await updateHoldField('hold_status', nextStatus, true);
+    };
+
+    const handleSaveHoldDetails = async () => {
+        setSaving(true);
+        const payload = {
+            ...holdData,
+            updated_at: new Date().toISOString()
+        };
+
+        await onUpdate(customer.id, { hold_procurement: payload });
+        if (logActivity && user?.id) {
+            await logActivity(
+                user.id,
+                'update',
+                `${customer.customer_name}: Saved Hold Procurement details (Status: ${payload.hold_status || 'None'}, Origin: ${payload.previous_stage}, Comment: ${payload.comment || 'None'})`,
+                '',
+                customer.id
+            );
+        }
+        setSaving(false);
+        setSavedSuccess(true);
+        setTimeout(() => setSavedSuccess(false), 3000);
+        if (fetchLogs) fetchLogs();
+    };
+
+    const handleResumeToPreviousStage = async () => {
+        setSaving(true);
+        const destStage = holdData.previous_stage || 'LEADS';
+        const payload = {
+            ...holdData,
+            resumed_at: new Date().toISOString(),
+            resumed_to: destStage
+        };
+
+        await onUpdate(customer.id, {
+            stage: destStage,
+            hold_procurement: payload
+        });
+
+        if (logActivity && user?.id) {
+            await logActivity(
+                user.id,
+                'stage_change',
+                `${customer.customer_name}: Resumed from Hold Procurement → ${destStage}`,
+                '',
+                customer.id
+            );
+        }
+
+        setSaving(false);
+        if (fetchLogs) fetchLogs();
+    };
+
+    const originStageLabel = PRIMARY_STAGES.find(s => s.id === holdData.previous_stage)?.label || holdData.previous_stage || 'Unknown';
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
-            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
-                    <div>
-                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Hold Procurement</h4>
-                        <p className="text-[11px] text-stone-500 font-medium mt-0.5">Procurement hold status details.</p>
+            {/* Origin & Info Card */}
+            <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 flex items-start gap-3">
+                <div className="p-2 bg-amber-100/80 text-amber-700 rounded-xl flex-shrink-0">
+                    <PauseCircle size={18} />
+                </div>
+                <div className="flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider">
+                            Customer On Hold
+                        </h4>
+                        <span className="text-[10px] bg-amber-200/60 text-amber-900 font-bold px-2.5 py-0.5 rounded-full">
+                            Hold Date: {holdData.hold_date || today}
+                        </span>
                     </div>
-                    {isEditable && editData.hold_procurement !== customer.hold_procurement && (
-                        <button
-                            onClick={handleSaveHoldStatus}
-                            disabled={saving}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex-shrink-0 disabled:opacity-55"
-                        >
-                            {saving ? 'Saving...' : 'Save Status'}
-                        </button>
+                    <p className="text-[11px] text-amber-800 font-medium mt-1">
+                        Parked from stage: <strong className="text-amber-950">{originStageLabel}</strong>
+                    </p>
+                </div>
+            </div>
+
+            {/* Main Hold Details Card */}
+            <div className="bg-white p-5 rounded-2xl border border-stone-200/70 shadow-xs space-y-4">
+                <div className="border-b border-stone-100 pb-2">
+                    <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <AlertTriangle size={12} className="text-amber-500" /> Hold Classification & Origin
+                    </h4>
+                </div>
+
+                {savedSuccess && (
+                    <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2 animate-in fade-in">
+                        <CheckCircle2 size={14} className="text-emerald-600" /> Hold details saved successfully!
+                    </div>
+                )}
+
+                {/* Origin Stage & Hold Date Details */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-stone-50/70 p-3 rounded-xl border border-stone-200/60">
+                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">
+                            Origin / Dumped From Stage
+                        </label>
+                        {isEditable ? (
+                            <select
+                                value={holdData.previous_stage || ''}
+                                onChange={e => updateHoldField('previous_stage', e.target.value)}
+                                className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-800 outline-none focus:border-amber-400"
+                            >
+                                {PRIMARY_STAGES.filter(s => s.id !== 'HOLD PROCUREMENT' && s.id !== 'COMPLETED').map(stg => (
+                                    <option key={stg.id} value={stg.id}>{stg.label}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <p className="text-xs font-bold text-stone-800">{originStageLabel}</p>
+                        )}
+                    </div>
+
+                    <div className="bg-stone-50/70 p-3 rounded-xl border border-stone-200/60">
+                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">
+                            Hold Placed Date
+                        </label>
+                        {isEditable ? (
+                            <input
+                                type="date"
+                                value={holdData.hold_date || today}
+                                onChange={e => updateHoldField('hold_date', e.target.value)}
+                                className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs text-stone-700 outline-none focus:border-amber-400"
+                            />
+                        ) : (
+                            <p className="text-xs font-bold text-stone-800">{holdData.hold_date || '–'}</p>
+                        )}
+                    </div>
+                </div>
+
+                {/* Hold Status Tags - Glowing & Active */}
+                <div>
+                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1.5">
+                        Hold Status Tag
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {HOLD_STATUS_TAGS.map(tag => {
+                            const isSelected = holdData.hold_status === tag.id;
+                            return (
+                                <button
+                                    key={tag.id}
+                                    type="button"
+                                    disabled={!isEditable}
+                                    onClick={() => handleToggleStatus(tag.id)}
+                                    className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer ${
+                                        isSelected
+                                            ? tag.activeClass
+                                            : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                                    }`}
+                                >
+                                    <span className={`w-2.5 h-2.5 rounded-full transition-all ${isSelected ? tag.dotClass : 'bg-stone-300'}`} />
+                                    {tag.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Reason & Comments Textarea */}
+                <div>
+                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
+                        <MessageSquare size={11} className="text-stone-400" /> Hold Reason / Comments
+                    </label>
+                    {isEditable ? (
+                        <textarea
+                            rows={3}
+                            placeholder="Add details about what went wrong, client concerns, financing delay, or resolution notes..."
+                            value={holdData.comment || ''}
+                            onChange={e => updateHoldField('comment', e.target.value)}
+                            className="w-full bg-white border border-stone-200 rounded-xl p-3 text-xs text-stone-800 outline-none focus:border-amber-400 transition"
+                        />
+                    ) : (
+                        <div className="bg-stone-50/70 p-3 rounded-xl border border-stone-200/60 text-xs text-stone-700 min-h-[60px]">
+                            {holdData.comment || <span className="text-stone-400 italic">No hold comments recorded</span>}
+                        </div>
                     )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 w-full pt-1">
-                    {[
-                        { id: 'Project Win', label: 'Project Win', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
-                        { id: 'Project Lost', label: 'Project Lost', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' },
-                        { id: 'Project Return Win', label: 'Project Return Win', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
-                    ].map(tag => {
-                        const isSelected = editData.hold_procurement === tag.id;
-                        return (
-                            <button
-                                key={tag.id}
-                                disabled={!isEditable}
-                                onClick={() => handleToggleHoldStatus(tag.id)}
-                                className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
-                                    isSelected
-                                        ? tag.activeClass
-                                        : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
-                                }`}
-                            >
-                                <span className={`w-2 h-2 rounded-full ${isSelected ? tag.dotClass : 'bg-stone-300'}`} />
-                                {tag.label}
-                            </button>
-                        );
-                    })}
-                </div>
+                {/* Bottom Two Options: Save OR Save & Go Back to Previous Stage */}
+                {isEditable && (
+                    <div className="pt-3 border-t border-stone-100 flex flex-col sm:flex-row gap-2.5">
+                        <button
+                            type="button"
+                            onClick={handleSaveHoldDetails}
+                            disabled={saving}
+                            className="flex-1 bg-stone-900 hover:bg-stone-800 text-white py-3 px-4 rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                            <Save size={14} /> {saving ? 'Saving...' : 'Save'}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleResumeToPreviousStage}
+                            disabled={saving}
+                            className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 px-4 rounded-xl text-xs font-bold transition shadow-md shadow-amber-500/10 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                            <CornerUpLeft size={14} /> {saving ? 'Saving & Moving...' : `Save & Go Back to ${originStageLabel}`}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

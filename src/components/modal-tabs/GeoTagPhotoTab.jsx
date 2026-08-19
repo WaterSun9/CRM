@@ -47,29 +47,9 @@ export default function GeoTagPhotoTab({
 
             {/* Geo Tag Status Card */}
             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
-                    <div>
-                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Geo Tag Photo</h4>
-                        <p className="text-[11px] text-stone-500 font-medium mt-0.5">Has the geo-tagged photograph been uploaded?</p>
-                    </div>
-                    {canEditGeoTag && isGeoTagDirty && (
-                        <button
-                            onClick={async () => {
-                                setSaving(true);
-                                await onUpdate(customer.id, { 
-                                    geo_tag_status: editData.geo_tag_status,
-                                    geo_tag_image: editData.geo_tag_image 
-                                });
-                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Geo Tag Photo Status to ${editData.geo_tag_status || 'None'}${editData.geo_tag_image ? ', Image Uploaded: Checked' : ''}`, '', customer.id);
-                                setSaving(false);
-                                fetchLogs();
-                            }}
-                            disabled={saving}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex-shrink-0 disabled:opacity-55"
-                        >
-                            {saving ? 'Saving...' : 'Save Tag'}
-                        </button>
-                    )}
+                <div className="border-b border-stone-100 pb-2.5">
+                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Geo Tag Photo</h4>
+                    <p className="text-[11px] text-stone-500 font-medium mt-0.5">Has the geo-tagged photograph been uploaded?</p>
                 </div>
                 <div className="grid grid-cols-4 gap-2 w-full pt-1">
                     {[
@@ -87,7 +67,7 @@ export default function GeoTagPhotoTab({
                                     const newTag = editData.geo_tag_status === tag.id ? null : tag.id;
                                     setEditData(prev => ({ ...prev, geo_tag_status: newTag }));
                                 }}
-                                className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
+                                className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer ${
                                     isSelected
                                         ? tag.activeClass
                                         : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
@@ -122,6 +102,50 @@ export default function GeoTagPhotoTab({
                         onPreview={onFilePreview} 
                     />
                 </div>
+
+                {/* Always Visible Action Button at Bottom */}
+                {canEditGeoTag && (
+                    <div className="pt-3 border-t border-stone-100">
+                        {editData.geo_tag_status === 'Proceed' && editData.geo_tag_image ? (
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    setSaving(true);
+                                    await onUpdate(customer.id, { 
+                                        geo_tag_status: 'Proceed',
+                                        geo_tag_image: editData.geo_tag_image,
+                                        stage: 'DISCOM SUBMISSION'
+                                    });
+                                    await logActivity(user.id, 'update', `${customer.customer_name}: Geo Tag Photo Proceeded and moved to Discom Submission`, '', customer.id);
+                                    setSaving(false);
+                                    fetchLogs();
+                                }}
+                                disabled={saving}
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/15 flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                            >
+                                <Camera size={15} /> {saving ? 'Advancing...' : 'Save & Move to Discom Submission'}
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    setSaving(true);
+                                    await onUpdate(customer.id, { 
+                                        geo_tag_status: editData.geo_tag_status,
+                                        geo_tag_image: editData.geo_tag_image 
+                                    });
+                                    await logActivity(user.id, 'update', `${customer.customer_name}: Updated Geo Tag Photo Status to ${editData.geo_tag_status || 'None'}`, '', customer.id);
+                                    setSaving(false);
+                                    fetchLogs();
+                                }}
+                                disabled={saving}
+                                className="w-full bg-stone-900 hover:bg-stone-850 text-white py-3 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                            >
+                                {saving ? 'Saving...' : 'Save Details'}
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

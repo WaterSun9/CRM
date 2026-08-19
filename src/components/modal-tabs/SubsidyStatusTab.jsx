@@ -12,8 +12,9 @@ export default function SubsidyStatusTab({
     fetchLogs,
     user
 }) {
+    const today = new Date().toISOString().split('T')[0];
     const [draftStatus, setDraftStatus] = useState('Approved');
-    const [draftDate, setDraftDate] = useState('');
+    const [draftDate, setDraftDate] = useState(today);
     const [draftRemark, setDraftRemark] = useState('');
 
     const handleToggleSubsidyTag = (tagId) => {
@@ -208,7 +209,7 @@ export default function SubsidyStatusTab({
                                         );
                                         
                                         setDraftRemark('');
-                                        setDraftDate('');
+                                        setDraftDate(today);
                                         fetchLogs();
                                     }}
                                     className="px-3.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/10 transition-colors"

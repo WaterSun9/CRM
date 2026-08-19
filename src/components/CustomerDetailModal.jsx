@@ -13,7 +13,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
-    LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail,
+    LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle
 } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE } from '../constants';
 import { logActivity, formatLogDate, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
@@ -678,12 +678,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const REG_CHECKLIST_FIELDS = [
-        'adhaar_card',
+        'adhaar_card_front',
+        'adhaar_card_back',
         'pan_card',
-        'index_2',
         'light_bill',
+        'index_2',
         'bank_details',
-        'bank_passbook',
+        'house_geo_tag_photo',
+        'extra_docs',
     ];
 
     const isRegChecklistDirty = REG_CHECKLIST_FIELDS.some(field => {
@@ -953,7 +955,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleChange = (field, val) => {
-        setEditData(prev => ({ ...prev, [field]: val }));
+        setEditData(prev => {
+            const next = { ...prev, [field]: val };
+            if (field === 'module_wp' || field === 'no_of_modules') {
+                const wp = parseFloat(String(field === 'module_wp' ? val : next.module_wp).replace(/,/g, ''));
+                const count = parseFloat(String(field === 'no_of_modules' ? val : next.no_of_modules).replace(/,/g, ''));
+                if (!isNaN(wp) && !isNaN(count) && wp > 0 && count > 0) {
+                    const totalVal = Math.round(wp * count);
+                    next.system_capacity_kwp = toIndianCommas(totalVal);
+                }
+            }
+            return next;
+        });
     };
 
     const hasNextStage = (() => {
@@ -968,6 +981,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             nextIdx++;
         }
         if (nextStage.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') {
+            nextIdx++;
+        }
+        if (nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT') {
             nextIdx++;
         }
 
@@ -988,6 +1004,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (nextStage.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') {
             nextIdx++;
         }
+        if (nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT') {
+            nextIdx++;
+        }
 
         if (nextIdx < PRIMARY_STAGES.length) {
             return PRIMARY_STAGES[nextIdx].id;
@@ -1000,13 +1019,62 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const isLeadFieldsFilled = !!(
         editData.customer_name?.trim() &&
         editData.phone_number?.toString().trim() &&
+        (editData.email?.trim() || editData.email_address?.trim()) &&
+        editData.consumer_no?.toString().trim() &&
+        editData.villages?.trim() &&
         editData.channel_partner?.trim() &&
-        editData.system_capacity_kwp
+        editData.sub_channel_partner?.trim() &&
+        editData.module_brand?.trim() &&
+        editData.module_wp?.toString().trim() &&
+        editData.no_of_modules?.toString().trim() &&
+        editData.system_capacity_kwp &&
+        editData.sub_divisions?.trim() &&
+        editData.payment_type?.trim()
+    );
+
+    const hasFeasibilityDoc = documents.some(d => d.doc_type === 'feasibilty_document' || d.doc_type === 'feasibility_document') || !!editData.feasibilty_document;
+    const hasSubsidyTokenDoc = documents.some(d => d.doc_type === 'subsidy_token_photo') || !!editData.subsidy_token_photo;
+    const isRegistrationFieldsFilled = !!(
+        editData.registration_date &&
+        editData.registration_by?.trim() &&
+        (editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim()) &&
+        editData.folder_no?.toString().trim()
+    );
+    const isRegistrationReady = isRegistrationFieldsFilled && hasFeasibilityDoc && hasSubsidyTokenDoc;
+
+    const isMaterialOrderFilled = Boolean(
+        editData.roof_shed &&
+        editData.dc_cable && Number(parseIndianNumber(editData.dc_cable)) > 0 &&
+        editData.ac_cable && Number(parseIndianNumber(editData.ac_cable)) > 0 &&
+        (editData.structure_front_leg_height?.toString().trim() || editData.structure_leg_height?.toString().trim()) &&
+        (editData.structure_rear_leg_height?.toString().trim() || editData.structure_leg_height?.toString().trim()) &&
+        editData.invoice_value && Number(parseIndianNumber(editData.invoice_value)) > 0
     );
 
     const handleAdvanceStage = async (overrideNextStageId) => {
         const destStageId = overrideNextStageId || nextStageId;
         if (!destStageId) return;
+
+        if (editData.stage === 'LEADS' && !isLeadFieldsFilled) {
+            alert('Please fill all required Lead details (Customer Name, Phone, Email, Consumer No, Villages, Channel Partner, Sub Channel Partner, Module Brand, Module Wp, No of Modules, System Capacity, Sub Division, Payment Type) to advance to the next stage.');
+            return;
+        }
+
+        if (editData.stage === 'REGISTRATION') {
+            if (!isRegistrationFieldsFilled) {
+                alert('Please fill all Registration details (Registration Date, Registration By, Feasibility No, File No) before advancing.');
+                return;
+            }
+            if (!hasFeasibilityDoc || !hasSubsidyTokenDoc) {
+                alert('Both Feasibility Document and Subsidy Token Photo must be uploaded to advance to the next stage.');
+                return;
+            }
+        }
+
+        if (editData.stage === 'MATERIAL ORDER' && !isMaterialOrderFilled) {
+            alert('Please fill all mandatory Material Order specifications (Roof/Shed, DC Cable, AC Cable, Structure Front Leg Height, Structure Rear Leg Height, Invoice Value) to advance.');
+            return;
+        }
 
         setSaving(true);
 
@@ -1030,6 +1098,34 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             stage: destStageId,
             stages_remarks: updatedRemarks
         };
+
+        if (updates.system_capacity_kwp !== undefined && updates.system_capacity_kwp !== null && updates.system_capacity_kwp !== '') {
+            updates.system_capacity_kwp = parseIndianNumber(updates.system_capacity_kwp);
+        }
+        if (updates.module_wp !== undefined && updates.module_wp !== null && updates.module_wp !== '') {
+            updates.module_wp = parseIndianNumber(updates.module_wp);
+        }
+        if (updates.no_of_modules !== undefined && updates.no_of_modules !== null && updates.no_of_modules !== '') {
+            updates.no_of_modules = parseIndianNumber(updates.no_of_modules);
+        }
+        if (updates.invoice_value !== undefined && updates.invoice_value !== null && updates.invoice_value !== '') {
+            updates.invoice_value = parseIndianNumber(updates.invoice_value);
+        }
+        if (updates.dc_cable !== undefined && updates.dc_cable !== null && updates.dc_cable !== '') {
+            updates.dc_cable = parseIndianNumber(updates.dc_cable);
+        }
+        if (updates.ac_cable !== undefined && updates.ac_cable !== null && updates.ac_cable !== '') {
+            updates.ac_cable = parseIndianNumber(updates.ac_cable);
+        }
+
+        if (destStageId === 'HOLD PROCUREMENT') {
+            const prevHold = (typeof updates.hold_procurement === 'object' && updates.hold_procurement) ? updates.hold_procurement : {};
+            updates.hold_procurement = {
+                ...prevHold,
+                previous_stage: oldStage !== 'HOLD PROCUREMENT' ? oldStage : (prevHold.previous_stage || 'LEADS'),
+                hold_date: new Date().toISOString().split('T')[0]
+            };
+        }
 
         if (destStageId === 'METER INSTALLATION') {
             const currentMeter = updates.meter_installation || {};
@@ -1082,6 +1178,26 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const handleSave = async () => {
         setSaving(true);
         const updates = { ...editData };
+
+        if (updates.system_capacity_kwp !== undefined && updates.system_capacity_kwp !== null && updates.system_capacity_kwp !== '') {
+            updates.system_capacity_kwp = parseIndianNumber(updates.system_capacity_kwp);
+        }
+        if (updates.module_wp !== undefined && updates.module_wp !== null && updates.module_wp !== '') {
+            updates.module_wp = parseIndianNumber(updates.module_wp);
+        }
+        if (updates.no_of_modules !== undefined && updates.no_of_modules !== null && updates.no_of_modules !== '') {
+            updates.no_of_modules = parseIndianNumber(updates.no_of_modules);
+        }
+        if (updates.invoice_value !== undefined && updates.invoice_value !== null && updates.invoice_value !== '') {
+            updates.invoice_value = parseIndianNumber(updates.invoice_value);
+        }
+        if (updates.dc_cable !== undefined && updates.dc_cable !== null && updates.dc_cable !== '') {
+            updates.dc_cable = parseIndianNumber(updates.dc_cable);
+        }
+        if (updates.ac_cable !== undefined && updates.ac_cable !== null && updates.ac_cable !== '') {
+            updates.ac_cable = parseIndianNumber(updates.ac_cable);
+        }
+
         let changeSummary = [];
         Object.keys(updates).forEach(key => {
             if (updates[key] !== customer[key] && key !== 'id' && key !== 'updated_at' && typeof updates[key] !== 'object') {
@@ -1210,8 +1326,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if ((editData.roof_shed || '') !== (customer.roof_shed || '')) return true;
         if ((editData.dc_cable || '') !== (customer.dc_cable || '')) return true;
         if ((editData.ac_cable || '') !== (customer.ac_cable || '')) return true;
+        if ((editData.structure_front_leg_height || '') !== (customer.structure_front_leg_height || '')) return true;
+        if ((editData.structure_rear_leg_height || '') !== (customer.structure_rear_leg_height || '')) return true;
+        if ((editData.material_order_notes || '') !== (customer.material_order_notes || '')) return true;
         if ((editData.structure_leg_height || '') !== (customer.structure_leg_height || '')) return true;
         if ((editData.invoice_value || '') !== (customer.invoice_value || '')) return true;
+        if (JSON.stringify(editData.hold_procurement || {}) !== JSON.stringify(customer.hold_procurement || {})) return true;
         return false;
     })();
 
@@ -1436,11 +1556,16 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             customer={customer}
                             editData={editData}
                             setEditData={setEditData}
+                            handleChange={handleChange}
                             isEditable={isEditable}
                             onUpdate={onUpdate}
                             logActivity={logActivity}
                             fetchLogs={fetchLogs}
                             user={user}
+                            documents={documents}
+                            onFileUpload={handleFileUpload}
+                            onFileDelete={handleDeleteDoc}
+                            onFilePreview={handlePreviewDoc}
                         />
                     )}
 
@@ -1468,6 +1593,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             customer={customer}
                             editData={editData}
                             setEditData={setEditData}
+                            handleChange={handleChange}
+                            editingSection={editingSection}
+                            setEditingSection={setEditingSection}
                             isEditable={isEditable}
                             onUpdate={onUpdate}
                             logActivity={logActivity}
@@ -1725,83 +1853,58 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             activityLogs={activityLogs}
                         />
                     )}
+
+                    {/* Quick "Move to Hold Procurement" Option at end of page (From LEADS to FINAL REVIEW) */}
+                    {isEditable && activeTab !== 'HOLD PROCUREMENT' && activeTab !== 'DOCUMENTS' && activeTab !== 'history' && customer.stage !== 'COMPLETED' && (
+                        <div className="mt-8 pt-4 border-t border-stone-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50/70 p-3.5 rounded-2xl border border-stone-200/60">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg flex-shrink-0">
+                                    <PauseCircle size={16} />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-bold text-stone-700">Need to pause or hold this project?</p>
+                                    <p className="text-[10px] text-stone-400 font-medium">
+                                        Move this customer to Hold Procurement if any unexpected issues or delays occur at this stage.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => handleAdvanceStage('HOLD PROCUREMENT')}
+                                disabled={saving}
+                                className="bg-white hover:bg-amber-50 text-amber-800 border border-amber-300/80 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-1.5 flex-shrink-0 cursor-pointer disabled:opacity-50"
+                            >
+                                <PauseCircle size={13} className="text-amber-600" />
+                                <span>Move to Hold Procurement</span>
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Footer bar */}
-                {(isDirty || (hasNextStage && isEditable && activeTab === customer.stage)) && (
+                {(isDirty || (hasNextStage && isEditable && activeTab === customer.stage)) && activeTab !== 'HOLD PROCUREMENT' && (
                     <div className="p-4 border-t border-stone-100 bg-white flex-shrink-0 flex gap-3">
-                        {/* Save Changes button (if editing / changed) */}
-                        {isDirty && (
-                            <button onClick={handleSave} disabled={saving}
-                                className="flex-1 bg-stone-900 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 transition-all text-xs">
-                                {saving ? 'Saving...' : <><Save size={14} /> Save</>}
-                            </button>
-                        )}
-                        {/* Save & Move to Next Stage button (if not frozen & has next stage) */}
-                        {hasNextStage && isEditable && activeTab === customer.stage && (
-                            editData.stage === 'MATERIAL INTEGRATION' ? (
-                                <>
-                                    <button
-                                        onClick={() => handleAdvanceStage('HOLD PROCUREMENT')}
-                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
-                                    >
-                                        Move to Hold
+                        {hasNextStage && isEditable && activeTab === customer.stage ? (
+                            (((editData.stage === 'LEADS' && !isLeadFieldsFilled) ||
+                              (editData.stage === 'REGISTRATION' && !isRegistrationReady) ||
+                              (editData.stage === 'MATERIAL ORDER' && !isMaterialOrderFilled) ||
+                              (editData.stage === 'GEO TAG PHOTO' && editData.geo_tag_status !== 'Proceed') ||
+                              (editData.stage === 'METER INSTALLATION' && editData.meter_installation?.status !== 'Yes') ||
+                              (editData.stage === 'DISCOM INSPECTION' && editData.discom_inspection !== 'Yes') ||
+                              (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Yes')) ? (
+                                isDirty ? (
+                                    <button onClick={handleSave} disabled={saving}
+                                        className="flex-1 bg-stone-900 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 transition-all text-xs cursor-pointer">
+                                        {saving ? 'Saving...' : <><Save size={14} /> Save</>}
                                     </button>
-                                    <button
-                                        onClick={() => handleAdvanceStage('MATERIAL DELIVERY')}
-                                        className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-blue-600/10"
-                                    >
-                                        Move to Material Delivery
-                                    </button>
-                                </>
-                            ) : editData.stage === 'HOLD PROCUREMENT' ? (
-                                (editData.hold_procurement === 'Project Win' || editData.hold_procurement === 'Project Return Win') && (
-                                    <button
-                                        onClick={() => handleAdvanceStage('MATERIAL DELIVERY')}
-                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
-                                    >
-                                        Save & Move to Material Delivery
-                                    </button>
-                                )
-                            ) : editData.stage === 'GEO TAG PHOTO' ? (
-                                editData.geo_tag_status === 'Proceed' && (
-                                    <button
-                                        onClick={() => handleAdvanceStage()}
-                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
-                                    >
-                                        Save & Move to {nextStageLabel}
-                                    </button>
-                                )
-                            ) : editData.stage === 'METER INSTALLATION' ? (
-                                editData.meter_installation?.status === 'Yes' && (
-                                    <button
-                                        onClick={() => handleAdvanceStage()}
-                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
-                                    >
-                                        Save & Move to {nextStageLabel}
-                                    </button>
-                                )
-                            ) : editData.stage === 'DISCOM INSPECTION' ? (
-                                editData.discom_inspection === 'Yes' && (
-                                    <button
-                                        onClick={() => handleAdvanceStage()}
-                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
-                                    >
-                                        Save & Move to {nextStageLabel}
-                                    </button>
-                                )
-                            ) : editData.stage === 'INSTALLATION STATUS' ? (
-                                editData.installation_status === 'Yes' && (
-                                    <button
-                                        onClick={() => handleAdvanceStage()}
-                                        className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs shadow-md shadow-amber-500/10"
-                                    >
+                                ) : (
+                                    <button disabled={true}
+                                        className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-stone-100 text-stone-400 border border-stone-200 cursor-not-allowed">
                                         Save & Move to {nextStageLabel}
                                     </button>
                                 )
                             ) : (
                                 <button
-                                    disabled={editData.stage === 'LEADS' && !isLeadFieldsFilled}
                                     onClick={() => {
                                         if (nextStageId === 'COMPLETED') {
                                             setShowCompletedConfirm(true);
@@ -1809,13 +1912,17 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                             handleAdvanceStage();
                                         }
                                     }}
-                                    className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs ${(editData.stage === 'LEADS' && !isLeadFieldsFilled)
-                                            ? 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
-                                            : 'bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10'
-                                        }`}
-                                    title={editData.stage === 'LEADS' && !isLeadFieldsFilled ? 'Please fill all required Lead fields (Name, Phone, Channel Partner, Capacity)' : `Advance to ${nextStageLabel}`}
+                                    disabled={saving}
+                                    className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10 cursor-pointer"
                                 >
-                                    Save & Move to {nextStageLabel}
+                                    {saving ? 'Saving & Moving...' : `Save & Move to ${nextStageLabel}`}
+                                </button>
+                            ))
+                        ) : (
+                            isDirty && (
+                                <button onClick={handleSave} disabled={saving}
+                                    className="flex-1 bg-stone-900 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 transition-all text-xs cursor-pointer">
+                                    {saving ? 'Saving...' : <><Save size={14} /> Save</>}
                                 </button>
                             )
                         )}

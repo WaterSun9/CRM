@@ -37,9 +37,10 @@ export default function HistoryEntryEditor({
 }) {
     const allColors = { ...DEFAULT_COLORS, ...statusColors };
 
+    const today = new Date().toISOString().split('T')[0];
     const addEntry = () => onChange([
         ...entries,
-        { status: statusOptions[0], date: '', remark: '', created_at: new Date().toISOString(), isNew: true },
+        { status: statusOptions[0], date: today, remark: '', created_at: new Date().toISOString(), isNew: true },
     ]);
 
     const removeEntry = (idx) => onChange(entries.filter((_, i) => i !== idx));

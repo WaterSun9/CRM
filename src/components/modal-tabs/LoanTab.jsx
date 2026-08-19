@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { History } from 'lucide-react';
+import { History, Paperclip, IndianRupee, CheckCircle2, Lock, Edit3, X } from 'lucide-react';
 import { LOAN_TAGS, LOAN_TAG_COLORS } from '../../constants';
+import { CheckboxRemarkItem } from './shared';
+import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
 
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
 
@@ -8,15 +10,31 @@ export default function LoanTab({
     customer,
     editData,
     setEditData,
+    handleChange,
     isEditable,
     onUpdate,
     logActivity,
     fetchLogs,
-    user
+    user,
+    documents = [],
+    onFileUpload,
+    onFileDelete,
+    onFilePreview
 }) {
+    const today = new Date().toISOString().split('T')[0];
     const [loanDraftStatus, setLoanDraftStatus] = useState('Sanctioned');
-    const [loanDraftDate, setLoanDraftDate] = useState('');
+    const [loanDraftDate, setLoanDraftDate] = useState(today);
     const [loanDraftRemark, setLoanDraftRemark] = useState('');
+    const [isCustomEditing, setIsCustomEditing] = useState(false);
+    const [savedSuccess, setSavedSuccess] = useState(false);
+
+    const handleLocalChange = (field, val) => {
+        if (handleChange) {
+            handleChange(field, val);
+        } else {
+            setEditData(prev => ({ ...prev, [field]: val }));
+        }
+    };
 
     const handleToggleLoanTag = (tagId) => {
         const newTag = editData.loan_tag === tagId ? null : tagId;
@@ -28,8 +46,8 @@ export default function LoanTab({
 
     const handleSaveLoanTag = async () => {
         const newTag = editData.loan_tag;
-        const entryDate = new Date().toISOString().split('T')[0];
-        let updatedHistory = editData.loan_history || [];
+        const entryDate = today;
+        let updatedHistory = Array.isArray(editData.loan_history) ? [...editData.loan_history] : [];
         
         if (newTag) {
             const newEntry = {
@@ -38,7 +56,7 @@ export default function LoanTab({
                 remark: 'Status updated via tag selector',
                 created_at: new Date().toISOString()
             };
-            updatedHistory = [...updatedHistory, newEntry];
+            updatedHistory.push(newEntry);
         }
         
         setEditData(prev => ({ 
@@ -64,28 +82,147 @@ export default function LoanTab({
         fetchLogs();
     };
 
+    const handleClearLoanTag = async () => {
+        setEditData(prev => ({ ...prev, loan_tag: null }));
+        await onUpdate(customer.id, { loan_tag: null });
+        await logActivity(
+            user.id,
+            'update',
+            `${customer.customer_name}: Cleared Loan Tag (All Clear)`,
+            '',
+            customer.id
+        );
+        fetchLogs();
+    };
+
+    // ── Payment Structure directly from loan_history ──
+    const historyList = Array.isArray(editData.loan_history) ? editData.loan_history : [];
+
+    const getPaymentItem = (statusName) => {
+        return historyList.find(h => h.status === statusName) || {};
+    };
+
+    const downPayment = getPaymentItem('Down Payment');
+    const firstPayment = getPaymentItem('1st Payment');
+    const secondPayment = getPaymentItem('2nd Payment');
+
+    const downAmount = parseIndianNumber(downPayment.amount) || 0;
+    const firstAmount = parseIndianNumber(firstPayment.amount) || 0;
+    const secondAmount = parseIndianNumber(secondPayment.amount) || 0;
+    const totalReceived = downAmount + firstAmount + secondAmount;
+
+    const currentTag = editData.loan_tag;
+    const isFirstPaymentTag = currentTag === '1st Payment';
+    const isSecondPaymentTag = currentTag === '2nd Payment';
+    const isAllClearTag = !currentTag || currentTag === 'All Clear';
+
+    // Show Payment Breakdown ONLY for 1st Payment, 2nd Payment, or All Clear
+    const showPaymentBreakdown = isFirstPaymentTag || isSecondPaymentTag || isAllClearTag;
+
+    // Permissions per stage
+    const canEditDown = isCustomEditing || isFirstPaymentTag;
+    const canEditFirst = isCustomEditing || isFirstPaymentTag;
+    const canEditSecond = isCustomEditing || isSecondPaymentTag;
+
+    const updatePaymentInHistory = (statusName, field, value) => {
+        const list = Array.isArray(editData.loan_history) ? [...editData.loan_history] : [];
+        const idx = list.findIndex(h => h.status === statusName);
+        
+        if (idx >= 0) {
+            list[idx] = {
+                ...list[idx],
+                [field]: value,
+                date: field === 'date' ? value : (list[idx].date || today)
+            };
+        } else {
+            list.push({
+                status: statusName,
+                amount: field === 'amount' ? value : '',
+                date: field === 'date' ? value : today,
+                remark: field === 'remark' ? value : '',
+                created_at: new Date().toISOString()
+            });
+        }
+
+        setEditData(prev => ({ ...prev, loan_history: list }));
+    };
+
+    const handleSavePayments = async () => {
+        await onUpdate(customer.id, { loan_history: editData.loan_history });
+        await logActivity(
+            user.id,
+            'update',
+            `${customer.customer_name}: Updated loan payment figures (Total: ₹${totalReceived.toLocaleString('en-IN')})`,
+            '',
+            customer.id
+        );
+        setSavedSuccess(true);
+        setTimeout(() => setSavedSuccess(false), 3000);
+        setIsCustomEditing(false);
+        fetchLogs();
+    };
+
+    // Filter timeline entries for general status history (excluding internal payment item rows)
+    const timelineEntries = historyList.filter(e => !['Down Payment'].includes(e.status));
+
     return (
-        <div className="space-y-4 animate-in fade-in duration-300">
+        <div className="space-y-5 animate-in fade-in duration-300">
             {editData.payment_type?.trim().toLowerCase() !== 'loan' ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center text-xs font-semibold text-amber-700">
                     This customer's payment type is "{editData.payment_type || 'not specified'}" (not Loan). Loan tracking is not applicable.
                 </div>
             ) : (
                 <>
-                    {/* Loan Tag Selector */}
-                    <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                        <div className="flex items-center justify-between border-b border-stone-100 pb-2 mb-1">
-                            <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Loan Tag Tracking</label>
-                            {isEditable && editData.loan_tag !== customer.loan_tag && (
-                                <button
-                                    onClick={handleSaveLoanTag}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10"
-                                >
-                                    Save Tag
-                                </button>
-                            )}
+                    {/* 1. Loan Documents Checklist */}
+                    <section className="bg-white p-5 rounded-2xl border border-stone-200/70 shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+                            <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
+                                <Paperclip size={12} className="text-amber-500" /> Loan Documents
+                            </h4>
+                            <span className="text-[9px] font-semibold text-stone-400 uppercase">Checklist</span>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 w-full">
+
+                        <div className="flex flex-col gap-2">
+                            <CheckboxRemarkItem
+                                label="Digital Certificate"
+                                field="digital_certificate"
+                                value={editData.digital_certificate}
+                                onChange={handleLocalChange}
+                                isEditing={isEditable}
+                                documents={documents}
+                                onUpload={onFileUpload}
+                                onDelete={onFileDelete}
+                                onPreview={onFilePreview}
+                            />
+                        </div>
+                    </section>
+
+                    {/* 2. Loan Tag Selector */}
+                    <section className="bg-white p-5 rounded-2xl border border-stone-200/70 shadow-xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+                            <label className="text-[10px] text-stone-400 font-bold uppercase tracking-widest block">Loan Tag Tracking</label>
+                            <div className="flex items-center gap-2">
+                                {isEditable && editData.loan_tag && (
+                                    <button
+                                        onClick={handleClearLoanTag}
+                                        className="bg-stone-50 hover:bg-rose-50 hover:text-rose-600 text-stone-500 border border-stone-200 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                                        title="Clear active loan tag"
+                                    >
+                                        Clear Tag
+                                    </button>
+                                )}
+                                {isEditable && editData.loan_tag !== customer.loan_tag && (
+                                    <button
+                                        onClick={handleSaveLoanTag}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-[10px] font-bold transition-all shadow-xs cursor-pointer"
+                                    >
+                                        Save Tag
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 w-full">
                             {LOAN_TAGS.map(tag => {
                                 const isSelected = editData.loan_tag === tag.id;
                                 const colors = LOAN_TAG_COLORS[tag.id] || {};
@@ -94,10 +231,10 @@ export default function LoanTab({
                                         key={tag.id}
                                         disabled={!isEditable}
                                         onClick={() => handleToggleLoanTag(tag.id)}
-                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
+                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer ${
                                             isSelected
-                                                ? `${colors.bg} ${colors.text} ${colors.border} shadow-sm shadow-stone-900/5`
-                                                : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                                                ? `${colors.bg} ${colors.text} ${colors.border} shadow-2xs`
+                                                : 'bg-stone-50/60 hover:bg-stone-100 border-stone-200 text-stone-600'
                                         }`}
                                     >
                                         <span className={`w-2 h-2 rounded-full ${isSelected ? colors.dot : 'bg-stone-300'}`} />
@@ -105,21 +242,264 @@ export default function LoanTab({
                                     </button>
                                 );
                             })}
+                            <button
+                                disabled={!isEditable}
+                                onClick={handleClearLoanTag}
+                                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer ${
+                                    !editData.loan_tag
+                                        ? 'bg-emerald-50 text-emerald-900 border-emerald-300 ring-2 ring-emerald-600/30 font-extrabold shadow-2xs'
+                                        : 'bg-emerald-50/30 hover:bg-emerald-50 border-emerald-200 text-emerald-800'
+                                }`}
+                            >
+                                <span className={`w-2 h-2 rounded-full ${!editData.loan_tag ? 'bg-emerald-600' : 'bg-emerald-300'}`} />
+                                All Clear
+                            </button>
                         </div>
                     </section>
 
-                    {/* Loan History Timeline */}
-                    <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                        <div className="flex items-center gap-2 mb-2 border-b border-stone-100 pb-2">
-                            <History size={16} className="text-stone-400" />
-                            <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Loan Status Timeline</h3>
+                    {/* 3. Classy Loan Payment Breakdown (Only shown for 1st Payment, 2nd Payment, All Clear) */}
+                    {showPaymentBreakdown && (
+                        <section className="bg-white p-5 rounded-2xl border border-stone-200/70 shadow-xs space-y-4 animate-in fade-in duration-300">
+                            <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
+                                <div>
+                                    <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <IndianRupee size={12} className="text-emerald-600" /> Loan Payments Breakdown
+                                    </h4>
+                                    <p className="text-[11px] text-stone-500 font-medium mt-0.5">
+                                        {isAllClearTag 
+                                            ? 'Finalized payment summary.' 
+                                            : isSecondPaymentTag 
+                                                ? 'Down payment & 1st payment locked; enter 2nd payment amount.' 
+                                                : 'Enter down payment and 1st payment amounts.'}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {isEditable && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsCustomEditing(!isCustomEditing)}
+                                            className="text-stone-400 hover:text-amber-600 text-xs font-semibold flex items-center gap-1 p-1 cursor-pointer transition-colors"
+                                        >
+                                            {isCustomEditing ? <X size={13} /> : <Edit3 size={12} />}
+                                            <span className="text-[10px] font-bold uppercase">{isCustomEditing ? 'Cancel' : 'Edit All'}</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {savedSuccess && (
+                                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2 animate-in fade-in">
+                                    <CheckCircle2 size={14} className="text-emerald-600" /> Payment details saved to loan history!
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                {/* Down Payment Card */}
+                                <div className="bg-stone-50/70 border border-stone-200/70 rounded-xl p-3.5 space-y-2.5">
+                                    <div className="flex items-center justify-between pb-1 border-b border-stone-200/50">
+                                        <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">
+                                            Down Payment
+                                        </span>
+                                        {!canEditDown && (
+                                            <span className="text-[9px] text-stone-400 font-bold uppercase flex items-center gap-0.5">
+                                                <Lock size={8} /> View
+                                            </span>
+                                        )}
+                                    </div>
+                                    {canEditDown ? (
+                                        <div className="space-y-2">
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wide block mb-0.5">Amount (₹)</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. 25,000"
+                                                    value={downPayment.amount ? formatInputValue(downPayment.amount) : ''}
+                                                    onChange={e => updatePaymentInHistory('Down Payment', 'amount', formatInputValue(e.target.value))}
+                                                    className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-800 outline-none focus:border-amber-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wide block mb-0.5">Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={downPayment.date || today}
+                                                    onChange={e => updatePaymentInHistory('Down Payment', 'date', e.target.value)}
+                                                    className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs text-stone-700 outline-none focus:border-amber-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wide block mb-0.5">Mode / Remark</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Cash / UPI / Cheque..."
+                                                    value={downPayment.remark || ''}
+                                                    onChange={e => updatePaymentInHistory('Down Payment', 'remark', e.target.value)}
+                                                    className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs text-stone-700 outline-none focus:border-amber-400"
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1 py-1">
+                                            <p className="text-base font-bold text-stone-800">
+                                                {downAmount > 0 ? `₹${toIndianCommas(downAmount)}` : '–'}
+                                            </p>
+                                            <p className="text-[10px] text-stone-400">Date: <span className="font-medium text-stone-600">{downPayment.date || '–'}</span></p>
+                                            {downPayment.remark && <p className="text-[10px] text-stone-500 italic truncate">{downPayment.remark}</p>}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 1st Payment Card */}
+                                <div className="bg-stone-50/70 border border-stone-200/70 rounded-xl p-3.5 space-y-2.5">
+                                    <div className="flex items-center justify-between pb-1 border-b border-stone-200/50">
+                                        <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">
+                                            1st Payment
+                                        </span>
+                                        {!canEditFirst && (
+                                            <span className="text-[9px] text-stone-400 font-bold uppercase flex items-center gap-0.5">
+                                                <Lock size={8} /> View
+                                            </span>
+                                        )}
+                                    </div>
+                                    {canEditFirst ? (
+                                        <div className="space-y-2">
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wide block mb-0.5">Amount (₹)</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. 50,000"
+                                                    value={firstPayment.amount ? formatInputValue(firstPayment.amount) : ''}
+                                                    onChange={e => updatePaymentInHistory('1st Payment', 'amount', formatInputValue(e.target.value))}
+                                                    className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-800 outline-none focus:border-amber-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wide block mb-0.5">Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={firstPayment.date || today}
+                                                    onChange={e => updatePaymentInHistory('1st Payment', 'date', e.target.value)}
+                                                    className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs text-stone-700 outline-none focus:border-amber-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wide block mb-0.5">Disbursal Ref / Remark</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Ref No..."
+                                                    value={firstPayment.remark || ''}
+                                                    onChange={e => updatePaymentInHistory('1st Payment', 'remark', e.target.value)}
+                                                    className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs text-stone-700 outline-none focus:border-amber-400"
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1 py-1">
+                                            <p className="text-base font-bold text-stone-800">
+                                                {firstAmount > 0 ? `₹${toIndianCommas(firstAmount)}` : '–'}
+                                            </p>
+                                            <p className="text-[10px] text-stone-400">Date: <span className="font-medium text-stone-600">{firstPayment.date || '–'}</span></p>
+                                            {firstPayment.remark && <p className="text-[10px] text-stone-500 italic truncate">{firstPayment.remark}</p>}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 2nd Payment Card */}
+                                <div className="bg-stone-50/70 border border-stone-200/70 rounded-xl p-3.5 space-y-2.5">
+                                    <div className="flex items-center justify-between pb-1 border-b border-stone-200/50">
+                                        <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">
+                                            2nd Payment
+                                        </span>
+                                        {!canEditSecond && (
+                                            <span className="text-[9px] text-stone-400 font-bold uppercase flex items-center gap-0.5">
+                                                {isAllClearTag ? <><Lock size={8} /> View</> : 'Pending'}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {canEditSecond ? (
+                                        <div className="space-y-2">
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wide block mb-0.5">Amount (₹)</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. 25,000"
+                                                    value={secondPayment.amount ? formatInputValue(secondPayment.amount) : ''}
+                                                    onChange={e => updatePaymentInHistory('2nd Payment', 'amount', formatInputValue(e.target.value))}
+                                                    className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-800 outline-none focus:border-amber-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wide block mb-0.5">Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={secondPayment.date || today}
+                                                    onChange={e => updatePaymentInHistory('2nd Payment', 'date', e.target.value)}
+                                                    className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs text-stone-700 outline-none focus:border-amber-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wide block mb-0.5">Final Disbursal Ref</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Ref No..."
+                                                    value={secondPayment.remark || ''}
+                                                    onChange={e => updatePaymentInHistory('2nd Payment', 'remark', e.target.value)}
+                                                    className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs text-stone-700 outline-none focus:border-amber-400"
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1 py-1">
+                                            <p className="text-base font-bold text-stone-800">
+                                                {secondAmount > 0 ? `₹${toIndianCommas(secondAmount)}` : '–'}
+                                            </p>
+                                            <p className="text-[10px] text-stone-400">Date: <span className="font-medium text-stone-600">{secondPayment.date || '–'}</span></p>
+                                            {secondPayment.remark && <p className="text-[10px] text-stone-500 italic truncate">{secondPayment.remark}</p>}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Classy Bottom Summary Bar */}
+                            <div className="bg-stone-50 border border-stone-200/80 p-3.5 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <p className="text-[9px] text-stone-400 uppercase font-bold tracking-widest">Total Payments Received</p>
+                                    <p className="text-lg font-bold text-stone-900 mt-0.5">
+                                        ₹{toIndianCommas(totalReceived)}
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg font-bold uppercase">
+                                        {isAllClearTag ? 'All Clear' : (currentTag || 'Active')}
+                                    </span>
+
+                                    {isEditable && (
+                                        <button
+                                            type="button"
+                                            onClick={handleSavePayments}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1"
+                                        >
+                                            <CheckCircle2 size={13} /> Save Payments
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </section>
+                    )}
+
+                    {/* 4. Loan Status Timeline */}
+                    <section className="bg-white p-5 rounded-2xl border border-stone-200/70 shadow-xs space-y-3">
+                        <div className="flex items-center gap-2 border-b border-stone-100 pb-2">
+                            <History size={14} className="text-stone-400" />
+                            <h3 className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">Loan Status Timeline</h3>
                         </div>
 
-                        {(!editData.loan_history || editData.loan_history.length === 0) ? (
+                        {(!timelineEntries || timelineEntries.length === 0) ? (
                             <p className="text-xs text-stone-400 italic">No loan history recorded</p>
                         ) : (
-                            <div className="relative border-l border-stone-200 ml-3 pl-5 space-y-4">
-                                {(editData.loan_history || []).map((e, idx) => {
+                            <div className="relative border-l border-stone-200 ml-3 pl-4 space-y-3 py-1">
+                                {timelineEntries.map((e, idx) => {
                                     const pillColors = {
                                         Sanctioned: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
                                         Rejected: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', dot: 'bg-rose-400' },
@@ -130,7 +510,7 @@ export default function LoanTab({
                                     const colors = pillColors[e.status] || { bg: 'bg-stone-50', text: 'text-stone-600', border: 'border-stone-200', dot: 'bg-stone-400' };
                                     return (
                                         <div key={idx} className="relative">
-                                            <span className={`absolute -left-[25.5px] top-1.5 w-2 h-2 rounded-full ring-4 ring-white ${colors.dot}`} />
+                                            <span className={`absolute -left-[21.5px] top-1.5 w-2 h-2 rounded-full ring-4 ring-white ${colors.dot}`} />
                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                                                 <div className="flex items-center gap-2">
                                                     <span className={`text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${colors.bg} ${colors.text} ${colors.border}`}>
@@ -146,45 +526,45 @@ export default function LoanTab({
                             </div>
                         )}
 
-                        {/* Add Loan Entry */}
+                        {/* Add Manual Loan Entry */}
                         {isEditable && (
                             <div className="pt-2">
-                                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <div className="bg-stone-50/70 p-3.5 rounded-xl border border-stone-200/70 space-y-2.5">
                                     <div className="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Status</label>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Status</label>
                                             <select
                                                 value={loanDraftStatus}
                                                 onChange={e => setLoanDraftStatus(e.target.value)}
-                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
+                                                className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-amber-400"
                                             >
                                                 {LOAN_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Date</label>
+                                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Date</label>
                                             <input
                                                 type="date"
                                                 value={loanDraftDate}
                                                 onChange={e => setLoanDraftDate(e.target.value)}
-                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
+                                                className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-amber-400"
                                             />
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Remark</label>
+                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Remark</label>
                                         <input
                                             type="text"
                                             placeholder="Remark details..."
                                             value={loanDraftRemark}
                                             onChange={e => setLoanDraftRemark(e.target.value)}
-                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-amber-400"
+                                            className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-amber-400"
                                         />
                                     </div>
-                                    <div className="flex justify-end gap-2 pt-1.5">
+                                    <div className="flex justify-end pt-1">
                                         <button
                                             onClick={async () => {
-                                                const entryDate = loanDraftDate || new Date().toISOString().split('T')[0];
+                                                const entryDate = loanDraftDate || today;
                                                 const newEntry = {
                                                     status: loanDraftStatus,
                                                     date: entryDate,
@@ -212,10 +592,10 @@ export default function LoanTab({
                                                 );
                                                 
                                                 setLoanDraftRemark('');
-                                                setLoanDraftDate('');
+                                                setLoanDraftDate(today);
                                                 fetchLogs();
                                             }}
-                                            className="px-3.5 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/10 transition-colors"
+                                            className="px-3 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
                                         >
                                             Add Entry
                                         </button>

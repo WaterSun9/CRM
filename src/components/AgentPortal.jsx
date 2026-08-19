@@ -51,7 +51,7 @@ export default function AgentPortal({ user, onLogout }) {
     const [activeDealerTab, setActiveDealerTab] = useState('ORDER'); // 'ORDER', 'METER', 'INSPECTION', 'PROFILE'
     const [editingSection, setEditingSection] = useState(null);
     const [uploadingDoc, setUploadingDoc] = useState(false);
-    const [uploadDocType, setUploadDocType] = useState('adhaar_card');
+    const [uploadDocType, setUploadDocType] = useState('adhaar_card_front');
     const fileInputRef = useRef(null);
 
     const handleChange = (field, val) => {
@@ -898,16 +898,16 @@ export default function AgentPortal({ user, onLogout }) {
                                                 <span className="font-semibold text-stone-900">{selectedCust.villages || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Division</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.sub_divisions || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Channel Partner</span>
                                                 <span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Channel Partner</span>
                                                 <span className="font-semibold text-stone-900">{selectedCust.sub_channel_partner || '–'}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">System Capacity</span>
-                                                <span className="font-semibold text-stone-900">{selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Module Brand</span>
@@ -918,8 +918,12 @@ export default function AgentPortal({ user, onLogout }) {
                                                 <span className="font-semibold text-stone-900">{selectedCust.module_wp || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Division</span>
-                                                <span className="font-semibold text-stone-900">{selectedCust.sub_divisions || '–'}</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">No of Modules</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.no_of_modules || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">System Capacity</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Payment Type</span>
@@ -937,9 +941,20 @@ export default function AgentPortal({ user, onLogout }) {
                                         </h5>
                                         <div className="flex flex-col gap-2">
                                             <CheckboxRemarkItem
-                                                label="Aadhaar Card"
-                                                field="adhaar_card"
-                                                value={editData.adhaar_card}
+                                                label="Aadhar Card Front"
+                                                field="adhaar_card_front"
+                                                value={editData.adhaar_card_front}
+                                                onChange={handleChange}
+                                                isEditing={true}
+                                                documents={custDocs}
+                                                onUpload={handleUploadDocForCustomer}
+                                                onDelete={handleDeleteDoc}
+                                                onPreview={handlePreviewFile}
+                                            />
+                                            <CheckboxRemarkItem
+                                                label="Aadhar Card Back"
+                                                field="adhaar_card_back"
+                                                value={editData.adhaar_card_back}
                                                 onChange={handleChange}
                                                 isEditing={true}
                                                 documents={custDocs}
@@ -992,9 +1007,20 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onPreview={handlePreviewFile}
                                             />
                                             <CheckboxRemarkItem
-                                                label="Bank Passbook"
-                                                field="bank_passbook"
-                                                value={editData.bank_passbook}
+                                                label="House Geo Tag Photo"
+                                                field="house_geo_tag_photo"
+                                                value={editData.house_geo_tag_photo}
+                                                onChange={handleChange}
+                                                isEditing={true}
+                                                documents={custDocs}
+                                                onUpload={handleUploadDocForCustomer}
+                                                onDelete={handleDeleteDoc}
+                                                onPreview={handlePreviewFile}
+                                            />
+                                            <CheckboxRemarkItem
+                                                label="Extra Documents"
+                                                field="extra_docs"
+                                                value={editData.extra_docs}
                                                 onChange={handleChange}
                                                 isEditing={true}
                                                 documents={custDocs}
@@ -1024,15 +1050,15 @@ export default function AgentPortal({ user, onLogout }) {
                                                 <span className="font-semibold text-stone-900">{selectedCust.registration_by || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Registration No</span>
-                                                <span className="font-semibold text-stone-900">{selectedCust.registration_no || '–'}</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Feasibility No</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.registration_no || selectedCust.feasibility_no || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">File No</span>
                                                 <span className="font-semibold text-stone-900">{selectedCust.folder_no || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Feasibility Status</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Feasibility Document</span>
                                                 {renderStatusBadge(selectedCust.feasibilty_document ? 'Completed' : 'Pending', 'Pending')}
                                             </div>
                                             <div className="flex items-center justify-between py-2">
@@ -1150,85 +1176,151 @@ export default function AgentPortal({ user, onLogout }) {
                             )}
 
                             {selectedCust.stage === 'MATERIAL ORDER' && (
-                                <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-3">
-                                    <div className="border-b border-stone-150 pb-2 mb-1">
-                                        <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
-                                            <Package size={11} /> Material Order Details
+                                <div className="space-y-4">
+                                    {/* Non-Editable Leads Details Card */}
+                                    <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
+                                        <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
+                                            <User size={11} /> Customer Lead Details
                                         </h5>
+                                        <div className="divide-y divide-stone-200/50 text-xs">
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Customer Name</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.customer_name || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Phone Number</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.phone_number || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Email Address</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.email_address || selectedCust.email || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Consumer No</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.consumer_no || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Villages / Address</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.villages || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Division</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.sub_divisions || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Channel Partner</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Channel Partner</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.sub_channel_partner || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Module Brand</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.module_brand || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Module Wp</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.module_wp || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">No of Modules</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.no_of_modules || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">System Capacity</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Payment Type</span>
+                                                <span className="font-bold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded text-[10px] uppercase">
+                                                    {selectedCust.payment_type || '–'}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="divide-y divide-stone-200/50 text-xs">
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Roof / Shed</span>
-                                            <select
-                                                value={editData.roof_shed || selectedCust.roof_shed || ''}
-                                                onChange={e => setEditData(prev => ({ ...prev, roof_shed: e.target.value }))}
-                                                className="bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+
+                                    {/* Material Order Form Card */}
+                                    <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-3">
+                                        <div className="border-b border-stone-150 pb-2 mb-1">
+                                            <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                <Package size={11} /> Material Order Details
+                                            </h5>
+                                        </div>
+                                        <div className="divide-y divide-stone-200/50 text-xs">
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Roof / Shed</span>
+                                                <select
+                                                    value={editData.roof_shed || selectedCust.roof_shed || ''}
+                                                    onChange={e => setEditData(prev => ({ ...prev, roof_shed: e.target.value }))}
+                                                    className="bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                                >
+                                                    <option value="">Select Roof / Shed</option>
+                                                    <option value="Roof">Roof</option>
+                                                    <option value="Shed">Shed</option>
+                                                </select>
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">DC Cable (Mtrs)</span>
+                                                <input
+                                                    type="number"
+                                                    value={editData.dc_cable ?? selectedCust.dc_cable ?? ''}
+                                                    onChange={e => setEditData(prev => ({ ...prev, dc_cable: e.target.value }))}
+                                                    placeholder="Meters"
+                                                    className="w-28 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                                />
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">AC Cable (Mtrs)</span>
+                                                <input
+                                                    type="number"
+                                                    value={editData.ac_cable ?? selectedCust.ac_cable ?? ''}
+                                                    onChange={e => setEditData(prev => ({ ...prev, ac_cable: e.target.value }))}
+                                                    placeholder="Meters"
+                                                    className="w-28 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                                />
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Structure Leg Height</span>
+                                                <input
+                                                    type="text"
+                                                    value={editData.structure_leg_height || selectedCust.structure_leg_height || ''}
+                                                    onChange={e => setEditData(prev => ({ ...prev, structure_leg_height: e.target.value }))}
+                                                    placeholder="e.g. 1 Meter"
+                                                    className="w-28 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                                />
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Invoice Value</span>
+                                                <input
+                                                    type="number"
+                                                    value={editData.invoice_value ?? selectedCust.invoice_value ?? ''}
+                                                    onChange={e => setEditData(prev => ({ ...prev, invoice_value: e.target.value }))}
+                                                    placeholder="₹ Amount"
+                                                    className="w-32 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="pt-2 border-t border-stone-200/60">
+                                            <button
+                                                onClick={async () => {
+                                                    setSaving(true);
+                                                    await handleUpdateCustomer(selectedCust.id, {
+                                                        roof_shed: editData.roof_shed || selectedCust.roof_shed,
+                                                        dc_cable: editData.dc_cable !== undefined ? editData.dc_cable : selectedCust.dc_cable,
+                                                        ac_cable: editData.ac_cable !== undefined ? editData.ac_cable : selectedCust.ac_cable,
+                                                        structure_leg_height: editData.structure_leg_height || selectedCust.structure_leg_height,
+                                                        invoice_value: editData.invoice_value !== undefined ? editData.invoice_value : selectedCust.invoice_value,
+                                                        stage: 'MATERIAL INTEGRATION'
+                                                    });
+                                                    setSaving(false);
+                                                }}
+                                                disabled={saving}
+                                                className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                                             >
-                                                <option value="">Select Roof / Shed</option>
-                                                <option value="Roof">Roof</option>
-                                                <option value="Shed">Shed</option>
-                                            </select>
+                                                <CheckCircle2 size={14} /> {saving ? 'Advancing...' : 'Save & Move to Material Integration'}
+                                            </button>
                                         </div>
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">DC Cable (Mtrs)</span>
-                                            <input
-                                                type="number"
-                                                value={editData.dc_cable ?? selectedCust.dc_cable ?? ''}
-                                                onChange={e => setEditData(prev => ({ ...prev, dc_cable: e.target.value }))}
-                                                placeholder="Meters"
-                                                className="w-28 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                            />
-                                        </div>
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">AC Cable (Mtrs)</span>
-                                            <input
-                                                type="number"
-                                                value={editData.ac_cable ?? selectedCust.ac_cable ?? ''}
-                                                onChange={e => setEditData(prev => ({ ...prev, ac_cable: e.target.value }))}
-                                                placeholder="Meters"
-                                                className="w-28 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                            />
-                                        </div>
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Structure Leg Height</span>
-                                            <input
-                                                type="text"
-                                                value={editData.structure_leg_height || selectedCust.structure_leg_height || ''}
-                                                onChange={e => setEditData(prev => ({ ...prev, structure_leg_height: e.target.value }))}
-                                                placeholder="e.g. 1 Meter"
-                                                className="w-28 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                            />
-                                        </div>
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Invoice Value</span>
-                                            <input
-                                                type="number"
-                                                value={editData.invoice_value ?? selectedCust.invoice_value ?? ''}
-                                                onChange={e => setEditData(prev => ({ ...prev, invoice_value: e.target.value }))}
-                                                placeholder="₹ Amount"
-                                                className="w-32 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="pt-2 border-t border-stone-200/60">
-                                        <button
-                                            onClick={async () => {
-                                                setSaving(true);
-                                                await handleUpdateCustomer(selectedCust.id, {
-                                                    roof_shed: editData.roof_shed || selectedCust.roof_shed,
-                                                    dc_cable: editData.dc_cable !== undefined ? editData.dc_cable : selectedCust.dc_cable,
-                                                    ac_cable: editData.ac_cable !== undefined ? editData.ac_cable : selectedCust.ac_cable,
-                                                    structure_leg_height: editData.structure_leg_height || selectedCust.structure_leg_height,
-                                                    invoice_value: editData.invoice_value !== undefined ? editData.invoice_value : selectedCust.invoice_value,
-                                                    stage: 'MATERIAL INTEGRATION'
-                                                });
-                                                setSaving(false);
-                                            }}
-                                            disabled={saving}
-                                            className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                                        >
-                                            <CheckCircle2 size={14} /> {saving ? 'Advancing...' : 'Save & Move to Material Integration'}
-                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -1628,19 +1720,19 @@ export default function AgentPortal({ user, onLogout }) {
                                                 <span className="font-semibold text-stone-900">{selectedCust.registration_by || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Registration No</span>
-                                                <span className="font-semibold text-stone-900">{selectedCust.registration_no || '–'}</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Feasibility No</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.registration_no || selectedCust.feasibility_no || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">File No</span>
                                                 <span className="font-semibold text-stone-900">{selectedCust.folder_no || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Feasibility Document Checked</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Feasibility Document</span>
                                                 {renderStatusBadge(selectedCust.feasibilty_document ? 'Yes' : 'Pending', 'Pending')}
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Subsidy Token Photo Checked</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Subsidy Token Photo</span>
                                                 {renderStatusBadge(selectedCust.subsidy_token_photo ? 'Yes' : 'Pending', 'Pending')}
                                             </div>
                                         </div>
