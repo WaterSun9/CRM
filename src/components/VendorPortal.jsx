@@ -6,7 +6,7 @@ import {
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle,
     Hash, Folder, Tag, ChevronLeft, Search, ClipboardList, Banknote, Calendar, ClipboardCheck,
     Camera, Paperclip, Eye, Trash2, Upload, Image as ImageIcon, X,
-    Printer, ShoppingBag, Layers, Ruler, IndianRupee
+    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
 
@@ -15,7 +15,7 @@ export default function VendorPortal({ user, onLogout }) {
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState('GEO'); // 'GEO', 'METER', 'INSPECTION'
+    const [activeTab, setActiveTab] = useState('MATERIAL'); // 'MATERIAL', 'GEO', 'METER', 'INSPECTION'
     const [selectedCust, setSelectedCust] = useState(null);
     
     // Edit Form State (for selected customer)
@@ -90,7 +90,8 @@ export default function VendorPortal({ user, onLogout }) {
                 const myName = (user.name || '').trim().toLowerCase();
                 const myCustomers = data.filter(c => {
                     const vendorName = (c.vendor || '').trim().toLowerCase();
-                    return vendorName === myName;
+                    // Include leads assigned to this vendor OR any lead currently in the MATERIAL INTEGRATION stage
+                    return vendorName === myName || c.stage === 'MATERIAL INTEGRATION';
                 });
                 setCustomers(myCustomers);
             }
@@ -272,24 +273,38 @@ export default function VendorPortal({ user, onLogout }) {
     };
 
     // Stats calculations
+    const materialCount = customers.filter(c => c.stage === 'MATERIAL INTEGRATION').length;
     const geoPendingCount = customers.filter(c => c.stage === 'GEO TAG PHOTO' && (c.geo_tag_status || 'Pending') !== 'Yes' && (c.geo_tag_status || 'Pending') !== 'Proceed').length;
     const meterPendingCount = customers.filter(c => c.stage === 'METER INSTALLATION' && c.meter_installation !== 'Yes').length;
     const inspectionPendingCount = customers.filter(c => c.stage === 'DISCOM INSPECTION' && (c.discom_inspection || 'No') !== 'Yes').length;
 
-    // Filtered lists depending on active tab & search query
+    // Filtered lists: search across all fields safely and across all stages if a query is typed
     const filteredCustomers = customers.filter(c => {
-        const q = searchQuery.toLowerCase();
-        const matchesSearch = 
-            c.customer_name?.toLowerCase().includes(q) ||
-            c.phone_number?.includes(searchQuery) ||
-            c.villages?.toLowerCase().includes(q);
+        const q = (searchQuery || '').trim().toLowerCase();
+        
+        const matchesSearch = !q || (
+            String(c.customer_name || '').toLowerCase().includes(q) ||
+            String(c.phone_number || '').toLowerCase().includes(q) ||
+            String(c.consumer_no || '').toLowerCase().includes(q) ||
+            String(c.folder_no || '').toLowerCase().includes(q) ||
+            String(c.villages || '').toLowerCase().includes(q) ||
+            String(c.sub_channel_partner || '').toLowerCase().includes(q)
+        );
 
-        if (activeTab === 'GEO') {
-            return matchesSearch && c.stage === 'GEO TAG PHOTO';
+        // If user is searching, return matches across all vendor stages!
+        if (q) {
+            return matchesSearch;
+        }
+
+        // When not searching, filter by active tab stage
+        if (activeTab === 'MATERIAL') {
+            return c.stage === 'MATERIAL INTEGRATION';
+        } else if (activeTab === 'GEO') {
+            return c.stage === 'GEO TAG PHOTO';
         } else if (activeTab === 'METER') {
-            return matchesSearch && c.stage === 'METER INSTALLATION';
+            return c.stage === 'METER INSTALLATION';
         } else {
-            return matchesSearch && c.stage === 'DISCOM INSPECTION';
+            return c.stage === 'DISCOM INSPECTION';
         }
     });
 
@@ -330,64 +345,73 @@ export default function VendorPortal({ user, onLogout }) {
                         </div>
                         <p className="text-[9px] uppercase tracking-widest text-amber-400 font-bold">Allotted Vendor</p>
                         <h2 className="text-lg font-bold mt-0.5">{user.name}</h2>
-                        <p className="text-[11px] text-stone-300 mt-2 font-medium">Manage geo tagging, meter installations, and inspection reports.</p>
+                        <p className="text-[11px] text-stone-300 mt-2 font-medium">Access Material Integration BOMs, geo tagging, meter installations, and inspection reports.</p>
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                        <div className="bg-white p-3 rounded-2xl border border-stone-100 shadow-sm">
-                            <p className="text-[8px] text-stone-400 font-bold uppercase tracking-wider">Geo Tag Pending</p>
-                            <p className="text-base sm:text-lg font-black text-stone-850 mt-0.5">{geoPendingCount}</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div 
+                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'MATERIAL' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
+                            onClick={() => setActiveTab('MATERIAL')}
+                        >
+                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'MATERIAL' ? 'text-amber-100' : 'text-stone-400'}`}>Material Int.</p>
+                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'MATERIAL' ? 'text-white' : 'text-stone-850'}`}>{materialCount}</p>
                         </div>
-                        <div className="bg-white p-3 rounded-2xl border border-stone-100 shadow-sm">
-                            <p className="text-[8px] text-stone-400 font-bold uppercase tracking-wider">Meter Pending</p>
-                            <p className="text-base sm:text-lg font-black text-stone-850 mt-0.5">{meterPendingCount}</p>
+                        <div 
+                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'GEO' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
+                            onClick={() => setActiveTab('GEO')}
+                        >
+                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'GEO' ? 'text-amber-100' : 'text-stone-400'}`}>Geo Pending</p>
+                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'GEO' ? 'text-white' : 'text-stone-850'}`}>{geoPendingCount}</p>
                         </div>
-                        <div className="bg-white p-3 rounded-2xl border border-stone-100 shadow-sm">
-                            <p className="text-[8px] text-stone-400 font-bold uppercase tracking-wider">Inspection Pending</p>
-                            <p className="text-base sm:text-lg font-black text-stone-850 mt-0.5">{inspectionPendingCount}</p>
+                        <div 
+                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'METER' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
+                            onClick={() => setActiveTab('METER')}
+                        >
+                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'METER' ? 'text-amber-100' : 'text-stone-400'}`}>Meter Pending</p>
+                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'METER' ? 'text-white' : 'text-stone-850'}`}>{meterPendingCount}</p>
+                        </div>
+                        <div 
+                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'INSPECTION' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
+                            onClick={() => setActiveTab('INSPECTION')}
+                        >
+                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'INSPECTION' ? 'text-amber-100' : 'text-stone-400'}`}>Insp Pending</p>
+                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'INSPECTION' ? 'text-white' : 'text-stone-850'}`}>{inspectionPendingCount}</p>
                         </div>
                     </div>
 
-                    {/* Tabs & Search */}
-                    <div className="space-y-3 pt-2">
-                        <div className="bg-stone-100 p-0.5 rounded-xl flex gap-1">
-                            <button
-                                onClick={() => setActiveTab('GEO')}
-                                className={`flex-1 py-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
-                                    activeTab === 'GEO' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
-                                }`}
-                            >
-                                <Camera className="w-3 h-3" /> Geo Tag
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('METER')}
-                                className={`flex-1 py-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
-                                    activeTab === 'METER' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
-                                }`}
-                            >
-                                <Zap className="w-3 h-3" /> Meter
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('INSPECTION')}
-                                className={`flex-1 py-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
-                                    activeTab === 'INSPECTION' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
-                                }`}
-                            >
-                                <ClipboardCheck className="w-3 h-3" /> Inspection
-                            </button>
-                        </div>
-
+                    {/* Search across all stages */}
+                    <div className="pt-1">
                         <div className="relative">
                             <Search className="absolute left-3 top-2.5 text-stone-400 w-4.5 h-4.5" />
                             <input
                                 type="text"
-                                placeholder="Search assigned customers..."
+                                placeholder="Search by name, phone, consumer no, folder..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                className="pl-9 pr-3 py-2.5 bg-white border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                                className="pl-9 pr-8 py-2.5 bg-white border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium shadow-xs"
                             />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-2.5 top-2.5 text-stone-400 hover:text-stone-600 p-0.5 rounded-full cursor-pointer"
+                                    title="Clear search"
+                                >
+                                    <X size={13} />
+                                </button>
+                            )}
                         </div>
+                        {searchQuery.trim() && (
+                            <div className="flex items-center justify-between text-[10px] text-stone-500 px-1 pt-1.5">
+                                <span>Searching across all stages ({filteredCustomers.length} result{filteredCustomers.length === 1 ? '' : 's'})</span>
+                                <button 
+                                    onClick={() => setSearchQuery('')} 
+                                    className="text-amber-600 font-bold hover:underline cursor-pointer"
+                                >
+                                    Reset
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Customers List */}
@@ -399,6 +423,50 @@ export default function VendorPortal({ user, onLogout }) {
                             </div>
                         ) : filteredCustomers.length > 0 ? (
                             filteredCustomers.map(cust => {
+                                if (cust.stage === 'MATERIAL INTEGRATION') {
+                                    return (
+                                        <div 
+                                            key={cust.id} 
+                                            onClick={() => handleOpenBomModal(cust)}
+                                            className="bg-white p-3.5 rounded-2xl border border-stone-150 shadow-sm hover:border-amber-400 hover:shadow-md transition-all space-y-2.5 cursor-pointer active:scale-[0.99] group"
+                                        >
+                                            <div className="flex justify-between items-start gap-2">
+                                                <div className="space-y-1 min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className="text-xs font-bold text-stone-900 truncate group-hover:text-amber-600 transition-colors">{cust.customer_name}</h4>
+                                                        <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-md">
+                                                            {cust.system_capacity_kwp ? `${cust.system_capacity_kwp} kWp` : 'BOM Ready'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[10px] text-stone-400 font-medium truncate">{cust.villages || 'Address not specified'}</p>
+                                                    <div className="flex flex-wrap gap-2 text-[9px] text-stone-500 pt-0.5">
+                                                        {cust.consumer_no && <span>Consumer: <b>{cust.consumer_no}</b></span>}
+                                                        {cust.folder_no && <span>Folder: <b>{cust.folder_no}</b></span>}
+                                                        {cust.roof_shed && <span>Type: <b>{cust.roof_shed}</b></span>}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between pt-2 border-t border-stone-100">
+                                                <span className="text-[9px] font-bold text-stone-400 flex items-center gap-1">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                                    Tap to view & print BOM
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenBomModal(cust);
+                                                    }}
+                                                    className="text-[10px] font-bold uppercase tracking-wide text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-200 px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <Printer size={11} /> Print BOM
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
                                 const isGeoOk = cust.geo_tag_status === 'Yes' || cust.geo_tag_status === 'Proceed';
                                 const isMeterOk = cust.meter_installation === 'Yes';
                                 const isInspOk = cust.discom_inspection === 'Yes';
@@ -411,9 +479,18 @@ export default function VendorPortal({ user, onLogout }) {
                                     >
                                         <div className="space-y-1.5 min-w-0 pr-2">
                                             <p className="text-xs font-bold text-stone-850 truncate group-hover:text-amber-600 transition-colors">{cust.customer_name}</p>
-                                            <p className="text-[10px] text-stone-400 font-medium truncate">{cust.villages || 'Address not specified'}</p>
+                                            <p className="text-[10px] text-stone-400 font-medium truncate">
+                                                {cust.villages || 'Address not specified'}
+                                                {cust.consumer_no && ` • Cons: ${cust.consumer_no}`}
+                                                {cust.phone_number && ` • Ph: ${cust.phone_number}`}
+                                            </p>
                                             
                                             <div className="flex flex-wrap gap-1 mt-1">
+                                                {searchQuery.trim() && (
+                                                    <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-stone-900 text-white">
+                                                        {cust.stage}
+                                                    </span>
+                                                )}
                                                 <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${
                                                     isGeoOk ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
                                                 }`}>
@@ -431,20 +508,7 @@ export default function VendorPortal({ user, onLogout }) {
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleOpenBomModal(cust);
-                                                }}
-                                                className="text-[10px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
-                                                title="View & Print BOM"
-                                            >
-                                                <Printer size={11} /> Print BOM
-                                            </button>
-                                            <ChevronRight className="w-4.5 h-4.5 text-stone-300 group-hover:text-stone-700 transition-colors" />
-                                        </div>
+                                        <ChevronRight className="w-4.5 h-4.5 text-stone-300 group-hover:text-stone-700 transition-colors flex-shrink-0" />
                                     </div>
                                 );
                             })
@@ -466,13 +530,15 @@ export default function VendorPortal({ user, onLogout }) {
                         >
                             <ChevronLeft className="w-4.5 h-4.5" /> Back to Dashboard
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => handleOpenBomModal(selectedCust)}
-                            className="text-[11px] font-bold text-stone-800 hover:text-stone-950 bg-white hover:bg-stone-50 border border-stone-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                        >
-                            <Printer size={12} className="text-amber-600" /> Print BOM
-                        </button>
+                        {activeTab === 'MATERIAL' && (
+                            <button
+                                type="button"
+                                onClick={() => handleOpenBomModal(selectedCust)}
+                                className="text-[11px] font-bold text-stone-800 hover:text-stone-950 bg-white hover:bg-stone-50 border border-stone-200 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                            >
+                                <Printer size={12} className="text-amber-600" /> Print BOM
+                            </button>
+                        )}
                     </div>
 
                     <div className="bg-white p-5 rounded-[24px] border border-stone-150 shadow-sm space-y-4">
@@ -481,15 +547,93 @@ export default function VendorPortal({ user, onLogout }) {
                             <p className="text-[10px] text-stone-400 font-semibold mt-1">Consumer No: {selectedCust.consumer_no || '–'}</p>
                         </div>
 
+                        {/* Stage Tabs inside Customer View */}
+                        <div className="grid grid-cols-4 gap-1 p-1 bg-stone-100/80 rounded-xl border border-stone-200/60">
+                            {[
+                                { id: 'MATERIAL', label: 'Material (BOM)', icon: Package },
+                                { id: 'GEO', label: 'Geo Tag', icon: Camera },
+                                { id: 'METER', label: 'Meter', icon: Zap },
+                                { id: 'INSPECTION', label: 'Inspection', icon: ClipboardCheck },
+                            ].map(tab => {
+                                const Icon = tab.icon;
+                                const isCurrent = activeTab === tab.id;
+                                return (
+                                    <button
+                                        key={tab.id}
+                                        type="button"
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`py-1.5 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                                            isCurrent
+                                                ? 'bg-amber-500 text-white shadow-xs'
+                                                : 'text-stone-500 hover:text-stone-800'
+                                        }`}
+                                    >
+                                        <Icon size={11} />
+                                        <span className="hidden sm:inline">{tab.label}</span>
+                                        <span className="sm:hidden">{tab.id === 'MATERIAL' ? 'BOM' : tab.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
                         {/* Editable Form Card */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest border-b border-stone-100 pb-1.5">
-                                {activeTab === 'GEO' 
-                                    ? 'Geo Tag Photo Report' 
-                                    : activeTab === 'METER' 
-                                        ? 'Meter Installation Report' 
-                                        : 'Discom Inspection Report'}
+                                {activeTab === 'MATERIAL'
+                                    ? 'Material Integration & BOM Specification'
+                                    : activeTab === 'GEO' 
+                                        ? 'Geo Tag Photo Report' 
+                                        : activeTab === 'METER' 
+                                            ? 'Meter Installation Report' 
+                                            : 'Discom Inspection Report'}
                             </h3>
+
+                            {/* ─── Active Tab: MATERIAL INTEGRATION & BOM ─── */}
+                            {activeTab === 'MATERIAL' && (
+                                <div className="space-y-4">
+                                    <div className="bg-gradient-to-br from-amber-50/70 to-white p-4 rounded-2xl border border-amber-200/80 space-y-3 shadow-xs">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Package className="w-4 h-4 text-amber-600" />
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-amber-950 uppercase tracking-wide">Material Integration & BOM</p>
+                                                    <p className="text-[9px] text-stone-500 font-medium">View specifications and generate BOM printable copy.</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenBomModal(selectedCust)}
+                                                className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shadow-sm shadow-amber-500/20 cursor-pointer"
+                                            >
+                                                <Printer size={11} /> View & Print BOM
+                                            </button>
+                                        </div>
+
+                                        <div className="divide-y divide-stone-200/60 text-xs pt-1">
+                                            <div className="flex justify-between py-1.5">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase">Roof / Shed</span>
+                                                <span className="font-semibold text-stone-850">{selectedCust.roof_shed || '–'}</span>
+                                            </div>
+                                            <div className="flex justify-between py-1.5">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase">Structure Height</span>
+                                                <span className="font-semibold text-stone-850">{selectedCust.structure_leg_height || '–'}</span>
+                                            </div>
+                                            <div className="flex justify-between py-1.5">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase">DC Cable</span>
+                                                <span className="font-semibold text-stone-850">{selectedCust.dc_cable ? `${selectedCust.dc_cable} m` : '–'}</span>
+                                            </div>
+                                            <div className="flex justify-between py-1.5">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase">AC Cable</span>
+                                                <span className="font-semibold text-stone-850">{selectedCust.ac_cable ? `${selectedCust.ac_cable} m` : '–'}</span>
+                                            </div>
+                                            <div className="flex justify-between py-1.5">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase">Invoice Value</span>
+                                                <span className="font-semibold text-stone-850">{selectedCust.invoice_value ? `₹${toIndianCommas(selectedCust.invoice_value)}` : '–'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             
                             {/* ─── Active Tab: GEO TAG PHOTO ─── */}
                             {activeTab === 'GEO' && (

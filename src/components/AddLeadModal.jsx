@@ -4,10 +4,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
     X, Plus, User, ClipboardList, Paperclip, Eye, Trash2, 
-    Upload, FileText, Image as ImageIcon, Loader2, Banknote 
+    Upload, FileText, Image as ImageIcon, Loader2, Banknote,
+    ShoppingBag, Layers, Ruler, IndianRupee, Zap
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
+import { toIndianCommas, parseIndianNumber } from '../utils';
 
 // Dropdown component for metadata fields (clean single outline)
 function AddLeadMetaSelect({ label, field, value, onChange, options = [] }) {
@@ -563,6 +565,94 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     Please select a Payment Type above to display the Document Checklist.
                                 </p>
                             )}
+                        </div>
+                    </section>
+
+                    {/* Section 3: Material Order Specifications (Optional) */}
+                    <section>
+                        <div className="flex items-center gap-2 mb-3 pb-1.5 border-b border-stone-100">
+                            <ShoppingBag size={13} className="text-amber-500" />
+                            <h3 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                                Material Order Specifications <span className="text-stone-300 font-normal lowercase">(optional)</span>
+                            </h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Roof / Shed */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold flex items-center gap-1">
+                                    <Layers size={11} className="text-amber-500" /> Roof / Shed
+                                </label>
+                                <select
+                                    value={formData.roof_shed || ''}
+                                    onChange={e => handleChange('roof_shed', e.target.value)}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                >
+                                    <option value="">Select Roof / Shed...</option>
+                                    {['Roof', 'Shed'].map(opt => (
+                                        <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Structure Leg Height */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold flex items-center gap-1">
+                                    <Ruler size={11} className="text-amber-500" /> Structure Leg Height
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 4 ft, 6 ft, 8 ft..."
+                                    value={formData.structure_leg_height || ''}
+                                    onChange={e => handleChange('structure_leg_height', e.target.value)}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                />
+                            </div>
+
+                            {/* DC Cable */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold flex items-center gap-1">
+                                    <Zap size={11} className="text-amber-500" /> DC Cable (m)
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="e.g. 50"
+                                    value={formData.dc_cable || ''}
+                                    onChange={e => handleChange('dc_cable', e.target.value)}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                />
+                            </div>
+
+                            {/* AC Cable */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold flex items-center gap-1">
+                                    <Zap size={11} className="text-amber-500" /> AC Cable (m)
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="e.g. 30"
+                                    value={formData.ac_cable || ''}
+                                    onChange={e => handleChange('ac_cable', e.target.value)}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                />
+                            </div>
+
+                            {/* Invoice Value */}
+                            <div className="space-y-1 md:col-span-2">
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold flex items-center gap-1">
+                                    <IndianRupee size={11} className="text-amber-500" /> Invoice Value (₹)
+                                </label>
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="e.g. 150000"
+                                    value={formData.invoice_value ? toIndianCommas(formData.invoice_value) : ''}
+                                    onChange={e => handleChange('invoice_value', parseIndianNumber(e.target.value))}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                />
+                            </div>
                         </div>
                     </section>
                 </div>
