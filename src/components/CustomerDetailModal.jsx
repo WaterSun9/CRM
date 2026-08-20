@@ -13,7 +13,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
-    LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle
+    LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check
 } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE } from '../constants';
 import { logActivity, formatLogDate, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
@@ -447,6 +447,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const isOfficeFrozenTab = isOffice && (activeTab === 'METER INSTALLATION' || activeTab === 'DISCOM INSPECTION');
     const isEditable = !isFrozen && canUserEdit && !isOfficeFrozenTab;
+    const saveBomRef = useRef(null);
+    const [saved, setSaved] = useState(false);
     const [showAgreementPopup, setShowAgreementPopup] = useState(false);
     const [agreementData, setAgreementData] = useState({
         executionDate: '',
@@ -1077,6 +1079,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         }
 
         setSaving(true);
+        if (saveBomRef.current) {
+            try {
+                await saveBomRef.current();
+            } catch (err) {
+                console.error('Error saving BOM during stage advance:', err);
+            }
+        }
 
         const oldStage = editData.stage;
         let prevObj = {};
@@ -1177,6 +1186,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const handleSave = async () => {
         setSaving(true);
+        if (saveBomRef.current) {
+            try {
+                await saveBomRef.current();
+            } catch (err) {
+                console.error('Error saving BOM during handleSave:', err);
+            }
+        }
         const updates = { ...editData };
 
         if (updates.system_capacity_kwp !== undefined && updates.system_capacity_kwp !== null && updates.system_capacity_kwp !== '') {
@@ -1295,6 +1311,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
         setEditingSection(null);
         setSaving(false);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
         fetchLogs();
         if (stageChanged) {
             setActiveTab(editData.stage);
@@ -1320,18 +1338,22 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const isDirty = (() => {
         if (editingSection) return true;
-        if (editData.payment_type !== customer.payment_type) return true;
-        if (editData.installation_status !== customer.installation_status) return true;
-        if (editData.geo_tag_status !== customer.geo_tag_status) return true;
-        if ((editData.roof_shed || '') !== (customer.roof_shed || '')) return true;
-        if ((editData.dc_cable || '') !== (customer.dc_cable || '')) return true;
-        if ((editData.ac_cable || '') !== (customer.ac_cable || '')) return true;
-        if ((editData.structure_front_leg_height || '') !== (customer.structure_front_leg_height || '')) return true;
-        if ((editData.structure_rear_leg_height || '') !== (customer.structure_rear_leg_height || '')) return true;
-        if ((editData.material_order_notes || '') !== (customer.material_order_notes || '')) return true;
-        if ((editData.structure_leg_height || '') !== (customer.structure_leg_height || '')) return true;
-        if ((editData.invoice_value || '') !== (customer.invoice_value || '')) return true;
-        if (JSON.stringify(editData.hold_procurement || {}) !== JSON.stringify(customer.hold_procurement || {})) return true;
+        if (!customer || !editData) return false;
+        
+        const ignoreKeys = new Set(['id', 'created_at', 'updated_at', 'crn']);
+        for (const key of Object.keys(editData)) {
+            if (ignoreKeys.has(key)) continue;
+            const val1 = editData[key];
+            const val2 = customer[key];
+            if (val1 === undefined && val2 === undefined) continue;
+            if (typeof val1 === 'object' || typeof val2 === 'object') {
+                if (JSON.stringify(val1 ?? null) !== JSON.stringify(val2 ?? null)) return true;
+            } else {
+                const str1 = val1 !== undefined && val1 !== null ? String(val1).trim() : '';
+                const str2 = val2 !== undefined && val2 !== null ? String(val2).trim() : '';
+                if (str1 !== str2) return true;
+            }
+        }
         return false;
     })();
 
@@ -1612,12 +1634,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <MaterialIntegrationTab
                             customer={customer}
                             editData={editData}
+                            setEditData={setEditData}
                             isEditable={isEditable}
                             user={user}
                             meta={meta}
                             logActivity={logActivity}
                             editingSection={editingSection}
                             setEditingSection={setEditingSection}
+                            onUpdate={onUpdate}
+                            handleAdvanceStage={handleAdvanceStage}
+                            saving={saving}
+                            setSaving={setSaving}
+                            saveBomRef={saveBomRef}
                         />
                     )}
 
@@ -1648,6 +1676,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             logActivity={logActivity}
                             fetchLogs={fetchLogs}
                             user={user}
+                            meta={meta}
                             handleChange={handleChange}
                             editingSection={editingSection}
                             setEditingSection={setEditingSection}
@@ -1881,50 +1910,55 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     )}
                 </div>
 
-                {/* Footer bar */}
-                {(isDirty || (hasNextStage && isEditable && activeTab === customer.stage)) && activeTab !== 'HOLD PROCUREMENT' && (
+                {/* Footer bar - 50/50 split buttons at customer card */}
+                {isEditable && activeTab !== 'HOLD PROCUREMENT' && (
                     <div className="p-4 border-t border-stone-100 bg-white flex-shrink-0 flex gap-3">
-                        {hasNextStage && isEditable && activeTab === customer.stage ? (
-                            (((editData.stage === 'LEADS' && !isLeadFieldsFilled) ||
-                              (editData.stage === 'REGISTRATION' && !isRegistrationReady) ||
-                              (editData.stage === 'MATERIAL ORDER' && !isMaterialOrderFilled) ||
-                              (editData.stage === 'GEO TAG PHOTO' && editData.geo_tag_status !== 'Proceed') ||
-                              (editData.stage === 'METER INSTALLATION' && editData.meter_installation?.status !== 'Yes') ||
-                              (editData.stage === 'DISCOM INSPECTION' && editData.discom_inspection !== 'Yes') ||
-                              (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Yes')) ? (
-                                isDirty ? (
-                                    <button onClick={handleSave} disabled={saving}
-                                        className="flex-1 bg-stone-900 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 transition-all text-xs cursor-pointer">
-                                        {saving ? 'Saving...' : <><Save size={14} /> Save</>}
-                                    </button>
-                                ) : (
-                                    <button disabled={true}
-                                        className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-stone-100 text-stone-400 border border-stone-200 cursor-not-allowed">
-                                        Save & Move to {nextStageLabel}
-                                    </button>
-                                )
+                        <button
+                            onClick={handleSave}
+                            disabled={saving}
+                            className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs cursor-pointer shadow-sm disabled:opacity-50 ${
+                                isDirty
+                                    ? 'bg-stone-900 text-white hover:bg-stone-800'
+                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            }`}
+                        >
+                            {saving ? (
+                                'Saving...'
+                            ) : isDirty ? (
+                                <>
+                                    <Save size={14} />
+                                    <span>Save</span>
+                                </>
                             ) : (
-                                <button
-                                    onClick={() => {
-                                        if (nextStageId === 'COMPLETED') {
-                                            setShowCompletedConfirm(true);
-                                        } else {
-                                            handleAdvanceStage();
-                                        }
-                                    }}
-                                    disabled={saving}
-                                    className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10 cursor-pointer"
-                                >
-                                    {saving ? 'Saving & Moving...' : `Save & Move to ${nextStageLabel}`}
-                                </button>
-                            ))
-                        ) : (
-                            isDirty && (
-                                <button onClick={handleSave} disabled={saving}
-                                    className="flex-1 bg-stone-900 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 transition-all text-xs cursor-pointer">
-                                    {saving ? 'Saving...' : <><Save size={14} /> Save</>}
-                                </button>
-                            )
+                                <>
+                                    <Check size={14} className="text-white" />
+                                    <span>Saved</span>
+                                </>
+                            )}
+                        </button>
+
+                        {hasNextStage && (
+                            <button
+                                onClick={() => {
+                                    if (nextStageId === 'COMPLETED') {
+                                        setShowCompletedConfirm(true);
+                                    } else {
+                                        handleAdvanceStage();
+                                    }
+                                }}
+                                disabled={saving || (
+                                    (editData.stage === 'LEADS' && !isLeadFieldsFilled) ||
+                                    (editData.stage === 'REGISTRATION' && !isRegistrationReady) ||
+                                    (editData.stage === 'MATERIAL ORDER' && !isMaterialOrderFilled) ||
+                                    (editData.stage === 'GEO TAG PHOTO' && editData.geo_tag_status !== 'Proceed') ||
+                                    (editData.stage === 'METER INSTALLATION' && editData.meter_installation?.status !== 'Yes') ||
+                                    (editData.stage === 'DISCOM INSPECTION' && editData.discom_inspection !== 'Yes') ||
+                                    (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Yes')
+                                )}
+                                className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {saving ? 'Saving & Moving...' : `Save & Move to ${nextStageLabel}`}
+                            </button>
                         )}
                     </div>
                 )}

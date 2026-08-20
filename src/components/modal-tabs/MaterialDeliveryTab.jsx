@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, CheckCircle2 } from 'lucide-react';
+import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
 
@@ -28,6 +28,7 @@ export default function MaterialDeliveryTab({
     logActivity,
     fetchLogs,
     user,
+    meta = {},
     handleChange,
     editingSection,
     setEditingSection
@@ -40,6 +41,12 @@ export default function MaterialDeliveryTab({
     const [bulkText, setBulkText] = useState('');
     const [copiedIdx, setCopiedIdx] = useState(null);
     const [copiedAll, setCopiedAll] = useState(false);
+    const [showPrintModal, setShowPrintModal] = useState(false);
+
+    // Inverter Make options from metadata or defaults
+    const inverterMakeOptions = (meta['inverter_make'] && meta['inverter_make'].length > 0)
+        ? meta['inverter_make']
+        : ['test1', 'test2', 'test3'];
 
     useEffect(() => {
         const fetchVendorsList = async () => {
@@ -113,6 +120,10 @@ export default function MaterialDeliveryTab({
         setTimeout(() => setCopiedAll(false), 2000);
     };
 
+    const handlePrint = () => {
+        window.print();
+    };
+
     const filledCount = panelSerials.filter(Boolean).length;
     const currentSerialized = panelSerials.filter(Boolean).join('\n');
     const originalSerialized = (parsePanelSerials(customer?.panel_serial_no) || []).filter(Boolean).join('\n');
@@ -120,9 +131,24 @@ export default function MaterialDeliveryTab({
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Top Bar with Print Option */}
+            <div className="flex flex-wrap justify-between items-center gap-2 border-b border-stone-100 pb-2">
+                <div>
+                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Material Delivery & Dispatch</h4>
+                    <p className="text-[11px] text-stone-500 font-medium">Vendor assignment, equipment serial numbers and dispatch note.</p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => setShowPrintModal(true)}
+                    className="bg-stone-900 hover:bg-stone-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                    <Printer size={13} /> Print Delivery Note
+                </button>
+            </div>
+
             {/* Pick a Vendor Section */}
             <section id="section-pick_vendor">
-                <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-1.5 mt-4">
+                <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-1.5">
                     <h3 className="text-[9px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-2">
                         <Building2 size={12} /> Pick a Vendor
                     </h3>
@@ -224,8 +250,18 @@ export default function MaterialDeliveryTab({
                     setEditingSection={setEditingSection} 
                 />
                 
-                {/* 4 Standard Delivery Metadata Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* 5 Delivery Metadata Cards with Inverter Make Dropdown */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <EditableDetailItem 
+                        label="INVERTER MAKE" 
+                        field="inverter_make" 
+                        value={editData.inverter_make} 
+                        options={inverterMakeOptions}
+                        category="inverter_make"
+                        meta={meta}
+                        onChange={handleChange} 
+                        isEditing={editingSection === 'equip_details'} 
+                    />
                     <EditableDetailItem 
                         label="INVERTER SERIAL NO." 
                         field="inverter_serial_no" 
@@ -257,7 +293,7 @@ export default function MaterialDeliveryTab({
                 </div>
             </section>
 
-            {/* Dedicated Standalone Panel Serial Numbers Section — Outside pencil edit with no outer border */}
+            {/* Dedicated Standalone Panel Serial Numbers Section — Outside pencil edit with clean 1, 2, 3 numbers */}
             <section id="section-panel_serials" className="space-y-3 pt-2">
                 {/* Header Row */}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2.5">
@@ -394,7 +430,7 @@ export default function MaterialDeliveryTab({
                     </div>
                 )}
 
-                {/* Content Section: Always directly editable when isEditable is true, otherwise clean click-to-copy cards */}
+                {/* Content Section: Simple, clean 1, 2, 3 indexing */}
                 {isEditable ? (
                     <div className="space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-[460px] overflow-y-auto pr-1">
@@ -403,15 +439,15 @@ export default function MaterialDeliveryTab({
                                     key={idx} 
                                     className="flex items-center bg-stone-50/80 hover:bg-stone-50 border border-stone-200/80 rounded-xl p-1.5 focus-within:border-amber-400 focus-within:bg-white transition"
                                 >
-                                    <span className="w-7 text-center text-[10px] font-mono font-bold text-stone-500 bg-stone-200/60 rounded-md py-1 mr-1.5 flex-shrink-0">
-                                        #{String(idx + 1).padStart(2, '0')}
+                                    <span className="w-6 text-center text-xs font-bold text-stone-600 bg-stone-200/60 rounded-md py-1 mr-1.5 flex-shrink-0">
+                                        {idx + 1}
                                     </span>
                                     <input
                                         type="text"
                                         value={serial}
                                         onChange={(e) => handlePanelSerialChange(idx, e.target.value)}
                                         className="flex-1 bg-transparent text-xs font-mono font-semibold text-stone-800 focus:outline-none placeholder:text-stone-300 min-w-0"
-                                        placeholder={`Serial #${idx + 1}`}
+                                        placeholder={`Serial ${idx + 1}`}
                                     />
                                     {panelSerials.length > 1 && (
                                         <button
@@ -454,8 +490,8 @@ export default function MaterialDeliveryTab({
                                         title="Click to copy serial"
                                     >
                                         <div className="flex items-center gap-2 min-w-0">
-                                            <span className="text-[10px] font-mono font-bold text-stone-400 group-hover:text-amber-700 bg-stone-200/50 group-hover:bg-amber-100/60 px-1.5 py-0.5 rounded">
-                                                #{String(idx + 1).padStart(2, '0')}
+                                            <span className="text-xs font-bold text-stone-500 group-hover:text-amber-700 bg-stone-200/50 group-hover:bg-amber-100/60 w-6 text-center py-0.5 rounded">
+                                                {idx + 1}
                                             </span>
                                             <span className="text-xs font-mono font-bold text-stone-700 group-hover:text-stone-900 truncate">
                                                 {serial}
@@ -475,6 +511,170 @@ export default function MaterialDeliveryTab({
                     </div>
                 )}
             </section>
+
+            {/* Dedicated Print & PDF Modal */}
+            {showPrintModal && (
+                <div className="fixed inset-0 z-[999] bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+                        {/* Header bar */}
+                        <div className="px-6 py-4 bg-stone-900 text-white flex items-center justify-between no-print">
+                            <div className="flex items-center gap-2">
+                                <Printer size={18} className="text-amber-400" />
+                                <h3 className="text-sm font-black uppercase tracking-wider">Print Preview — Material Delivery Note</h3>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={handlePrint}
+                                    className="bg-amber-500 hover:bg-amber-400 text-stone-950 px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md"
+                                >
+                                    <Printer size={14} /> Print Document
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPrintModal(false)}
+                                    className="text-stone-400 hover:text-white p-1 rounded-lg transition"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Printable Document Body */}
+                        <div className="flex-1 overflow-y-auto p-8 bg-white text-stone-900 print-document" id="printable-delivery">
+                            {/* Company Header */}
+                            <div className="border-b-2 border-stone-900 pb-4 mb-6 text-center">
+                                <h1 className="text-xl font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
+                                <p className="text-xs font-semibold text-stone-600 mt-0.5">Material Delivery, Equipment Dispatch & Serial Numbers Note</p>
+                                <div className="inline-block mt-2 px-3 py-1 bg-stone-100 border border-stone-300 rounded text-[11px] font-black uppercase tracking-widest text-stone-800">
+                                    DISPATCH NOTE — {editData?.invoice_no ? `INVOICE #${editData.invoice_no}` : 'PROJECT DISPATCH'}
+                                </div>
+                            </div>
+
+                            {/* Section: Customer & Site Details */}
+                            <div className="mb-6">
+                                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">1. Customer & Site Information</h3>
+                                <table className="w-full text-xs border border-stone-300">
+                                    <tbody>
+                                        <tr className="border-b border-stone-200">
+                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Customer Name:</td>
+                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.customer_name || customer?.customer_name || '–'}</td>
+                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Contact Number:</td>
+                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.phone_number || customer?.phone_number || '–'}</td>
+                                        </tr>
+                                        <tr className="border-b border-stone-200">
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Village / Address:</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.villages || customer?.villages || '–'}</td>
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Consumer No:</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.consumer_no || customer?.consumer_no || '–'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">System Capacity:</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.system_capacity_kwp ? `${editData.system_capacity_kwp} kWp` : '–'}</td>
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Channel Partner:</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.channel_partner || customer?.channel_partner || '–'}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Section: Delivery & Dispatch Specifications */}
+                            <div className="mb-6">
+                                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">2. Delivery & Equipment Specifications</h3>
+                                <table className="w-full text-xs border border-stone-300">
+                                    <tbody>
+                                        <tr className="border-b border-stone-200">
+                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Allotted Vendor:</td>
+                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.vendor || '–'}</td>
+                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Invoice Number:</td>
+                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.invoice_no || '–'}</td>
+                                        </tr>
+                                        <tr className="border-b border-stone-200">
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Inverter Make:</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.inverter_make || '–'}</td>
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Inverter Serial No:</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.inverter_serial_no || '–'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Driver Name:</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.driver_name || '–'}</td>
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Driver Phone Number:</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.driver_phone_number || '–'}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Section: Panel Serial Numbers Grid */}
+                            <div className="mb-8">
+                                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2 flex items-center justify-between">
+                                    <span>3. Solar Panel Serial Numbers Checklist</span>
+                                    <span className="text-[10px] font-bold text-stone-600">Total: {filledCount} Panels</span>
+                                </h3>
+                                {filledCount > 0 ? (
+                                    <div className="grid grid-cols-3 gap-2 text-xs">
+                                        {panelSerials.filter(Boolean).map((serial, idx) => (
+                                            <div key={idx} className="border border-stone-300 p-1.5 rounded flex items-center gap-2">
+                                                <span className="font-bold text-stone-600 w-6 text-center">{idx + 1}.</span>
+                                                <span className="font-mono font-bold text-stone-900">{serial}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-stone-400 italic py-2">No panel serial numbers recorded.</p>
+                                )}
+                            </div>
+
+                            {/* Signatures Footer */}
+                            <div className="grid grid-cols-3 gap-6 pt-12 text-center border-t border-stone-300 text-xs">
+                                <div>
+                                    <div className="border-b border-stone-400 pb-8 mb-1.5 font-bold text-stone-700">
+                                        {user?.name || ''}
+                                    </div>
+                                    <p className="font-black uppercase text-[10px] text-stone-900">Dispatched By</p>
+                                </div>
+                                <div>
+                                    <div className="border-b border-stone-400 pb-8 mb-1.5 font-bold text-stone-700">
+                                        {editData?.driver_name || ''}
+                                    </div>
+                                    <p className="font-black uppercase text-[10px] text-stone-900">Driver Signature</p>
+                                </div>
+                                <div>
+                                    <div className="border-b border-stone-400 pb-8 mb-1.5 font-bold text-stone-700">
+                                        {editData?.customer_name || ''}
+                                    </div>
+                                    <p className="font-black uppercase text-[10px] text-stone-900">Customer / Site Received By</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Print Specific CSS */}
+            <style>{`
+                @media print {
+                    body * {
+                        visibility: hidden;
+                    }
+                    #printable-delivery, #printable-delivery * {
+                        visibility: visible;
+                    }
+                    #printable-delivery {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                        margin: 0;
+                        padding: 20px;
+                        background: #ffffff !important;
+                        color: #000000 !important;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
+                }
+            `}</style>
         </div>
     );
 }

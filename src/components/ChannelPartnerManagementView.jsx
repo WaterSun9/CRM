@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck } from 'lucide-react';
+import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap } from 'lucide-react';
 import { logActivity } from '../utils';
 
 export default function ChannelPartnerManagementView({ customers = [], currentUser }) {
@@ -11,10 +11,12 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [brands, setBrands] = useState([]);
     const [registrations, setRegistrations] = useState([]);
     const [integrations, setIntegrations] = useState([]);
+    const [inverters, setInverters] = useState([]);
     const [newPartner, setNewPartner] = useState('');
     const [newBrand, setNewBrand] = useState('');
     const [newRegistration, setNewRegistration] = useState('');
     const [newIntegration, setNewIntegration] = useState('');
+    const [newInverter, setNewInverter] = useState('');
     const [activeManageCategory, setActiveManageCategory] = useState(null);
     const [editingId, setEditingId] = useState(null);
     const [editingLabel, setEditingLabel] = useState('');
@@ -26,13 +28,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [editingVendorName, setEditingVendorName] = useState('');
     const [editingVendorEmail, setEditingVendorEmail] = useState('');
 
-    // Fetch partners, brands, registrations, and integrations from metadata table
+    // Fetch partners, brands, registrations, integrations, and inverters from metadata table
     const fetchMetadata = async () => {
         try {
             const { data, error } = await supabase
                 .from('metadata')
                 .select('id, category, label')
-                .in('category', ['channel_partner', 'module_brand', 'registration_by', 'integration_by']);
+                .in('category', ['channel_partner', 'module_brand', 'registration_by', 'integration_by', 'inverter_make']);
 
             if (error) throw error;
 
@@ -40,11 +42,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             const brandList = data.filter(d => d.category === 'module_brand');
             const registrationList = data.filter(d => d.category === 'registration_by');
             const integrationList = data.filter(d => d.category === 'integration_by');
+            const inverterList = data.filter(d => d.category === 'inverter_make');
 
             setPartners(partnerList);
             setBrands(brandList);
             setRegistrations(registrationList);
             setIntegrations(integrationList);
+            setInverters(inverterList);
         } catch (e) {
             console.error('Error fetching metadata:', e);
         } finally {
@@ -174,6 +178,33 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         }
     };
 
+    // Add new Inverter Make
+    const handleAddInverter = async () => {
+        const val = newInverter.trim();
+        if (!val) return;
+
+        // Check for duplicates
+        if (inverters.some(i => i.label.toLowerCase() === val.toLowerCase())) {
+            alert('This Inverter Make already exists.');
+            return;
+        }
+
+        try {
+            const { data, error } = await supabase
+                .from('metadata')
+                .insert({ category: 'inverter_make', label: val })
+                .select();
+
+            if (error) throw error;
+
+            setInverters(prev => [...prev, ...data]);
+            setNewInverter('');
+            await logActivity(currentUser.id, 'create', `Added new Inverter Make: "${val}"`);
+        } catch (e) {
+            console.error('Error adding inverter make:', e);
+        }
+    };
+
     // Add new Vendor
     const handleAddVendor = async () => {
         const name = newVendorName.trim();
@@ -271,6 +302,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         else if (category === 'module_brand') listToCheck = brands;
         else if (category === 'registration_by') listToCheck = registrations;
         else if (category === 'integration_by') listToCheck = integrations;
+        else if (category === 'inverter_make') listToCheck = inverters;
 
         if (listToCheck.some(x => x.id !== id && x.label.toLowerCase() === trimmed.toLowerCase())) {
             alert('This entry already exists.');
@@ -290,6 +322,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             if (category === 'channel_partner') dbField = 'channel_partner';
             else if (category === 'module_brand') dbField = 'module_brand';
             else if (category === 'registration_by') dbField = 'registration_by';
+            else if (category === 'inverter_make') dbField = 'inverter_make';
 
             // Update in admin table
             if (dbField) {
@@ -317,6 +350,8 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                 setRegistrations(prev => prev.map(x => x.id === id ? { ...x, label: trimmed } : x));
             } else if (category === 'integration_by') {
                 setIntegrations(prev => prev.map(x => x.id === id ? { ...x, label: trimmed } : x));
+            } else if (category === 'inverter_make') {
+                setInverters(prev => prev.map(x => x.id === id ? { ...x, label: trimmed } : x));
             }
 
             await logActivity(currentUser.id, 'update', `Renamed ${category} from "${oldLabel}" to "${trimmed}"`);
@@ -364,6 +399,12 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     .from('bom_items')
                     .update({ integration_by: null })
                     .eq('integration_by', label);
+            } else if (category === 'inverter_make') {
+                setInverters(prev => prev.filter(i => i.id !== id));
+                await supabase
+                    .from('admin')
+                    .update({ inverter_make: null })
+                    .eq('inverter_make', label);
             }
             await logActivity(currentUser.id, 'delete', `Deleted ${category}: "${label}" (cleared from customers)`);
         } catch (e) {
@@ -496,6 +537,25 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                             </span>
                         </button>
 
+                        {/* Inverter Make Card */}
+                        <button
+                            onClick={() => setActiveManageCategory('inverter_make')}
+                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                        >
+                            <div className="space-y-3 w-full">
+                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
+                                    <Zap className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Inverter Make Directory</h3>
+                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{inverters.length} active inverter makes</p>
+                                </div>
+                            </div>
+                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
+                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
+                            </span>
+                        </button>
+
                         {/* Integration Staff Card */}
                         <button
                             onClick={() => setActiveManageCategory('integration_by')}
@@ -562,6 +622,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     setInputVal = setNewBrand;
                     addHandler = handleAddBrand;
                     placeholder = 'Enter module brand name...';
+                } else if (activeManageCategory === 'inverter_make') {
+                    title = 'Manage Inverter Makes';
+                    list = inverters;
+                    inputVal = newInverter;
+                    setInputVal = setNewInverter;
+                    addHandler = handleAddInverter;
+                    placeholder = 'Enter inverter make (e.g. Growatt, Deye, Solis)...';
                 } else if (activeManageCategory === 'registration_by') {
                     title = 'Manage Registration Staff';
                     list = registrations;
