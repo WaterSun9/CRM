@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, updateDocumentRemark } from '../utils';
+import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, formatInputValue, parseIndianNumber, updateDocumentRemark } from '../utils';
 import { 
     User, Phone, Mail, MapPin, Zap, Building2, Sun,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
@@ -340,8 +340,25 @@ export default function VendorPortal({ user, onLogout }) {
         }
     };
 
+    const commissionQuoteAmount = parseIndianNumber(vendorQuote);
+    const hasCommissionQuote = commissionQuoteAmount !== '' && Number.isFinite(commissionQuoteAmount) && commissionQuoteAmount > 0;
+    const canMoveToGeoTag = installationStatus === 'Yes' && Boolean(installationDate) && hasCommissionQuote;
+
     // Save changes to Supabase and optionally progress stage
     const handleSaveChanges = async (nextStage = null) => {
+        // Keep the hand-off requirements enforced even if this handler is called
+        // outside of the button shown in the installation form.
+        if (nextStage === 'GEO TAG PHOTO' && !canMoveToGeoTag) {
+            alert('To move forward, enter the Commission Quote, select an Installation Date, and set Installation Status to Yes.');
+            return;
+        }
+
+        const hasGeoTagPhoto = documents.some(doc => doc.doc_type === 'geo_tag_image' || doc.doc_type === 'geo_tag');
+        if (nextStage === 'DISCOM SUBMISSION' && (geoTagStatus !== 'Proceed' || !hasGeoTagPhoto)) {
+            alert('To move forward, set Geo Tag Photo Status to Proceed and attach a geo-tag photograph.');
+            return;
+        }
+
         setSaving(true);
         setSaveSuccess(false);
         try {
@@ -359,7 +376,7 @@ export default function VendorPortal({ user, onLogout }) {
                 installation_status: installationStatus,
                 installation_date: installationDate || null,
                 vendor_note: vendorNote || null,
-                vendor_quote: vendorQuote === '' ? null : Number(vendorQuote),
+                vendor_quote: commissionQuoteAmount === '' ? null : commissionQuoteAmount,
             };
 
             if (nextStage) {
@@ -529,34 +546,34 @@ export default function VendorPortal({ user, onLogout }) {
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
                         <div 
-                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'MATERIAL' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
+                            className={`min-w-[104px] flex-1 snap-start p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'MATERIAL' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
                             onClick={() => setActiveTab('MATERIAL')}
                         >
                             <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'MATERIAL' ? 'text-amber-100' : 'text-stone-400'}`}>Material Int.</p>
                             <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'MATERIAL' ? 'text-white' : 'text-stone-850'}`}>{materialCount}</p>
                         </div>
                         <div 
-                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'DELIVERY' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
+                            className={`min-w-[104px] flex-1 snap-start p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'DELIVERY' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
                             onClick={() => setActiveTab('DELIVERY')}
                         >
                             <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'DELIVERY' ? 'text-amber-100' : 'text-stone-400'}`}>Delivery</p>
                             <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'DELIVERY' ? 'text-white' : 'text-stone-850'}`}>{deliveryCount}</p>
                         </div>
-                        <div 
-                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'GEO' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
-                            onClick={() => setActiveTab('GEO')}
-                        >
-                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'GEO' ? 'text-amber-100' : 'text-stone-400'}`}>Geo Tag</p>
-                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'GEO' ? 'text-white' : 'text-stone-850'}`}>{geoPendingCount}</p>
-                        </div>
                         <div
-                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'INSTALLATION' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`}
+                            className={`min-w-[104px] flex-1 snap-start p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'INSTALLATION' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`}
                             onClick={() => setActiveTab('INSTALLATION')}
                         >
                             <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'INSTALLATION' ? 'text-amber-100' : 'text-stone-400'}`}>Installation</p>
                             <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'INSTALLATION' ? 'text-white' : 'text-stone-850'}`}>{installationCount}</p>
+                        </div>
+                        <div 
+                            className={`min-w-[104px] flex-1 snap-start p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'GEO' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
+                            onClick={() => setActiveTab('GEO')}
+                        >
+                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'GEO' ? 'text-amber-100' : 'text-stone-400'}`}>Geo Tag</p>
+                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'GEO' ? 'text-white' : 'text-stone-850'}`}>{geoPendingCount}</p>
                         </div>
                     </div>
 
@@ -607,7 +624,7 @@ export default function VendorPortal({ user, onLogout }) {
                                     return (
                                         <div 
                                             key={cust.id} 
-                                            onClick={() => handleOpenBomModal(cust)}
+                                            onClick={() => handleSelectCustomer(cust)}
                                             className="bg-white p-3.5 rounded-2xl border border-stone-150 shadow-sm hover:border-amber-400 hover:shadow-md transition-all space-y-2.5 cursor-pointer active:scale-[0.99] group"
                                         >
                                             <div className="flex justify-between items-start gap-2">
@@ -630,7 +647,7 @@ export default function VendorPortal({ user, onLogout }) {
                                             <div className="flex items-center justify-between pt-2 border-t border-stone-100">
                                                 <span className="text-[9px] font-bold text-stone-400 flex items-center gap-1">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                                                    Tap to view & print BOM
+                                                    Open BOM details or print
                                                 </span>
                                                 <button
                                                     type="button"
@@ -745,12 +762,12 @@ export default function VendorPortal({ user, onLogout }) {
                         </div>
 
                         {/* Stage Tabs inside Customer View */}
-                        <div className="grid grid-cols-4 gap-1 p-1 bg-stone-100/80 rounded-xl border border-stone-200/60">
+                        <div className="flex gap-1 overflow-x-auto p-1 bg-stone-100/80 rounded-xl border border-stone-200/60 snap-x">
                             {[
                                 { id: 'MATERIAL', label: 'Material (BOM)', icon: Package },
                                 { id: 'DELIVERY', label: 'Delivery', icon: Truck },
-                                { id: 'GEO', label: 'Geo Tag', icon: Camera },
                                 { id: 'INSTALLATION', label: 'Installation', icon: Wrench },
+                                { id: 'GEO', label: 'Geo Tag', icon: Camera },
                             ].map(tab => {
                                 const Icon = tab.icon;
                                 const isCurrent = activeTab === tab.id;
@@ -759,7 +776,7 @@ export default function VendorPortal({ user, onLogout }) {
                                         key={tab.id}
                                         type="button"
                                         onClick={() => setActiveTab(tab.id)}
-                                        className={`py-1.5 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                                        className={`min-w-[82px] flex-1 snap-start py-1.5 px-2 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                                             isCurrent
                                                 ? 'bg-amber-500 text-white shadow-xs'
                                                 : 'text-stone-500 hover:text-stone-800'
@@ -1244,11 +1261,10 @@ export default function VendorPortal({ user, onLogout }) {
                                         <div className="space-y-1">
                                             <label className="block text-[9px] font-bold text-stone-500 uppercase tracking-wider">Commission Quote (₹)</label>
                                             <input
-                                                type="number"
-                                                min="0"
+                                                type="text"
                                                 inputMode="decimal"
-                                                value={vendorQuote}
-                                                onChange={event => setVendorQuote(event.target.value)}
+                                                value={vendorQuote === '' ? '' : formatInputValue(vendorQuote)}
+                                                onChange={event => setVendorQuote(formatInputValue(event.target.value))}
                                                 placeholder="Enter installation commission quote"
                                                 className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
                                             />
@@ -1312,18 +1328,40 @@ export default function VendorPortal({ user, onLogout }) {
                                     )}
 
                                     <div className="pt-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSaveChanges(null)}
-                                            disabled={saving}
-                                            className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                        >
-                                            {saving ? (
-                                                <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
-                                            ) : (
-                                                'Save Installation Status'
-                                            )}
-                                        </button>
+                                        {selectedCust.stage === 'INSTALLATION STATUS' && canMoveToGeoTag ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveChanges('GEO TAG PHOTO')}
+                                                disabled={saving}
+                                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                            >
+                                                {saving ? (
+                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Moving Stage...</>
+                                                ) : (
+                                                    <><ChevronRight size={14} /> Save & Move to Geo Tag Photo</>
+                                                )}
+                                            </button>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSaveChanges(null)}
+                                                    disabled={saving}
+                                                    className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                                >
+                                                    {saving ? (
+                                                        <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+                                                    ) : (
+                                                        'Save Installation Status'
+                                                    )}
+                                                </button>
+                                                {selectedCust.stage === 'INSTALLATION STATUS' && (
+                                                    <p className="mt-2 text-center text-[10px] font-medium text-stone-400">
+                                                        To move forward: enter the Commission Quote, set Installation Status to Yes, and select the Installation Date.
+                                                    </p>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             )}
