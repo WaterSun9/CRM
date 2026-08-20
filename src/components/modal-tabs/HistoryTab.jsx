@@ -72,13 +72,13 @@ export default function HistoryTab({
                                     <span className="text-[8px] text-stone-400 font-bold">{formatLogDate(log.created_at)}</span>
                                 </div>
                                 <div className="text-xs text-stone-700 font-medium whitespace-pre-wrap leading-relaxed">
-                                    {log.message.includes('|') ? (
+                                    {String(log?.message || '').includes('|') ? (
                                         <div className="space-y-1">
-                                            {log.message.split('|').map((line, idx) => (
+                                            {String(log?.message || '').split('|').map((line, idx) => (
                                                 <div key={idx} className="flex items-center gap-1"><span className="text-stone-400">↳</span> {line.trim()}</div>
                                             ))}
                                         </div>
-                                    ) : log.message}
+                                    ) : (log?.message || '–')}
                                 </div>
                                 <p className="text-[8px] text-stone-400 font-bold uppercase mt-2 border-t border-stone-50 pt-1.5">User: {log.profiles?.name || 'System'}</p>
                             </div>

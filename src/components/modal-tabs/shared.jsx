@@ -130,9 +130,9 @@ export function ChannelPartnerAutocomplete({ label, value, onChange, suggestions
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const filtered = inputValue.trim()
-        ? suggestions.filter(s => s.toLowerCase().includes(inputValue.trim().toLowerCase()))
-        : suggestions;
+    const filtered = (inputValue || '').trim()
+        ? (suggestions || []).filter(s => String(s || '').toLowerCase().includes(inputValue.trim().toLowerCase()))
+        : (suggestions || []);
 
     const handleSelect = (val) => {
         setInputValue(val);

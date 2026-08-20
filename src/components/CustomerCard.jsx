@@ -47,7 +47,7 @@ export default function CustomerCard({ customer, onSelect, onMoveStage, currentU
             <div className="p-5 cursor-pointer flex-1" onClick={() => onSelect(customer)}>
                 <div className="flex justify-between items-start mb-3">
                     <h3 className="font-bold text-stone-800 group-hover:text-amber-600 transition-colors leading-tight">
-                        {customer.customer_name}
+                        {customer?.customer_name || 'Unnamed Customer'}
                     </h3>
                     {tagInfo && (
                         <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ml-2 whitespace-nowrap border ${tagColors.bg} ${tagColors.text} ${tagColors.border}`}>

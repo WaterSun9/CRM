@@ -66,9 +66,11 @@ export const META_CATEGORIES = ['payment_type', 'module_brand', 'payment_method_
 export const APP_ROLES = [
     { id: 'admin', label: 'Admin', user_type: 'admin', role: 'Admin' },
     { id: 'office', label: 'Office', user_type: 'sales', role: 'Office' },
+    { id: 'channel_partner_office', label: 'Channel Partner Office', user_type: 'channel_partner_office', role: 'Channel Partner Office' },
     { id: 'channel_partner', label: 'Channel Partners', user_type: 'agent', role: 'Channel Partners' },
     { id: 'vendor', label: 'Vendors', user_type: 'vendor', role: 'Vendors' },
 ];
+
 
 // ============================================================
 // ROOF BOM TEMPLATE (Exact Order)

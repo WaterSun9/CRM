@@ -56,7 +56,6 @@ export const DEFAULT_LEAD_FORM = {
     roof_shed: '',
     dc_cable: '',
     ac_cable: '',
-    structure_leg_height: '',
     structure_front_leg_height: '',
     structure_rear_leg_height: '',
     material_order_notes: '',

@@ -215,21 +215,23 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     const [previewDoc, setPreviewDoc] = useState(null); // { doc, url }
     const [saving, setSaving] = useState(false);
 
+    const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const partnerName = (user?.channel_partner || user?.name || '').trim();
+
     useEffect(() => {
         if (isOpen) {
             const defaults = { ...DEFAULT_LEAD_FORM };
-            if (user?.userType === 'agent' || user?.role === 'Channel Partners') {
-                defaults.channel_partner = user.name || '';
+            if (isAgent || isChannelPartnerOffice) {
+                defaults.channel_partner = partnerName || '';
             }
             setFormData(defaults);
             setPendingFiles({});
             setSaving(false);
         }
-    }, [isOpen, user]);
+    }, [isOpen, user, isAgent, isChannelPartnerOffice, partnerName]);
 
     if (!isOpen) return null;
-
-    const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners';
 
     const handleChange = (field, value) => {
         setFormData(prev => {
@@ -283,7 +285,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         if (!formData.email_address?.trim()) return alert('Email Address is required');
         if (!formData.consumer_no?.toString().trim()) return alert('Consumer Number is required');
         if (!formData.villages?.trim()) return alert('Villages / Address is required');
-        if (!isAgent && !formData.channel_partner?.trim()) return alert('Channel Partner Name is required');
+        if (!isAgent && !isChannelPartnerOffice && !formData.channel_partner?.trim()) return alert('Channel Partner Name is required');
         if (!isAgent && !formData.sub_channel_partner?.trim()) return alert('Sub Channel Partner Name is required');
         if (!formData.module_brand?.trim()) return alert('Module Brand is required');
         if (!formData.module_wp?.toString().trim()) return alert('Module Wp is required');
@@ -298,9 +300,14 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             doc_type
         }));
 
+        const finalData = {
+            ...formData,
+            channel_partner: (isAgent || isChannelPartnerOffice) ? partnerName : (formData.channel_partner || '').trim()
+        };
+
         setSaving(true);
         try {
-            await onSave(formData, filesToUpload);
+            await onSave(finalData, filesToUpload);
             onClose();
         } catch (err) {
             console.error('Error in onSave:', err);
@@ -330,7 +337,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             consumer_no: `100200${randId}`,
             villages: `Test Village ${randId}`,
             sub_divisions: `Test Division`,
-            channel_partner: isAgent ? (user?.name || user?.email || 'Channel Partner') : demoCp,
+            channel_partner: (isAgent || isChannelPartnerOffice) ? partnerName : demoCp,
             sub_channel_partner: `Direct Sub Partner`,
             module_brand: demoBrand,
             module_wp: String(demoWp),
@@ -474,7 +481,19 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             </div>
 
                             {/* Channel Partner Name */}
-                            {!isAgent && (
+                            {isChannelPartnerOffice ? (
+                                <div className="space-y-1">
+                                    <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
+                                        Channel Partner Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={partnerName}
+                                        disabled
+                                        className="w-full bg-stone-100 border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-stone-700 cursor-not-allowed"
+                                    />
+                                </div>
+                            ) : !isAgent ? (
                                 <ChannelPartnerAutocomplete
                                     label="Channel Partner Name"
                                     value={formData.channel_partner}
@@ -483,7 +502,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     required={true}
                                     isAdmin={user?.userType === 'admin'}
                                 />
-                            )}
+                            ) : null}
 
                             {/* Sub Channel Partner Name */}
                             {!isAgent && (

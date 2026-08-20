@@ -62,7 +62,7 @@ const DOC_TYPE_LABELS = {
 const getDocTypeLabel = (type) => {
     if (!type) return 'Client Attachment';
     if (DOC_TYPE_LABELS[type]) return DOC_TYPE_LABELS[type];
-    return type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    return String(type).split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 };
 
 import LeadsTab from './modal-tabs/LeadsTab';
@@ -88,11 +88,14 @@ const fmt = formatINR;
 
 // ─── formatDateTime: helper to format date as "04 Aug, 11:01 PM" ──────────────
 const formatDateTime = (date) => {
+    if (!date) return '–';
+    const dObj = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(dObj.getTime())) return String(date);
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const d = date.getDate().toString().padStart(2, '0');
-    const m = months[date.getMonth()];
-    let hours = date.getHours();
-    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const d = dObj.getDate().toString().padStart(2, '0');
+    const m = months[dObj.getMonth()];
+    let hours = dObj.getHours();
+    const minutes = dObj.getMinutes().toString().padStart(2, '0');
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12;
     hours = hours ? hours : 12;
@@ -103,11 +106,13 @@ const formatDateTime = (date) => {
 // ─── formatDateToDDMMYYYY: formats "YYYY-MM-DD" to "DD/MM/YYYY" ──────────────
 const formatDateToDDMMYYYY = (dateStr) => {
     if (!dateStr) return '';
-    const parts = dateStr.split('-');
+    const str = String(dateStr);
+    const datePart = str.includes('T') ? str.split('T')[0] : str;
+    const parts = datePart.split('-');
     if (parts.length === 3) {
         return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
-    return dateStr;
+    return str;
 };
 
 // ─── getStageRemarkFromData: robust helper to extract remark ─────────────────
@@ -245,8 +250,8 @@ function ChannelPartnerAutocomplete({ label, value, onChange, suggestions = [], 
     }, []);
 
     const filtered = inputValue.trim()
-        ? suggestions.filter(s => s.toLowerCase().includes(inputValue.trim().toLowerCase()))
-        : suggestions;
+        ? (suggestions || []).filter(s => String(s || '').toLowerCase().includes(inputValue.trim().toLowerCase()))
+        : (suggestions || []);
 
     const handleSelect = (val) => {
         setInputValue(val);
@@ -566,18 +571,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [adminUnlocked, setAdminUnlocked] = useState(false);
     // Frozen for ALL users when completed. Admin can temporarily unlock.
     const isFrozen = isCompleted && !(isAdmin && adminUnlocked);
-
-    const isAgent = user?.userType === 'agent';
+    const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners';
     const isSales = user?.userType === 'sales';
-    const isOffice = user?.userType === 'sales' || user?.role === 'Office';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const isOffice = (user?.userType === 'sales' || user?.role === 'Office') && !isChannelPartnerOffice;
 
     const isDiscomOrMeterStage = editData.stage === 'DISCOM SUBMISSION' || editData.stage === 'METER INSTALLATION';
 
     const canUserEdit = (() => {
-        if (isAdmin) return true;
+        if (isAdmin || isChannelPartnerOffice) return true; // Full unrestricted edit access for Channel Partner Office
         if (isAgent) {
             // Agent can edit if it's their client AND the customer is in DISCOM SUBMISSION or METER INSTALLATION stage
-            const isMyClient = customer.channel_partner?.trim().toLowerCase() === user.name?.trim().toLowerCase();
+            const isMyClient = (customer.channel_partner || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase();
             return isMyClient && isDiscomOrMeterStage;
         }
         if (isSales) {
@@ -1220,8 +1225,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         editData.roof_shed &&
         editData.dc_cable && Number(parseIndianNumber(editData.dc_cable)) > 0 &&
         editData.ac_cable && Number(parseIndianNumber(editData.ac_cable)) > 0 &&
-        (editData.structure_front_leg_height?.toString().trim() || editData.structure_leg_height?.toString().trim()) &&
-        (editData.structure_rear_leg_height?.toString().trim() || editData.structure_leg_height?.toString().trim()) &&
+        String(editData.structure_front_leg_height || '').trim() &&
+        String(editData.structure_rear_leg_height || '').trim() &&
         editData.invoice_value && Number(parseIndianNumber(editData.invoice_value)) > 0
     );
 
@@ -2033,12 +2038,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
                     {/* ── DOCUMENTS ── */}
                     {activeTab === 'DOCUMENTS' && (() => {
-                        const filteredDocs = documents.filter(doc => {
+                        const filteredDocs = (documents || []).filter(doc => {
                             if (!docSearchQuery.trim()) return true;
-                            const q = docSearchQuery.toLowerCase();
-                            const docLabel = getDocTypeLabel(doc.doc_type).toLowerCase();
-                            const fileName = (doc.file_name || '').toLowerCase();
-                            const remarkText = (doc.remark || '').toLowerCase();
+                            const q = docSearchQuery.trim().toLowerCase();
+                            const docLabel = String(getDocTypeLabel(doc?.doc_type) || '').toLowerCase();
+                            const fileName = String(doc?.file_name || '').toLowerCase();
+                            const remarkText = String(doc?.remark || '').toLowerCase();
                             return fileName.includes(q) || docLabel.includes(q) || remarkText.includes(q);
                         });
 
@@ -2120,7 +2125,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                                                         </span>
                                                                         {doc.created_at && (
                                                                             <span className="text-[10px] text-stone-400 font-medium">
-                                                                                · {formatDateToDDMMYYYY(doc.created_at.split('T')[0])}
+                                                                                · {formatDateToDDMMYYYY(doc.created_at)}
                                                                             </span>
                                                                         )}
                                                                     </div>

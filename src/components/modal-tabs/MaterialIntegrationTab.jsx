@@ -369,13 +369,13 @@ export default function MaterialIntegrationTab({
                     <EditableDetailItem
                         label="Structure Front Leg Height (ft)"
                         field="structure_front_leg_height"
-                        value={editData?.structure_front_leg_height || customer?.structure_front_leg_height || editData?.structure_leg_height}
+                        value={editData?.structure_front_leg_height || customer?.structure_front_leg_height}
                         isEditing={false}
                     />
                     <EditableDetailItem
                         label="Structure Rear Leg Height (ft)"
                         field="structure_rear_leg_height"
-                        value={editData?.structure_rear_leg_height || customer?.structure_rear_leg_height || editData?.structure_leg_height}
+                        value={editData?.structure_rear_leg_height || customer?.structure_rear_leg_height}
                         isEditing={false}
                     />
                     <EditableDetailItem
@@ -740,9 +740,9 @@ export default function MaterialIntegrationTab({
                                             <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.roof_shed || customer?.roof_shed || '–'}</td>
                                             <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Structure Leg Height:</td>
                                             <td className="w-1/4 p-2 font-bold text-stone-900">
-                                                {editData?.structure_front_leg_height && editData?.structure_rear_leg_height
-                                                    ? `Front: ${editData.structure_front_leg_height} ft / Rear: ${editData.structure_rear_leg_height} ft`
-                                                    : (editData?.structure_leg_height || customer?.structure_leg_height || '–')}
+                                                {editData?.structure_front_leg_height || customer?.structure_front_leg_height
+                                                    ? `Front: ${editData?.structure_front_leg_height || customer?.structure_front_leg_height} ft / Rear: ${editData?.structure_rear_leg_height || customer?.structure_rear_leg_height || '–'} ft`
+                                                    : '–'}
                                             </td>
                                         </tr>
                                         <tr className="border-b border-stone-200">

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Wrench } from 'lucide-react';
+import { normalizeInstallationStatus } from '../utils';
 
 const INSTALLATION_TAGS = [
     { id: 'Give Up', label: 'Give Up' },
@@ -15,15 +16,7 @@ const INSTALLATION_TAG_COLORS = {
     'Pending': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' }
 };
 
-export const normalizeInstallationStatus = (status) => {
-    if (!status) return null;
-    const s = String(status).trim().toLowerCase();
-    if (s === 'give up' || s === 'giveup' || s === 'given up') return 'Give Up';
-    if (s === 'yes') return 'Yes';
-    if (s === 'proceed' || s === 'completed' || s === 'done' || s === 'installed') return 'Proceed';
-    if (s === 'pending' || s === 'in progress' || s === 'waiting') return 'Pending';
-    return 'Pending';
-};
+export { normalizeInstallationStatus };
 
 export default function InstallationView({ customers, onSelectCustomer }) {
     const [activeFilter, setActiveFilter] = useState(null);

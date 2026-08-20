@@ -13,10 +13,11 @@ export default function DiscomInspectionTab({
     fetchLogs,
     user
 }) {
-    // Admin and Vendor can edit. Office is view-only.
+    // Admin, Vendor, and Channel Partner Office can edit. Office is view-only.
     const isVendor = user?.userType === 'vendor' || user?.role === 'Vendors';
     const isAdmin = user?.userType === 'admin' || user?.role === 'Super Admin' || user?.role === 'Admin';
-    const canEditInspection = (isVendor || isAdmin) && isEditable;
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const canEditInspection = (isVendor || isAdmin || isChannelPartnerOffice) && isEditable;
 
     const inspectionData = editData.discom_inspection || 'No';
 

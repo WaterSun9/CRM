@@ -57,7 +57,7 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
             throw new Error(response.data.error);
         }
 
-        if (finalForm.user_type === 'agent' || finalForm.role === 'Channel Partners') {
+        if (finalForm.user_type === 'agent' || finalForm.role === 'Channel Partners' || finalForm.user_type === 'channel_partner_office' || finalForm.role === 'Channel Partner Office') {
             const partnerName = finalForm.name;
             const { data: existingMeta } = await supabase
                 .from('metadata')
@@ -113,61 +113,102 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
                     </div>
                     <button onClick={onClose} className="text-white/60 hover:text-white"><X className="w-5 h-5" /></button>
                 </div>
-                <div className="p-4 space-y-3 overflow-y-auto">
-                    {error && (
-                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
-                            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                            <p className="text-red-600 text-xs">{error}</p>
+                <form onSubmit={e => { e.preventDefault(); handleCreate(); }} autoComplete="off">
+                    {/* Hidden inputs to prevent aggressive browser credential autofill */}
+                    <input type="text" name="fake_usernamenotused" style={{ display: 'none' }} tabIndex={-1} autoComplete="off" />
+                    <input type="password" name="fake_passwordnotused" style={{ display: 'none' }} tabIndex={-1} autoComplete="off" />
+
+                    <div className="p-4 space-y-3 overflow-y-auto">
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+                                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                <p className="text-red-600 text-xs">{error}</p>
+                            </div>
+                        )}
+                        <div>
+                            <label className="block text-xs font-medium text-stone-600 mb-1">Full Name *</label>
+                            <input 
+                                type="text" 
+                                value={form.name}
+                                onChange={e => set('name', e.target.value.toUpperCase())}
+                                autoComplete="off"
+                                placeholder="e.g. RAHUL SHARMA"
+                                className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" 
+                            />
                         </div>
-                    )}
-                    {[{ label: 'Full Name *', field: 'name', type: 'text' }, { label: 'Email *', field: 'email', type: 'email' }].map(({ label, field, type }) => (
-                        <div key={field}>
-                            <label className="block text-xs font-medium text-stone-600 mb-1">{label}</label>
-                            <input type={type} value={form[field]}
+                        <div>
+                            <label className="block text-xs font-medium text-stone-600 mb-1">Email *</label>
+                            <input 
+                                type="email" 
+                                value={form.email}
+                                onChange={e => set('email', e.target.value)}
+                                autoComplete="off"
+                                placeholder="user@example.com"
+                                className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-stone-600 mb-1">Temporary Password *</label>
+                            <div className="relative">
+                                <input 
+                                    type={showPw ? 'text' : 'password'} 
+                                    value={form.password} 
+                                    onChange={e => set('password', e.target.value)}
+                                    autoComplete="new-password"
+                                    placeholder="Min. 8 characters"
+                                    className="w-full px-3 py-2.5 pr-10 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" 
+                                />
+                                <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-3 text-stone-400 hover:text-stone-600">
+                                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-stone-600 mb-1">Role *</label>
+                            <select 
+                                value={APP_ROLES.find(r => r.user_type === form.user_type)?.id || 'office'} 
                                 onChange={e => {
-                                    const val = field === 'name' ? e.target.value.toUpperCase() : e.target.value;
-                                    set(field, val);
+                                    const val = e.target.value;
+                                    const selected = APP_ROLES.find(r => r.id === val);
+                                    setForm(prev => ({
+                                        ...prev,
+                                        user_type: selected.user_type,
+                                        role: selected.role
+                                    }));
                                 }}
-                                className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                                className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white"
+                            >
+                                {APP_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                            </select>
                         </div>
-                    ))}
-                    <div>
-                        <label className="block text-xs font-medium text-stone-600 mb-1">Temporary Password *</label>
-                        <div className="relative">
-                            <input type={showPw ? 'text' : 'password'} value={form.password} onChange={e => set('password', e.target.value)}
-                                placeholder="Min. 8 characters"
-                                className="w-full px-3 py-2.5 pr-10 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
-                            <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-3 text-stone-400 hover:text-stone-600">
-                                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                        </div>
+
+                        {(form.user_type === 'channel_partner_office' || form.role === 'Channel Partner Office') && (
+                            <div>
+                                <label className="block text-xs font-medium text-stone-600 mb-1">
+                                    Assigned Channel Partner Name *
+                                </label>
+                                <input 
+                                    type="text" 
+                                    value={form.channel_partner || ''} 
+                                    onChange={e => set('channel_partner', e.target.value)}
+                                    placeholder="e.g. Om Solar"
+                                    autoComplete="off"
+                                    className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" 
+                                />
+                                <p className="text-[10px] text-stone-400 mt-1">
+                                    Person's Name is "{form.name || 'User'}". They will only see & manage leads for this Channel Partner.
+                                </p>
+                            </div>
+                        )}
                     </div>
-                    <div>
-                        <label className="block text-xs font-medium text-stone-600 mb-1">Role *</label>
-                        <select 
-                            value={APP_ROLES.find(r => r.user_type === form.user_type)?.id || 'office'} 
-                            onChange={e => {
-                                const val = e.target.value;
-                                const selected = APP_ROLES.find(r => r.id === val);
-                                setForm(prev => ({
-                                    ...prev,
-                                    user_type: selected.user_type,
-                                    role: selected.role
-                                }));
-                            }}
-                            className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white"
-                        >
-                            {APP_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-                        </select>
+                    <div className="border-t p-4 flex gap-3">
+                        <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-stone-300 text-stone-700 rounded-xl text-sm font-medium">Cancel</button>
+                        <button type="submit" disabled={saving}
+                            className="flex-1 py-2.5 bg-stone-900 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+                            {saving ? 'Creating...' : <><UserCog className="w-4 h-4" /> Create User</>}
+                        </button>
                     </div>
-                </div>
-                <div className="border-t p-4 flex gap-3">
-                    <button onClick={onClose} className="flex-1 py-2.5 border border-stone-300 text-stone-700 rounded-xl text-sm font-medium">Cancel</button>
-                    <button onClick={handleCreate} disabled={saving}
-                        className="flex-1 py-2.5 bg-stone-900 text-white rounded-xl text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-                        {saving ? 'Creating...' : <><UserCog className="w-4 h-4" /> Create User</>}
-                    </button>
-                </div>
+                </form>
             </div>
         </div>
     );
@@ -216,9 +257,12 @@ export default function UserManagementView({ currentUser }) {
         }
     };
 
-    const filteredProfiles = profiles.filter(p => {
-        const q = searchQuery.toLowerCase();
-        return !searchQuery || p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q);
+    const filteredProfiles = (profiles || []).filter(p => {
+        const q = (searchQuery || '').trim().toLowerCase();
+        return !q ||
+            String(p?.name || '').toLowerCase().includes(q) ||
+            String(p?.email || '').toLowerCase().includes(q) ||
+            String(p?.role || '').toLowerCase().includes(q);
     });
 
     const showToast = (type, message) => {
@@ -478,67 +522,59 @@ export default function UserManagementView({ currentUser }) {
                                     </td>
                                     <td className="px-4 py-3">
                                         {isYou || isInactive ? (
-                                            <span className="text-xs font-semibold text-stone-600">
-                                                {APP_ROLES.find(r => r.user_type === profile.user_type)?.label || profile.role || 'Admin'}
-                                            </span>
+                                            <div>
+                                                <span className="text-xs font-semibold text-stone-600">
+                                                    {APP_ROLES.find(r => r.user_type === profile.user_type)?.label || profile.role || 'Admin'}
+                                                </span>
+                                                {(profile.user_type === 'channel_partner_office' || profile.role === 'Channel Partner Office') && (
+                                                    <p className="text-[10px] text-amber-700 font-semibold mt-0.5">Partner: {profile.channel_partner || profile.name}</p>
+                                                )}
+                                            </div>
                                         ) : (
-                                            <select 
-                                                value={APP_ROLES.find(r => r.user_type === profile.user_type)?.id || 'office'} 
-                                                disabled={actionLoading === profile.id}
-                                                onChange={async (e) => {
-                                                    const val = e.target.value;
-                                                    const selected = APP_ROLES.find(r => r.id === val);
-                                                    setActionLoading(profile.id);
-                                                    const { error } = await supabase.from('profiles').update({
-                                                        user_type: selected.user_type,
-                                                        role: selected.role
-                                                    }).eq('id', profile.id);
-                                                    if (!error) {
-                                                        setProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, user_type: selected.user_type, role: selected.role } : p));
-                                                        logActivity(currentUser.id, 'update', `Updated role for ${profile.name} to ${selected.label}`, '');
+                                            <div>
+                                                <select 
+                                                    value={APP_ROLES.find(r => r.user_type === profile.user_type)?.id || 'office'} 
+                                                    disabled={actionLoading === profile.id}
+                                                    onChange={async (e) => {
+                                                        const val = e.target.value;
+                                                        const selected = APP_ROLES.find(r => r.id === val);
+                                                        setActionLoading(profile.id);
+                                                        const { error } = await supabase.from('profiles').update({
+                                                            user_type: selected.user_type,
+                                                            role: selected.role
+                                                        }).eq('id', profile.id);
+                                                        if (!error) {
+                                                            setProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, user_type: selected.user_type, role: selected.role } : p));
+                                                            logActivity(currentUser.id, 'update', `Updated role for ${profile.name} to ${selected.label}`, '');
 
-                                                        if (selected.user_type === 'agent' || selected.role === 'Channel Partners') {
-                                                            const partnerName = (profile.name || '').trim();
-                                                            if (partnerName) {
-                                                                const { data: existingMeta } = await supabase
-                                                                    .from('metadata')
-                                                                    .select('id')
-                                                                    .eq('category', 'channel_partner')
-                                                                    .eq('label', partnerName)
-                                                                    .maybeSingle();
-
-                                                                if (!existingMeta) {
-                                                                    await supabase
+                                                            if (selected.user_type === 'agent' || selected.role === 'Channel Partners' || selected.user_type === 'channel_partner_office' || selected.role === 'Channel Partner Office') {
+                                                                const partnerName = (profile.channel_partner || profile.name || '').trim();
+                                                                if (partnerName) {
+                                                                    const { data: existingMeta } = await supabase
                                                                         .from('metadata')
-                                                                        .insert({ category: 'channel_partner', label: partnerName });
+                                                                        .select('id')
+                                                                        .eq('category', 'channel_partner')
+                                                                        .eq('label', partnerName)
+                                                                        .maybeSingle();
+
+                                                                    if (!existingMeta) {
+                                                                        await supabase
+                                                                            .from('metadata')
+                                                                            .insert({ category: 'channel_partner', label: partnerName });
+                                                                    }
                                                                 }
                                                             }
                                                         }
-
-                                                        if (selected.user_type === 'vendor' || selected.role === 'Vendors') {
-                                                            const vendorName = (profile.name || '').trim();
-                                                            const vendorEmail = (profile.email || '').trim();
-                                                            if (vendorName && vendorEmail) {
-                                                                const { data: existingVendor } = await supabase
-                                                                    .from('vendors')
-                                                                    .select('id')
-                                                                    .eq('email', vendorEmail)
-                                                                    .maybeSingle();
-
-                                                                if (!existingVendor) {
-                                                                    await supabase
-                                                                        .from('vendors')
-                                                                        .insert({ name: vendorName, email: vendorEmail });
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    setActionLoading(null);
-                                                }}
-                                                className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 focus:outline-none disabled:opacity-50 bg-white"
-                                            >
-                                                {APP_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-                                            </select>
+                                                        setActionLoading(null);
+                                                    }}
+                                                    className="px-2.5 py-1 bg-stone-50 border border-stone-200 rounded-lg text-xs font-semibold text-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                                                >
+                                                    {APP_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                                                </select>
+                                                {(profile.user_type === 'channel_partner_office' || profile.role === 'Channel Partner Office') && (
+                                                    <p className="text-[10px] text-amber-700 font-semibold mt-0.5">Partner: {profile.channel_partner || profile.name}</p>
+                                                )}
+                                            </div>
                                         )}
                                     </td>
                                     <td className="px-4 py-3">

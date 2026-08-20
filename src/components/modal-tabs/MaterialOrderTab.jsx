@@ -19,10 +19,11 @@ export default function MaterialOrderTab({
     saving,
     setSaving
 }) {
-    // Channel Partner / Agent can edit; Office / other roles have view-only access
+    // Channel Partner / Agent / Channel Partner Office can edit; Office has view-only access
     const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners' || user?.userType === 'dealer' || user?.role === 'Dealers';
     const isAdmin = user?.userType === 'admin' || user?.role === 'Super Admin' || user?.role === 'Admin';
-    const canEdit = isAgent || (isAdmin && isEditable);
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const canEdit = isAgent || isChannelPartnerOffice || (isAdmin && isEditable);
 
     const [validationError, setValidationError] = useState('');
     const [savedSuccess, setSavedSuccess] = useState(false);
@@ -50,8 +51,8 @@ export default function MaterialOrderTab({
         }
     };
 
-    const frontLegVal = editData.structure_front_leg_height || editData.structure_leg_height || '';
-    const rearLegVal = editData.structure_rear_leg_height || editData.structure_leg_height || '';
+    const frontLegVal = editData.structure_front_leg_height || '';
+    const rearLegVal = editData.structure_rear_leg_height || '';
 
     const isAllMandatoryFilled = Boolean(
         editData.roof_shed &&
@@ -80,15 +81,14 @@ export default function MaterialOrderTab({
         }
 
         setSaving(true);
-        const frontLeg = editData.structure_front_leg_height || editData.structure_leg_height || '';
-        const rearLeg = editData.structure_rear_leg_height || editData.structure_leg_height || '';
+        const frontLeg = editData.structure_front_leg_height || '';
+        const rearLeg = editData.structure_rear_leg_height || '';
         const updates = {
             roof_shed: editData.roof_shed,
             dc_cable: Number(parseIndianNumber(editData.dc_cable)),
             ac_cable: Number(parseIndianNumber(editData.ac_cable)),
             structure_front_leg_height: frontLeg,
             structure_rear_leg_height: rearLeg,
-            structure_leg_height: frontLeg ? `${frontLeg} ft / ${rearLeg} ft` : rearLeg,
             material_order_notes: editData.material_order_notes || '',
             invoice_value: Number(parseIndianNumber(editData.invoice_value))
         };
@@ -118,8 +118,8 @@ export default function MaterialOrderTab({
 
     return (
         <div className="space-y-3.5 animate-in fade-in duration-300">
-            {/* Role permission info banner if not agent */}
-            {!isAgent && (
+            {/* Role permission info banner if not agent or channel partner office */}
+            {!isAgent && !isChannelPartnerOffice && (
                 <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-2.5 flex items-center gap-2.5">
                     <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
                     <div>
@@ -205,7 +205,7 @@ export default function MaterialOrderTab({
                     <EditableDetailItem
                         label="Structure Front Leg Height (ft) *"
                         field="structure_front_leg_height"
-                        value={editData.structure_front_leg_height || editData.structure_leg_height}
+                        value={editData.structure_front_leg_height}
                         onChange={handleLocalChange}
                         type="number"
                         isEditing={isEditingOrder}
@@ -213,7 +213,7 @@ export default function MaterialOrderTab({
                     <EditableDetailItem
                         label="Structure Rear Leg Height (ft) *"
                         field="structure_rear_leg_height"
-                        value={editData.structure_rear_leg_height || editData.structure_leg_height}
+                        value={editData.structure_rear_leg_height}
                         onChange={handleLocalChange}
                         type="number"
                         isEditing={isEditingOrder}

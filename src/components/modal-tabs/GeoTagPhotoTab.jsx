@@ -19,10 +19,11 @@ export default function GeoTagPhotoTab({
     onFilePreview,
     onUpdateRemark
 }) {
-    // Vendor can edit geo tag, office can only view
+    // Vendor can edit geo tag, office can only view, Channel Partner Office & Admin have full edit
     const isVendor = user?.userType === 'vendor' || user?.role === 'Vendors';
     const isAdmin = user?.userType === 'admin' || user?.role === 'Super Admin' || user?.role === 'Admin';
-    const canEditGeoTag = isVendor || (isAdmin && isEditable);
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const canEditGeoTag = isVendor || ((isAdmin || isChannelPartnerOffice) && isEditable);
 
     const handleChange = (field, val) => {
         setEditData(prev => ({ ...prev, [field]: val }));
@@ -33,8 +34,8 @@ export default function GeoTagPhotoTab({
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
-            {/* Vendor permission info banner if not vendor */}
-            {!isVendor && (
+            {/* Vendor permission info banner if not vendor and not admin/channel partner office */}
+            {!canEditGeoTag && (
                 <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 flex items-center gap-3">
                     <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
                     <div>

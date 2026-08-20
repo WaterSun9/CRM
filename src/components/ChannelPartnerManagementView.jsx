@@ -76,7 +76,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         if (!val) return;
 
         // Check for duplicates
-        if (partners.some(p => p.label.toLowerCase() === val.toLowerCase())) {
+        if ((partners || []).some(p => String(p?.label || '').toLowerCase() === val.toLowerCase())) {
             alert('This Channel Partner already exists.');
             return;
         }
@@ -103,7 +103,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         if (!val) return;
 
         // Check for duplicates
-        if (brands.some(b => b.label.toLowerCase() === val.toLowerCase())) {
+        if ((brands || []).some(b => String(b?.label || '').toLowerCase() === val.toLowerCase())) {
             alert('This Module Brand already exists.');
             return;
         }
@@ -130,7 +130,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         if (!val) return;
 
         // Check for duplicates
-        if (registrations.some(r => r.label.toLowerCase() === val.toLowerCase())) {
+        if ((registrations || []).some(r => String(r?.label || '').toLowerCase() === val.toLowerCase())) {
             alert('This Registration Staff already exists.');
             return;
         }
@@ -157,7 +157,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         if (!val) return;
 
         // Check for duplicates
-        if (integrations.some(i => i.label.toLowerCase() === val.toLowerCase())) {
+        if ((integrations || []).some(i => String(i?.label || '').toLowerCase() === val.toLowerCase())) {
             alert('This Integration Staff member already exists.');
             return;
         }
@@ -184,7 +184,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         if (!val) return;
 
         // Check for duplicates
-        if (inverters.some(i => i.label.toLowerCase() === val.toLowerCase())) {
+        if ((inverters || []).some(i => String(i?.label || '').toLowerCase() === val.toLowerCase())) {
             alert('This Inverter Make already exists.');
             return;
         }
@@ -214,7 +214,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             return;
         }
 
-        if (vendors.some(v => v.name.toLowerCase() === name.toLowerCase())) {
+        if ((vendors || []).some(v => String(v?.name || '').toLowerCase() === name.toLowerCase())) {
             alert('A Vendor with this name already exists.');
             return;
         }

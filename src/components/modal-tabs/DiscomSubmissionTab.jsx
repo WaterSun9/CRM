@@ -5,11 +5,11 @@ import { CheckboxRemarkItem } from './shared';
 
 const formatDateToDDMMYYYY = (dateStr) => {
     if (!dateStr) return '';
-    const parts = dateStr.split('-');
+    const parts = String(dateStr).split('-');
     if (parts.length === 3) {
         return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
-    return dateStr;
+    return String(dateStr);
 };
 
 export default function DiscomSubmissionTab({

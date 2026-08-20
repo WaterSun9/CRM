@@ -255,3 +255,14 @@ export const updateDocumentRemark = async (documentId, remark) => {
     if (error) console.error('Failed to update document remark:', error);
     return data;
 };
+
+// ─── Installation Status Normalizer ──────────────────────────────────────────
+export const normalizeInstallationStatus = (status) => {
+    if (!status) return null;
+    const s = String(status).trim().toLowerCase();
+    if (s === 'give up' || s === 'giveup' || s === 'given up') return 'Give Up';
+    if (s === 'yes') return 'Yes';
+    if (s === 'proceed' || s === 'completed' || s === 'done' || s === 'installed') return 'Proceed';
+    if (s === 'pending' || s === 'in progress' || s === 'waiting') return 'Pending';
+    return 'Pending';
+};

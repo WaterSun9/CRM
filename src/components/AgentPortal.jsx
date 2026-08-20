@@ -216,13 +216,13 @@ export default function AgentPortal({ user, onLogout }) {
     };
 
     // Filter customers
-    const filteredCustomers = customers.filter(c => {
+    const filteredCustomers = (customers || []).filter(c => {
         if (!searchQuery.trim()) return true;
-        const q = searchQuery.toLowerCase();
+        const q = searchQuery.trim().toLowerCase();
         return (
-            c.customer_name?.toLowerCase().includes(q) ||
-            c.phone_number?.toString().includes(q) ||
-            c.consumer_no?.toString().includes(q)
+            String(c?.customer_name || '').toLowerCase().includes(q) ||
+            String(c?.phone_number || '').toLowerCase().includes(q) ||
+            String(c?.consumer_no || '').toLowerCase().includes(q)
         );
     });
 
@@ -1300,12 +1300,22 @@ export default function AgentPortal({ user, onLogout }) {
                                                 />
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Structure Leg Height</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Front Leg Height (ft)</span>
                                                 <input
-                                                    type="text"
-                                                    value={editData.structure_leg_height || selectedCust.structure_leg_height || ''}
-                                                    onChange={e => setEditData(prev => ({ ...prev, structure_leg_height: e.target.value }))}
-                                                    placeholder="e.g. 1 Meter"
+                                                    type="number"
+                                                    value={editData.structure_front_leg_height ?? selectedCust.structure_front_leg_height ?? ''}
+                                                    onChange={e => setEditData(prev => ({ ...prev, structure_front_leg_height: e.target.value }))}
+                                                    placeholder="ft"
+                                                    className="w-28 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                                />
+                                            </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Rear Leg Height (ft)</span>
+                                                <input
+                                                    type="number"
+                                                    value={editData.structure_rear_leg_height ?? selectedCust.structure_rear_leg_height ?? ''}
+                                                    onChange={e => setEditData(prev => ({ ...prev, structure_rear_leg_height: e.target.value }))}
+                                                    placeholder="ft"
                                                     className="w-28 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
                                                 />
                                             </div>
@@ -1328,7 +1338,8 @@ export default function AgentPortal({ user, onLogout }) {
                                                         roof_shed: editData.roof_shed || selectedCust.roof_shed,
                                                         dc_cable: editData.dc_cable !== undefined ? editData.dc_cable : selectedCust.dc_cable,
                                                         ac_cable: editData.ac_cable !== undefined ? editData.ac_cable : selectedCust.ac_cable,
-                                                        structure_leg_height: editData.structure_leg_height || selectedCust.structure_leg_height,
+                                                        structure_front_leg_height: editData.structure_front_leg_height !== undefined ? editData.structure_front_leg_height : selectedCust.structure_front_leg_height,
+                                                        structure_rear_leg_height: editData.structure_rear_leg_height !== undefined ? editData.structure_rear_leg_height : selectedCust.structure_rear_leg_height,
                                                         invoice_value: editData.invoice_value !== undefined ? editData.invoice_value : selectedCust.invoice_value,
                                                         stage: 'MATERIAL INTEGRATION'
                                                     });
@@ -1364,7 +1375,7 @@ export default function AgentPortal({ user, onLogout }) {
                                         </div>
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Structure Leg Height</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.structure_leg_height || '–'}</span>
+                                            <span className="font-semibold text-stone-900">{selectedCust.structure_front_leg_height ? `${selectedCust.structure_front_leg_height} ft / ${selectedCust.structure_rear_leg_height || '–'} ft` : '–'}</span>
                                         </div>
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Invoice Value</span>

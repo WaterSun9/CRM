@@ -5,7 +5,7 @@ import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 export default function SubsidyView({ customers, onSelectCustomer }) {
     const [activeFilter, setActiveFilter] = useState(null);
 
-    const tagged = customers.filter(c => c.subsidy_tag);
+    const tagged = (customers || []).filter(c => c?.subsidy_tag);
 
     const grouped = SUBSIDY_TAGS.reduce((acc, tag) => {
         const group = tagged.filter(c => c.subsidy_tag === tag.id);

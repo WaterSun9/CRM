@@ -6,8 +6,8 @@ export default function LoanView({ customers, onSelectCustomer }) {
     const [activeFilter, setActiveFilter] = useState(null);
 
     // All customers associated with Loan (either tagged or payment_type is LOAN)
-    const loanCustomers = customers.filter(c => c.loan_tag || c.payment_type?.trim().toLowerCase() === 'loan');
-    const allClearGroup = loanCustomers.filter(c => !c.loan_tag);
+    const loanCustomers = (customers || []).filter(c => c?.loan_tag || String(c?.payment_type || '').trim().toLowerCase() === 'loan');
+    const allClearGroup = loanCustomers.filter(c => !c?.loan_tag);
 
     const grouped = LOAN_TAGS.reduce((acc, tag) => {
         const group = loanCustomers.filter(c => c.loan_tag === tag.id);

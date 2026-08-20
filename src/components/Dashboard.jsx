@@ -125,23 +125,28 @@ export default function Dashboard({ user, onLogout }) {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    // ── Global search: across ALL non-deleted stages (respects poc filter) ─────
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const partnerName = (user?.channel_partner || user?.name || '').trim();
+
+    // ── Global search: across ALL non-deleted stages (respects channel partner scoping) ─────
     useEffect(() => {
-        const q = globalSearch.trim().toLowerCase();
+        const q = (globalSearch || '').trim().toLowerCase();
         if (!q) { setGlobalResults([]); setShowGlobalDrop(false); return; }
-        const activeNow = customers.filter(c => !c.deleted_at);
-        const channelPartnerMatched = channelPartnerFilter
-            ? activeNow.filter(c => c.channel_partner?.toLowerCase() === channelPartnerFilter.toLowerCase())
-            : activeNow;
+        const activeNow = (customers || []).filter(c => !c?.deleted_at);
+        const channelPartnerMatched = isChannelPartnerOffice
+            ? activeNow.filter(c => (c?.channel_partner || '').trim().toLowerCase() === partnerName.toLowerCase())
+            : channelPartnerFilter
+                ? activeNow.filter(c => (c?.channel_partner || '').toLowerCase() === channelPartnerFilter.toLowerCase())
+                : activeNow;
         const authorized = channelPartnerMatched.filter(isAuthorized);
         const results = authorized.filter(c =>
-            c.customer_name?.toLowerCase().includes(q) ||
-            c.phone_number?.toString().includes(globalSearch.trim()) ||
-            c.consumer_no?.toString().toLowerCase().includes(q)
+            String(c?.customer_name || '').toLowerCase().includes(q) ||
+            String(c?.phone_number || '').includes(globalSearch.trim()) ||
+            String(c?.consumer_no || '').toLowerCase().includes(q)
         ).slice(0, 8);
         setGlobalResults(results);
         setShowGlobalDrop(results.length > 0);
-    }, [globalSearch, customers, channelPartnerFilter]);
+    }, [globalSearch, customers, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
 
     const handleGlobalSelect = (customer) => {
         // Navigate to the customer's stage so context is clear
@@ -364,12 +369,13 @@ export default function Dashboard({ user, onLogout }) {
     };
 
     // ── Derived data (active = non-deleted only) ───────────────────────────────
-    const active = customers.filter(c => !c.deleted_at);
-    const trashed = customers.filter(c => !!c.deleted_at);
+    const active = (customers || []).filter(c => !c?.deleted_at);
+    const trashed = (customers || []).filter(c => !!c?.deleted_at);
     const isAuthorized = (c) => {
-        if (user.userType === 'admin' || user.userType === 'sales') return true;
-        if (user.userType === 'agent') {
-            return c.channel_partner?.trim().toLowerCase() === user.name?.trim().toLowerCase();
+        if (user?.userType === 'admin' || user?.userType === 'sales') return true;
+        if (user?.userType === 'agent' || isChannelPartnerOffice) {
+            const myPartner = partnerName.toLowerCase();
+            return (c?.channel_partner || '').trim().toLowerCase() === myPartner;
         }
         return false;
     };
@@ -377,32 +383,37 @@ export default function Dashboard({ user, onLogout }) {
     // Distinct Channel Partner names from metadata table for dropdowns and top filter suggestions
     const uniqueChannelPartners = [...new Set(meta['channel_partner'] || [])].sort();
     const channelPartnerSuggestions = channelPartnerFilterInput.trim()
-        ? uniqueChannelPartners.filter(p => p.toLowerCase().includes(channelPartnerFilterInput.trim().toLowerCase()))
+        ? uniqueChannelPartners.filter(p => (p || '').toLowerCase().includes(channelPartnerFilterInput.trim().toLowerCase()))
         : uniqueChannelPartners;
 
-    const matchesChannelPartnerFilter = (c) => !channelPartnerFilter || c.channel_partner?.toLowerCase() === channelPartnerFilter.toLowerCase();
+    const matchesChannelPartnerFilter = (c) => {
+        if (isChannelPartnerOffice) {
+            return (c?.channel_partner || '').trim().toLowerCase() === partnerName.toLowerCase();
+        }
+        return !channelPartnerFilter || (c?.channel_partner || '').toLowerCase() === channelPartnerFilter.toLowerCase();
+    };
 
     // Everything downstream — stage counts, the stages grid, dashboard stats
     // is built from this one channel partner-scoped list
     const channelPartnerScoped = active.filter(c => matchesChannelPartnerFilter(c) && isAuthorized(c));
-    const subsidyTagCount = channelPartnerScoped.filter(c => c.subsidy_tag).length;
-    const loanTagCount = channelPartnerScoped.filter(c => c.loan_tag).length;
-    const installationTagCount = channelPartnerScoped.filter(c => normalizeInstallationStatus(c.installation_status)).length;
+    const subsidyTagCount = channelPartnerScoped.filter(c => c?.subsidy_tag).length;
+    const loanTagCount = channelPartnerScoped.filter(c => c?.loan_tag).length;
+    const installationTagCount = channelPartnerScoped.filter(c => normalizeInstallationStatus(c?.installation_status)).length;
 
     const stageCounts = PRIMARY_STAGES.reduce((acc, s) => {
-        acc[s.id] = channelPartnerScoped.filter(c => c.stage === s.id).length;
+        acc[s.id] = channelPartnerScoped.filter(c => c?.stage === s.id).length;
         return acc;
     }, {});
     const trashCount = trashed.length;
 
     // Per-stage filtered cards — now respects the channel partner filter too
     const filtered = channelPartnerScoped.filter(c => {
-        const q = stageSearch.toLowerCase();
+        const q = (stageSearch || '').toLowerCase();
         const matchesSearch = !stageSearch ||
-            c.customer_name?.toLowerCase().includes(q) ||
-            c.phone_number?.toString().includes(stageSearch) ||
-            c.consumer_no?.toString().toLowerCase().includes(q);
-        return c.stage === selectedStage && matchesSearch;
+            String(c?.customer_name || '').toLowerCase().includes(q) ||
+            String(c?.phone_number || '').includes(stageSearch) ||
+            String(c?.consumer_no || '').toLowerCase().includes(q);
+        return c?.stage === selectedStage && matchesSearch;
     });
 
     // ── Nav button helper ─────────────────────────────────────────────────────
@@ -515,9 +526,14 @@ export default function Dashboard({ user, onLogout }) {
                         <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-stone-500"><Menu className="w-6 h-6" /></button>
                         <h2 className="font-bold text-stone-800">{headerTitle}</h2>
 
-                        {channelPartnerFilter && (
+                        {isChannelPartnerOffice ? (
+                            <span className="text-xs bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold flex items-center gap-1.5 shadow-sm border border-amber-200">
+                                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                                Partner: {partnerName}
+                            </span>
+                        ) : channelPartnerFilter ? (
                             <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">Channel Partner: {channelPartnerFilter}</span>
-                        )}
+                        ) : null}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -526,7 +542,7 @@ export default function Dashboard({ user, onLogout }) {
                             <Search className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
                             <input
                                 type="text"
-                                placeholder="Search all stages..."
+                                placeholder={isChannelPartnerOffice ? `Search ${partnerName} leads...` : "Search all stages..."}
                                 value={globalSearch}
                                 onChange={e => setGlobalSearch(e.target.value)}
                                 onFocus={() => globalResults.length > 0 && setShowGlobalDrop(true)}
@@ -537,10 +553,9 @@ export default function Dashboard({ user, onLogout }) {
                                 <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-2xl shadow-xl border border-stone-100 py-1 z-50 overflow-hidden">
                                     {globalResults.map(c => (
                                         <button key={c.id} onClick={() => handleGlobalSelect(c)}
-                                            className="w-full px-4 py-2.5 text-left hover:bg-amber-50 transition-colors group">
+                                             className="w-full px-4 py-2.5 text-left hover:bg-amber-50 transition-colors group">
                                             <div className="flex items-center justify-between">
-                                                <p className="text-sm font-semibold text-stone-800 group-hover:text-amber-700">{c.customer_name}</p>
-                                                {/* <span className="text-[9px] bg-stone-100 text-stone-400 px-1.5 py-0.5 rounded font-bold uppercase ml-2">{c.crn || '–'}</span> */}
+                                                <p className="text-sm font-semibold text-stone-800 group-hover:text-amber-700">{c.customer_name || 'Unnamed'}</p>
                                             </div>
                                             <p className="text-[10px] text-stone-400 mt-0.5">
                                                 {PRIMARY_STAGES.find(s => s.id === c.stage)?.label || c.stage} · {c.phone_number || 'No phone'}
@@ -561,60 +576,59 @@ export default function Dashboard({ user, onLogout }) {
                             </div>
                         )}
 
-                        {/* Channel Partner filter — applies everywhere: dashboard stats, and every stage */}
-                        <div className="relative hidden lg:flex items-center gap-1.5" ref={channelPartnerFilterRef}>
-                            <input
-                                type="text"
-                                placeholder="Channel Partner..."
-                                value={channelPartnerFilterInput}
-                                onChange={e => { setChannelPartnerFilterInput(e.target.value); setShowChannelPartnerDrop(true); }}
-                                onFocus={() => setShowChannelPartnerDrop(true)}
-                                onKeyDown={e => e.key === 'Enter' && (setChannelPartnerFilter(channelPartnerFilterInput.trim()), setShowChannelPartnerDrop(false))}
-                                className="px-3 py-2 bg-stone-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 w-32"
-                            />
-                            <button
-                                onClick={() => {
-                                    setChannelPartnerFilter(channelPartnerFilterInput.trim());
-                                    setShowChannelPartnerDrop(false);
-                                }}
-                                className="px-3 py-2 rounded-xl text-xs font-medium bg-stone-900 text-white hover:bg-stone-800 transition-colors">
-                                Apply
-                            </button>
-                            {(channelPartnerFilter || channelPartnerFilterInput) && (
+                        {/* Channel Partner filter — applies everywhere for Admin/Office */}
+                        {!isChannelPartnerOffice && (
+                            <div className="relative hidden lg:flex items-center gap-1.5" ref={channelPartnerFilterRef}>
+                                <input
+                                    type="text"
+                                    placeholder="Channel Partner..."
+                                    value={channelPartnerFilterInput}
+                                    onChange={e => { setChannelPartnerFilterInput(e.target.value); setShowChannelPartnerDrop(true); }}
+                                    onFocus={() => setShowChannelPartnerDrop(true)}
+                                    onKeyDown={e => e.key === 'Enter' && (setChannelPartnerFilter(channelPartnerFilterInput.trim()), setShowChannelPartnerDrop(false))}
+                                    className="px-3 py-2 bg-stone-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 w-32"
+                                />
                                 <button
                                     onClick={() => {
-                                        setChannelPartnerFilter('');
-                                        setChannelPartnerFilterInput('');
+                                        setChannelPartnerFilter(channelPartnerFilterInput.trim());
                                         setShowChannelPartnerDrop(false);
                                     }}
-                                    className="px-3 py-2 rounded-xl text-xs font-medium bg-stone-200 text-stone-700 hover:bg-stone-300 transition-colors">
-                                    Clear
+                                    className="px-3 py-2 rounded-xl text-xs font-medium bg-stone-900 text-white hover:bg-stone-800 transition-colors">
+                                    Apply
                                 </button>
-                            )}
+                                {(channelPartnerFilter || channelPartnerFilterInput) && (
+                                    <button
+                                        onClick={() => {
+                                            setChannelPartnerFilter('');
+                                            setChannelPartnerFilterInput('');
+                                            setShowChannelPartnerDrop(false);
+                                        }}
+                                        className="px-3 py-2 rounded-xl text-xs font-medium bg-stone-200 text-stone-700 hover:bg-stone-300 transition-colors">
+                                        Clear
+                                    </button>
+                                )}
+                                {showChannelPartnerDrop && channelPartnerSuggestions.length > 0 && (
+                                    <div className="absolute top-full mt-1 left-0 w-48 bg-white rounded-xl shadow-xl border border-stone-100 py-1 z-50 max-h-48 overflow-y-auto">
+                                        {channelPartnerSuggestions.map(name => (
+                                            <button key={name}
+                                                onClick={() => { setChannelPartnerFilterInput(name); setShowChannelPartnerDrop(false); }}
+                                                className="w-full px-3 py-2 text-left text-xs hover:bg-stone-50 text-stone-700 transition-colors">
+                                                {name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
-                            {/* Typeahead suggestions */}
-                            {showChannelPartnerDrop && channelPartnerSuggestions.length > 0 && (
-                                <div className="absolute top-full mt-1 left-0 w-32 bg-white rounded-xl shadow-xl border border-stone-100 py-1 z-50 overflow-hidden max-h-48 overflow-y-auto">
-                                    {channelPartnerSuggestions.map(name => (
-                                        <button
-                                            key={name}
-                                            onClick={() => { setChannelPartnerFilterInput(name); setShowChannelPartnerDrop(false); }}
-                                            className="w-full px-3 py-1.5 text-left text-xs text-stone-700 hover:bg-amber-50 hover:text-amber-700 transition-colors truncate">
-                                            {name}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {user.userType === 'admin' && (
+                        {user?.userType === 'admin' && (
                             <button onClick={() => exportAllToCSV(active)}
                                 className="flex items-center gap-1.5 border border-stone-200 text-stone-600 px-3 py-2 rounded-xl text-sm font-medium hover:bg-stone-50 transition-colors">
                                 <Download className="w-4 h-4" />
                                 <span className="hidden sm:inline text-xs">Export</span>
                             </button>
                         )}
-                        {(user.userType === 'admin' || user.userType === 'sales' || user.userType === 'agent') && (
+                        {(user?.userType === 'admin' || user?.userType === 'sales' || user?.userType === 'agent' || isChannelPartnerOffice) && (
                             <button onClick={() => setShowAddLead(true)}
                                 className="flex items-center gap-1.5 bg-stone-900 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-stone-800 transition-colors">
                                 <Plus className="w-4 h-4" />

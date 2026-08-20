@@ -776,7 +776,9 @@ export default function VendorPortal({ user, onLogout }) {
                                             </div>
                                             <div className="flex justify-between py-1.5">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase">Structure Height</span>
-                                                <span className="font-semibold text-stone-850">{selectedCust.structure_leg_height || '–'}</span>
+                                                <span className="font-semibold text-stone-850">
+                                                    {selectedCust.structure_front_leg_height ? `${selectedCust.structure_front_leg_height} ft / ${selectedCust.structure_rear_leg_height || '–'} ft` : '–'}
+                                                </span>
                                             </div>
                                             <div className="flex justify-between py-1.5">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase">DC Cable</span>
@@ -1426,7 +1428,9 @@ export default function VendorPortal({ user, onLogout }) {
                                                     <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Roof / Shed:</td>
                                                     <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.roof_shed || '–'}</td>
                                                     <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Structure Leg Height:</td>
-                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.structure_leg_height || '–'}</td>
+                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">
+                                                        {targetBomCust.structure_front_leg_height ? `${targetBomCust.structure_front_leg_height} ft / ${targetBomCust.structure_rear_leg_height || '–'} ft` : '–'}
+                                                    </td>
                                                 </tr>
                                                 <tr className="border-b border-stone-200">
                                                     <td className="p-1.5 bg-stone-50 font-bold text-stone-600">DC Cable Length:</td>

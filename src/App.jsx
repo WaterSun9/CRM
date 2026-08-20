@@ -58,6 +58,7 @@ export default function App() {
                         name: profile.name,
                         role: profile.role,
                         userType: profile.user_type,
+                        channel_partner: profile.channel_partner || profile.name || '',
                     });
                 } else {
                     // Profile missing or deactivated — force sign out
