@@ -432,15 +432,37 @@ export default function InstallationStatusTab({
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1 flex items-center gap-1">
-                                <Calendar size={11} /> Vendor Paid Date
+                                <Calendar size={11} /> Vendor Paid
                             </label>
-                            <input
-                                type="date"
-                                disabled={!isEditable}
-                                value={editData.vendor_paid_date || ''}
-                                onChange={e => setEditData(prev => ({ ...prev, vendor_paid_date: e.target.value }))}
-                                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
-                            />
+                            {editData.vendor_paid_date ? (
+                                <div className="flex items-center gap-2">
+                                    <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl px-3 py-2 text-xs font-bold">
+                                        <CheckCircle2 size={13} className="text-emerald-600" />
+                                        Paid — {editData.vendor_paid_date}
+                                    </span>
+                                    {isEditable && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditData(prev => ({ ...prev, vendor_paid_date: null }))}
+                                            className="text-[9px] font-bold text-stone-400 hover:text-rose-600 underline cursor-pointer transition-colors"
+                                        >
+                                            Undo
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    disabled={!isEditable}
+                                    onClick={() => {
+                                        const today = new Date().toISOString().split('T')[0];
+                                        setEditData(prev => ({ ...prev, vendor_paid_date: today }));
+                                    }}
+                                    className="w-full bg-stone-50 hover:bg-emerald-50 border border-stone-200 hover:border-emerald-300 rounded-xl px-3 py-2 text-xs font-bold text-stone-500 hover:text-emerald-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-stone-50 disabled:hover:border-stone-200 disabled:hover:text-stone-500"
+                                >
+                                    <IndianRupee size={12} /> Mark as Paid
+                                </button>
+                            )}
                         </div>
                     </div>
                 )}

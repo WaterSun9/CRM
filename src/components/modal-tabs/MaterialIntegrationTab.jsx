@@ -359,7 +359,7 @@ export default function MaterialIntegrationTab({
                 saveBomRef.current = null;
             }
         };
-    });
+    }, [saveBomRef]);
 
     const handlePrint = () => {
         window.print();

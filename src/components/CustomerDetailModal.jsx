@@ -9,7 +9,7 @@
 //   • Stage/tag options: edit constants.js
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
@@ -763,12 +763,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         note: 'bg-indigo-100 text-indigo-700',
     };
 
-    const fetchLogs = async () => {
+    const fetchLogs = useCallback(async () => {
         const { data } = await supabase.from('activity_log').select('*, profiles(name)')
             .or(`new_value.eq.${customer.id},message.ilike.%${customer.customer_name}%`)
             .order('created_at', { ascending: false }).limit(25);
         if (data) setActivityLogs(data);
-    };
+    }, [customer.id, customer.customer_name]);
 
     const urlCacheRef = useRef({});
 
