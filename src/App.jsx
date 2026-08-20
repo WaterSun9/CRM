@@ -19,9 +19,9 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { supabase } from './supabase';
 import { Sun } from 'lucide-react';
+import LoginScreen from './components/LoginScreen';
 // These screens are independent applications. Loading them only after the
 // user's role is known keeps the initial login bundle small and responsive.
-const LoginScreen = lazy(() => import('./components/LoginScreen'));
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const SetPasswordPage = lazy(() => import('./components/SetPassword'));
 const AgentPortal = lazy(() => import('./components/AgentPortal'));
