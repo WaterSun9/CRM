@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas } from '../utils';
+import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, updateDocumentRemark } from '../utils';
 import { 
     User, Phone, Mail, MapPin, Zap, Building2, Sun,
-    CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle,
+    CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Hash, Folder, Tag, ChevronLeft, Search, ClipboardList, Banknote, Calendar, ClipboardCheck,
     Camera, Paperclip, Eye, Trash2, Upload, Image as ImageIcon, X,
-    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, ClipboardPaste, Plus, Check, Copy
+    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, ClipboardPaste, Plus, Check, Copy, Wrench
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
 
@@ -31,12 +31,15 @@ export default function VendorPortal({ user, onLogout }) {
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState('MATERIAL'); // 'MATERIAL', 'DELIVERY', 'GEO'
+    const [activeTab, setActiveTab] = useState('MATERIAL'); // 'MATERIAL', 'DELIVERY', 'GEO', 'INSTALLATION'
     const [selectedCust, setSelectedCust] = useState(null);
     
     // Edit Form State (for selected customer)
     const [geoTagStatus, setGeoTagStatus] = useState('Pending');
     const [geoTagImage, setGeoTagImage] = useState(false);
+    const [installationStatus, setInstallationStatus] = useState('Pending');
+    const [installationDate, setInstallationDate] = useState('');
+    const [vendorNote, setVendorNote] = useState('');
     
     // Material Delivery State
     const [inverterSerialNo, setInverterSerialNo] = useState('');
@@ -64,6 +67,11 @@ export default function VendorPortal({ user, onLogout }) {
     const [bomData, setBomData] = useState(null);
     const [bomItems, setBomItems] = useState([]);
     const [loadingBom, setLoadingBom] = useState(false);
+
+    // Give Up Project Modal state
+    const [showGiveUpModal, setShowGiveUpModal] = useState(false);
+    const [giveUpReason, setGiveUpReason] = useState('');
+    const [givingUp, setGivingUp] = useState(false);
 
     // Fetch BOM for Print (Read-Only)
     const handleOpenBomModal = async (cust) => {
@@ -115,6 +123,10 @@ export default function VendorPortal({ user, onLogout }) {
                 const myName = (user.name || '').trim().toLowerCase();
                 const myCustomers = data.filter(c => {
                     const vendorName = (c.vendor || '').trim().toLowerCase();
+                    // If vendor gave up this project, remove it from active vendor view
+                    if (c.installation_status === 'Give Up' && vendorName === myName) {
+                        return false;
+                    }
                     // Include leads assigned to this vendor OR any lead currently in the MATERIAL INTEGRATION stage
                     return vendorName === myName || c.stage === 'MATERIAL INTEGRATION';
                 });
@@ -144,6 +156,8 @@ export default function VendorPortal({ user, onLogout }) {
             setActiveTab('DELIVERY');
         } else if (cust.stage === 'GEO TAG PHOTO') {
             setActiveTab('GEO');
+        } else if (cust.stage === 'INSTALLATION STATUS') {
+            setActiveTab('INSTALLATION');
         }
 
         // Pre-fill Material Delivery Details
@@ -156,6 +170,11 @@ export default function VendorPortal({ user, onLogout }) {
         // Pre-fill geo tag status
         setGeoTagStatus(cust.geo_tag_status || 'Pending');
         setGeoTagImage(!!cust.geo_tag_image);
+
+        // Pre-fill installation status
+        setInstallationStatus(cust.installation_status || 'Pending');
+        setInstallationDate(cust.installation_date || '');
+        setVendorNote(cust.vendor_note || '');
         
         setView('details');
         setSaveSuccess(false);
@@ -235,11 +254,11 @@ export default function VendorPortal({ user, onLogout }) {
                 // Update admin record directly
                 await supabase.from('admin').update({ 
                     geo_tag_image: true,
-                    geo_tag_status: geoTagStatus === 'Pending' ? 'Yes' : geoTagStatus 
+                    geo_tag_status: geoTagStatus === 'Pending' ? 'Proceed' : geoTagStatus 
                 }).eq('id', selectedCust.id);
 
                 if (geoTagStatus === 'Pending') {
-                    setGeoTagStatus('Yes');
+                    setGeoTagStatus('Proceed');
                 }
                 
                 if (user?.id) {
@@ -258,6 +277,15 @@ export default function VendorPortal({ user, onLogout }) {
         } finally {
             setUploadingPhoto(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    const handleUpdateDocRemark = async (docId, newRemark) => {
+        try {
+            await updateDocumentRemark(docId, newRemark);
+            setDocuments(prev => (prev || []).map(d => d.id === docId ? { ...d, remark: newRemark } : d));
+        } catch (err) {
+            console.error('Failed to update remark:', err);
         }
     };
 
@@ -306,6 +334,9 @@ export default function VendorPortal({ user, onLogout }) {
                 panel_serial_no: serializedPanels,
                 geo_tag_status: geoTagStatus,
                 geo_tag_image: geoTagImage,
+                installation_status: installationStatus,
+                installation_date: installationDate || null,
+                vendor_note: vendorNote || null,
             };
 
             if (nextStage) {
@@ -318,7 +349,13 @@ export default function VendorPortal({ user, onLogout }) {
                 .eq('id', selectedCust.id);
 
             if (!error) {
-                let logMsg = `Vendor ${user.name} updated ${activeTab === 'DELIVERY' ? 'Material Delivery Details' : 'Geo Tag Report'}`;
+                let logMsg = `Vendor ${user.name} updated ${
+                    activeTab === 'DELIVERY' 
+                        ? 'Material Delivery Details' 
+                        : activeTab === 'INSTALLATION'
+                            ? 'Installation Status'
+                            : 'Geo Tag Report'
+                }`;
                 if (nextStage) {
                     logMsg += ` and advanced stage to ${nextStage}`;
                 }
@@ -354,10 +391,45 @@ export default function VendorPortal({ user, onLogout }) {
         }
     };
 
+    // Give Up Project handler
+    const handleConfirmGiveUp = async () => {
+        if (!selectedCust?.id) return;
+        setGivingUp(true);
+        try {
+            const { error } = await supabase
+                .from('admin')
+                .update({
+                    installation_status: 'Give Up',
+                    vendor_note: giveUpReason || null
+                })
+                .eq('id', selectedCust.id);
+
+            if (error) throw error;
+
+            await logActivity(
+                user.id,
+                'update',
+                `Vendor ${user.name} gave up installation for ${selectedCust.customer_name}${giveUpReason ? `: "${giveUpReason}"` : ''}`,
+                '',
+                selectedCust.id
+            );
+
+            setShowGiveUpModal(false);
+            setGiveUpReason('');
+            await fetchCustomers();
+            setView('list');
+        } catch (err) {
+            console.error('Error giving up project:', err);
+            alert('Failed to submit give up: ' + err.message);
+        } finally {
+            setGivingUp(false);
+        }
+    };
+
     // Stats calculations
     const materialCount = customers.filter(c => c.stage === 'MATERIAL INTEGRATION').length;
     const deliveryCount = customers.filter(c => c.stage === 'MATERIAL DELIVERY').length;
-    const geoPendingCount = customers.filter(c => c.stage === 'GEO TAG PHOTO' && (c.geo_tag_status || 'Pending') !== 'Yes' && (c.geo_tag_status || 'Pending') !== 'Proceed').length;
+    const geoPendingCount = customers.filter(c => c.stage === 'GEO TAG PHOTO' && (c.geo_tag_status || 'Pending') !== 'Proceed').length;
 
     // Filtered lists: search across all fields safely and across all stages if a query is typed
     const filteredCustomers = customers.filter(c => {
@@ -569,7 +641,7 @@ export default function VendorPortal({ user, onLogout }) {
                                     );
                                 }
 
-                                const isGeoOk = cust.geo_tag_status === 'Yes' || cust.geo_tag_status === 'Proceed';
+                                const isGeoOk = cust.geo_tag_status === 'Proceed';
 
                                 return (
                                     <div 
@@ -620,6 +692,13 @@ export default function VendorPortal({ user, onLogout }) {
                         >
                             <ChevronLeft className="w-4.5 h-4.5" /> Back to Dashboard
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setShowGiveUpModal(true)}
+                            className="text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                        >
+                            <AlertTriangle size={12} className="text-rose-600" /> Give Up Project
+                        </button>
                     </div>
 
                     <div className="bg-white p-5 rounded-[24px] border border-stone-150 shadow-sm space-y-4">
@@ -629,11 +708,12 @@ export default function VendorPortal({ user, onLogout }) {
                         </div>
 
                         {/* Stage Tabs inside Customer View */}
-                        <div className="grid grid-cols-3 gap-1 p-1 bg-stone-100/80 rounded-xl border border-stone-200/60">
+                        <div className="grid grid-cols-4 gap-1 p-1 bg-stone-100/80 rounded-xl border border-stone-200/60">
                             {[
                                 { id: 'MATERIAL', label: 'Material (BOM)', icon: Package },
-                                { id: 'DELIVERY', label: 'Material Delivery', icon: Truck },
+                                { id: 'DELIVERY', label: 'Delivery', icon: Truck },
                                 { id: 'GEO', label: 'Geo Tag', icon: Camera },
+                                { id: 'INSTALLATION', label: 'Installation', icon: Wrench },
                             ].map(tab => {
                                 const Icon = tab.icon;
                                 const isCurrent = activeTab === tab.id;
@@ -650,7 +730,7 @@ export default function VendorPortal({ user, onLogout }) {
                                     >
                                         <Icon size={11} />
                                         <span className="hidden sm:inline">{tab.label}</span>
-                                        <span className="sm:hidden">{tab.id === 'MATERIAL' ? 'BOM' : tab.id === 'DELIVERY' ? 'Delivery' : 'Geo'}</span>
+                                        <span className="sm:hidden">{tab.id === 'MATERIAL' ? 'BOM' : tab.id === 'DELIVERY' ? 'Deliv' : tab.id === 'GEO' ? 'Geo' : 'Install'}</span>
                                     </button>
                                 );
                             })}
@@ -663,7 +743,9 @@ export default function VendorPortal({ user, onLogout }) {
                                     ? 'Material Integration & BOM Specification'
                                     : activeTab === 'DELIVERY'
                                         ? 'Material Delivery Equipment Details'
-                                        : 'Geo Tag Photo Report'}
+                                        : activeTab === 'INSTALLATION'
+                                            ? 'Installation Status & Details'
+                                            : 'Geo Tag Photo Report'}
                             </h3>
 
                             {/* ─── Active Tab: MATERIAL INTEGRATION & BOM ─── */}
@@ -904,9 +986,8 @@ export default function VendorPortal({ user, onLogout }) {
                                         <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider">
                                             Geo Tag Photo Status
                                         </label>
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                        <div className="grid grid-cols-3 gap-2">
                                             {[
-                                                { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
                                                 { id: 'No', label: 'No', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' },
                                                 { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' },
                                                 { id: 'Proceed', label: 'Proceed', activeClass: 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/10', dotClass: 'bg-white' }
@@ -1045,6 +1126,110 @@ export default function VendorPortal({ user, onLogout }) {
                                     </div>
                                 </div>
                             )}
+
+                            {/* ─── Active Tab: INSTALLATION STATUS ─── */}
+                            {activeTab === 'INSTALLATION' && (
+                                <div className="space-y-4">
+                                    {/* Status selector with Give Up in front */}
+                                    <div className="space-y-2">
+                                        <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider">
+                                            Physical Installation Status
+                                        </label>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                            {[
+                                                { id: 'Give Up', label: 'Give Up', activeClass: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/10', dotClass: 'bg-white' },
+                                                { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
+                                                { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' },
+                                                { id: 'No', label: 'No', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' }
+                                            ].map(tag => {
+                                                const isSelected = installationStatus === tag.id;
+                                                return (
+                                                    <button
+                                                        key={tag.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (tag.id === 'Give Up') {
+                                                                setShowGiveUpModal(true);
+                                                            } else {
+                                                                setInstallationStatus(tag.id);
+                                                            }
+                                                        }}
+                                                        className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                            isSelected
+                                                                ? tag.activeClass
+                                                                : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                                                        }`}
+                                                    >
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? tag.dotClass : 'bg-stone-300'}`} />
+                                                        {tag.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* When marked Yes: Installation Date */}
+                                    {installationStatus === 'Yes' && (
+                                        <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-100 space-y-3 animate-in slide-in-from-top-2 duration-200">
+                                            <div className="flex items-center gap-2 text-emerald-800">
+                                                <CheckCircle2 size={16} />
+                                                <span className="text-xs font-bold">Installation Completed</span>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-emerald-900 uppercase tracking-wider mb-1">
+                                                    Installation Date
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    value={installationDate || ''}
+                                                    onChange={(e) => setInstallationDate(e.target.value)}
+                                                    className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-xs font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* When marked Give Up: Status Banner */}
+                                    {installationStatus === 'Give Up' && (
+                                        <div className="p-4 bg-rose-50/80 rounded-2xl border border-rose-200 space-y-2 animate-in slide-in-from-top-2 duration-200">
+                                            <div className="flex items-center gap-2 text-rose-800 font-bold text-xs">
+                                                <AlertTriangle size={15} className="text-rose-600" />
+                                                <span>You have submitted to Give Up this project</span>
+                                            </div>
+                                            {vendorNote && (
+                                                <p className="text-xs text-rose-900 italic bg-white/80 p-2.5 rounded-xl border border-rose-100 font-medium">
+                                                    "{vendorNote}"
+                                                </p>
+                                            )}
+                                            <p className="text-[11px] text-rose-600 font-semibold">
+                                                Admin is reviewing this request.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {saveSuccess && (
+                                        <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl text-[10px] font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
+                                            <CheckCircle2 className="w-4.5 h-4.5 flex-shrink-0" />
+                                            <span>Installation status saved successfully!</span>
+                                        </div>
+                                    )}
+
+                                    <div className="pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSaveChanges(null)}
+                                            disabled={saving}
+                                            className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                        >
+                                            {saving ? (
+                                                <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+                                            ) : (
+                                                'Save Installation Status'
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -1105,7 +1290,56 @@ export default function VendorPortal({ user, onLogout }) {
                     fileUrl={previewDoc.url}
                     onClose={() => setPreviewDoc(null)}
                     onDownload={() => window.open(previewDoc.url, '_blank')}
+                    onUpdateRemark={handleUpdateDocRemark}
                 />
+            )}
+             {/* Give Up Project Modal for Vendor */}
+            {showGiveUpModal && (
+                <div className="fixed inset-0 z-[1000] bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl border border-stone-200 animate-in zoom-in-95 duration-150">
+                        <div className="flex items-center gap-2 text-rose-600">
+                            <AlertTriangle size={20} />
+                            <h3 className="text-sm font-bold text-stone-900">Give Up Installation</h3>
+                        </div>
+                        <p className="text-xs text-stone-600">
+                            Are you sure you want to give up the installation project for <b>{selectedCust?.customer_name}</b>?
+                        </p>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
+                                Reason / Remarks
+                            </label>
+                            <textarea
+                                rows={3}
+                                value={giveUpReason}
+                                onChange={(e) => setGiveUpReason(e.target.value)}
+                                placeholder="Enter reason (e.g. roof structure issue, site inaccessible, distance)..."
+                                className="w-full bg-stone-50 border border-stone-200 rounded-xl p-2.5 text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-rose-400 placeholder:text-stone-400 font-medium"
+                            />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowGiveUpModal(false);
+                                    setGiveUpReason('');
+                                }}
+                                disabled={givingUp}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold text-stone-600 hover:bg-stone-100 transition cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmGiveUp}
+                                disabled={givingUp}
+                                className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                            >
+                                {givingUp ? <Loader2 size={12} className="animate-spin" /> : null}
+                                Confirm Give Up
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* BOM View & Print Modal for Vendor (Read-Only) */}

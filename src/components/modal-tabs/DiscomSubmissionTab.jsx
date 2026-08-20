@@ -28,7 +28,8 @@ export default function DiscomSubmissionTab({
     documents = [],
     onFileUpload,
     onFileDelete,
-    onFilePreview
+    onFilePreview,
+    onUpdateRemark
 }) {
     const submissionData = editData.discom_submission || {
         submitted_by: '',
@@ -53,12 +54,13 @@ export default function DiscomSubmissionTab({
                     <ClipboardList className="w-4 h-4 text-amber-500" /> Utility File Checklist
                 </h4>
                 <div className="flex flex-col gap-2">
-                    <CheckboxRemarkItem label="File Status Checked" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
-                    <CheckboxRemarkItem label="DCR Certificate Checked" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
-                    <CheckboxRemarkItem label="Signature Photo Checked" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
-                    <CheckboxRemarkItem label="Stamp Checked" field="stamp" value={editData.stamp} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} />
+                    <CheckboxRemarkItem label="File Status" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
+                    <CheckboxRemarkItem label="DCR Certificate" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
+                    <CheckboxRemarkItem label="Signature Photo" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
+                    <CheckboxRemarkItem label="Stamp" field="stamp" value={editData.stamp} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
+                    <CheckboxRemarkItem label="PM Surya GPAE Stamp" field="pm_surya_gpae_stamp" value={editData.pm_surya_gpae_stamp} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
                 </div>
-                {isEditable && (editData.file_status !== customer.file_status || editData.dcr_certificate !== customer.dcr_certificate || editData.signature_pic !== customer.signature_pic || editData.stamp !== customer.stamp) && (
+                {isEditable && (editData.file_status !== customer.file_status || editData.dcr_certificate !== customer.dcr_certificate || editData.signature_pic !== customer.signature_pic || editData.stamp !== customer.stamp || editData.pm_surya_gpae_stamp !== customer.pm_surya_gpae_stamp) && (
                     <div className="flex justify-end pt-2">
                         <button
                             type="button"
@@ -68,14 +70,15 @@ export default function DiscomSubmissionTab({
                                     file_status: editData.file_status,
                                     dcr_certificate: editData.dcr_certificate,
                                     signature_pic: editData.signature_pic,
-                                    stamp: editData.stamp
+                                    stamp: editData.stamp,
+                                    pm_surya_gpae_stamp: editData.pm_surya_gpae_stamp
                                 });
-                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Utility File Checklist (File Status: ${editData.file_status ? 'Checked' : 'Unchecked'}, DCR Certificate: ${editData.dcr_certificate ? 'Checked' : 'Unchecked'}, Signature Photo: ${editData.signature_pic ? 'Checked' : 'Unchecked'}, Stamp: ${editData.stamp ? 'Checked' : 'Unchecked'})`, '', customer.id);
+                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Utility File Checklist (File Status: ${editData.file_status ? 'Uploaded' : 'Pending'}, DCR: ${editData.dcr_certificate ? 'Uploaded' : 'Pending'}, Signature: ${editData.signature_pic ? 'Uploaded' : 'Pending'}, Stamp: ${editData.stamp ? 'Uploaded' : 'Pending'}, GPAE Stamp: ${editData.pm_surya_gpae_stamp ? 'Uploaded' : 'Pending'})`, '', customer.id);
                                 setSaving(false);
                                 fetchLogs();
                             }}
                             disabled={saving}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 disabled:bg-stone-300 disabled:cursor-not-allowed"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 disabled:bg-stone-300 disabled:cursor-not-allowed cursor-pointer"
                         >
                             <Save className="w-4 h-4" /> Save Checklist
                         </button>

@@ -2,24 +2,27 @@ import { useState } from 'react';
 import { Wrench } from 'lucide-react';
 
 const INSTALLATION_TAGS = [
+    { id: 'Give Up', label: 'Give Up' },
     { id: 'Yes', label: 'Yes' },
-    { id: 'No', label: 'No' },
+    { id: 'Proceed', label: 'Proceed' },
     { id: 'Pending', label: 'Pending' }
 ];
 
 const INSTALLATION_TAG_COLORS = {
+    'Give Up': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', dot: 'bg-rose-500' },
     'Yes': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-    'No': { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500' },
+    'Proceed': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', dot: 'bg-teal-500' },
     'Pending': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' }
 };
 
 export const normalizeInstallationStatus = (status) => {
     if (!status) return null;
     const s = String(status).trim().toLowerCase();
-    if (s === 'yes' || s === 'completed' || s === 'done' || s === 'installed') return 'Yes';
-    if (s === 'no' || s === 'rejected' || s === 'cancelled') return 'No';
+    if (s === 'give up' || s === 'giveup' || s === 'given up') return 'Give Up';
+    if (s === 'yes') return 'Yes';
+    if (s === 'proceed' || s === 'completed' || s === 'done' || s === 'installed') return 'Proceed';
     if (s === 'pending' || s === 'in progress' || s === 'waiting') return 'Pending';
-    return 'Pending'; // fallback so any truthy installation status is accurately categorized
+    return 'Pending';
 };
 
 export default function InstallationView({ customers, onSelectCustomer }) {
@@ -50,7 +53,7 @@ export default function InstallationView({ customers, onSelectCustomer }) {
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Tag filter buttons */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <button onClick={() => setActiveFilter(null)}
                     className={`rounded-2xl p-4 border text-left transition-all ${activeFilter === null ? 'bg-stone-900 border-stone-900 text-white shadow-lg shadow-stone-900/10' : 'bg-white border-stone-100 text-stone-800 hover:border-stone-200'}`}>
                     <p className="text-[9px] font-bold uppercase tracking-widest mb-1 opacity-60">All Installations</p>

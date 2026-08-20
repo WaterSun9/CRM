@@ -242,3 +242,16 @@ export const deleteDocument = async (documentId, storagePath) => {
         if (error) console.error('Failed to delete document:', error);
     }
 };
+
+export const updateDocumentRemark = async (documentId, remark) => {
+    if (!documentId) return null;
+    const { data, error } = await supabase
+        .from('documents')
+        .update({ remark: remark || '' })
+        .eq('id', documentId)
+        .select()
+        .single();
+
+    if (error) console.error('Failed to update document remark:', error);
+    return data;
+};

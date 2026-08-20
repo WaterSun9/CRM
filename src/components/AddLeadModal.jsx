@@ -101,29 +101,53 @@ function ChannelPartnerAutocomplete({ label, value, onChange, suggestions = [], 
 function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, onFileAttach, onFileRemove, onPreview }) {
     const fileInputRef = useRef(null);
 
+    // Unchecked by default; checked only when a file is attached
+    const isUploaded = Boolean(pendingFile);
+
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         onFileAttach(field, file);
-        // Automatically check the box when a file is attached
-        if (!checked) onToggle(field, true);
+        if (onToggle) onToggle(field, true);
         e.target.value = '';
+    };
+
+    const handleRemove = () => {
+        onFileRemove(field);
+        if (onToggle) onToggle(field, false);
     };
 
     return (
         <div className="py-2.5 border-b border-stone-100 last:border-0 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                    <input
-                        type="checkbox"
-                        id={`chk_${field}`}
-                        checked={!!checked}
-                        onChange={e => onToggle(field, e.target.checked)}
-                        className="w-4 h-4 text-amber-500 border-stone-300 rounded focus:ring-amber-500 cursor-pointer"
-                    />
-                    <label htmlFor={`chk_${field}`} className="text-xs font-semibold text-stone-700 cursor-pointer select-none">
+                    {/* Non-editable check indicator box driven solely by attached file */}
+                    <div 
+                        className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${
+                            isUploaded 
+                                ? 'bg-emerald-500 border-emerald-500 text-white' 
+                                : 'bg-stone-100 border-stone-300 text-transparent'
+                        }`}
+                        title={isUploaded ? 'File Attached' : 'Attach file to verify'}
+                    >
+                        {isUploaded && (
+                            <svg className="w-2.5 h-2.5 stroke-[3] stroke-current" fill="none" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                        )}
+                    </div>
+                    <span className={`text-xs select-none ${isUploaded ? 'font-bold text-stone-900' : 'font-medium text-stone-600'}`}>
                         {label}
-                    </label>
+                    </span>
+                    {isUploaded ? (
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                            Attached
+                        </span>
+                    ) : (
+                        <span className="text-[9px] font-bold text-stone-400 bg-stone-100 px-1.5 py-0.2 rounded">
+                            Not Attached
+                        </span>
+                    )}
                 </div>
 
                 <input
@@ -138,9 +162,9 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
                     <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-1.5 text-[10px] font-bold text-stone-500 hover:text-amber-600 px-2.5 py-1 rounded-lg border border-dashed border-stone-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all"
+                        className="flex items-center gap-1.5 text-[10px] font-bold text-stone-500 hover:text-amber-600 px-2.5 py-1 rounded-lg border border-dashed border-stone-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all cursor-pointer"
                     >
-                        <Paperclip size={11} /> Attach File
+                        <Paperclip size={11} /> Attach File / Photo
                     </button>
                 ) : null}
             </div>
@@ -172,8 +196,8 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
                         </button>
                         <button
                             type="button"
-                            onClick={() => onFileRemove(field)}
-                            className="text-[9px] font-bold text-red-500 hover:text-red-700 px-1.5 py-0.5 rounded hover:bg-red-50 transition-colors flex items-center gap-0.5"
+                            onClick={handleRemove}
+                            className="text-[9px] font-bold text-red-500 hover:text-red-700 px-1.5 py-0.5 rounded hover:bg-red-50 transition-colors flex items-center gap-0.5 cursor-pointer"
                             title="Remove file"
                         >
                             <Trash2 size={10} />

@@ -250,8 +250,8 @@ export default function MaterialDeliveryTab({
                     setEditingSection={setEditingSection} 
                 />
                 
-                {/* 5 Delivery Metadata Cards with Inverter Make Dropdown */}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {/* 6 Delivery Metadata Cards with Inverter Make Dropdown & Delivery Date */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <EditableDetailItem 
                         label="INVERTER MAKE" 
                         field="inverter_make" 
@@ -273,6 +273,14 @@ export default function MaterialDeliveryTab({
                         label="INVOICE NO" 
                         field="invoice_no" 
                         value={editData.invoice_no} 
+                        onChange={handleChange} 
+                        isEditing={editingSection === 'equip_details'} 
+                    />
+                    <EditableDetailItem 
+                        label="DELIVERY DATE" 
+                        field="material_delivery_date" 
+                        type="date"
+                        value={editData.material_delivery_date} 
                         onChange={handleChange} 
                         isEditing={editingSection === 'equip_details'} 
                     />
@@ -595,11 +603,15 @@ export default function MaterialDeliveryTab({
                                             <td className="p-2 bg-stone-50 font-bold text-stone-600">Inverter Serial No:</td>
                                             <td className="p-2 font-bold text-stone-900">{editData?.inverter_serial_no || '–'}</td>
                                         </tr>
-                                        <tr>
+                                        <tr className="border-b border-stone-200">
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Material Delivery Date:</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.material_delivery_date || '–'}</td>
                                             <td className="p-2 bg-stone-50 font-bold text-stone-600">Driver Name:</td>
                                             <td className="p-2 font-bold text-stone-900">{editData?.driver_name || '–'}</td>
+                                        </tr>
+                                        <tr>
                                             <td className="p-2 bg-stone-50 font-bold text-stone-600">Driver Phone Number:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.driver_phone_number || '–'}</td>
+                                            <td colSpan={3} className="p-2 font-bold text-stone-900">{editData?.driver_phone_number || '–'}</td>
                                         </tr>
                                     </tbody>
                                 </table>

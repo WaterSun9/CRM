@@ -113,15 +113,25 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
           <div className="flex items-center gap-3">
             <span className="font-bold text-sm text-slate-200 flex items-center gap-2">
               <FileText className="w-5 h-5 text-amber-400" />
-              PM Surya Ghar Agreement (4 Pages)
+              PM Surya Ghar Agreement {data.gpaeStampUrl ? '(5 Pages · GPAE Stamp Attached)' : '(4 Pages)'}
             </span>
             <div className="h-4 w-[1px] bg-slate-800 mx-1" />
             <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded border border-slate-800">
+              {data.gpaeStampUrl && (
+                <button
+                  type="button"
+                  onClick={() => scrollToPage(0)}
+                  className="px-2 py-0.5 text-[10px] font-bold rounded bg-amber-400/10 text-amber-300 hover:bg-amber-400/20 transition cursor-pointer"
+                >
+                  Stamp Page
+                </button>
+              )}
               {[1, 2, 3, 4].map((num) => (
                 <button
                   key={num}
+                  type="button"
                   onClick={() => scrollToPage(num)}
-                  className="px-2 py-0.5 text-[10px] font-bold rounded hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition"
+                  className="px-2 py-0.5 text-[10px] font-bold rounded hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition cursor-pointer"
                 >
                   Page {num}
                 </button>
@@ -208,6 +218,29 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
             className="transition-transform origin-top mx-auto space-y-8 print:space-y-0 print:p-0 print:m-0 print:transform-none"
             style={{ transform: `scale(${zoom / 100})`, width: '210mm' }}
           >
+            {data.gpaeStampUrl && (
+              <div id="crm-agreement-page-0" className="print:m-0 print:p-0">
+                <div 
+                  className="doc-page bg-white relative flex flex-col items-center justify-center p-4 mx-auto shadow-2xl rounded-sm overflow-hidden" 
+                  style={{ minHeight: '297mm', height: '297mm', width: '210mm', boxSizing: 'border-box' }}
+                >
+                  {data.gpaeStampUrl.toLowerCase().includes('.pdf') ? (
+                    <iframe 
+                      src={data.gpaeStampUrl} 
+                      className="w-full h-full border-0 rounded"
+                      style={{ minHeight: '275mm', width: '100%' }}
+                      title="PM Surya GPAE Stamp" 
+                    />
+                  ) : (
+                    <img 
+                      src={data.gpaeStampUrl} 
+                      alt="PM Surya GPAE Stamp" 
+                      className="w-full h-full object-contain max-h-[280mm]" 
+                    />
+                  )}
+                </div>
+              </div>
+            )}
             <div id="crm-agreement-page-1" className="print:m-0 print:p-0"><Page1 data={data} fontSizeClass={fontSize} /></div>
             <div id="crm-agreement-page-2" className="print:m-0 print:p-0"><Page2 data={data} fontSizeClass={fontSize} /></div>
             <div id="crm-agreement-page-3" className="print:m-0 print:p-0"><Page3 data={data} fontSizeClass={fontSize} /></div>

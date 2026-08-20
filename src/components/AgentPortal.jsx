@@ -8,7 +8,7 @@ import {
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
     Package, PauseCircle, Truck, Wrench, Camera, Send
 } from 'lucide-react';
-import { logActivity, toIndianCommas, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument } from '../utils';
+import { logActivity, toIndianCommas, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES } from '../constants';
 import AddLeadModal from './AddLeadModal';
@@ -280,6 +280,15 @@ export default function AgentPortal({ user, onLogout }) {
         } catch (err) {
             console.error('Delete failed:', err);
             alert('Delete failed: ' + err.message);
+        }
+    };
+
+    const handleUpdateDocRemark = async (docId, newRemark) => {
+        try {
+            await updateDocumentRemark(docId, newRemark);
+            setCustDocs(prev => prev.map(d => d.id === docId ? { ...d, remark: newRemark } : d));
+        } catch (err) {
+            console.error('Failed to update remark:', err);
         }
     };
 
@@ -950,6 +959,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
                                                 onPreview={handlePreviewFile}
+                                                onUpdateRemark={handleUpdateDocRemark}
                                             />
                                             <CheckboxRemarkItem
                                                 label="Aadhar Card Back"
@@ -961,6 +971,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
                                                 onPreview={handlePreviewFile}
+                                                onUpdateRemark={handleUpdateDocRemark}
                                             />
                                             <CheckboxRemarkItem
                                                 label="PAN Card"
@@ -972,6 +983,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
                                                 onPreview={handlePreviewFile}
+                                                onUpdateRemark={handleUpdateDocRemark}
                                             />
                                             <CheckboxRemarkItem
                                                 label="Light Bill"
@@ -983,6 +995,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
                                                 onPreview={handlePreviewFile}
+                                                onUpdateRemark={handleUpdateDocRemark}
                                             />
                                             <CheckboxRemarkItem
                                                 label="Index 2"
@@ -994,6 +1007,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
                                                 onPreview={handlePreviewFile}
+                                                onUpdateRemark={handleUpdateDocRemark}
                                             />
                                             <CheckboxRemarkItem
                                                 label="Bank Details"
@@ -1005,6 +1019,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
                                                 onPreview={handlePreviewFile}
+                                                onUpdateRemark={handleUpdateDocRemark}
                                             />
                                             <CheckboxRemarkItem
                                                 label="House Geo Tag Photo"
@@ -1016,6 +1031,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
                                                 onPreview={handlePreviewFile}
+                                                onUpdateRemark={handleUpdateDocRemark}
                                             />
                                             <CheckboxRemarkItem
                                                 label="Extra Documents"
@@ -1027,6 +1043,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
                                                 onPreview={handlePreviewFile}
+                                                onUpdateRemark={handleUpdateDocRemark}
                                             />
                                         </div>
                                     </div>
@@ -1084,6 +1101,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
                                                 onPreview={handlePreviewFile}
+                                                onUpdateRemark={handleUpdateDocRemark}
                                             />
                                             <CheckboxRemarkItem
                                                 label="Subsidy Token Photo"
@@ -1095,6 +1113,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
                                                 onPreview={handlePreviewFile}
+                                                onUpdateRemark={handleUpdateDocRemark}
                                             />
                                         </div>
                                     </div>
@@ -1412,7 +1431,7 @@ export default function AgentPortal({ user, onLogout }) {
                                     </h5>
                                     <div className="divide-y divide-stone-200/50 text-xs">
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">SFDC Photo Checked</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">SFDC Photo</span>
                                             {renderStatusBadge(selectedCust.sfdc_photo ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                         <div className="flex items-center justify-between py-2">
@@ -1456,19 +1475,19 @@ export default function AgentPortal({ user, onLogout }) {
                                     </h5>
                                     <div className="divide-y divide-stone-200/50 text-xs">
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">File Status Checked</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">File Status</span>
                                             {renderStatusBadge(selectedCust.file_status ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">DCR Certificate Checked</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">DCR Certificate</span>
                                             {renderStatusBadge(selectedCust.dcr_certificate ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Signature Photo Checked</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Signature Photo</span>
                                             {renderStatusBadge(selectedCust.signature_pic ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Stamp Checked</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Stamp</span>
                                             {renderStatusBadge(selectedCust.stamp ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                         <div className="flex items-center justify-between py-2">
@@ -1634,11 +1653,11 @@ export default function AgentPortal({ user, onLogout }) {
                                     </h5>
                                     <div className="divide-y divide-stone-200/50 text-xs">
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Warranty Card Checked</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Warranty Card</span>
                                             {renderStatusBadge(selectedCust.warranty_card ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Insurance Status Checked</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Insurance Status</span>
                                             {renderStatusBadge(selectedCust.insurance_status ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                     </div>
@@ -1833,11 +1852,11 @@ export default function AgentPortal({ user, onLogout }) {
                                                 {renderStatusBadge(selectedCust.subsidy_tag, 'Pending')}
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Warranty Card Checked</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Warranty Card</span>
                                                 {renderStatusBadge(selectedCust.warranty_card ? 'Yes' : 'Pending', 'Pending')}
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Insurance Status Checked</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Insurance Status</span>
                                                 {renderStatusBadge(selectedCust.insurance_status ? 'Yes' : 'Pending', 'Pending')}
                                             </div>
                                         </div>
@@ -1856,6 +1875,7 @@ export default function AgentPortal({ user, onLogout }) {
                     fileUrl={previewDoc.url}
                     onClose={() => setPreviewDoc(null)}
                     onDownload={() => handleDownloadDoc(previewDoc.doc)}
+                    onUpdateRemark={handleUpdateDocRemark}
                 />
             )}
         </div>

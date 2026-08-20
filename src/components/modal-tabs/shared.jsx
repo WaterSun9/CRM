@@ -212,10 +212,22 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
 }
 
 // ─── FilePreviewModal ─────────────────────────────────────────────────────────
-export function FilePreviewModal({ file, fileUrl, onClose, onDownload }) {
+export function FilePreviewModal({ file, fileUrl, onClose, onDownload, onUpdateRemark }) {
     if (!file) return null;
     const isImage = file.file_type?.startsWith('image/');
     const isPdf = file.file_type === 'application/pdf';
+    const [remark, setRemark] = useState(file.remark || '');
+    const [savingRemark, setSavingRemark] = useState(false);
+    const [remarkSaved, setRemarkSaved] = useState(false);
+
+    const handleSaveRemark = async () => {
+        if (!onUpdateRemark) return;
+        setSavingRemark(true);
+        await onUpdateRemark(file.id, remark);
+        setSavingRemark(false);
+        setRemarkSaved(true);
+        setTimeout(() => setRemarkSaved(false), 2000);
+    };
 
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[70] p-4" onClick={onClose}>
@@ -228,21 +240,21 @@ export function FilePreviewModal({ file, fileUrl, onClose, onDownload }) {
                     <div className="flex items-center gap-2 flex-shrink-0">
                         <button
                             onClick={onDownload}
-                            className="flex items-center gap-1.5 bg-stone-900 hover:bg-stone-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors"
+                            className="flex items-center gap-1.5 bg-stone-900 hover:bg-stone-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
                         >
                             <Download size={12} /> Download
                         </button>
-                        <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg transition-colors">
+                        <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer">
                             <X size={16} className="text-stone-400" />
                         </button>
                     </div>
                 </div>
                 <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-stone-50">
                     {isImage && fileUrl && (
-                        <img src={fileUrl} alt={file.file_name} className="max-w-full max-h-[65vh] object-contain rounded-lg shadow-sm" />
+                        <img src={fileUrl} alt={file.file_name} className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-sm" />
                     )}
                     {isPdf && fileUrl && (
-                        <iframe src={fileUrl} title={file.file_name} className="w-full h-[65vh] rounded-lg border border-stone-200" />
+                        <iframe src={fileUrl} title={file.file_name} className="w-full h-[60vh] rounded-lg border border-stone-200" />
                     )}
                     {!isImage && !isPdf && (
                         <div className="flex flex-col items-center gap-3 py-12 text-stone-400">
@@ -252,16 +264,140 @@ export function FilePreviewModal({ file, fileUrl, onClose, onDownload }) {
                         </div>
                     )}
                 </div>
+
+                {/* Remark Bar in Preview */}
+                <div className="p-3.5 bg-white border-t border-stone-100 flex items-center gap-2">
+                    <MessageSquare size={14} className="text-stone-400 flex-shrink-0" />
+                    <input
+                        type="text"
+                        placeholder="Add remark for this document (e.g. Verified by DISCOM, Valid KYC, Approved)..."
+                        value={remark}
+                        onChange={e => setRemark(e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') handleSaveRemark();
+                        }}
+                        className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-3 py-1.5 text-xs text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                    {onUpdateRemark && (
+                        <button
+                            type="button"
+                            disabled={savingRemark}
+                            onClick={handleSaveRemark}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 ${
+                                remarkSaved
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-stone-900 hover:bg-stone-800 text-white'
+                            }`}
+                        >
+                            <Check size={12} />
+                            <span>{savingRemark ? 'Saving...' : remarkSaved ? 'Saved!' : 'Save Remark'}</span>
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );
 }
 
-// ─── CheckboxRemarkItem ───────────────────────────────────────────────────────
-export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview }) {
+// ─── Compact Document Remark Row ─────────────────────────────────────────────
+function DocRemarkRow({ doc, onUpdateRemark, isEditing }) {
+    const [isEditingRemark, setIsEditingRemark] = useState(false);
+    const [remarkVal, setRemarkVal] = useState(doc.remark || '');
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        setRemarkVal(doc.remark || '');
+    }, [doc.remark]);
+
+    const handleSave = async () => {
+        if (!onUpdateRemark) return;
+        setSaving(true);
+        await onUpdateRemark(doc.id, remarkVal);
+        setSaving(false);
+        setIsEditingRemark(false);
+    };
+
+    if (isEditingRemark) {
+        return (
+            <div className="flex items-center gap-1.5 mt-1 animate-in fade-in">
+                <input
+                    type="text"
+                    value={remarkVal}
+                    placeholder="Enter remark for this file..."
+                    onChange={e => setRemarkVal(e.target.value)}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') handleSave();
+                        if (e.key === 'Escape') setIsEditingRemark(false);
+                    }}
+                    autoFocus
+                    className="flex-1 bg-white border border-stone-200 rounded-lg px-2 py-0.5 text-[10px] text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium"
+                />
+                <button
+                    type="button"
+                    disabled={saving}
+                    onClick={handleSave}
+                    className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[9px] font-bold cursor-pointer transition"
+                >
+                    {saving ? '...' : 'Save'}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setIsEditingRemark(false)}
+                    className="px-1.5 py-0.5 text-stone-400 hover:text-stone-600 text-[9px] font-medium cursor-pointer"
+                >
+                    Cancel
+                </button>
+            </div>
+        );
+    }
+
+    if (doc.remark) {
+        return (
+            <div className="flex items-center justify-between gap-1.5 mt-0.5 px-1 py-0.5 bg-amber-50/60 rounded border border-amber-200/50">
+                <div className="flex items-center gap-1 min-w-0 flex-1">
+                    <MessageSquare size={9} className="text-amber-600 flex-shrink-0" />
+                    <span className="text-[10px] text-amber-900 font-medium truncate" title={doc.remark}>
+                        {doc.remark}
+                    </span>
+                </div>
+                {isEditing && (
+                    <button
+                        type="button"
+                        onClick={() => setIsEditingRemark(true)}
+                        className="text-[9px] font-bold text-amber-700 hover:text-amber-900 underline cursor-pointer flex-shrink-0"
+                    >
+                        Edit
+                    </button>
+                )}
+            </div>
+        );
+    }
+
+    if (isEditing && onUpdateRemark) {
+        return (
+            <div className="mt-0.5">
+                <button
+                    type="button"
+                    onClick={() => setIsEditingRemark(true)}
+                    className="text-[9px] text-stone-400 hover:text-stone-700 font-semibold flex items-center gap-1 cursor-pointer transition"
+                >
+                    <MessageSquare size={9} />
+                    <span>+ Add remark</span>
+                </button>
+            </div>
+        );
+    }
+
+    return null;
+}
+
+export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onUpdateRemark }) {
     const fieldDocs = documents.filter(d => d.doc_type === field);
     const fileInputRef = React.useRef(null);
     const [replacingDocId, setReplacingDocId] = React.useState(null);
+
+    // Unchecked by default; checked strictly when an actual photo/file is uploaded
+    const isUploaded = fieldDocs.length > 0;
 
     const handleUploadClick = (existingDocId = null) => {
         setReplacingDocId(existingDocId);
@@ -276,55 +412,52 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
             if (oldDoc) await onDelete(oldDoc);
         }
         if (onUpload) await onUpload(e, field);
-        // Automatically check the checkbox when a file is uploaded
+        // Automatically check when a file is uploaded
         if (onChange) {
             onChange(field, true);
         }
         setReplacingDocId(null);
     };
 
-    if (!isEditing) {
-        return (
-            <div className="py-1.5">
-                <div className="flex items-start gap-3 group">
-                    <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${value ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-stone-100 border-stone-300 text-transparent'}`}>
-                        {value && <svg className="w-2.5 h-2.5 stroke-[3] stroke-current" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <span className={`text-xs block ${value ? 'text-stone-400 line-through' : 'text-stone-700 font-semibold'}`}>{label}</span>
-                    </div>
-                </div>
-                {fieldDocs.length > 0 && (
-                    <div className="ml-7 mt-1.5 space-y-1">
-                        {fieldDocs.map(doc => (
-                            <div key={doc.id} className="flex items-center gap-2 bg-stone-50 border border-stone-100 rounded-lg px-2.5 py-1.5">
-                                <Paperclip size={11} className="text-stone-400 flex-shrink-0" />
-                                <span className="text-[10px] text-stone-600 font-medium truncate flex-1">{doc.file_name}</span>
-                                {onPreview && (
-                                    <button onClick={() => onPreview(doc)} className="text-[9px] font-bold text-amber-600 hover:text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-50 transition-colors">View</button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        );
-    }
+    const handleDeleteClick = async (doc) => {
+        if (onDelete) await onDelete(doc);
+        const remaining = fieldDocs.filter(d => d.id !== doc.id);
+        if (remaining.length === 0 && onChange) {
+            onChange(field, false);
+        }
+    };
 
     return (
         <div className="py-1.5">
             <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                    <input
-                        type="checkbox"
-                        id={field}
-                        checked={!!value}
-                        onChange={e => onChange(field, e.target.checked)}
-                        className="w-4 h-4 text-amber-500 border-stone-300 rounded focus:ring-amber-500 cursor-pointer"
-                    />
-                    <label htmlFor={field} className="text-xs font-semibold text-stone-700 cursor-pointer select-none">
+                    {/* Non-editable check indicator box driven solely by file upload */}
+                    <div 
+                        className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${
+                            isUploaded 
+                                ? 'bg-emerald-500 border-emerald-500 text-white' 
+                                : 'bg-stone-100 border-stone-300 text-transparent'
+                        }`}
+                        title={isUploaded ? 'Verified & Uploaded' : 'Upload photo/file to verify'}
+                    >
+                        {isUploaded && (
+                            <svg className="w-2.5 h-2.5 stroke-[3] stroke-current" fill="none" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                        )}
+                    </div>
+                    <span className={`text-xs select-none ${isUploaded ? 'font-bold text-stone-900' : 'font-medium text-stone-600'}`}>
                         {label}
-                    </label>
+                    </span>
+                    {isUploaded ? (
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                            Uploaded
+                        </span>
+                    ) : (
+                        <span className="text-[9px] font-bold text-stone-400 bg-stone-100 px-1.5 py-0.2 rounded">
+                            Not Uploaded
+                        </span>
+                    )}
                 </div>
             </div>
 
@@ -336,34 +469,41 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
                 className="hidden"
             />
 
-            <div className="ml-7 mt-1.5 space-y-1.5">
+            <div className="ml-6.5 mt-1.5 space-y-1.5">
                 {fieldDocs.map(doc => (
-                    <div key={doc.id} className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1.5">
-                        <Paperclip size={11} className="text-stone-400 flex-shrink-0" />
-                        <span className="text-[10px] text-stone-600 font-medium truncate flex-1">{doc.file_name}</span>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                            {onPreview && (
-                                <button onClick={() => onPreview(doc)} className="text-[9px] font-bold text-amber-600 hover:text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-50 transition-colors flex items-center gap-0.5">
-                                    <Eye size={10} /> View
-                                </button>
-                            )}
-                            <button onClick={() => handleUploadClick(doc.id)} className="text-[9px] font-bold text-blue-600 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors flex items-center gap-0.5">
-                                <Upload size={10} /> Change
-                            </button>
-                            {onDelete && (
-                                <button onClick={() => onDelete(doc)} className="text-[9px] font-bold text-red-500 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50 transition-colors flex items-center gap-0.5">
-                                    <Trash2 size={10} /> Remove
-                                </button>
-                            )}
+                    <div key={doc.id} className="bg-stone-50 border border-stone-200 rounded-lg p-2 flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                            <Paperclip size={11} className="text-stone-400 flex-shrink-0" />
+                            <span className="text-[10px] text-stone-600 font-medium truncate flex-1">{doc.file_name}</span>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                                {onPreview && (
+                                    <button onClick={() => onPreview(doc)} className="text-[9px] font-bold text-amber-600 hover:text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-50 transition-colors flex items-center gap-0.5 cursor-pointer">
+                                        <Eye size={10} /> View
+                                    </button>
+                                )}
+                                {isEditing && (
+                                    <button onClick={() => handleUploadClick(doc.id)} className="text-[9px] font-bold text-blue-600 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors flex items-center gap-0.5 cursor-pointer">
+                                        <Upload size={10} /> Change
+                                    </button>
+                                )}
+                                {isEditing && onDelete && (
+                                    <button onClick={() => handleDeleteClick(doc)} className="text-[9px] font-bold text-red-500 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50 transition-colors flex items-center gap-0.5 cursor-pointer">
+                                        <Trash2 size={10} /> Remove
+                                    </button>
+                                )}
+                            </div>
                         </div>
+
+                        {/* Document Remark Row */}
+                        <DocRemarkRow doc={doc} onUpdateRemark={onUpdateRemark} isEditing={isEditing} />
                     </div>
                 ))}
-                {fieldDocs.length === 0 && onUpload && (
+                {fieldDocs.length === 0 && isEditing && onUpload && (
                     <button
                         onClick={() => handleUploadClick()}
-                        className="flex items-center gap-1.5 text-[10px] font-bold text-stone-400 hover:text-amber-600 px-2 py-1 rounded-lg border border-dashed border-stone-200 hover:border-amber-300 hover:bg-amber-50/30 transition-all"
+                        className="flex items-center gap-1.5 text-[10px] font-bold text-stone-500 hover:text-amber-600 px-2 py-1 rounded-lg border border-dashed border-stone-200 hover:border-amber-300 hover:bg-amber-50/30 transition-all cursor-pointer"
                     >
-                        <Paperclip size={11} /> Attach File
+                        <Paperclip size={11} /> Attach File / Photo
                     </button>
                 )}
             </div>

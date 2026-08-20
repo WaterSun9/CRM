@@ -13,7 +13,8 @@ export default function RegistrationTab({
     documents = [],
     onFileUpload,
     onFileDelete,
-    onFilePreview
+    onFilePreview,
+    onUpdateRemark
 }) {
     const handleFillTestData = () => {
         const randId = Math.floor(1000 + Math.random() * 9000);
@@ -128,6 +129,7 @@ export default function RegistrationTab({
                             onUpload={onFileUpload}
                             onDelete={onFileDelete}
                             onPreview={onFilePreview}
+                            onUpdateRemark={onUpdateRemark}
                         />
                         <CheckboxRemarkItem
                             label="Subsidy Token Photo"
@@ -139,6 +141,7 @@ export default function RegistrationTab({
                             onUpload={onFileUpload}
                             onDelete={onFileDelete}
                             onPreview={onFilePreview}
+                            onUpdateRemark={onUpdateRemark}
                         />
                     </div>
                 </div>

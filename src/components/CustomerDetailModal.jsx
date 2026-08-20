@@ -13,7 +13,8 @@ import { useState, useEffect, useRef } from 'react';
 import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
-    LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check
+    LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
+    Eye, Search, Image as ImageIcon, MessageSquare
 } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE } from '../constants';
 import { logActivity, formatLogDate, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
@@ -22,7 +23,47 @@ import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
 import { Page1 } from './agreement/Page1';
 import { FileText, Printer } from 'lucide-react';
-import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument } from '../utils';
+import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark } from '../utils';
+
+// ─── DOC_TYPE_LABELS: Human readable names for document categories ───────────
+const DOC_TYPE_LABELS = {
+    adhaar_card_front: 'Aadhaar Card (Front)',
+    adhaar_card_back: 'Aadhaar Card (Back)',
+    pan_card: 'PAN Card',
+    light_bill: 'Electricity / Light Bill',
+    index_2: 'Index-2 Copy',
+    bank_details: 'Bank Passbook / Cheque',
+    house_geo_tag_photo: 'House Photo',
+    extra_docs: 'Extra Documents',
+    geo_tag_image: 'Geo Tag Photo',
+    sfdc_photo: 'SFDC Photo',
+    file_status: 'File Status Doc',
+    dcr_certificate: 'DCR Certificate',
+    signature_pic: 'Customer Signature',
+    signature: 'Customer Signature',
+    firstPartySignature: 'Customer Signature',
+    customer_signature: 'Customer Signature',
+    stamp: 'Vendor Stamp',
+    stamp_pic: 'Vendor Stamp',
+    vendor_stamp: 'Vendor Stamp',
+    secondPartyStamp: 'Vendor Stamp',
+    pm_surya_gpae_stamp: 'PM Surya GPAE Stamp',
+    surya_gpae_stamp: 'PM Surya GPAE Stamp',
+    gpae_stamp: 'PM Surya GPAE Stamp',
+    meter_installation_photo: 'Meter Installation Photo',
+    meter_photo: 'Meter Installation Photo',
+    warranty_card: 'Warranty Card',
+    insurance_status: 'Insurance Document',
+    feasibilty_document: 'Feasibility Document',
+    feasibility_document: 'Feasibility Document',
+    subsidy_token_photo: 'Subsidy Token Photo'
+};
+
+const getDocTypeLabel = (type) => {
+    if (!type) return 'Client Attachment';
+    if (DOC_TYPE_LABELS[type]) return DOC_TYPE_LABELS[type];
+    return type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+};
 
 import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
@@ -285,39 +326,134 @@ function EditableDetailItem({ label, field, value, onChange, type = 'text', isMo
     );
 }
 
-// ─── CheckboxRemarkItem ───────────────────────────────────────────────────────
 function CheckboxRemarkItem({ label, field, value, onChange, isEditing }) {
-    if (!isEditing) {
-        return (
-            <div className="py-1.5 flex items-start gap-3 group">
-                <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${value ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-stone-100 border-stone-300 text-transparent'}`}>
-                    {value && <svg className="w-2.5 h-2.5 stroke-[3] stroke-current" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
-                </div>
-                <div className="flex-1 min-w-0">
-                    <span className={`text-xs block ${value ? 'text-stone-400 line-through' : 'text-stone-700 font-semibold'}`}>{label}</span>
-                </div>
-            </div>
-        );
-    }
+    const isUploaded = Boolean(value);
 
     return (
         <div className="py-1.5 flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                    <input
-                        type="checkbox"
-                        id={field}
-                        checked={!!value}
-                        onChange={e => onChange(field, e.target.checked)}
-                        className="w-4 h-4 text-amber-500 border-stone-300 rounded focus:ring-amber-500 cursor-pointer"
-                    />
-                    <label htmlFor={field} className="text-xs font-semibold text-stone-700 cursor-pointer select-none">
+                    <div 
+                        className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${
+                            isUploaded 
+                                ? 'bg-emerald-500 border-emerald-500 text-white' 
+                                : 'bg-stone-100 border-stone-300 text-transparent'
+                        }`}
+                        title={isUploaded ? 'Uploaded' : 'Not Uploaded'}
+                    >
+                        {isUploaded && (
+                            <svg className="w-2.5 h-2.5 stroke-[3] stroke-current" fill="none" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                        )}
+                    </div>
+                    <span className={`text-xs select-none ${isUploaded ? 'font-bold text-stone-900' : 'font-medium text-stone-600'}`}>
                         {label}
-                    </label>
+                    </span>
+                    {isUploaded ? (
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                            Uploaded
+                        </span>
+                    ) : (
+                        <span className="text-[9px] font-bold text-stone-400 bg-stone-100 px-1.5 py-0.2 rounded">
+                            Not Uploaded
+                        </span>
+                    )}
                 </div>
             </div>
         </div>
     );
+}
+
+function DocGalleryRemarkRow({ doc, onUpdateRemark, isEditable }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [remarkVal, setRemarkVal] = useState(doc.remark || '');
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        setRemarkVal(doc.remark || '');
+    }, [doc.remark]);
+
+    const handleSave = async () => {
+        if (!onUpdateRemark) return;
+        setSaving(true);
+        await onUpdateRemark(doc.id, remarkVal);
+        setSaving(false);
+        setIsEditing(false);
+    };
+
+    if (isEditing) {
+        return (
+            <div className="pt-2 mt-1 border-t border-stone-200/60 flex items-center gap-1.5 animate-in fade-in">
+                <input
+                    type="text"
+                    value={remarkVal}
+                    placeholder="Remark for this document..."
+                    onChange={e => setRemarkVal(e.target.value)}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') handleSave();
+                        if (e.key === 'Escape') setIsEditing(false);
+                    }}
+                    autoFocus
+                    className="flex-1 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                />
+                <button
+                    type="button"
+                    disabled={saving}
+                    onClick={handleSave}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                >
+                    {saving ? '...' : 'Save'}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="px-2 py-1 text-stone-400 hover:text-stone-600 text-xs font-medium cursor-pointer"
+                >
+                    Cancel
+                </button>
+            </div>
+        );
+    }
+
+    if (doc.remark) {
+        return (
+            <div className="pt-2 mt-1 border-t border-stone-200/60 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1 bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60">
+                    <MessageSquare size={11} className="text-amber-600 flex-shrink-0" />
+                    <span className="text-[11px] text-amber-900 font-medium truncate" title={doc.remark}>
+                        {doc.remark}
+                    </span>
+                </div>
+                {isEditable && (
+                    <button
+                        type="button"
+                        onClick={() => setIsEditing(true)}
+                        className="text-[10px] font-bold text-stone-500 hover:text-stone-800 underline cursor-pointer flex-shrink-0"
+                    >
+                        Edit Remark
+                    </button>
+                )}
+            </div>
+        );
+    }
+
+    if (isEditable) {
+        return (
+            <div className="pt-1.5 mt-0.5 border-t border-dashed border-stone-200 flex justify-end">
+                <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="text-[10px] text-stone-400 hover:text-stone-700 font-bold flex items-center gap-1 cursor-pointer transition"
+                >
+                    <MessageSquare size={10} />
+                    <span>+ Add Remark</span>
+                </button>
+            </div>
+        );
+    }
+
+    return null;
 }
 
 // ─── PaymentsEditor ───────────────────────────────────────────────────────────
@@ -407,8 +543,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         return customer?.stage || 'LEADS';
     });
     const [editingSection, setEditingSection] = useState(null);
-    const [isSaved, setIsSaved] = useState(false);
+    const [isFormDirty, setIsFormDirty] = useState(false);
     const [editData, setEditData] = useState({ ...customer });
+
+    const handleEditDataChange = (updater) => {
+        setIsFormDirty(true);
+        setEditData(updater);
+    };
     const [followUpText, setFollowUpText] = useState('');
     const [saving, setSaving] = useState(false);
     const [sendingInfo, setSendingInfo] = useState(false);
@@ -417,6 +558,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [showCompletedConfirm, setShowCompletedConfirm] = useState(false);
     const [activityLogs, setActivityLogs] = useState([]);
     const [documents, setDocuments] = useState([]);
+    const [docSearchQuery, setDocSearchQuery] = useState('');
     const [uploading, setUploading] = useState(false);
     const [filePreview, setFilePreview] = useState({ doc: null, url: null });
     const isAdmin = user?.userType === 'admin';
@@ -485,9 +627,15 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 d.doc_type === 'vendor_stamp' || 
                 d.doc_type === 'secondPartyStamp'
             );
+            const gpaeStampDoc = documents.find(d => 
+                d.doc_type === 'pm_surya_gpae_stamp' || 
+                d.doc_type === 'surya_gpae_stamp' || 
+                d.doc_type === 'gpae_stamp'
+            );
 
             const initialSigUrl = sigDoc ? (urlCacheRef.current[sigDoc.storage_path] || '') : '';
             const initialStampUrl = stampDoc ? (urlCacheRef.current[stampDoc.storage_path] || '') : '';
+            const initialGpaeStampUrl = gpaeStampDoc ? (urlCacheRef.current[gpaeStampDoc.storage_path] || '') : '';
 
             setAgreementData({
                 executionDate: formattedDate,
@@ -504,6 +652,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 secondPartySignature: '',
                 signatureUrl: initialSigUrl,
                 stampUrl: initialStampUrl,
+                gpaeStampUrl: initialGpaeStampUrl,
                 highlightColor: '#fef08a',
                 showHighlights: true,
             });
@@ -534,11 +683,23 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     }
                 });
             }
+
+            if (gpaeStampDoc && !initialGpaeStampUrl) {
+                getViewUrl(gpaeStampDoc.storage_path).then(url => {
+                    if (url) {
+                        urlCacheRef.current[gpaeStampDoc.storage_path] = url;
+                        setAgreementData(prev => ({
+                            ...prev,
+                            gpaeStampUrl: url,
+                        }));
+                    }
+                });
+            }
         }
     }, [showAgreementPopup, editData, documents]);
 
     const handleGenerateAgreement = async () => {
-        // Find signature and stamp documents
+        // Find signature, stamp and GPAE stamp documents
         const sigDoc = documents.find(d => 
             d.doc_type === 'signature_pic' || 
             d.doc_type === 'signature' || 
@@ -551,12 +712,19 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             d.doc_type === 'vendor_stamp' || 
             d.doc_type === 'secondPartyStamp'
         );
+        const gpaeStampDoc = documents.find(d => 
+            d.doc_type === 'pm_surya_gpae_stamp' || 
+            d.doc_type === 'surya_gpae_stamp' || 
+            d.doc_type === 'gpae_stamp'
+        );
 
         let sigUrl = sigDoc ? (urlCacheRef.current[sigDoc.storage_path] || await getViewUrl(sigDoc.storage_path)) : '';
         let stampUrl = stampDoc ? (urlCacheRef.current[stampDoc.storage_path] || await getViewUrl(stampDoc.storage_path)) : '';
+        let gpaeStampUrl = gpaeStampDoc ? (urlCacheRef.current[gpaeStampDoc.storage_path] || await getViewUrl(gpaeStampDoc.storage_path)) : '';
 
         if (sigDoc && sigUrl) urlCacheRef.current[sigDoc.storage_path] = sigUrl;
         if (stampDoc && stampUrl) urlCacheRef.current[stampDoc.storage_path] = stampUrl;
+        if (gpaeStampDoc && gpaeStampUrl) urlCacheRef.current[gpaeStampDoc.storage_path] = gpaeStampUrl;
 
         const rawDate = editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0];
         const formattedDate = formatDateToDDMMYYYY(rawDate);
@@ -576,6 +744,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             secondPartySignature: '',
             signatureUrl: sigUrl || '',
             stampUrl: stampUrl || '',
+            gpaeStampUrl: gpaeStampUrl || '',
             highlightColor: '#fef08a',
             showHighlights: true,
         });
@@ -679,6 +848,21 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         fetchLogs();
     };
 
+    const handleUpdateDocRemark = async (docId, newRemark) => {
+        await updateDocumentRemark(docId, newRemark);
+        setDocuments(prev => prev.map(d => d.id === docId ? { ...d, remark: newRemark } : d));
+        const docObj = documents.find(d => d.id === docId);
+        const fileName = docObj?.file_name || 'Document';
+        await logActivity(
+            user.id,
+            'update',
+            `${customer.customer_name}: Document remark update (${fileName}) - "${newRemark}"`,
+            '',
+            customer.id
+        );
+        fetchLogs();
+    };
+
     const REG_CHECKLIST_FIELDS = [
         'adhaar_card_front',
         'adhaar_card_back',
@@ -742,28 +926,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     useEffect(() => {
-        setEditData(prev => {
-            if (prev.id !== customer.id) {
-                return { ...customer };
-            }
-            return {
-                ...customer,
-                stages_remarks: prev.stages_remarks
-            };
-        });
+        setEditData({ ...customer });
+        setIsFormDirty(false);
         fetchLogs();
-    }, [customer]);
-
-    useEffect(() => {
-        const dbRemark = getStageRemarkFromData(customer.stages_remarks, editData.stage);
-        const currentRemark = getStageRemarkFromData(editData.stages_remarks, editData.stage);
-
-        if (dbRemark && currentRemark === dbRemark) {
-            setIsSaved(true);
-        } else {
-            setIsSaved(false);
-        }
-    }, [editData.stage, customer]);
+    }, [customer?.id]);
 
 
 
@@ -863,7 +1029,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const handleToggleInstallationTag = (tagId) => {
         const newTag = editData.installation_status === tagId ? null : tagId;
-        setEditData(prev => ({ ...prev, installation_status: newTag }));
+        const todayStr = new Date().toISOString().split('T')[0];
+        setEditData(prev => ({
+            ...prev,
+            installation_status: newTag,
+            installation_date: (newTag === 'Proceed' || newTag === 'Yes') ? (prev.installation_date || todayStr) : prev.installation_date
+        }));
     };
 
     const handleSaveInstallationDetails = async () => {
@@ -876,7 +1047,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         await onUpdate(customer.id, updates);
 
         let logMsg = `${customer.customer_name}: Updated Installation Status to ${editData.installation_status}`;
-        if (editData.installation_status === 'Yes') {
+        if (editData.installation_status === 'Proceed') {
             logMsg += ` (Date: ${editData.installation_date || 'N/A'}, Installed By: ${editData.installed_by || 'N/A'})`;
         }
         await logActivity(user.id, 'update', logMsg, '', customer.id);
@@ -957,6 +1128,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleChange = (field, val) => {
+        setIsFormDirty(true);
         setEditData(prev => {
             const next = { ...prev, [field]: val };
             if (field === 'module_wp' || field === 'no_of_modules') {
@@ -1213,6 +1385,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (updates.ac_cable !== undefined && updates.ac_cable !== null && updates.ac_cable !== '') {
             updates.ac_cable = parseIndianNumber(updates.ac_cable);
         }
+        if (updates.vendor_quote !== undefined && updates.vendor_quote !== null && updates.vendor_quote !== '') {
+            updates.vendor_quote = parseIndianNumber(updates.vendor_quote);
+        } else if (updates.vendor_quote === '') {
+            updates.vendor_quote = null;
+        }
 
         let changeSummary = [];
         Object.keys(updates).forEach(key => {
@@ -1311,8 +1488,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
         setEditingSection(null);
         setSaving(false);
+        setIsFormDirty(false);
         setSaved(true);
-        setTimeout(() => setSaved(false), 2500);
         fetchLogs();
         if (stageChanged) {
             setActiveTab(editData.stage);
@@ -1337,15 +1514,25 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const isDirty = (() => {
-        if (editingSection) return true;
         if (!customer || !editData) return false;
         
         const ignoreKeys = new Set(['id', 'created_at', 'updated_at', 'crn']);
         for (const key of Object.keys(editData)) {
             if (ignoreKeys.has(key)) continue;
-            const val1 = editData[key];
-            const val2 = customer[key];
-            if (val1 === undefined && val2 === undefined) continue;
+            let val1 = editData[key];
+            let val2 = customer[key];
+            
+            // Handle booleans vs null/undefined (e.g. false vs null, checklist items)
+            if (typeof val1 === 'boolean' || typeof val2 === 'boolean') {
+                if (Boolean(val1) !== Boolean(val2)) return true;
+                continue;
+            }
+
+            // Normalize empty / null / undefined values
+            const isVal1Empty = val1 === undefined || val1 === null || val1 === '';
+            const isVal2Empty = val2 === undefined || val2 === null || val2 === '';
+            if (isVal1Empty && isVal2Empty) continue;
+
             if (typeof val1 === 'object' || typeof val2 === 'object') {
                 if (JSON.stringify(val1 ?? null) !== JSON.stringify(val2 ?? null)) return true;
             } else {
@@ -1490,36 +1677,47 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                             {(typeof editData.stages_remarks === 'object' && editData.stages_remarks ? editData.stages_remarks[editData.stage] : '') || 'No remarks for this stage.'}
                                         </div>
                                     ) : (
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                placeholder="Add remark for current stage..."
-                                                value={getStageRemarkFromData(editData.stages_remarks, editData.stage)}
-                                                onChange={e => {
-                                                    const newVal = e.target.value;
-                                                    setIsSaved(false);
-                                                    setEditData(prev => {
-                                                        const prevObj = typeof prev.stages_remarks === 'object' && prev.stages_remarks ? prev.stages_remarks : {};
-                                                        return {
-                                                            ...prev,
-                                                            stages_remarks: {
-                                                                ...prevObj,
-                                                                [prev.stage]: newVal
-                                                            }
-                                                        };
-                                                    });
-                                                }}
-                                                onKeyDown={(e) => e.key === 'Enter' && handleSaveStageRemark()}
-                                                className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300"
-                                            />
-                                            <button
-                                                onClick={() => handleSaveStageRemark()}
-                                                disabled={isSaved}
-                                                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${isSaved ? 'bg-emerald-600 text-white cursor-default' : 'bg-stone-900 text-white hover:bg-stone-800'}`}
-                                            >
-                                                {isSaved ? 'Saved' : 'Save'}
-                                            </button>
-                                        </div>
+                                        (() => {
+                                            const curRemark = getStageRemarkFromData(editData.stages_remarks, editData.stage);
+                                            const origRemark = getStageRemarkFromData(customer.stages_remarks, customer.stage);
+                                            const isRemarkDirty = (curRemark || '').trim() !== (origRemark || '').trim();
+
+                                            return (
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Add remark for current stage..."
+                                                        value={curRemark}
+                                                        onChange={e => {
+                                                            const newVal = e.target.value;
+                                                            setEditData(prev => {
+                                                                const prevObj = typeof prev.stages_remarks === 'object' && prev.stages_remarks ? prev.stages_remarks : {};
+                                                                return {
+                                                                    ...prev,
+                                                                    stages_remarks: {
+                                                                        ...prevObj,
+                                                                        [prev.stage]: newVal
+                                                                    }
+                                                                };
+                                                            });
+                                                        }}
+                                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveStageRemark()}
+                                                        className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300"
+                                                    />
+                                                    <button
+                                                        onClick={() => handleSaveStageRemark()}
+                                                        disabled={!isRemarkDirty}
+                                                        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                                                            !isRemarkDirty
+                                                                ? 'bg-emerald-600 text-white cursor-default'
+                                                                : 'bg-stone-900 text-white hover:bg-stone-800 cursor-pointer'
+                                                        }`}
+                                                    >
+                                                        {!isRemarkDirty ? 'Saved' : 'Save'}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })()
                                     )}
                                 </div>
                             </div>
@@ -1546,6 +1744,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             onFileUpload={handleFileUpload}
                             onViewDocument={handlePreviewDoc}
                             onDeleteDocument={handleDeleteDoc}
+                            onUpdateRemark={handleUpdateDocRemark}
                         />
                     )}
 
@@ -1569,6 +1768,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             onFileUpload={handleFileUpload}
                             onFileDelete={handleDeleteDoc}
                             onFilePreview={handlePreviewDoc}
+                            onUpdateRemark={handleUpdateDocRemark}
                         />
                     )}
 
@@ -1577,7 +1777,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <LoanTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
                             handleChange={handleChange}
                             isEditable={isEditable}
                             onUpdate={onUpdate}
@@ -1588,6 +1788,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             onFileUpload={handleFileUpload}
                             onFileDelete={handleDeleteDoc}
                             onFilePreview={handlePreviewDoc}
+                            onUpdateRemark={handleUpdateDocRemark}
                         />
                     )}
 
@@ -1596,7 +1797,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <CashTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
                             isEditable={isEditable}
                             editingSection={editingSection}
                             setEditingSection={setEditingSection}
@@ -1606,6 +1807,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             user={user}
                             saving={saving}
                             setSaving={setSaving}
+                            documents={documents}
+                            onFileUpload={handleFileUpload}
+                            onFileDelete={handleDeleteDoc}
+                            onFilePreview={handlePreviewDoc}
+                            onUpdateRemark={handleUpdateDocRemark}
                         />
                     )}
 
@@ -1614,7 +1820,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <MaterialOrderTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
                             handleChange={handleChange}
                             editingSection={editingSection}
                             setEditingSection={setEditingSection}
@@ -1634,7 +1840,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <MaterialIntegrationTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
                             isEditable={isEditable}
                             user={user}
                             meta={meta}
@@ -1654,7 +1860,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <HoldProcurementTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
                             isEditable={isEditable}
                             onUpdate={onUpdate}
                             logActivity={logActivity}
@@ -1670,7 +1876,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <MaterialDeliveryTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
                             isEditable={isEditable}
                             onUpdate={onUpdate}
                             logActivity={logActivity}
@@ -1688,8 +1894,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <InstallationStatusTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
                             isEditable={isEditable}
+                            isAdmin={isAdmin}
                             onUpdate={onUpdate}
                             logActivity={logActivity}
                             fetchLogs={fetchLogs}
@@ -1701,6 +1908,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             onFileUpload={handleFileUpload}
                             onFileDelete={handleDeleteDoc}
                             onFilePreview={handlePreviewDoc}
+                            onUpdateRemark={handleUpdateDocRemark}
                         />
                     )}
 
@@ -1709,7 +1917,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <GeoTagPhotoTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
                             isEditable={isEditable}
                             onUpdate={onUpdate}
                             logActivity={logActivity}
@@ -1721,6 +1929,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             onFileUpload={handleFileUpload}
                             onFileDelete={handleDeleteDoc}
                             onFilePreview={handlePreviewDoc}
+                            onUpdateRemark={handleUpdateDocRemark}
                         />
                     )}
 
@@ -1729,7 +1938,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <DiscomSubmissionTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
                             isEditable={isEditable}
                             onUpdate={onUpdate}
                             logActivity={logActivity}
@@ -1743,6 +1952,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             onFileUpload={handleFileUpload}
                             onFileDelete={handleDeleteDoc}
                             onFilePreview={handlePreviewDoc}
+                            onUpdateRemark={handleUpdateDocRemark}
                         />
                     )}
 
@@ -1751,15 +1961,19 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <MeterInstallationTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
+                            handleChange={handleChange}
                             isEditable={isEditable}
                             isOffice={isOffice}
                             onUpdate={onUpdate}
                             logActivity={logActivity}
                             fetchLogs={fetchLogs}
                             user={user}
-                            saving={saving}
-                            setSaving={setSaving}
+                            documents={documents}
+                            onFileUpload={handleFileUpload}
+                            onFileDelete={handleDeleteDoc}
+                            onFilePreview={handlePreviewDoc}
+                            onUpdateRemark={handleUpdateDocRemark}
                         />
                     )}
 
@@ -1768,15 +1982,19 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <DiscomInspectionTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
+                            handleChange={handleChange}
                             isEditable={isEditable}
                             isOffice={isOffice}
                             onUpdate={onUpdate}
                             logActivity={logActivity}
                             fetchLogs={fetchLogs}
                             user={user}
-                            saving={saving}
-                            setSaving={setSaving}
+                            documents={documents}
+                            onFileUpload={handleFileUpload}
+                            onFileDelete={handleDeleteDoc}
+                            onFilePreview={handlePreviewDoc}
+                            onUpdateRemark={handleUpdateDocRemark}
                         />
                     )}
 
@@ -1785,7 +2003,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <SubsidyStatusTab
                             customer={customer}
                             editData={editData}
-                            setEditData={setEditData}
+                            setEditData={handleEditDataChange}
                             isEditable={isEditable}
                             onUpdate={onUpdate}
                             logActivity={logActivity}
@@ -1798,6 +2016,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     {activeTab === 'FINAL REVIEW' && (
                         <FinalReviewTab
                             editData={editData}
+                            setEditData={handleEditDataChange}
                             handleChange={handleChange}
                             isEditable={isEditable}
                             isOperationalChecklistDirty={isOperationalChecklistDirty}
@@ -1806,67 +2025,144 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             onFileUpload={handleFileUpload}
                             onFileDelete={handleDeleteDoc}
                             onFilePreview={handlePreviewDoc}
+                            onUpdateRemark={handleUpdateDocRemark}
                         />
                     )}
 
 
 
                     {/* ── DOCUMENTS ── */}
-                    {activeTab === 'DOCUMENTS' && (
-                        <div className="space-y-4 animate-in fade-in duration-300">
-                            <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                                <div className="flex items-center justify-between border-b border-stone-100 pb-2 mb-1">
-                                    <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest flex items-center gap-2">
-                                        <FolderOpen size={14} className="text-stone-400" /> Documents
-                                    </h3>
-                                    {isEditable && (
-                                        <label className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 cursor-pointer">
-                                            {uploading ? 'Uploading...' : 'Upload File'}
-                                            <input
-                                                type="file"
-                                                onChange={handleFileUpload}
-                                                disabled={uploading}
-                                                className="hidden"
-                                            />
-                                        </label>
-                                    )}
-                                </div>
+                    {activeTab === 'DOCUMENTS' && (() => {
+                        const filteredDocs = documents.filter(doc => {
+                            if (!docSearchQuery.trim()) return true;
+                            const q = docSearchQuery.toLowerCase();
+                            const docLabel = getDocTypeLabel(doc.doc_type).toLowerCase();
+                            const fileName = (doc.file_name || '').toLowerCase();
+                            const remarkText = (doc.remark || '').toLowerCase();
+                            return fileName.includes(q) || docLabel.includes(q) || remarkText.includes(q);
+                        });
 
-                                {documents.length === 0 ? (
-                                    <p className="text-xs text-stone-400 italic">No documents uploaded yet</p>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {documents.map(doc => (
-                                            <div key={doc.id} className="flex items-center justify-between gap-2 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5">
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-xs font-semibold text-stone-700 truncate">{doc.file_name}</p>
-                                                    {doc.doc_type && (
-                                                        <p className="text-[9px] text-stone-400 uppercase tracking-wide font-bold mt-0.5">{doc.doc_type}</p>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                    <button
-                                                        onClick={() => handleDownloadDoc(doc)}
-                                                        className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-stone-900 hover:bg-stone-800 text-white transition-colors"
-                                                    >
-                                                        Download
-                                                    </button>
-                                                    {isEditable && (
-                                                        <button
-                                                            onClick={() => handleDeleteDoc(doc)}
-                                                            className="p-1.5 text-stone-400 hover:text-red-500 transition-colors"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    )}
-                                                </div>
+                        return (
+                            <div className="space-y-4 animate-in fade-in duration-300">
+                                <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-3">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-2 bg-amber-50 rounded-xl text-amber-600">
+                                                <FolderOpen size={18} />
                                             </div>
-                                        ))}
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="text-xs font-bold text-stone-800 uppercase tracking-wider">
+                                                        Client Documents & Attachments
+                                                    </h3>
+                                                    <span className="bg-stone-100 text-stone-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                                        {documents.length} {documents.length === 1 ? 'file' : 'files'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11px] text-stone-400 font-medium mt-0.5">
+                                                    All uploaded identity proofs, site photos, utility documents, stamps, certificates, and remarks.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {isEditable && (
+                                            <label className="bg-stone-900 hover:bg-stone-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer self-start sm:self-auto">
+                                                <Plus size={14} />
+                                                <span>{uploading ? 'Uploading...' : 'Upload File'}</span>
+                                                <input
+                                                    type="file"
+                                                    onChange={handleFileUpload}
+                                                    disabled={uploading}
+                                                    className="hidden"
+                                                />
+                                            </label>
+                                        )}
                                     </div>
-                                )}
-                            </section>
-                        </div>
-                    )}
+
+                                    {/* Search Filter */}
+                                    {documents.length > 0 && (
+                                        <div className="relative">
+                                            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search documents by name, category, or remark..."
+                                                value={docSearchQuery}
+                                                onChange={e => setDocSearchQuery(e.target.value)}
+                                                className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-medium text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {documents.length === 0 ? (
+                                        <div className="text-center py-12 bg-stone-50 rounded-2xl border border-dashed border-stone-200">
+                                            <FolderOpen size={36} className="mx-auto text-stone-300 mb-2" />
+                                            <p className="text-xs font-bold text-stone-600">No documents uploaded yet</p>
+                                            <p className="text-[11px] text-stone-400 mt-1">Upload client KYC, photos, or utility documents to see them listed here.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {filteredDocs.map(doc => {
+                                                const isPdf = doc.file_name?.toLowerCase().endsWith('.pdf') || doc.file_type === 'application/pdf';
+                                                const isImage = doc.file_type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(doc.file_name || '');
+                                                const docLabel = getDocTypeLabel(doc.doc_type);
+
+                                                return (
+                                                    <div key={doc.id} className="bg-stone-50/70 hover:bg-stone-50 border border-stone-200/80 rounded-2xl p-3.5 flex flex-col justify-between gap-2.5 transition-all hover:shadow-xs">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                                <div className={`p-2.5 rounded-xl flex-shrink-0 ${isPdf ? 'bg-red-50 text-red-600' : isImage ? 'bg-blue-50 text-blue-600' : 'bg-stone-200 text-stone-600'}`}>
+                                                                    {isPdf ? <FileText size={18} /> : isImage ? <ImageIcon size={18} /> : <FileText size={18} />}
+                                                                </div>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                                        <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-white text-stone-700 border border-stone-200">
+                                                                            {docLabel}
+                                                                        </span>
+                                                                        {doc.created_at && (
+                                                                            <span className="text-[10px] text-stone-400 font-medium">
+                                                                                · {formatDateToDDMMYYYY(doc.created_at.split('T')[0])}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <p className="text-xs font-bold text-stone-800 truncate mt-1" title={doc.file_name}>
+                                                                        {doc.file_name}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handlePreviewDoc(doc)}
+                                                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 shadow-xs flex items-center gap-1.5 cursor-pointer transition"
+                                                                >
+                                                                    <Eye size={13} className="text-stone-500" />
+                                                                    <span>View</span>
+                                                                </button>
+                                                                {isEditable && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDeleteDoc(doc)}
+                                                                        className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
+                                                                        title="Delete Document"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Document Remark Section */}
+                                                        <DocGalleryRemarkRow doc={doc} onUpdateRemark={handleUpdateDocRemark} isEditable={isEditable} />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </section>
+                            </div>
+                        );
+                    })()}
 
                     {/* ── NOTES & HISTORY ── */}
                     {activeTab === 'history' && (
@@ -1883,7 +2179,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         />
                     )}
 
-                    {/* Quick "Move to Hold Procurement" Option at end of page (From LEADS to FINAL REVIEW) */}
                     {isEditable && activeTab !== 'HOLD PROCUREMENT' && activeTab !== 'DOCUMENTS' && activeTab !== 'history' && customer.stage !== 'COMPLETED' && (
                         <div className="mt-8 pt-4 border-t border-stone-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50/70 p-3.5 rounded-2xl border border-stone-200/60">
                             <div className="flex items-center gap-2.5">
@@ -1892,19 +2187,15 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                 </div>
                                 <div>
                                     <p className="text-xs font-bold text-stone-700">Need to pause or hold this project?</p>
-                                    <p className="text-[10px] text-stone-400 font-medium">
-                                        Move this customer to Hold Procurement if any unexpected issues or delays occur at this stage.
-                                    </p>
+                                    <p className="text-[11px] text-stone-500 font-medium">Place the project on hold with an audit note.</p>
                                 </div>
                             </div>
                             <button
                                 type="button"
-                                onClick={() => handleAdvanceStage('HOLD PROCUREMENT')}
-                                disabled={saving}
-                                className="bg-white hover:bg-amber-50 text-amber-800 border border-amber-300/80 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-1.5 flex-shrink-0 cursor-pointer disabled:opacity-50"
+                                onClick={() => setActiveTab('HOLD PROCUREMENT')}
+                                className="px-3.5 py-2 bg-white hover:bg-stone-100 text-stone-700 rounded-xl text-xs font-bold border border-stone-200 transition-colors shadow-2xs self-start sm:self-auto cursor-pointer"
                             >
-                                <PauseCircle size={13} className="text-amber-600" />
-                                <span>Move to Hold Procurement</span>
+                                Move to Hold Procurement
                             </button>
                         </div>
                     )}
@@ -1917,14 +2208,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             onClick={handleSave}
                             disabled={saving}
                             className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs cursor-pointer shadow-sm disabled:opacity-50 ${
-                                isDirty
+                                isFormDirty
                                     ? 'bg-stone-900 text-white hover:bg-stone-800'
                                     : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                             }`}
                         >
                             {saving ? (
                                 'Saving...'
-                            ) : isDirty ? (
+                            ) : isFormDirty ? (
                                 <>
                                     <Save size={14} />
                                     <span>Save</span>
@@ -1950,10 +2241,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     (editData.stage === 'LEADS' && !isLeadFieldsFilled) ||
                                     (editData.stage === 'REGISTRATION' && !isRegistrationReady) ||
                                     (editData.stage === 'MATERIAL ORDER' && !isMaterialOrderFilled) ||
-                                    (editData.stage === 'GEO TAG PHOTO' && editData.geo_tag_status !== 'Proceed') ||
-                                    (editData.stage === 'METER INSTALLATION' && editData.meter_installation?.status !== 'Yes') ||
+                                    (editData.stage === 'GEO TAG PHOTO' && (editData.geo_tag_status !== 'Proceed' || !editData.geo_tag_image)) ||
+                                    (editData.stage === 'METER INSTALLATION' && (editData.meter_installation !== 'Yes' || !editData.meter_installation_photo)) ||
                                     (editData.stage === 'DISCOM INSPECTION' && editData.discom_inspection !== 'Yes') ||
-                                    (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Yes')
+                                    (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Proceed')
                                 )}
                                 className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >

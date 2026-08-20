@@ -19,7 +19,8 @@ export default function LoanTab({
     documents = [],
     onFileUpload,
     onFileDelete,
-    onFilePreview
+    onFilePreview,
+    onUpdateRemark
 }) {
     const today = new Date().toISOString().split('T')[0];
     const [loanDraftStatus, setLoanDraftStatus] = useState('Sanctioned');
@@ -193,6 +194,7 @@ export default function LoanTab({
                                 onUpload={onFileUpload}
                                 onDelete={onFileDelete}
                                 onPreview={onFilePreview}
+                                onUpdateRemark={onUpdateRemark}
                             />
                         </div>
                     </section>

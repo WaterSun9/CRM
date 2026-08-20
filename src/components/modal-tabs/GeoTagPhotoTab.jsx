@@ -16,7 +16,8 @@ export default function GeoTagPhotoTab({
     documents = [],
     onFileUpload,
     onFileDelete,
-    onFilePreview
+    onFilePreview,
+    onUpdateRemark
 }) {
     // Vendor can edit geo tag, office can only view
     const isVendor = user?.userType === 'vendor' || user?.role === 'Vendors';
@@ -39,53 +40,65 @@ export default function GeoTagPhotoTab({
                     <div>
                         <p className="text-xs font-bold text-amber-900">Vendor Controlled Stage</p>
                         <p className="text-[11px] text-amber-700 font-medium">
-                            Geo Tag Photo specifications and photographs are configured directly by the Allotted Vendor. Office users have view-only access.
+                            Geo Tag Photo verification and status are configured directly by the Vendor. Office users have view-only access.
                         </p>
                     </div>
                 </div>
             )}
 
-            {/* Geo Tag Status Card */}
+            {/* Geo Tag Status Tag Selector */}
             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                <div className="border-b border-stone-100 pb-2.5">
-                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Geo Tag Photo</h4>
-                    <p className="text-[11px] text-stone-500 font-medium mt-0.5">Has the geo-tagged photograph been uploaded?</p>
+                <div className="flex items-center gap-2.5 border-b border-stone-100 pb-3">
+                    <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
+                        <MapPin size={18} />
+                    </div>
+                    <div>
+                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Geo Tag Photo Status</h4>
+                        <p className="text-[11px] text-stone-500 font-medium mt-0.5">Verify site geo-tagging and site readiness.</p>
+                    </div>
                 </div>
-                <div className="grid grid-cols-4 gap-2 w-full pt-1">
-                    {[
-                        { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
-                        { id: 'No', label: 'No', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' },
-                        { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' },
-                        { id: 'Proceed', label: 'Proceed', activeClass: 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/10', dotClass: 'bg-white' }
-                    ].map(tag => {
-                        const isSelected = editData.geo_tag_status === tag.id;
-                        return (
-                            <button
-                                key={tag.id}
-                                disabled={!canEditGeoTag}
-                                onClick={() => {
-                                    const newTag = editData.geo_tag_status === tag.id ? null : tag.id;
-                                    setEditData(prev => ({ ...prev, geo_tag_status: newTag }));
-                                }}
-                                className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer ${
-                                    isSelected
-                                        ? tag.activeClass
-                                        : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
-                                }`}
-                            >
-                                <span className={`w-2 h-2 rounded-full ${isSelected ? tag.dotClass : 'bg-stone-300'}`} />
-                                {tag.label}
-                            </button>
-                        );
-                    })}
+
+                <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2 w-full">
+                        {[
+                            { id: 'No', label: 'No', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' },
+                            { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' },
+                            { id: 'Proceed', label: 'Proceed', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' }
+                        ].map(tag => {
+                            const isSelected = editData.geo_tag_status === tag.id;
+                            return (
+                                <button
+                                    key={tag.id}
+                                    type="button"
+                                    disabled={!canEditGeoTag}
+                                    onClick={() => {
+                                        setEditData(prev => ({ ...prev, geo_tag_status: tag.id }));
+                                    }}
+                                    className={`py-3 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer ${
+                                        isSelected
+                                            ? tag.activeClass
+                                            : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
+                                    }`}
+                                >
+                                    <span className={`w-2 h-2 rounded-full ${isSelected ? tag.dotClass : 'bg-stone-300'}`} />
+                                    {tag.label}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
 
-            {/* Geo Tag Image Upload Checklist */}
+            {/* Checklist Section */}
             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest flex items-center gap-2">
-                    <ClipboardList className="w-4 h-4 text-amber-500" /> Geo Tag Checklist
-                </h4>
+                <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
+                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest flex items-center gap-2">
+                        <ClipboardList className="w-4 h-4 text-amber-500" /> Geo Tag Photo Checklist
+                    </h4>
+                    <span className="text-[9px] font-bold text-amber-600 uppercase bg-amber-50 px-2 py-0.5 rounded">
+                        Image Upload Mandatory
+                    </span>
+                </div>
                 {!canEditGeoTag && (
                     <p className="text-[10px] text-stone-400 font-semibold italic">Only vendors can edit this section. You have view-only access.</p>
                 )}
@@ -100,50 +113,16 @@ export default function GeoTagPhotoTab({
                         onUpload={onFileUpload} 
                         onDelete={onFileDelete} 
                         onPreview={onFilePreview} 
+                        onUpdateRemark={onUpdateRemark}
                     />
                 </div>
 
-                {/* Always Visible Action Button at Bottom */}
-                {canEditGeoTag && (
-                    <div className="pt-3 border-t border-stone-100">
-                        {editData.geo_tag_status === 'Proceed' && editData.geo_tag_image ? (
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    setSaving(true);
-                                    await onUpdate(customer.id, { 
-                                        geo_tag_status: 'Proceed',
-                                        geo_tag_image: editData.geo_tag_image,
-                                        stage: 'DISCOM SUBMISSION'
-                                    });
-                                    await logActivity(user.id, 'update', `${customer.customer_name}: Geo Tag Photo Proceeded and moved to Discom Submission`, '', customer.id);
-                                    setSaving(false);
-                                    fetchLogs();
-                                }}
-                                disabled={saving}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/15 flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                            >
-                                <Camera size={15} /> {saving ? 'Advancing...' : 'Save & Move to Discom Submission'}
-                            </button>
-                        ) : (
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    setSaving(true);
-                                    await onUpdate(customer.id, { 
-                                        geo_tag_status: editData.geo_tag_status,
-                                        geo_tag_image: editData.geo_tag_image 
-                                    });
-                                    await logActivity(user.id, 'update', `${customer.customer_name}: Updated Geo Tag Photo Status to ${editData.geo_tag_status || 'None'}`, '', customer.id);
-                                    setSaving(false);
-                                    fetchLogs();
-                                }}
-                                disabled={saving}
-                                className="w-full bg-stone-900 hover:bg-stone-850 text-white py-3 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                            >
-                                {saving ? 'Saving...' : 'Save Details'}
-                            </button>
-                        )}
+                {/* Mandatory Image Note if Proceed is chosen without an image */}
+                {editData.geo_tag_status === 'Proceed' && !editData.geo_tag_image && (
+                    <div className="pt-2 border-t border-stone-100">
+                        <p className="text-[11px] font-bold text-rose-600 bg-rose-50 p-2.5 rounded-xl border border-rose-200 text-center">
+                            ⚠️ Geo Tag photograph must be uploaded before you can Save & Move to Discom Submission.
+                        </p>
                     </div>
                 )}
             </div>

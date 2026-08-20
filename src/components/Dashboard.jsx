@@ -212,6 +212,11 @@ export default function Dashboard({ user, onLogout }) {
         if (cleanUpdates.ac_cable !== undefined && cleanUpdates.ac_cable !== null && cleanUpdates.ac_cable !== '') {
             cleanUpdates.ac_cable = parseIndianNumber(cleanUpdates.ac_cable);
         }
+        if (cleanUpdates.vendor_quote !== undefined && cleanUpdates.vendor_quote !== null && cleanUpdates.vendor_quote !== '') {
+            cleanUpdates.vendor_quote = parseIndianNumber(cleanUpdates.vendor_quote);
+        } else if (cleanUpdates.vendor_quote === '') {
+            cleanUpdates.vendor_quote = null;
+        }
         const { error } = await supabase.from('admin').update(cleanUpdates).eq('id', id);
         if (!error) {
             setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...cleanUpdates } : c));
