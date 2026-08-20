@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ClipboardList, Save, Printer, ShoppingBag, User, Clock } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
@@ -85,6 +85,7 @@ export default function MaterialIntegrationTab({
         }
     };
     const [showPrintModal, setShowPrintModal] = useState(false);
+    const printableBomRef = useRef(null);
 
     // Integration By dropdown options
     const integrationByOptions = (meta['integration_by'] && meta['integration_by'].length > 0)
@@ -362,7 +363,29 @@ export default function MaterialIntegrationTab({
     }, [saveBomRef]);
 
     const handlePrint = () => {
-        window.print();
+        const documentBody = printableBomRef.current;
+        if (!documentBody) return;
+
+        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+            .map(element => element.outerHTML)
+            .join('');
+        const printFrame = document.createElement('iframe');
+        printFrame.setAttribute('aria-hidden', 'true');
+        printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(printFrame);
+
+        const removeFrame = () => setTimeout(() => printFrame.remove(), 250);
+        printFrame.onload = () => {
+            const printWindow = printFrame.contentWindow;
+            if (!printWindow) return removeFrame();
+            printWindow.onafterprint = removeFrame;
+            setTimeout(() => {
+                printWindow.focus();
+                printWindow.print();
+            }, 100);
+        };
+        printFrame.contentDocument.write(`<!doctype html><html><head><title>BOM — ${customer?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-bom { border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body>${documentBody.innerHTML}</body></html>`);
+        printFrame.contentDocument.close();
     };
 
     const isEditingMilestones = editingSection === 'procurement_milestones';
@@ -753,7 +776,7 @@ export default function MaterialIntegrationTab({
                         </div>
 
                         {/* Printable Document Body */}
-                        <div className="flex-1 overflow-y-auto p-8 bg-white text-stone-900 print-document" id="printable-bom">
+                        <div ref={printableBomRef} className="flex-1 overflow-y-auto p-8 bg-white text-stone-900 print-document" id="printable-bom">
                             {/* Company Header */}
                             <div className="border-b-2 border-stone-900 pb-4 mb-6 text-center">
                                 <h1 className="text-xl font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>

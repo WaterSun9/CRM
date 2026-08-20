@@ -9,6 +9,8 @@ export default function InstallationStatusTab({
     editData,
     setEditData,
     isEditable,
+    isSfdcEditable = isEditable,
+    isOffice = false,
     isAdmin = false,
     onUpdate,
     logActivity,
@@ -108,7 +110,7 @@ export default function InstallationStatusTab({
                         field="sfdc_photo" 
                         value={editData.sfdc_photo} 
                         onChange={handleChange} 
-                        isEditing={isEditable} 
+                        isEditing={isSfdcEditable} 
                         documents={documents} 
                         onUpload={onFileUpload} 
                         onDelete={onFileDelete} 
@@ -116,7 +118,7 @@ export default function InstallationStatusTab({
                         onUpdateRemark={onUpdateRemark}
                     />
                 </div>
-                {isEditable && editData.sfdc_photo !== customer.sfdc_photo && (
+                {isSfdcEditable && editData.sfdc_photo !== customer.sfdc_photo && (
                     <div className="flex justify-end pt-2">
                         <button
                             type="button"
@@ -138,6 +140,11 @@ export default function InstallationStatusTab({
 
             {/* Main Installation Status Tag Selector Card */}
             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-5">
+                {isOffice && (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-[11px] font-medium text-blue-800">
+                        Installation details are managed by the Channel Partner. Office users can edit only the SFDC Photo Checklist.
+                    </div>
+                )}
                 <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
                     <div>
                         <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Installation Status</h4>

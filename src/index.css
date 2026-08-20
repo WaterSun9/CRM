@@ -141,6 +141,26 @@ textarea:focus {
     animation: pulse-border 2s ease-in-out 3;
 }
 
+/* Keep mobile stage drawers touch-scrollable without a scrollbar covering labels. */
+.stage-sidebar-scroll {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.stage-sidebar-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+/* Stage tabs can be swiped horizontally on phones without covering their labels. */
+.customer-stage-tabs {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.customer-stage-tabs::-webkit-scrollbar {
+    display: none;
+}
+
 /* ─── PM Surya Ghar Agreement Print & Document Styles ─── */
 @media print {
   @page {

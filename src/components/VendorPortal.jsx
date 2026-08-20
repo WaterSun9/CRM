@@ -68,6 +68,7 @@ export default function VendorPortal({ user, onLogout }) {
     const [bomData, setBomData] = useState(null);
     const [bomItems, setBomItems] = useState([]);
     const [loadingBom, setLoadingBom] = useState(false);
+    const vendorBomPrintRef = useRef(null);
 
     // Give Up Project Modal state
     const [showGiveUpModal, setShowGiveUpModal] = useState(false);
@@ -107,6 +108,32 @@ export default function VendorPortal({ user, onLogout }) {
         } finally {
             setLoadingBom(false);
         }
+    };
+
+    const handlePrintVendorBom = () => {
+        const documentBody = vendorBomPrintRef.current;
+        if (!documentBody) return;
+
+        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+            .map(element => element.outerHTML)
+            .join('');
+        const printFrame = document.createElement('iframe');
+        printFrame.setAttribute('aria-hidden', 'true');
+        printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(printFrame);
+
+        const removeFrame = () => setTimeout(() => printFrame.remove(), 250);
+        printFrame.onload = () => {
+            const printWindow = printFrame.contentWindow;
+            if (!printWindow) return removeFrame();
+            printWindow.onafterprint = removeFrame;
+            setTimeout(() => {
+                printWindow.focus();
+                printWindow.print();
+            }, 100);
+        };
+        printFrame.contentDocument.write(`<!doctype html><html><head><title>BOM — ${targetBomCust?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-vendor-bom { border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body>${documentBody.innerHTML}</body></html>`);
+        printFrame.contentDocument.close();
     };
 
     // Fetch customer leads assigned to this vendor
@@ -805,46 +832,27 @@ export default function VendorPortal({ user, onLogout }) {
                             {/* ─── Active Tab: MATERIAL INTEGRATION & BOM ─── */}
                             {activeTab === 'MATERIAL' && (
                                 <div className="space-y-4">
-                                    <div className="bg-gradient-to-br from-amber-50/70 to-white p-4 rounded-2xl border border-amber-200/80 space-y-3 shadow-xs">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <Package className="w-4 h-4 text-amber-600" />
-                                                <div>
-                                                    <p className="text-[10px] font-bold text-amber-950 uppercase tracking-wide">Material Integration & BOM</p>
-                                                    <p className="text-[9px] text-stone-500 font-medium">View specifications and generate BOM printable copy.</p>
-                                                </div>
+                                    <div className="rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50/70 to-white p-4 shadow-xs">
+                                        <div className="flex items-start justify-between gap-3 border-b border-amber-200/70 pb-3">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-amber-900">BOM Details</p>
+                                                <p className="mt-0.5 text-[10px] font-medium text-stone-500">View the full material checklist, specifications, and signatures.</p>
                                             </div>
                                             <button
                                                 type="button"
                                                 onClick={() => handleOpenBomModal(selectedCust)}
-                                                className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition flex items-center gap-1.5 shadow-sm shadow-amber-500/20 cursor-pointer"
+                                                className="shrink-0 rounded-xl bg-amber-500 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-amber-600 cursor-pointer flex items-center gap-1.5"
                                             >
-                                                <Printer size={11} /> View & Print BOM
+                                                <Printer size={12} /> View & Print
                                             </button>
                                         </div>
-
-                                        <div className="divide-y divide-stone-200/60 text-xs pt-1">
-                                            <div className="flex justify-between py-1.5">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase">Roof / Shed</span>
-                                                <span className="font-semibold text-stone-850">{selectedCust.roof_shed || '–'}</span>
-                                            </div>
-                                            <div className="flex justify-between py-1.5">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase">Structure Height</span>
-                                                <span className="font-semibold text-stone-850">
-                                                    {selectedCust.structure_front_leg_height ? `${selectedCust.structure_front_leg_height} ft / ${selectedCust.structure_rear_leg_height || '–'} ft` : '–'}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between py-1.5">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase">DC Cable</span>
-                                                <span className="font-semibold text-stone-850">{selectedCust.dc_cable ? `${selectedCust.dc_cable} m` : '–'}</span>
-                                            </div>
-                                            <div className="flex justify-between py-1.5">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase">AC Cable</span>
-                                                <span className="font-semibold text-stone-850">{selectedCust.ac_cable ? `${selectedCust.ac_cable} m` : '–'}</span>
-                                            </div>
-                                            <div className="flex justify-between py-1.5">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase">Invoice Value</span>
-                                                <span className="font-semibold text-stone-850">{selectedCust.invoice_value ? `₹${toIndianCommas(selectedCust.invoice_value)}` : '–'}</span>
+                                        <div className="pt-3">
+                                            <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-stone-400">Customer Information</p>
+                                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                                <div><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">Party Name</p><p className="font-semibold text-stone-900">{selectedCust.customer_name || '–'}</p></div>
+                                                <div><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">Capacity</p><p className="font-semibold text-stone-900">{selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : '–'}</p></div>
+                                                <div><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">Channel Partner</p><p className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</p></div>
+                                                <div><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">Registration Date</p><p className="font-semibold text-stone-900">{selectedCust.registration_date || '–'}</p></div>
                                             </div>
                                         </div>
                                     </div>
@@ -1457,7 +1465,7 @@ export default function VendorPortal({ user, onLogout }) {
 
             {/* BOM View & Print Modal for Vendor (Read-Only) */}
             {showBomModal && targetBomCust && (
-                <div className="fixed inset-0 z-[999] bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+                <div className="print-only-modal fixed inset-0 z-[999] bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
                     <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
                         {/* Modal Top Bar */}
                         <div className="px-5 py-4 bg-stone-900 text-white flex items-center justify-between no-print">
@@ -1470,7 +1478,7 @@ export default function VendorPortal({ user, onLogout }) {
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => window.print()}
+                                    onClick={handlePrintVendorBom}
                                     className="bg-amber-500 hover:bg-amber-400 text-stone-950 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md"
                                 >
                                     <Printer size={13} /> Print Document
@@ -1486,7 +1494,7 @@ export default function VendorPortal({ user, onLogout }) {
                         </div>
 
                         {/* Modal Body */}
-                        <div className="flex-1 overflow-y-auto p-6 bg-white text-stone-900 print-document" id="printable-vendor-bom">
+                        <div ref={vendorBomPrintRef} className="flex-1 overflow-y-auto p-6 bg-white text-stone-900 print-document" id="printable-vendor-bom">
                             {loadingBom ? (
                                 <div className="py-16 flex flex-col items-center justify-center text-stone-400">
                                     <Loader2 className="w-7 h-7 animate-spin text-amber-500 mb-2" />
@@ -1517,14 +1525,14 @@ export default function VendorPortal({ user, onLogout }) {
                                                 <tr className="border-b border-stone-200">
                                                     <td className="p-1.5 bg-stone-50 font-bold text-stone-600">System Capacity:</td>
                                                     <td className="p-1.5 font-bold text-stone-900">{targetBomCust.system_capacity_kwp ? `${targetBomCust.system_capacity_kwp} kWp` : '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Channel Partner:</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Dealer / Channel Partner:</td>
                                                     <td className="p-1.5 font-bold text-stone-900">{targetBomCust.channel_partner || '–'}</td>
                                                 </tr>
                                                 <tr>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">File No / Folder No:</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">File / Folder No:</td>
                                                     <td className="p-1.5 font-bold text-stone-900">{targetBomCust.folder_no || '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Consumer No:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.consumer_no || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Registration Date:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.registration_date || '–'}</td>
                                                 </tr>
                                             </tbody>
                                         </table>

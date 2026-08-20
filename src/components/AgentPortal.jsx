@@ -6,7 +6,7 @@ import {
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
     ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
-    Package, PauseCircle, Truck, Wrench, Camera, Send
+    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer
 } from 'lucide-react';
 import { logActivity, toIndianCommas, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
@@ -46,8 +46,16 @@ export default function AgentPortal({ user, onLogout }) {
     const [editData, setEditData] = useState({});
     const [saving, setSaving] = useState(false);
     const [custDocs, setCustDocs] = useState([]);
+    const [integrationBom, setIntegrationBom] = useState(null);
+    const [integrationBomItems, setIntegrationBomItems] = useState([]);
+    const [showIntegrationPrint, setShowIntegrationPrint] = useState(false);
+    const integrationPrintRef = useRef(null);
     const [loadingDocs, setLoadingDocs] = useState(false);
     const [previewDoc, setPreviewDoc] = useState(null);
+    const [showStageSidebar, setShowStageSidebar] = useState(false);
+    // The customer record retains its real CRM stage. This controls the stage
+    // panel currently being viewed in the customer workdesk.
+    const [activeCustomerStage, setActiveCustomerStage] = useState(null);
     const [activeDealerTab, setActiveDealerTab] = useState('ORDER'); // 'ORDER', 'METER', 'INSPECTION', 'PROFILE'
     const [editingSection, setEditingSection] = useState(null);
     const [uploadingDoc, setUploadingDoc] = useState(false);
@@ -147,6 +155,7 @@ export default function AgentPortal({ user, onLogout }) {
                 .finally(() => setLoadingDocs(false));
 
             setEditData({ ...selectedCust });
+            setActiveCustomerStage(selectedCust.stage);
 
             if (selectedCust.stage === 'MATERIAL ORDER') {
                 setActiveDealerTab('ORDER');
@@ -160,8 +169,40 @@ export default function AgentPortal({ user, onLogout }) {
         } else {
             setCustDocs([]);
             setEditData({});
+            setActiveCustomerStage(null);
         }
     }, [selectedCust?.id]);
+
+    // Material Integration is view-only for Channel Partners. Load its BOM
+    // milestones so the same operational information is visible as in Vendor Portal.
+    useEffect(() => {
+        const stageBeingViewed = activeCustomerStage || selectedCust?.stage;
+        if (!selectedCust?.id || stageBeingViewed !== 'MATERIAL INTEGRATION') {
+            setIntegrationBom(null);
+            setIntegrationBomItems([]);
+            return;
+        }
+
+        const loadIntegrationBom = async () => {
+            const { data, error } = await supabase
+                .from('bom')
+                .select('id, bom_type, paper_prepared_by, paper_prepared_date, material_loaded_by, material_loaded_date')
+                .eq('admin_id', selectedCust.id)
+                .maybeSingle();
+            if (error) console.error('Failed to load material integration milestones:', error);
+            setIntegrationBom(data || null);
+
+            if (!data?.id) return;
+            const { data: items, error: itemsError } = await supabase
+                .from('bom_items')
+                .select('*')
+                .eq('bom_id', data.id)
+                .order('sr_no', { ascending: true });
+            if (itemsError) console.error('Failed to load BOM items:', itemsError);
+            setIntegrationBomItems(items || []);
+        };
+        loadIntegrationBom();
+    }, [selectedCust?.id, selectedCust?.stage, activeCustomerStage]);
 
     const handleUpdateCustomer = async (id, updates) => {
         setSaving(true);
@@ -328,12 +369,27 @@ export default function AgentPortal({ user, onLogout }) {
         }
     };
 
-    const [activeWorkdeskTab, setActiveWorkdeskTab] = useState('MATERIAL_ORDER'); // 'MATERIAL_ORDER', 'METER_INSTALLATION', 'DISCOM_INSPECTION'
+    const [activeWorkdeskTab, setActiveWorkdeskTab] = useState('MATERIAL_ORDER'); // Material views, Meter Installation, Discom Inspection
 
     const handleSelectCustomerForStage = (cust, stageTab) => {
         setSelectedCust(cust);
-        if (stageTab === 'MATERIAL_ORDER') {
+        setShowStageSidebar(false);
+        const stageMap = {
+            LEADS: 'LEADS',
+            REGISTRATION: 'REGISTRATION',
+            MATERIAL_ORDER: 'MATERIAL ORDER',
+            MATERIAL_INTEGRATION: 'MATERIAL INTEGRATION',
+            MATERIAL_DELIVERY: 'MATERIAL DELIVERY',
+            METER_INSTALLATION: 'METER INSTALLATION',
+            DISCOM_INSPECTION: 'DISCOM INSPECTION',
+        };
+        setActiveCustomerStage(stageMap[stageTab] || cust.stage);
+        if (stageTab === 'LEADS' || stageTab === 'REGISTRATION') {
+            setActiveDealerTab('LEAD_INFO');
+        } else if (stageTab === 'MATERIAL_ORDER') {
             setActiveDealerTab('ORDER');
+        } else if (stageTab === 'MATERIAL_INTEGRATION' || stageTab === 'MATERIAL_DELIVERY') {
+            setActiveDealerTab('LEAD_INFO');
         } else if (stageTab === 'METER_INSTALLATION') {
             setActiveDealerTab('METER');
         } else if (stageTab === 'DISCOM_INSPECTION') {
@@ -344,7 +400,11 @@ export default function AgentPortal({ user, onLogout }) {
     // Filter customers for workdesk
     const getWorkdeskCustomers = (stageTab) => {
         const stageMap = {
+            'LEADS': 'LEADS',
+            'REGISTRATION': 'REGISTRATION',
             'MATERIAL_ORDER': 'MATERIAL ORDER',
+            'MATERIAL_INTEGRATION': 'MATERIAL INTEGRATION',
+            'MATERIAL_DELIVERY': 'MATERIAL DELIVERY',
             'METER_INSTALLATION': 'METER INSTALLATION',
             'DISCOM_INSPECTION': 'DISCOM INSPECTION'
         };
@@ -352,9 +412,23 @@ export default function AgentPortal({ user, onLogout }) {
         return filteredCustomers.filter(c => c.stage === targetStage);
     };
 
+    const leadsCount = customers.filter(c => c.stage === 'LEADS').length;
+    const registrationCount = customers.filter(c => c.stage === 'REGISTRATION').length;
     const materialOrderCount = customers.filter(c => c.stage === 'MATERIAL ORDER').length;
+    const materialIntegrationCount = customers.filter(c => c.stage === 'MATERIAL INTEGRATION').length;
+    const materialDeliveryCount = customers.filter(c => c.stage === 'MATERIAL DELIVERY').length;
     const meterPendingCount = customers.filter(c => c.stage === 'METER INSTALLATION').length;
     const inspPendingCount = customers.filter(c => c.stage === 'DISCOM INSPECTION').length;
+    const displayedStage = activeCustomerStage || selectedCust?.stage;
+    const customerStageNavigation = [
+        { id: 'LEADS', label: 'Lead', icon: Users },
+        { id: 'REGISTRATION', label: 'Registration', icon: ClipboardList },
+        { id: 'MATERIAL ORDER', label: 'Material Order', icon: ShoppingBag },
+        { id: 'MATERIAL INTEGRATION', label: 'Integration', icon: Package },
+        { id: 'MATERIAL DELIVERY', label: 'Delivery', icon: Truck },
+        { id: 'METER INSTALLATION', label: 'Meter', icon: Zap },
+        { id: 'DISCOM INSPECTION', label: 'Inspection', icon: ClipboardCheck },
+    ];
 
     const renderStatusBadge = (val, defaultVal = 'Pending') => {
         const status = val || defaultVal;
@@ -374,6 +448,32 @@ export default function AgentPortal({ user, onLogout }) {
                 {status}
             </span>
         );
+    };
+
+    const handlePrintIntegrationPreview = () => {
+        const documentBody = integrationPrintRef.current;
+        if (!documentBody) return;
+
+        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+            .map(element => element.outerHTML)
+            .join('');
+        const printFrame = document.createElement('iframe');
+        printFrame.setAttribute('aria-hidden', 'true');
+        printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(printFrame);
+
+        const removeFrame = () => setTimeout(() => printFrame.remove(), 250);
+        printFrame.onload = () => {
+            const printWindow = printFrame.contentWindow;
+            if (!printWindow) return removeFrame();
+            printWindow.onafterprint = removeFrame;
+            setTimeout(() => {
+                printWindow.focus();
+                printWindow.print();
+            }, 100);
+        };
+        printFrame.contentDocument.write(`<!doctype html><html><head><title>BOM — ${selectedCust?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } .print-document-container { border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; } </style></head><body><main class="print-document-container">${documentBody.innerHTML}</main></body></html>`);
+        printFrame.contentDocument.close();
     };
 
     return (
@@ -452,7 +552,7 @@ export default function AgentPortal({ user, onLogout }) {
                             <ChevronRight className="w-5 h-5 text-stone-400 flex-shrink-0" />
                         </button>
 
-                        {/* Stage Operations opens the three stage desks on one focused screen. */}
+                        {/* Stage Operations opens the workdesks on one focused screen. */}
                         <button
                             type="button"
                             onClick={() => { setActiveWorkdeskTab('MATERIAL_ORDER'); setView('workdesk'); }}
@@ -469,11 +569,11 @@ export default function AgentPortal({ user, onLogout }) {
                                     </div>
                                 </div>
                                 <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/60">
-                                    {materialOrderCount + meterPendingCount + inspPendingCount} Actionable
+                                    {leadsCount + registrationCount + materialOrderCount + materialIntegrationCount + materialDeliveryCount + meterPendingCount + inspPendingCount} Records
                                 </span>
                             </div>
                             <div className="mt-3 flex items-center justify-between text-[11px] font-bold text-amber-700">
-                                <span>Open Material Order, Meter Installation & Inspection</span>
+                                <span>Open Leads, Registration, material views & operations</span>
                                 <ChevronRight size={16} />
                             </div>
                         </button>
@@ -491,17 +591,69 @@ export default function AgentPortal({ user, onLogout }) {
                         <ChevronLeft className="w-4 h-4" /> Back to Dashboard
                     </button>
 
-                    <div>
-                        <h2 className="text-sm font-black text-stone-900 uppercase tracking-widest">Stage Operations Workdesk</h2>
-                        <p className="text-[10px] text-stone-400 font-semibold mt-0.5">Filter and edit assigned leads across the 3 operational stages.</p>
-                    </div>
-
-                    {/* Top Stage Filter Cards (Gentle Pastel Style) */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <h2 className="text-sm font-black text-stone-900 uppercase tracking-widest">Stage Operations Workdesk</h2>
+                            <p className="text-[10px] text-stone-400 font-semibold mt-0.5">View material progress and update Meter Installation or Discom Inspection.</p>
+                        </div>
                         <button
                             type="button"
-                            onClick={() => setActiveWorkdeskTab('MATERIAL_ORDER')}
-                            className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                            onClick={() => setShowStageSidebar(true)}
+                            className="shrink-0 rounded-xl bg-stone-900 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-stone-700 cursor-pointer flex items-center gap-1.5"
+                        >
+                            <Layers size={13} /> Stages
+                        </button>
+                    </div>
+
+                    {/* Stage sidebar / selector */}
+                    {showStageSidebar && !selectedCust && <>
+                    <button type="button" aria-label="Close stage sidebar" onClick={() => setShowStageSidebar(false)} className="fixed inset-0 z-[60] bg-stone-950/35 backdrop-blur-[1px] cursor-default" />
+                    <section className="stage-sidebar-scroll fixed inset-y-0 left-0 z-[70] w-[272px] overflow-y-auto border-r border-stone-200 bg-white p-3 shadow-2xl animate-in slide-in-from-left duration-200">
+                        <div className="mb-3 flex items-center justify-between px-1">
+                            <span className="text-[9px] font-black uppercase tracking-[0.16em] text-stone-400">Stage desk</span>
+                            <button type="button" onClick={() => setShowStageSidebar(false)} className="rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700 cursor-pointer"><X size={16} /></button>
+                        </div>
+                    <div className="flex flex-col gap-2">
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('LEADS'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'LEADS'
+                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <Users size={16} />
+                            <span className="text-[10px] font-bold">Leads</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'LEADS' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                                {leadsCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('REGISTRATION'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'REGISTRATION'
+                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <ClipboardList size={16} />
+                            <span className="text-[10px] font-bold">Registration</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'REGISTRATION' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                                {registrationCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('MATERIAL_ORDER'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
                                 activeWorkdeskTab === 'MATERIAL_ORDER'
                                     ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
                                     : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
@@ -518,8 +670,44 @@ export default function AgentPortal({ user, onLogout }) {
 
                         <button
                             type="button"
-                            onClick={() => setActiveWorkdeskTab('METER_INSTALLATION')}
-                            className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                            onClick={() => { setActiveWorkdeskTab('MATERIAL_INTEGRATION'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'MATERIAL_INTEGRATION'
+                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <Package size={16} />
+                            <span className="text-[10px] font-bold">Integration</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'MATERIAL_INTEGRATION' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                                {materialIntegrationCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('MATERIAL_DELIVERY'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'MATERIAL_DELIVERY'
+                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <Truck size={16} />
+                            <span className="text-[10px] font-bold">Delivery</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'MATERIAL_DELIVERY' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                                {materialDeliveryCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('METER_INSTALLATION'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
                                 activeWorkdeskTab === 'METER_INSTALLATION'
                                     ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/20'
                                     : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
@@ -536,8 +724,8 @@ export default function AgentPortal({ user, onLogout }) {
 
                         <button
                             type="button"
-                            onClick={() => setActiveWorkdeskTab('DISCOM_INSPECTION')}
-                            className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                            onClick={() => { setActiveWorkdeskTab('DISCOM_INSPECTION'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
                                 activeWorkdeskTab === 'DISCOM_INSPECTION'
                                     ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/20'
                                     : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
@@ -552,6 +740,8 @@ export default function AgentPortal({ user, onLogout }) {
                             </span>
                         </button>
                     </div>
+                    </section>
+                    </>}
 
                     {/* Search in Workdesk */}
                     <div className="relative">
@@ -616,7 +806,7 @@ export default function AgentPortal({ user, onLogout }) {
                                             type="button"
                                             className="px-2.5 py-1 bg-amber-50 group-hover:bg-amber-500 group-hover:text-white text-amber-700 text-[10px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer"
                                         >
-                                            Edit <ChevronRight size={12} />
+                                            {['LEADS', 'REGISTRATION', 'MATERIAL_INTEGRATION', 'MATERIAL_DELIVERY'].includes(activeWorkdeskTab) ? 'View' : 'Edit'} <ChevronRight size={12} />
                                         </button>
                                     </div>
 
@@ -630,6 +820,15 @@ export default function AgentPortal({ user, onLogout }) {
                                             <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded">
                                                 {cust.roof_shed ? `Configured: ${cust.roof_shed}` : 'Pending specs'}
                                             </span>
+                                        )}
+                                        {(activeWorkdeskTab === 'LEADS' || activeWorkdeskTab === 'REGISTRATION') && (
+                                            <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded">View only</span>
+                                        )}
+                                        {activeWorkdeskTab === 'MATERIAL_INTEGRATION' && (
+                                            <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded">View only</span>
+                                        )}
+                                        {activeWorkdeskTab === 'MATERIAL_DELIVERY' && (
+                                            <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded">View only</span>
                                         )}
                                         {activeWorkdeskTab === 'METER_INSTALLATION' && (
                                             <span className={`font-bold px-2 py-0.5 rounded ${
@@ -828,7 +1027,7 @@ export default function AgentPortal({ user, onLogout }) {
                 <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div className="w-full sm:max-w-lg bg-white rounded-t-[28px] sm:rounded-[28px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in slide-in-from-bottom-5 duration-300">
                         {/* Detail Header - Name, Phone Number & Consumer No on Top */}
-                        <div className="px-5 py-4 border-b border-stone-150 bg-stone-50/90 flex justify-between items-start">
+                        <div className="shrink-0 px-5 py-5 border-b border-stone-150 bg-stone-50/90 flex justify-between items-start">
                             <div className="space-y-1">
                                 <div className="flex items-center gap-2">
                                     <span className="text-[8px] font-black uppercase text-amber-600 tracking-widest bg-amber-50 border border-amber-200/60 px-1.5 py-0.5 rounded">
@@ -863,23 +1062,50 @@ export default function AgentPortal({ user, onLogout }) {
                                     )}
                                 </div>
                             </div>
-                            <button
-                                onClick={() => setSelectedCust(null)}
-                                className="w-8 h-8 rounded-full bg-stone-200/70 hover:bg-stone-300 flex items-center justify-center text-stone-600 hover:text-stone-900 transition-colors font-bold text-xs cursor-pointer flex-shrink-0 ml-3"
-                            >
-                                <X size={16} />
-                            </button>
+                            <div className="flex items-center gap-2 ml-3">
+                                <button
+                                    onClick={() => setSelectedCust(null)}
+                                    className="w-8 h-8 rounded-full bg-stone-200/70 hover:bg-stone-300 flex items-center justify-center text-stone-600 hover:text-stone-900 transition-colors font-bold text-xs cursor-pointer"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Swipeable stage tabs for this customer */}
+                        <div className="customer-stage-tabs shrink-0 border-b border-stone-150 bg-white px-4 py-3.5 overflow-x-auto">
+                            <div className="flex min-w-max gap-2">
+                                {customerStageNavigation.map(stage => {
+                                    const StageIcon = stage.icon;
+                                    const isActive = displayedStage === stage.id;
+                                    return (
+                                        <button
+                                            key={stage.id}
+                                            type="button"
+                                            onClick={() => setActiveCustomerStage(stage.id)}
+                                            className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wide transition cursor-pointer ${
+                                                isActive
+                                                    ? 'border-amber-500 bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                                                    : 'border-stone-200 bg-stone-50 text-stone-500 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800'
+                                            }`}
+                                        >
+                                            <StageIcon size={13} />
+                                            {stage.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
 
                         {/* Detail Body */}
-                        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                        <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-6 pb-10 space-y-4">
                             {/* Every assigned stage has one shared hand-off remark. This is
                                 separate from individual document remarks, which remain on
                                 each uploaded document. */}
-                            {selectedCust.stage !== 'REGISTRATION' && <section className="bg-amber-50/60 border border-amber-200/70 rounded-2xl p-3.5 space-y-2">
+                            {displayedStage !== 'REGISTRATION' && displayedStage !== 'LEADS' && <section className="bg-amber-50/60 border border-amber-200/70 rounded-2xl p-3.5 space-y-2">
                                 <div className="flex items-center justify-between gap-2">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-amber-800">
-                                        {PRIMARY_STAGES.find(stage => stage.id === selectedCust.stage)?.label || selectedCust.stage} Remark
+                                        {PRIMARY_STAGES.find(stage => stage.id === displayedStage)?.label || displayedStage} Remark
                                     </label>
                                     <button
                                         type="button"
@@ -892,12 +1118,12 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                                 <input
                                     type="text"
-                                    value={getStageRemarks(editData.stages_remarks)[selectedCust.stage] || ''}
+                                    value={getStageRemarks(editData.stages_remarks)[displayedStage] || ''}
                                     onChange={event => setEditData(previous => ({
                                         ...previous,
                                         stages_remarks: {
                                             ...getStageRemarks(previous.stages_remarks),
-                                            [selectedCust.stage]: event.target.value,
+                                            [displayedStage]: event.target.value,
                                         },
                                     }))}
                                     placeholder="Add a hand-off or status remark for this stage"
@@ -905,7 +1131,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 />
                             </section>}
                             {/* ─── STAGE SECTION (Render active stage component in phone format) ─── */}
-                            {selectedCust.stage === 'LEADS' && (
+                            {displayedStage === 'LEADS' && (
                                 <div className="space-y-4">
                                     {/* Lead Information Card (Line by Line Non-Editable) */}
                                     <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
@@ -970,7 +1196,8 @@ export default function AgentPortal({ user, onLogout }) {
                                         </div>
                                     </div>
 
-                                    {/* Attached Documents Checklist (Upload / View / Change) */}
+                                    {/* Track Leads is intentionally limited to the saved lead form data. */}
+                                    {view !== 'my_customers' && (
                                     <div className="bg-white p-4 rounded-2xl border border-stone-150 shadow-2xs space-y-3">
                                         <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                             <Paperclip size={11} className="text-amber-500" /> Attached Documents & Uploads
@@ -1074,10 +1301,11 @@ export default function AgentPortal({ user, onLogout }) {
                                             />
                                         </div>
                                     </div>
+                                    )}
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'REGISTRATION' && (
+                            {displayedStage === 'REGISTRATION' && (
                                 <div className="space-y-4">
                                     {/* Registration Details Card (Line by Line Non-Editable) */}
                                     <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
@@ -1147,7 +1375,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'LOAN' && (
+                            {displayedStage === 'LOAN' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Banknote size={11} /> Loan Information
@@ -1183,7 +1411,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'CASH' && (
+                            {displayedStage === 'CASH' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Banknote size={11} /> Cash Tracking
@@ -1221,7 +1449,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'MATERIAL ORDER' && (
+                            {displayedStage === 'MATERIAL ORDER' && (
                                 <div className="space-y-4">
                                     {/* Non-Editable Leads Details Card */}
                                     <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
@@ -1382,11 +1610,20 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'MATERIAL INTEGRATION' && (
-                                <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
-                                    <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
-                                        <Package size={11} /> Material Integration Details
-                                    </h5>
+                            {displayedStage === 'MATERIAL INTEGRATION' && (
+                                <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-4">
+                                    <div className="flex items-center justify-between gap-3 border-b border-stone-150 pb-2 mb-1">
+                                        <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
+                                            <Package size={11} /> Material Integration Details
+                                        </h5>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowIntegrationPrint(true)}
+                                            className="no-print shrink-0 bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition"
+                                        >
+                                            <Printer size={11} /> View & Print BOM
+                                        </button>
+                                    </div>
                                     <div className="divide-y divide-stone-200/50 text-xs">
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Roof / Shed</span>
@@ -1409,10 +1646,34 @@ export default function AgentPortal({ user, onLogout }) {
                                             <span className="font-semibold text-stone-900">{selectedCust.invoice_value ? `₹${toIndianCommas(selectedCust.invoice_value)}` : '–'}</span>
                                         </div>
                                     </div>
+
+                                    <section className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-3">
+                                        <h6 className="mb-2 border-b border-amber-200/70 pb-2 text-[9px] font-black uppercase tracking-widest text-amber-800">
+                                            Procurement & Loading Milestones
+                                        </h6>
+                                        <div className="divide-y divide-amber-100 text-xs">
+                                            <div className="flex items-center justify-between gap-3 py-2">
+                                                <span className="text-[10px] font-bold uppercase tracking-wide text-stone-400">Paper Prepared By</span>
+                                                <span className="text-right font-semibold text-stone-900">{integrationBom?.paper_prepared_by || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-3 py-2">
+                                                <span className="text-[10px] font-bold uppercase tracking-wide text-stone-400">Paper Prepared Date</span>
+                                                <span className="text-right font-semibold text-stone-900">{integrationBom?.paper_prepared_date || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-3 py-2">
+                                                <span className="text-[10px] font-bold uppercase tracking-wide text-stone-400">Material Loaded By</span>
+                                                <span className="text-right font-semibold text-stone-900">{integrationBom?.material_loaded_by || '–'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-3 py-2">
+                                                <span className="text-[10px] font-bold uppercase tracking-wide text-stone-400">Material Loaded Date</span>
+                                                <span className="text-right font-semibold text-stone-900">{integrationBom?.material_loaded_date || '–'}</span>
+                                            </div>
+                                        </div>
+                                    </section>
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'HOLD PROCUREMENT' && (
+                            {displayedStage === 'HOLD PROCUREMENT' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <PauseCircle size={11} /> Hold Procurement Details
@@ -1426,7 +1687,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'MATERIAL DELIVERY' && (
+                            {displayedStage === 'MATERIAL DELIVERY' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Truck size={11} /> Material Delivery Details
@@ -1462,7 +1723,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {(selectedCust.stage === 'INSTALLATION STATUS' || selectedCust.stage === 'MATERIAL INSTALLATION') && (
+                            {(displayedStage === 'INSTALLATION STATUS' || displayedStage === 'MATERIAL INSTALLATION') && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Wrench size={11} /> Installation Details
@@ -1488,7 +1749,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'GEO TAG PHOTO' && (
+                            {displayedStage === 'GEO TAG PHOTO' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Camera size={11} /> Geo Tag Photo Details
@@ -1506,7 +1767,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'DISCOM SUBMISSION' && (
+                            {displayedStage === 'DISCOM SUBMISSION' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Send size={11} /> Discom Submission Details
@@ -1540,7 +1801,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'METER INSTALLATION' && (
+                            {displayedStage === 'METER INSTALLATION' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-3">
                                     <div className="border-b border-stone-150 pb-2 mb-1">
                                         <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
@@ -1551,14 +1812,14 @@ export default function AgentPortal({ user, onLogout }) {
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Meter Installation</span>
                                             <div className="flex items-center gap-1.5">
-                                                {['Yes', 'No', 'Pending'].map(val => (
+                                                {['Yes', 'No'].map(val => (
                                                     <button
                                                         key={val}
                                                         type="button"
                                                         onClick={() => setEditData(prev => ({ ...prev, meter_installation: val }))}
                                                         className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border cursor-pointer transition-all ${
                                                             (editData.meter_installation || selectedCust.meter_installation) === val
-                                                                ? (val === 'Yes' ? 'bg-emerald-600 text-white border-emerald-600' : val === 'No' ? 'bg-rose-600 text-white border-rose-600' : 'bg-amber-500 text-white border-amber-500')
+                                                                ? (val === 'Yes' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600')
                                                                 : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
                                                         }`}
                                                     >
@@ -1629,7 +1890,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'DISCOM INSPECTION' && (
+                            {displayedStage === 'DISCOM INSPECTION' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-3">
                                     <div className="border-b border-stone-150 pb-2 mb-1">
                                         <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
@@ -1640,14 +1901,14 @@ export default function AgentPortal({ user, onLogout }) {
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Discom Inspection</span>
                                             <div className="flex items-center gap-1.5">
-                                                {['Yes', 'No', 'Pending'].map(val => (
+                                                {['Yes', 'No'].map(val => (
                                                     <button
                                                         key={val}
                                                         type="button"
                                                         onClick={() => setEditData(prev => ({ ...prev, discom_inspection: val }))}
                                                         className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border cursor-pointer transition-all ${
                                                             (editData.discom_inspection || selectedCust.discom_inspection) === val
-                                                                ? (val === 'Yes' ? 'bg-emerald-600 text-white border-emerald-600' : val === 'No' ? 'bg-rose-600 text-white border-rose-600' : 'bg-amber-500 text-white border-amber-500')
+                                                                ? (val === 'Yes' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600')
                                                                 : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
                                                         }`}
                                                     >
@@ -1680,7 +1941,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'SUBSIDY STATUS' && (
+                            {displayedStage === 'SUBSIDY STATUS' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Tag size={11} /> Subsidy Status Details
@@ -1712,7 +1973,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {(selectedCust.stage === 'FINAL REVIEW' || selectedCust.stage === 'COMMISSIONING') && (
+                            {(displayedStage === 'FINAL REVIEW' || displayedStage === 'COMMISSIONING') && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <ClipboardCheck size={11} /> Operational Checklist Milestones
@@ -1730,7 +1991,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {selectedCust.stage === 'COMPLETED' && (
+                            {displayedStage === 'COMPLETED' && (
                                 <div className="space-y-4">
                                     <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
                                         <h4 className="text-sm font-black text-emerald-800 uppercase tracking-wide">Project Completed & Commissioned</h4>
@@ -1929,6 +2190,32 @@ export default function AgentPortal({ user, onLogout }) {
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Vendor-style BOM print preview for Material Integration. */}
+            {showIntegrationPrint && selectedCust && (
+                <div className="fixed inset-0 z-[999] bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+                    <div className="print-only-modal bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+                        <div className="no-print px-5 py-4 bg-stone-900 text-white flex items-center justify-between">
+                            <div className="flex items-center gap-2"><Printer size={16} className="text-amber-400" /><h3 className="text-xs sm:text-sm font-black uppercase tracking-wider">BOM Print Preview — {selectedCust.customer_name}</h3></div>
+                            <div className="flex items-center gap-2">
+                                <button type="button" onClick={handlePrintIntegrationPreview} className="bg-amber-500 hover:bg-amber-400 text-stone-950 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Printer size={13} /> Print Document</button>
+                                <button type="button" onClick={() => setShowIntegrationPrint(false)} className="text-stone-400 hover:text-white p-1 rounded-lg"><X size={18} /></button>
+                            </div>
+                        </div>
+                        <div ref={integrationPrintRef} className="print-document-container flex-1 overflow-y-auto p-6 bg-white text-stone-900">
+                            <div className="border-b-2 border-stone-900 pb-3 mb-5 text-center">
+                                <h1 className="text-lg font-black uppercase tracking-wider">Watersun Electrical Solutions Pvt Ltd</h1>
+                                <p className="text-[11px] font-semibold text-stone-600">Solar PV Project Integration & Material Loading Checklist</p>
+                                <p className="inline-block mt-2 px-2.5 py-0.5 bg-stone-100 border border-stone-300 rounded text-[10px] font-black uppercase tracking-widest">Bill of Materials — {integrationBom?.bom_type || 'General'} Type</p>
+                            </div>
+                            <section className="mb-4"><h4 className="text-[11px] font-black uppercase border-b border-stone-400 pb-1 mb-2">1. Customer & Site Reference</h4><table className="w-full text-[11px] border border-stone-300"><tbody><tr><td className="w-1/4 p-1.5 bg-stone-50 font-bold">Party Name:</td><td className="w-1/4 p-1.5 font-bold">{selectedCust.customer_name || '–'}</td><td className="w-1/4 p-1.5 bg-stone-50 font-bold">Contact Number:</td><td className="w-1/4 p-1.5 font-bold">{selectedCust.phone_number || '–'}</td></tr><tr><td className="p-1.5 bg-stone-50 font-bold">System Capacity:</td><td className="p-1.5 font-bold">{selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : '–'}</td><td className="p-1.5 bg-stone-50 font-bold">Dealer / Channel Partner:</td><td className="p-1.5 font-bold">{selectedCust.channel_partner || '–'}</td></tr><tr><td className="p-1.5 bg-stone-50 font-bold">File / Folder No:</td><td className="p-1.5 font-bold">{selectedCust.folder_no || '–'}</td><td className="p-1.5 bg-stone-50 font-bold">Registration Date:</td><td className="p-1.5 font-bold">{selectedCust.registration_date || '–'}</td></tr></tbody></table></section>
+                            <section className="mb-4"><h4 className="text-[11px] font-black uppercase border-b border-stone-400 pb-1 mb-2">2. Material Order Specifications</h4><table className="w-full text-[11px] border border-stone-300"><tbody><tr><td className="w-1/4 p-1.5 bg-stone-50 font-bold">Roof / Shed:</td><td className="w-1/4 p-1.5 font-bold">{selectedCust.roof_shed || '–'}</td><td className="w-1/4 p-1.5 bg-stone-50 font-bold">Structure Leg Height:</td><td className="w-1/4 p-1.5 font-bold">{selectedCust.structure_front_leg_height ? `${selectedCust.structure_front_leg_height} ft / ${selectedCust.structure_rear_leg_height || '–'} ft` : '–'}</td></tr><tr><td className="p-1.5 bg-stone-50 font-bold">DC Cable Length:</td><td className="p-1.5 font-bold">{selectedCust.dc_cable ? `${selectedCust.dc_cable} Meters` : '–'}</td><td className="p-1.5 bg-stone-50 font-bold">AC Cable Length:</td><td className="p-1.5 font-bold">{selectedCust.ac_cable ? `${selectedCust.ac_cable} Meters` : '–'}</td></tr><tr><td className="p-1.5 bg-stone-50 font-bold">Estimated Invoice Value:</td><td colSpan={3} className="p-1.5 font-bold">{selectedCust.invoice_value ? `₹ ${toIndianCommas(selectedCust.invoice_value)}` : '–'}</td></tr></tbody></table></section>
+                            <section className="mb-4"><h4 className="text-[11px] font-black uppercase border-b border-stone-400 pb-1 mb-2">3. Procurement & Loading Milestones</h4><table className="w-full text-[11px] border border-stone-300"><tbody><tr><td className="p-1.5 bg-stone-50 font-bold">Paper Prepared By</td><td className="p-1.5">{integrationBom?.paper_prepared_by || '–'}</td><td className="p-1.5 bg-stone-50 font-bold">Paper Prepared Date</td><td className="p-1.5">{integrationBom?.paper_prepared_date || '–'}</td></tr><tr><td className="p-1.5 bg-stone-50 font-bold">Material Loaded By</td><td className="p-1.5">{integrationBom?.material_loaded_by || '–'}</td><td className="p-1.5 bg-stone-50 font-bold">Material Loaded Date</td><td className="p-1.5">{integrationBom?.material_loaded_date || '–'}</td></tr></tbody></table></section>
+                            <section><h4 className="text-[11px] font-black uppercase border-b border-stone-400 pb-1 mb-2">4. BOM Equipment Checklist</h4>{integrationBomItems.length ? <table className="w-full text-[11px] border-collapse border border-stone-400"><thead><tr className="bg-stone-100 text-[9px] uppercase"><th className="border border-stone-400 p-1.5">#</th><th className="border border-stone-400 p-1.5 text-left">Product</th><th className="border border-stone-400 p-1.5 text-left">Make</th><th className="border border-stone-400 p-1.5">UOM</th><th className="border border-stone-400 p-1.5 text-left">Integration By</th><th className="border border-stone-400 p-1.5 text-left">Note</th></tr></thead><tbody>{integrationBomItems.map((item, index) => <tr key={item.id || index}><td className="border border-stone-400 p-1.5 text-center">{index + 1}</td><td className="border border-stone-400 p-1.5 font-bold">{item.product_name || '–'}</td><td className="border border-stone-400 p-1.5">{item.make || '–'}</td><td className="border border-stone-400 p-1.5 text-center">{item.uom || '–'}</td><td className="border border-stone-400 p-1.5">{item.integration_by || '–'}</td><td className="border border-stone-400 p-1.5">{item.note || '–'}</td></tr>)}</tbody></table> : <p className="py-4 text-center text-xs text-stone-400 border border-stone-200">No BOM checklist items configured yet.</p>}</section>
                         </div>
                     </div>
                 </div>

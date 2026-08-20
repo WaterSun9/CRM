@@ -594,6 +594,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const isOfficeFrozenTab = isOffice && (activeTab === 'METER INSTALLATION' || activeTab === 'DISCOM INSPECTION');
     const isEditable = !isFrozen && canUserEdit && !isOfficeFrozenTab;
+    const isInstallationDetailsEditable = isEditable && !isOffice;
     const saveBomRef = useRef(null);
     const prevCustomerRef = useRef(customer);
     const [saved, setSaved] = useState(false);
@@ -1992,7 +1993,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             customer={customer}
                             editData={editData}
                             setEditData={handleEditDataChange}
-                            isEditable={isEditable}
+                            isEditable={isInstallationDetailsEditable}
+                            isSfdcEditable={isEditable}
+                            isOffice={isOffice}
                             isAdmin={isAdmin}
                             onUpdate={onUpdate}
                             logActivity={logActivity}

@@ -16,16 +16,14 @@
 //   src/components/LoginScreen.jsx
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { supabase } from './supabase';
 import { Sun } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
-// These screens are independent applications. Loading them only after the
-// user's role is known keeps the initial login bundle small and responsive.
-const Dashboard = lazy(() => import('./components/Dashboard'));
-const SetPasswordPage = lazy(() => import('./components/SetPassword'));
-const AgentPortal = lazy(() => import('./components/AgentPortal'));
-const VendorPortal = lazy(() => import('./components/VendorPortal'));
+import Dashboard from './components/Dashboard';
+import SetPasswordPage from './components/SetPassword';
+import AgentPortal from './components/AgentPortal';
+import VendorPortal from './components/VendorPortal';
 
 function ScreenLoader() {
     return (
