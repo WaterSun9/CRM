@@ -16,14 +16,24 @@
 //   src/components/LoginScreen.jsx
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { supabase } from './supabase';
 import { Sun } from 'lucide-react';
-import LoginScreen from './components/LoginScreen';
-import Dashboard from './components/Dashboard';
-import SetPasswordPage from './components/SetPassword';
-import AgentPortal from './components/AgentPortal';
-import VendorPortal from './components/VendorPortal';
+// These screens are independent applications. Loading them only after the
+// user's role is known keeps the initial login bundle small and responsive.
+const LoginScreen = lazy(() => import('./components/LoginScreen'));
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const SetPasswordPage = lazy(() => import('./components/SetPassword'));
+const AgentPortal = lazy(() => import('./components/AgentPortal'));
+const VendorPortal = lazy(() => import('./components/VendorPortal'));
+
+function ScreenLoader() {
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-stone-900">
+            <Sun className="animate-spin text-amber-500" size={40} />
+        </div>
+    );
+}
 
 export default function App() {
     const [user, setUser] = useState(null);
@@ -80,17 +90,13 @@ export default function App() {
         return () => subscription.unsubscribe();
     }, []);
 
-    if (loading) return (
-        <div className="min-h-screen flex items-center justify-center bg-stone-900">
-            <Sun className="animate-spin text-amber-500" size={40} />
-        </div>
-    );
+    if (loading) return <ScreenLoader />;
 
     if (isPasswordRecovery) {
-        return <SetPasswordPage />;
+        return <Suspense fallback={<ScreenLoader />}><SetPasswordPage /></Suspense>;
     }
 
-    if (!user) return <LoginScreen onLogin={setUser} />;
+    if (!user) return <Suspense fallback={<ScreenLoader />}><LoginScreen onLogin={setUser} /></Suspense>;
 
     const isAgent = user.userType === 'agent' || user.role === 'Channel Partners';
     const isVendor = user.userType === 'vendor' || user.role === 'Vendors';
@@ -110,27 +116,27 @@ export default function App() {
     };
 
     if (isAgent) {
-        return (
+        return (<Suspense fallback={<ScreenLoader />}>
             <AgentPortal
                 user={user}
                 onLogout={handleLogout}
             />
-        );
+        </Suspense>);
     }
 
     if (isVendor) {
-        return (
+        return (<Suspense fallback={<ScreenLoader />}>
             <VendorPortal
                 user={user}
                 onLogout={handleLogout}
             />
-        );
+        </Suspense>);
     }
 
-    return (
+    return (<Suspense fallback={<ScreenLoader />}>
         <Dashboard
             user={user}
             onLogout={handleLogout}
         />
-    );
+    </Suspense>);
 }

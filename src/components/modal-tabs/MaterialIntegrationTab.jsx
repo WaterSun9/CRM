@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ClipboardList, Save, Printer, ShoppingBag, User, Clock, Sparkles } from 'lucide-react';
+import { ClipboardList, Save, Printer, ShoppingBag, User, Clock } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, COMMON_BOM_ITEMS } from '../../constants';
@@ -489,15 +489,6 @@ export default function MaterialIntegrationTab({
                             setEditingSection={setEditingSection} 
                         />
                     </div>
-                    {isEditable && editingSection === 'procurement_milestones' && (
-                        <button
-                            type="button"
-                            onClick={handleFillMilestones}
-                            className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer mr-6 mt-2"
-                        >
-                            <Sparkles size={11} className="text-amber-500" /> Fill Test Values
-                        </button>
-                    )}
                 </div>
 
                 {isEditingMilestones ? (

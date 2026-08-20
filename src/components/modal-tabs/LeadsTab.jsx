@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, ClipboardList, Sparkles, Edit3, X } from 'lucide-react';
+import { User, ClipboardList, Edit3, X } from 'lucide-react';
 import { SectionHeader, EditableDetailItem, CheckboxRemarkItem } from './shared';
 
 export default function LeadsTab({
@@ -21,27 +21,6 @@ export default function LeadsTab({
     onDeleteDocument,
     onUpdateRemark,
 }) {
-    const handleFillTestData = () => {
-        const randId = Math.floor(1000 + Math.random() * 9000);
-        const demoBrand = meta['module_brand']?.[0] || 'Adani';
-        const demoCp = channel_partners?.[0] || 'Watersun Direct';
-        const demoWp = '540';
-        const demoModules = '10';
-
-        handleChange('customer_name', editData.customer_name || `Test Lead ${randId}`);
-        handleChange('phone_number', editData.phone_number || `98765${randId}`);
-        handleChange('email', editData.email || editData.email_address || `testlead${randId}@gmail.com`);
-        handleChange('consumer_no', editData.consumer_no || `100200${randId}`);
-        handleChange('villages', editData.villages || `Test Village ${randId}`);
-        handleChange('sub_divisions', editData.sub_divisions || `Test Division`);
-        if (!editData.channel_partner) handleChange('channel_partner', demoCp);
-        if (!editData.sub_channel_partner) handleChange('sub_channel_partner', 'Direct Sub Partner');
-        if (!editData.module_brand) handleChange('module_brand', demoBrand);
-        handleChange('module_wp', editData.module_wp || demoWp);
-        handleChange('no_of_modules', editData.no_of_modules || demoModules);
-        if (!editData.payment_type) handleChange('payment_type', 'CASH');
-    };
-
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
             {/* Customer Info */}
@@ -51,16 +30,6 @@ export default function LeadsTab({
                         <User size={12} className="text-amber-500" /> Customer Info
                     </h3>
                     <div className="flex items-center gap-2.5">
-                        {isEditable && editingSection === 'cus' && (
-                            <button
-                                type="button"
-                                onClick={handleFillTestData}
-                                title="Auto-fill sample test data for empty fields"
-                                className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
-                            >
-                                <Sparkles size={11} className="text-amber-500" /> Fill Test Values
-                            </button>
-                        )}
                         {isEditable && (
                             <button 
                                 type="button"

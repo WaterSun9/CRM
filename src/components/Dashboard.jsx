@@ -8,24 +8,28 @@
 //     for the "stages" view and lose Activity Log / User Management / Trash
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber } from '../utils';
+import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, normalizeInstallationStatus } from '../utils';
 import { PRIMARY_STAGES } from '../constants';
 
 import DashboardView from './DashboardView';
-import SubsidyView from './SubsidyView';
-import LoanView from './LoanView';
-import InstallationView, { normalizeInstallationStatus } from './InstallationView';
-import CustomerCard from './CustomerCard';
-import CustomerDetailModal from './CustomerDetailModal';
-import AddLeadModal from './AddLeadModal';
-import ActivityLogView from './ActivityLogView';
-import UserManagementView from './UserManagementView';
-import TrashView from './TrashView';
-import AgentForm from './agentform';
-import ChannelPartnerManagementView from './ChannelPartnerManagementView';
-import InstallationPaymentsView from './InstallationPaymentsView';
+
+// Secondary views and modals are large, especially the document and agreement
+// tools. Deferring them makes the main customer list render much sooner.
+const SubsidyView = lazy(() => import('./SubsidyView'));
+const LoanView = lazy(() => import('./LoanView'));
+const InstallationView = lazy(() => import('./InstallationView'));
+const CustomerCard = lazy(() => import('./CustomerCard'));
+const CustomerDetailModal = lazy(() => import('./CustomerDetailModal'));
+const AddLeadModal = lazy(() => import('./AddLeadModal'));
+const ActivityLogView = lazy(() => import('./ActivityLogView'));
+const UserManagementView = lazy(() => import('./UserManagementView'));
+const TrashView = lazy(() => import('./TrashView'));
+const ChannelPartnerManagementView = lazy(() => import('./ChannelPartnerManagementView'));
+const InstallationPaymentsView = lazy(() => import('./InstallationPaymentsView'));
+
+const ViewLoader = () => <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" /></div>;
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
@@ -347,30 +351,35 @@ export default function Dashboard({ user, onLogout }) {
             alert(`Failed to add lead: ${error.message} (Code: ${error.code})`);
             throw error;
         } else {
-            // Upload any attached files in parallel to prevent UI lag
+            // Put the new record on screen immediately. Attachments are
+            // independent uploads, so they should not make lead creation feel slow.
+            setCustomers(prev => prev.some(c => c.id === newCustomer.id) ? prev : [newCustomer, ...prev]);
+            setShowAddLead(false);
+            syncMetadata(insertData);
+
             if (attachedFiles && attachedFiles.length > 0) {
-                const uploadPromises = attachedFiles.map(item => {
+                void Promise.all(attachedFiles.map(item => {
                     if (item.file) {
                         return uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id).catch(uploadErr => {
                             console.error('Failed to upload file for new lead:', uploadErr);
                         });
                     }
                     return Promise.resolve(null);
-                });
-                await Promise.all(uploadPromises);
+                }));
             }
 
-            logActivity(user.id, 'create', `Added new lead: ${data.customer_name}`, `Done by: ${user.name}`, newCustomer.id);
-            setShowAddLead(false);
-            fetchData(false); // silent refresh — Realtime handles the instant update
-            syncMetadata(insertData);
+            void logActivity(user.id, 'create', `Added new lead: ${data.customer_name}`, `Done by: ${user.name}`, newCustomer.id);
             return newCustomer;
         }
     };
 
     // ── Derived data (active = non-deleted only) ───────────────────────────────
-    const active = (customers || []).filter(c => !c?.deleted_at);
-    const trashed = (customers || []).filter(c => !!c?.deleted_at);
+    const { active, trashed } = useMemo(() => {
+        const nextActive = [];
+        const nextTrashed = [];
+        customers.forEach(customer => (customer?.deleted_at ? nextTrashed : nextActive).push(customer));
+        return { active: nextActive, trashed: nextTrashed };
+    }, [customers]);
     const isAuthorized = (c) => {
         if (user?.userType === 'admin' || user?.userType === 'sales') return true;
         if (user?.userType === 'agent' || isChannelPartnerOffice) {
@@ -395,15 +404,22 @@ export default function Dashboard({ user, onLogout }) {
 
     // Everything downstream — stage counts, the stages grid, dashboard stats
     // is built from this one channel partner-scoped list
-    const channelPartnerScoped = active.filter(c => matchesChannelPartnerFilter(c) && isAuthorized(c));
-    const subsidyTagCount = channelPartnerScoped.filter(c => c?.subsidy_tag).length;
-    const loanTagCount = channelPartnerScoped.filter(c => c?.loan_tag).length;
-    const installationTagCount = channelPartnerScoped.filter(c => normalizeInstallationStatus(c?.installation_status)).length;
-
-    const stageCounts = PRIMARY_STAGES.reduce((acc, s) => {
-        acc[s.id] = channelPartnerScoped.filter(c => c?.stage === s.id).length;
-        return acc;
-    }, {});
+    const { channelPartnerScoped, subsidyTagCount, loanTagCount, installationTagCount, stageCounts } = useMemo(() => {
+        const scoped = [];
+        const counts = Object.fromEntries(PRIMARY_STAGES.map(stage => [stage.id, 0]));
+        let subsidy = 0;
+        let loan = 0;
+        let installation = 0;
+        active.forEach(customer => {
+            if (!matchesChannelPartnerFilter(customer) || !isAuthorized(customer)) return;
+            scoped.push(customer);
+            if (customer?.subsidy_tag) subsidy += 1;
+            if (customer?.loan_tag) loan += 1;
+            if (normalizeInstallationStatus(customer?.installation_status)) installation += 1;
+            if (customer?.stage in counts) counts[customer.stage] += 1;
+        });
+        return { channelPartnerScoped: scoped, subsidyTagCount: subsidy, loanTagCount: loan, installationTagCount: installation, stageCounts: counts };
+    }, [active, channelPartnerFilter, isChannelPartnerOffice, partnerName, user]);
     const trashCount = trashed.length;
 
     // Per-stage filtered cards — now respects the channel partner filter too
@@ -640,6 +656,7 @@ export default function Dashboard({ user, onLogout }) {
 
                 {/* View router */}
                 <div className="flex-1 p-4 lg:p-6">
+                    <Suspense fallback={<ViewLoader />}>
                     {currentView === 'dashboard' && <DashboardView customers={channelPartnerScoped} loading={loading} />}
                     {currentView === 'subsidy' && <SubsidyView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
                     {currentView === 'loan_tags' && <LoanView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
@@ -680,11 +697,13 @@ export default function Dashboard({ user, onLogout }) {
                             </div>
                         )
                     )}
+                    </Suspense>
                 </div>
             </main>
 
             {/* Modals */}
             {selectedCustomer && (
+                <Suspense fallback={<ViewLoader />}>
                 <CustomerDetailModal
                     customer={selectedCustomer}
                     onClose={() => setSelectedCustomer(null)}
@@ -695,8 +714,9 @@ export default function Dashboard({ user, onLogout }) {
                     channel_partners={uniqueChannelPartners}
                     defaultTab={currentView === 'subsidy' ? 'SUBSIDY STATUS' : currentView === 'loan_tags' ? 'LOAN' : currentView === 'installation_tags' ? 'INSTALLATION STATUS' : currentView === 'stages' ? selectedStage : undefined}
                 />
+                </Suspense>
             )}
-            {showAddLead && <AddLeadModal isOpen={showAddLead} onClose={() => setShowAddLead(false)} onSave={handleAddLead} meta={meta} channel_partners={uniqueChannelPartners} user={user} />}
+            {showAddLead && <Suspense fallback={<ViewLoader />}><AddLeadModal isOpen={showAddLead} onClose={() => setShowAddLead(false)} onSave={handleAddLead} meta={meta} channel_partners={uniqueChannelPartners} user={user} /></Suspense>}
         </div>
     );
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShoppingBag, Zap, Ruler, IndianRupee, Layers, CheckCircle2, ShieldAlert, AlertCircle, User, Sparkles, Edit3, X } from 'lucide-react';
+import { ShoppingBag, Zap, Ruler, IndianRupee, Layers, CheckCircle2, ShieldAlert, AlertCircle, User, Edit3, X } from 'lucide-react';
 import { SectionHeader, EditableDetailItem } from './shared';
 import { toIndianCommas, parseIndianNumber, formatInputValue } from '../../utils';
 
@@ -138,17 +138,6 @@ export default function MaterialOrderTab({
                         <ShoppingBag size={12} className="text-amber-500" /> Material Order Specifications
                     </h3>
                     <div className="flex items-center gap-2">
-                        {canEdit && (
-                            <button
-                                type="button"
-                                onClick={handleFillTestData}
-                                title="Auto-fill test material order specifications"
-                                className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
-                            >
-                                <Sparkles size={11} className="text-amber-600" />
-                                <span>Fill Test Values</span>
-                            </button>
-                        )}
                         {canEdit && (
                             <button
                                 onClick={() => setEditingSection(isEditingOrder ? null : 'mat_order')}

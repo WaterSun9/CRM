@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User, Sparkles } from 'lucide-react';
+import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
 
@@ -161,15 +161,6 @@ export default function MaterialDeliveryTab({
                     <p className="text-[11px] text-stone-500 font-medium">Vendor assignment, equipment serial numbers and dispatch note.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    {isEditable && (
-                        <button
-                            type="button"
-                            onClick={handleFillTestData}
-                            className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                        >
-                            <Sparkles size={13} className="text-amber-500" /> Fill Test Values
-                        </button>
-                    )}
                     <button
                         type="button"
                         onClick={() => setShowPrintModal(true)}

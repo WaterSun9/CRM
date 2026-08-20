@@ -1,5 +1,5 @@
 import React from 'react';
-import { ClipboardList, Paperclip, Sparkles, Edit3, X } from 'lucide-react';
+import { ClipboardList, Paperclip, Edit3, X } from 'lucide-react';
 import { SectionHeader, EditableDetailItem, CheckboxRemarkItem } from './shared';
 
 export default function RegistrationTab({
@@ -16,19 +16,6 @@ export default function RegistrationTab({
     onFilePreview,
     onUpdateRemark
 }) {
-    const handleFillTestData = () => {
-        const randId = Math.floor(1000 + Math.random() * 9000);
-        const demoRegistrar = meta['registration_by']?.[0] || user?.name || 'Office Staff';
-        const today = new Date().toISOString().split('T')[0];
-
-        handleChange('registration_date', editData.registration_date || today);
-        handleChange('registration_by', editData.registration_by || demoRegistrar);
-        handleChange('registration_no', editData.registration_no || `FEAS-${randId}`);
-        handleChange('folder_no', editData.folder_no || String(randId));
-        handleChange('feasibilty_document', true);
-        handleChange('subsidy_token_photo', true);
-    };
-
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
             {/* Registration Details */}
@@ -38,16 +25,6 @@ export default function RegistrationTab({
                         <ClipboardList size={12} className="text-amber-500" /> Registration Details
                     </h3>
                     <div className="flex items-center gap-2.5">
-                        {isEditable && (
-                            <button
-                                type="button"
-                                onClick={handleFillTestData}
-                                title="Auto-fill test registration data & bypass docs"
-                                className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
-                            >
-                                <Sparkles size={11} className="text-amber-500" /> Fill Test Values
-                            </button>
-                        )}
                         {isEditable && (
                             <button 
                                 type="button"

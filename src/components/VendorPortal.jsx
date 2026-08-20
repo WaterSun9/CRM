@@ -40,6 +40,7 @@ export default function VendorPortal({ user, onLogout }) {
     const [installationStatus, setInstallationStatus] = useState('Pending');
     const [installationDate, setInstallationDate] = useState('');
     const [vendorNote, setVendorNote] = useState('');
+    const [vendorQuote, setVendorQuote] = useState('');
     
     // Material Delivery State
     const [inverterSerialNo, setInverterSerialNo] = useState('');
@@ -140,9 +141,29 @@ export default function VendorPortal({ user, onLogout }) {
     };
 
     useEffect(() => {
-        if (user?.name) {
-            fetchCustomers();
-        }
+        if (!user?.name) return;
+
+        fetchCustomers();
+        const vendorName = user.name.trim().toLowerCase();
+        const channel = supabase.channel(`vendor_customers_${user.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
+                const record = payload.new;
+                const isVisibleToVendor = record && !record.deleted_at &&
+                    !((record.installation_status === 'Give Up') && (record.vendor || '').trim().toLowerCase() === vendorName) &&
+                    ((record.vendor || '').trim().toLowerCase() === vendorName || record.stage === 'MATERIAL INTEGRATION');
+
+                setCustomers(previous => {
+                    if (payload.eventType === 'DELETE' || !isVisibleToVendor) {
+                        return previous.filter(customer => customer.id !== (record?.id || payload.old?.id));
+                    }
+                    const exists = previous.some(customer => customer.id === record.id);
+                    if (payload.eventType === 'INSERT' && !exists) return [record, ...previous];
+                    return previous.map(customer => customer.id === record.id ? record : customer);
+                });
+            })
+            .subscribe();
+
+        return () => supabase.removeChannel(channel);
     }, [user]);
 
     // Handle selecting a customer card
@@ -175,6 +196,7 @@ export default function VendorPortal({ user, onLogout }) {
         setInstallationStatus(cust.installation_status || 'Pending');
         setInstallationDate(cust.installation_date || '');
         setVendorNote(cust.vendor_note || '');
+        setVendorQuote(cust.vendor_quote ?? '');
         
         setView('details');
         setSaveSuccess(false);
@@ -337,6 +359,7 @@ export default function VendorPortal({ user, onLogout }) {
                 installation_status: installationStatus,
                 installation_date: installationDate || null,
                 vendor_note: vendorNote || null,
+                vendor_quote: vendorQuote === '' ? null : Number(vendorQuote),
             };
 
             if (nextStage) {
@@ -369,7 +392,9 @@ export default function VendorPortal({ user, onLogout }) {
                 );
                 
                 setSaveSuccess(true);
-                fetchCustomers();
+                // Avoid a full list reload after every save; update the one
+                // affected card immediately with the confirmed server payload.
+                setCustomers(prev => prev.map(customer => customer.id === selectedCust.id ? { ...customer, ...updatePayload } : customer));
                 
                 // Update selectedCust reference in view
                 setSelectedCust(prev => ({
@@ -416,7 +441,7 @@ export default function VendorPortal({ user, onLogout }) {
 
             setShowGiveUpModal(false);
             setGiveUpReason('');
-            await fetchCustomers();
+            setCustomers(prev => prev.filter(customer => customer.id !== selectedCust.id));
             setView('list');
         } catch (err) {
             console.error('Error giving up project:', err);
@@ -430,6 +455,7 @@ export default function VendorPortal({ user, onLogout }) {
     const materialCount = customers.filter(c => c.stage === 'MATERIAL INTEGRATION').length;
     const deliveryCount = customers.filter(c => c.stage === 'MATERIAL DELIVERY').length;
     const geoPendingCount = customers.filter(c => c.stage === 'GEO TAG PHOTO' && (c.geo_tag_status || 'Pending') !== 'Proceed').length;
+    const installationCount = customers.filter(c => c.stage === 'INSTALLATION STATUS').length;
 
     // Filtered lists: search across all fields safely and across all stages if a query is typed
     const filteredCustomers = customers.filter(c => {
@@ -455,6 +481,8 @@ export default function VendorPortal({ user, onLogout }) {
             return c.stage === 'MATERIAL INTEGRATION';
         } else if (activeTab === 'DELIVERY') {
             return c.stage === 'MATERIAL DELIVERY';
+        } else if (activeTab === 'INSTALLATION') {
+            return c.stage === 'INSTALLATION STATUS';
         } else {
             return c.stage === 'GEO TAG PHOTO';
         }
@@ -501,7 +529,7 @@ export default function VendorPortal({ user, onLogout }) {
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-4 gap-2">
                         <div 
                             className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'MATERIAL' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
                             onClick={() => setActiveTab('MATERIAL')}
@@ -522,6 +550,13 @@ export default function VendorPortal({ user, onLogout }) {
                         >
                             <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'GEO' ? 'text-amber-100' : 'text-stone-400'}`}>Geo Tag</p>
                             <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'GEO' ? 'text-white' : 'text-stone-850'}`}>{geoPendingCount}</p>
+                        </div>
+                        <div
+                            className={`p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'INSTALLATION' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`}
+                            onClick={() => setActiveTab('INSTALLATION')}
+                        >
+                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'INSTALLATION' ? 'text-amber-100' : 'text-stone-400'}`}>Installation</p>
+                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'INSTALLATION' ? 'text-white' : 'text-stone-850'}`}>{installationCount}</p>
                         </div>
                     </div>
 
@@ -641,7 +676,9 @@ export default function VendorPortal({ user, onLogout }) {
                                     );
                                 }
 
-                                const isGeoOk = cust.geo_tag_status === 'Proceed';
+                                const isInstallation = cust.stage === 'INSTALLATION STATUS';
+                                const statusValue = isInstallation ? (cust.installation_status || 'Pending') : (cust.geo_tag_status || 'Pending');
+                                const isComplete = isInstallation ? statusValue === 'Yes' : statusValue === 'Proceed';
 
                                 return (
                                     <div 
@@ -664,9 +701,9 @@ export default function VendorPortal({ user, onLogout }) {
                                                     </span>
                                                 )}
                                                 <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${
-                                                    isGeoOk ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
+                                                    isComplete ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
                                                 }`}>
-                                                    Geo: {cust.geo_tag_status || 'Pending'}
+                                                    {isInstallation ? 'Installation' : 'Geo'}: {statusValue}
                                                 </span>
                                             </div>
                                         </div>
@@ -797,8 +834,41 @@ export default function VendorPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {/* ─── Active Tab: MATERIAL DELIVERY ─── */}
+                            {/* Material Delivery is supplied by the office/logistics team.
+                                Vendors can inspect every delivery field and copy serials, but cannot alter it. */}
                             {activeTab === 'DELIVERY' && (
+                                <div className="space-y-4">
+                                    <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 text-[11px] text-blue-800 font-medium">
+                                        Material Delivery is view-only for vendors.
+                                    </div>
+                                    <div className="divide-y divide-stone-200 rounded-2xl border border-stone-200 bg-white px-4">
+                                        {[
+                                            ['Inverter Make', selectedCust.inverter_make],
+                                            ['Inverter Serial No.', selectedCust.inverter_serial_no],
+                                            ['Invoice No.', selectedCust.invoice_no],
+                                            ['Delivery Date', selectedCust.material_delivery_date],
+                                            ['Driver Name', selectedCust.driver_name],
+                                            ['Driver Phone Number', selectedCust.driver_phone_number],
+                                        ].map(([label, value]) => (
+                                            <div key={label} className="flex items-start justify-between gap-4 py-3 text-xs">
+                                                <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wide">{label}</p>
+                                                <p className="max-w-[58%] text-right font-semibold text-stone-800 break-words">{value || '–'}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-xs">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wide flex items-center gap-1.5">
+                                                <Layers size={12} className="text-amber-500" /> Panel Serial Numbers
+                                            </p>
+                                            <pre className="max-w-[58%] whitespace-pre-wrap break-words text-right font-mono text-xs font-semibold text-stone-800">{selectedCust.panel_serial_no || '–'}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Legacy editable delivery form retained temporarily for reference; vendors no longer see it. */}
+                            {false && activeTab === 'DELIVERY' && (
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div className="space-y-1">
@@ -1170,6 +1240,31 @@ export default function VendorPortal({ user, onLogout }) {
                                         </div>
                                     </div>
 
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="block text-[9px] font-bold text-stone-500 uppercase tracking-wider">Commission Quote (₹)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                inputMode="decimal"
+                                                value={vendorQuote}
+                                                onChange={event => setVendorQuote(event.target.value)}
+                                                placeholder="Enter installation commission quote"
+                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="block text-[9px] font-bold text-stone-500 uppercase tracking-wider">Installation Note</label>
+                                            <textarea
+                                                rows={2}
+                                                value={vendorNote}
+                                                onChange={event => setVendorNote(event.target.value)}
+                                                placeholder="Add installation notes or a site update"
+                                                className="w-full resize-none bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            />
+                                        </div>
+                                    </div>
+
                                     {/* When marked Yes: Installation Date */}
                                     {installationStatus === 'Yes' && (
                                         <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-100 space-y-3 animate-in slide-in-from-top-2 duration-200">
@@ -1241,45 +1336,23 @@ export default function VendorPortal({ user, onLogout }) {
                             <ClipboardList size={12} /> Customer Information (Leads)
                         </h3>
 
-                        <div className="space-y-3.5 text-xs">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <p className="text-[8px] font-bold text-stone-400 uppercase">Customer Name</p>
-                                    <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.customer_name || '–'}</p>
+                        <div className="divide-y divide-stone-200 rounded-2xl border border-stone-200 px-4 text-xs">
+                            {[
+                                ['Customer Name', selectedCust.customer_name],
+                                ['Phone Number', selectedCust.phone_number],
+                                ['Email Address', selectedCust.email_address || selectedCust.email],
+                                ['Consumer No.', selectedCust.consumer_no],
+                                ['Village / Address', selectedCust.villages],
+                                ['Folder / File No.', selectedCust.folder_no],
+                                ['System Capacity', selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : null],
+                                ['Module Brand', selectedCust.module_brand],
+                                ['Module WP', selectedCust.module_wp],
+                            ].map(([label, value]) => (
+                                <div key={label} className="flex items-start justify-between gap-4 py-3">
+                                    <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wide">{label}</p>
+                                    <p className="max-w-[58%] break-words text-right font-semibold text-stone-800">{value || '–'}</p>
                                 </div>
-                                <div>
-                                    <p className="text-[8px] font-bold text-stone-400 uppercase">Phone Number</p>
-                                    <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.phone_number || '–'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] font-bold text-stone-400 uppercase">Email Address</p>
-                                    <p className="font-semibold text-stone-800 mt-0.5 truncate">{selectedCust.email_address || '–'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] font-bold text-stone-400 uppercase">Consumer No</p>
-                                    <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.consumer_no || '–'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] font-bold text-stone-400 uppercase">Village / Address</p>
-                                    <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.villages || '–'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] font-bold text-stone-400 uppercase">Folder / File No</p>
-                                    <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.folder_no || '–'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] font-bold text-stone-400 uppercase">System Capacity (kWp)</p>
-                                    <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.system_capacity_kwp || '–'} kWp</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] font-bold text-stone-400 uppercase">Module Brand</p>
-                                    <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.module_brand || '–'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-[8px] font-bold text-stone-400 uppercase">Module Wp</p>
-                                    <p className="font-semibold text-stone-800 mt-0.5">{selectedCust.module_wp || '–'}</p>
-                                </div>
-                            </div>
+                            ))}
                         </div>
                     </div>
                 </main>

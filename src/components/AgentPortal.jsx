@@ -58,6 +58,20 @@ export default function AgentPortal({ user, onLogout }) {
         setEditData(prev => ({ ...prev, [field]: val }));
     };
 
+    const getStageRemarks = (value) => {
+        if (value && typeof value === 'object') return value;
+        if (typeof value === 'string') {
+            try { return JSON.parse(value) || {}; } catch { return {}; }
+        }
+        return {};
+    };
+
+    const handleSaveStageRemark = async () => {
+        if (!selectedCust) return;
+        const remarks = getStageRemarks(editData.stages_remarks);
+        await handleUpdateCustomer(selectedCust.id, { stages_remarks: remarks });
+    };
+
     // Metadata
     const [meta, setMeta] = useState({});
 
@@ -83,9 +97,28 @@ export default function AgentPortal({ user, onLogout }) {
     };
 
     useEffect(() => {
-        if (user?.name) {
-            fetchCustomers();
-        }
+        if (!user?.name) return;
+
+        fetchCustomers();
+        const partnerName = user.name.trim().toLowerCase();
+        const channel = supabase.channel(`agent_customers_${user.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
+                const record = payload.new;
+                const belongsToAgent = record && !record.deleted_at &&
+                    (record.channel_partner || '').trim().toLowerCase() === partnerName;
+
+                setCustomers(previous => {
+                    if (payload.eventType === 'DELETE' || !belongsToAgent) {
+                        return previous.filter(customer => customer.id !== (record?.id || payload.old?.id));
+                    }
+                    const exists = previous.some(customer => customer.id === record.id);
+                    if (payload.eventType === 'INSERT' && !exists) return [record, ...previous];
+                    return previous.map(customer => customer.id === record.id ? record : customer);
+                });
+            })
+            .subscribe();
+
+        return () => supabase.removeChannel(channel);
     }, [user]);
 
     useEffect(() => {
@@ -142,7 +175,9 @@ export default function AgentPortal({ user, onLogout }) {
 
             setSelectedCust(prev => ({ ...prev, ...updates }));
             setEditData(prev => ({ ...prev, ...updates }));
-            fetchCustomers();
+            // The server has already confirmed the update. Keep the local list
+            // in sync instead of downloading every lead again after each edit.
+            setCustomers(prev => prev.map(customer => customer.id === id ? { ...customer, ...updates } : customer));
         } catch (err) {
             console.error('Update failed:', err);
             alert('Failed to update: ' + err.message);
@@ -189,20 +224,23 @@ export default function AgentPortal({ user, onLogout }) {
             throw error;
         }
 
-        // Upload attached files to storage & documents table in parallel to prevent UI lag
+        // Show the saved lead straight away; attachments can continue uploading
+        // independently without holding the form open.
+        setCustomers(prev => prev.some(customer => customer.id === newCustomer.id) ? prev : [newCustomer, ...prev]);
+        setShowAddLead(false);
+
         if (attachedFiles && attachedFiles.length > 0) {
-            const uploadPromises = attachedFiles.map(item => {
+            void Promise.all(attachedFiles.map(item => {
                 if (item.file) {
                     return uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id).catch(uploadErr => {
                         console.error('Failed to upload file for lead:', uploadErr);
                     });
                 }
                 return Promise.resolve(null);
-            });
-            await Promise.all(uploadPromises);
+            }));
         }
 
-        await logActivity(
+        void logActivity(
             user.id,
             'create',
             `Added new lead: ${formData.customer_name}`,
@@ -210,8 +248,6 @@ export default function AgentPortal({ user, onLogout }) {
             newCustomer.id
         );
 
-        setShowAddLead(false);
-        fetchCustomers(); // Refresh list
         return newCustomer;
     };
 
@@ -253,12 +289,12 @@ export default function AgentPortal({ user, onLogout }) {
         }
     };
 
-    const handleUploadDocForCustomer = async (e) => {
+    const handleUploadDocForCustomer = async (e, docType) => {
         const file = e.target.files?.[0];
         if (!file || !selectedCust?.id) return;
         setUploadingDoc(true);
         try {
-            await uploadDocument(file, selectedCust.id, uploadDocType, user?.id);
+            await uploadDocument(file, selectedCust.id, docType || uploadDocType, user?.id);
             const updatedDocs = await getCustomerDocuments(selectedCust.id);
             setCustDocs(updatedDocs || []);
             alert('Document uploaded successfully!');
@@ -416,8 +452,12 @@ export default function AgentPortal({ user, onLogout }) {
                             <ChevronRight className="w-5 h-5 text-stone-400 flex-shrink-0" />
                         </button>
 
-                        {/* ── Stage Operations Workdesk ── */}
-                        <div className="bg-white border border-stone-200/90 rounded-[28px] p-5 shadow-xs space-y-3.5">
+                        {/* Stage Operations opens the three stage desks on one focused screen. */}
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('MATERIAL_ORDER'); setView('workdesk'); }}
+                            className="w-full bg-white hover:bg-stone-50 border border-stone-200/90 rounded-[28px] p-5 shadow-xs text-left transition-all active:scale-[0.98] cursor-pointer"
+                        >
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -432,55 +472,11 @@ export default function AgentPortal({ user, onLogout }) {
                                     {materialOrderCount + meterPendingCount + inspPendingCount} Actionable
                                 </span>
                             </div>
-
-                            {/* 3 Clickable Stage Cards with Gentle Colors */}
-                            <div className="grid grid-cols-3 gap-2 pt-1">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setActiveWorkdeskTab('MATERIAL_ORDER');
-                                        setView('workdesk');
-                                    }}
-                                    className="bg-amber-50/60 hover:bg-amber-100/70 border border-amber-200/70 p-3.5 rounded-2xl text-center transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-[0.97]"
-                                >
-                                    <ShoppingBag size={18} className="text-amber-600" />
-                                    <span className="text-[10px] font-bold text-amber-950">Material Order</span>
-                                    <span className="text-[10px] font-black text-amber-800 bg-amber-200/60 px-2 py-0.5 rounded-md">
-                                        {materialOrderCount}
-                                    </span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setActiveWorkdeskTab('METER_INSTALLATION');
-                                        setView('workdesk');
-                                    }}
-                                    className="bg-blue-50/60 hover:bg-blue-100/70 border border-blue-200/70 p-3.5 rounded-2xl text-center transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-[0.97]"
-                                >
-                                    <Zap size={18} className="text-blue-600" />
-                                    <span className="text-[10px] font-bold text-blue-950">Meter Inst.</span>
-                                    <span className="text-[10px] font-black text-blue-800 bg-blue-200/60 px-2 py-0.5 rounded-md">
-                                        {meterPendingCount}
-                                    </span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setActiveWorkdeskTab('DISCOM_INSPECTION');
-                                        setView('workdesk');
-                                    }}
-                                    className="bg-emerald-50/60 hover:bg-emerald-100/70 border border-emerald-200/70 p-3.5 rounded-2xl text-center transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-[0.97]"
-                                >
-                                    <ClipboardCheck size={18} className="text-emerald-600" />
-                                    <span className="text-[10px] font-bold text-emerald-950">Inspection</span>
-                                    <span className="text-[10px] font-black text-emerald-800 bg-emerald-200/60 px-2 py-0.5 rounded-md">
-                                        {inspPendingCount}
-                                    </span>
-                                </button>
+                            <div className="mt-3 flex items-center justify-between text-[11px] font-bold text-amber-700">
+                                <span>Open Material Order, Meter Installation & Inspection</span>
+                                <ChevronRight size={16} />
                             </div>
-                        </div>
+                        </button>
                     </div>
                 </main>
             )}
@@ -877,6 +873,37 @@ export default function AgentPortal({ user, onLogout }) {
 
                         {/* Detail Body */}
                         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                            {/* Every assigned stage has one shared hand-off remark. This is
+                                separate from individual document remarks, which remain on
+                                each uploaded document. */}
+                            {selectedCust.stage !== 'REGISTRATION' && <section className="bg-amber-50/60 border border-amber-200/70 rounded-2xl p-3.5 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-amber-800">
+                                        {PRIMARY_STAGES.find(stage => stage.id === selectedCust.stage)?.label || selectedCust.stage} Remark
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveStageRemark}
+                                        disabled={saving}
+                                        className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-[10px] font-bold"
+                                    >
+                                        Save
+                                    </button>
+                                </div>
+                                <input
+                                    type="text"
+                                    value={getStageRemarks(editData.stages_remarks)[selectedCust.stage] || ''}
+                                    onChange={event => setEditData(previous => ({
+                                        ...previous,
+                                        stages_remarks: {
+                                            ...getStageRemarks(previous.stages_remarks),
+                                            [selectedCust.stage]: event.target.value,
+                                        },
+                                    }))}
+                                    placeholder="Add a hand-off or status remark for this stage"
+                                    className="w-full bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                />
+                            </section>}
                             {/* ─── STAGE SECTION (Render active stage component in phone format) ─── */}
                             {selectedCust.stage === 'LEADS' && (
                                 <div className="space-y-4">
@@ -998,7 +1025,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 onUpdateRemark={handleUpdateDocRemark}
                                             />
                                             <CheckboxRemarkItem
-                                                label="Index 2"
+                                                label="Vera Pavti / Aakarni"
                                                 field="index_2"
                                                 value={editData.index_2}
                                                 onChange={handleChange}
@@ -1085,10 +1112,10 @@ export default function AgentPortal({ user, onLogout }) {
                                         </div>
                                     </div>
 
-                                    {/* Registration Documents Checklist (Upload / View / Change) */}
+                                    {/* Registration documents are view/download only for agents. */}
                                     <div className="bg-white p-4 rounded-2xl border border-stone-150 shadow-2xs space-y-3">
                                         <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
-                                            <Paperclip size={11} className="text-amber-500" /> Registration Documents & Uploads
+                                            <Paperclip size={11} className="text-amber-500" /> Registration Documents
                                         </h5>
                                         <div className="flex flex-col gap-2">
                                             <CheckboxRemarkItem
@@ -1096,7 +1123,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 field="feasibilty_document"
                                                 value={editData.feasibilty_document}
                                                 onChange={handleChange}
-                                                isEditing={true}
+                                                isEditing={false}
                                                 documents={custDocs}
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
@@ -1108,7 +1135,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 field="subsidy_token_photo"
                                                 value={editData.subsidy_token_photo}
                                                 onChange={handleChange}
-                                                isEditing={true}
+                                                isEditing={false}
                                                 documents={custDocs}
                                                 onUpload={handleUploadDocForCustomer}
                                                 onDelete={handleDeleteDoc}
@@ -1550,14 +1577,42 @@ export default function AgentPortal({ user, onLogout }) {
                                             />
                                         </div>
                                     </div>
+                                    <div className="pt-2">
+                                        <p className="text-[10px] font-bold text-stone-500 uppercase tracking-wide mb-1">Meter Installation Photo</p>
+                                        <CheckboxRemarkItem
+                                            label="Meter Installation Photo"
+                                            field="meter_installation_photo"
+                                            value={editData.meter_installation_photo}
+                                            onChange={handleChange}
+                                            isEditing={true}
+                                            documents={custDocs}
+                                            onUpload={handleUploadDocForCustomer}
+                                            onDelete={handleDeleteDoc}
+                                            onPreview={handlePreviewFile}
+                                            onUpdateRemark={handleUpdateDocRemark}
+                                        />
+                                    </div>
                                     <div className="pt-2 border-t border-stone-200/60">
                                         <button
                                             onClick={async () => {
-                                                setSaving(true);
                                                 const currentMeter = editData.meter_installation || selectedCust.meter_installation || 'No';
+                                                const installationDate = editData.installation_date || selectedCust.installation_date || '';
+                                                const meterPhotoUploaded = custDocs.some(doc =>
+                                                    doc.doc_type === 'meter_installation_photo' || doc.doc_type === 'meter_photo'
+                                                );
+                                                if (currentMeter === 'Yes' && !installationDate) {
+                                                    alert('Installation date is required before moving to Discom Inspection.');
+                                                    return;
+                                                }
+                                                if (currentMeter === 'Yes' && !meterPhotoUploaded) {
+                                                    alert('Upload the Meter Installation Photo before moving to Discom Inspection.');
+                                                    return;
+                                                }
+                                                setSaving(true);
                                                 const updates = {
                                                     meter_installation: currentMeter,
-                                                    installation_date: editData.installation_date || selectedCust.installation_date
+                                                    installation_date: installationDate || null,
+                                                    meter_installation_photo: meterPhotoUploaded,
                                                 };
                                                 if (currentMeter === 'Yes') {
                                                     updates.stage = 'DISCOM INSPECTION';
@@ -1568,7 +1623,7 @@ export default function AgentPortal({ user, onLogout }) {
                                             disabled={saving}
                                             className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                                         >
-                                            <CheckCircle2 size={14} /> {saving ? 'Advancing...' : ((editData.meter_installation || selectedCust.meter_installation) === 'Yes' ? 'Save & Move to Discom Inspection' : 'Save Details')}
+                                            <CheckCircle2 size={14} /> {saving ? 'Saving...' : ((editData.meter_installation || selectedCust.meter_installation) === 'Yes' ? 'Save & Move to Discom Inspection' : 'Save Details')}
                                         </button>
                                     </div>
                                 </div>

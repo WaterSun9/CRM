@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
     X, Plus, User, ClipboardList, Paperclip, Eye, Trash2, 
-    Upload, FileText, Image as ImageIcon, Loader2, Banknote, Sparkles 
+    Upload, FileText, Image as ImageIcon, Loader2, Banknote
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
@@ -361,14 +361,6 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={handleFillTestData}
-                            title="Auto-fill sample test data"
-                            className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                        >
-                            <Sparkles size={13} className="text-amber-500" /> Fill Test Data
-                        </button>
                         <button 
                             onClick={onClose} 
                             className="p-2 hover:bg-stone-100 text-stone-400 hover:text-stone-700 rounded-xl transition cursor-pointer"
