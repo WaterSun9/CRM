@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User } from 'lucide-react';
+import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User, Sparkles } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
 
@@ -42,6 +42,29 @@ export default function MaterialDeliveryTab({
     const [copiedIdx, setCopiedIdx] = useState(null);
     const [copiedAll, setCopiedAll] = useState(false);
     const [showPrintModal, setShowPrintModal] = useState(false);
+    const [pendingVendor, setPendingVendor] = useState(null);
+
+    const handleFillTestData = () => {
+        const randId = Math.floor(10000 + Math.random() * 90000);
+        const today = new Date().toISOString().split('T')[0];
+        
+        const demoVendor = vendors[0] || 'Om Solar';
+        const demoInverter = inverterMakeOptions[0] || 'Solis';
+        const demoSerials = ['PANEL-123', 'PANEL-456', 'PANEL-789'];
+
+        setPanelSerials(demoSerials);
+        setEditData(prev => ({
+            ...prev,
+            vendor: prev.vendor || demoVendor,
+            inverter_make: prev.inverter_make || demoInverter,
+            inverter_serial_no: prev.inverter_serial_no || `INV-SER-${randId}`,
+            invoice_no: prev.invoice_no || `INV-${randId}`,
+            material_delivery_date: prev.material_delivery_date || today,
+            driver_name: prev.driver_name || 'Ramesh Kumar',
+            driver_phone_number: prev.driver_phone_number || '9876543210',
+            panel_serial_no: prev.panel_serial_no || demoSerials.join('\n')
+        }));
+    };
 
     // Inverter Make options from metadata or defaults
     const inverterMakeOptions = (meta['inverter_make'] && meta['inverter_make'].length > 0)
@@ -137,13 +160,24 @@ export default function MaterialDeliveryTab({
                     <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Material Delivery & Dispatch</h4>
                     <p className="text-[11px] text-stone-500 font-medium">Vendor assignment, equipment serial numbers and dispatch note.</p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => setShowPrintModal(true)}
-                    className="bg-stone-900 hover:bg-stone-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                    <Printer size={13} /> Print Delivery Note
-                </button>
+                <div className="flex items-center gap-2">
+                    {isEditable && (
+                        <button
+                            type="button"
+                            onClick={handleFillTestData}
+                            className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        >
+                            <Sparkles size={13} className="text-amber-500" /> Fill Test Values
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => setShowPrintModal(true)}
+                        className="bg-stone-900 hover:bg-stone-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                        <Printer size={13} /> Print Delivery Note
+                    </button>
+                </div>
             </div>
 
             {/* Pick a Vendor Section */}
@@ -155,23 +189,27 @@ export default function MaterialDeliveryTab({
                 </div>
                 <div className="bg-stone-50 p-4 rounded-[20px] border border-stone-150 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex-1 min-w-[200px]">
-                        <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">Vendor Allotment</p>
+                        <p className="text-[9px] text-stone-400 tracking-wide mb-1 font-bold">VENDOR ALLOTMENT</p>
                         <select
                             disabled={!isEditable}
                             value={editData.vendor || ''}
                             onChange={async (e) => {
                                 const selectedVal = e.target.value;
-                                setEditData(prev => ({ ...prev, vendor: selectedVal }));
-                                setInfoSentStatus(null);
-                                await onUpdate(customer.id, { vendor: selectedVal });
-                                await logActivity(
-                                    user.id,
-                                    'update',
-                                    `${customer.customer_name}: Assigned vendor to ${selectedVal || 'None'}`,
-                                    '',
-                                    customer.id
-                                );
-                                fetchLogs();
+                                if (selectedVal) {
+                                    setPendingVendor(selectedVal);
+                                } else {
+                                    setEditData(prev => ({ ...prev, vendor: '' }));
+                                    setInfoSentStatus(null);
+                                    await onUpdate(customer.id, { vendor: null });
+                                    await logActivity(
+                                        user.id,
+                                        'update',
+                                        `${customer.customer_name}: Removed assigned vendor`,
+                                        '',
+                                        customer.id
+                                    );
+                                    fetchLogs();
+                                }
                             }}
                             className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
                         >
@@ -238,6 +276,74 @@ export default function MaterialDeliveryTab({
                     )}
                 </div>
             </section>
+
+            {pendingVendor && (
+                <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center z-[70] p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-[28px] shadow-2xl p-6 w-full max-w-sm border border-stone-150 flex flex-col gap-4 animate-in zoom-in-95 duration-200">
+                        <div>
+                            <h3 className="text-sm font-bold text-stone-850">Assign & Notify Vendor?</h3>
+                            <p className="text-xs text-stone-500 mt-2 font-medium">
+                                You are assigning this project to <strong className="text-stone-800">{pendingVendor}</strong>. Do you want to notify them and send the project details now?
+                            </p>
+                        </div>
+                        <div className="flex gap-2.5 mt-2">
+                            <button
+                                onClick={() => setPendingVendor(null)}
+                                className="flex-1 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-xl text-xs font-bold transition cursor-pointer text-center"
+                            >
+                                Cancel / Revert
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    const selectedVal = pendingVendor;
+                                    setPendingVendor(null);
+                                    
+                                    setEditData(prev => ({ ...prev, vendor: selectedVal }));
+                                    setInfoSentStatus(null);
+                                    await onUpdate(customer.id, { vendor: selectedVal });
+                                    await logActivity(
+                                        user.id,
+                                        'update',
+                                        `${customer.customer_name}: Assigned vendor to ${selectedVal}`,
+                                        '',
+                                        customer.id
+                                    );
+                                    fetchLogs();
+
+                                    setSendingInfo(true);
+                                    try {
+                                        const { data, error } = await supabase.functions.invoke('send-lead-to-vendor', {
+                                            body: { customer_id: customer.id }
+                                        });
+                                        if (error) {
+                                            console.error('Failed to notify vendor:', error);
+                                            setInfoSentStatus('failed');
+                                        } else {
+                                            setInfoSentStatus('sent');
+                                            await logActivity(
+                                                user.id,
+                                                'email',
+                                                `Vendor email notification sent to ${selectedVal}`,
+                                                '',
+                                                customer.id
+                                            );
+                                            fetchLogs();
+                                        }
+                                    } catch (err) {
+                                        console.error('Error invoking function:', err);
+                                        setInfoSentStatus('failed');
+                                    } finally {
+                                        setSendingInfo(false);
+                                    }
+                                }}
+                                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-md shadow-blue-600/10 cursor-pointer text-center"
+                            >
+                                Send Details
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Equipment & Delivery Info (Grid) */}
             <section id="section-equip_details" className="space-y-4">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Camera, ClipboardList, ShieldAlert, MapPin } from 'lucide-react';
 import { CheckboxRemarkItem } from './shared';
 
@@ -24,6 +24,15 @@ export default function GeoTagPhotoTab({
     const isAdmin = user?.userType === 'admin' || user?.role === 'Super Admin' || user?.role === 'Admin';
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
     const canEditGeoTag = isVendor || ((isAdmin || isChannelPartnerOffice) && isEditable);
+
+    // Ensure a default Geo Tag status of 'No' for new records (only on mount)
+    const initializedRef = React.useRef(false);
+    useEffect(() => {
+        if (!initializedRef.current && !editData.geo_tag_status) {
+            initializedRef.current = true;
+            setEditData(prev => ({ ...prev, geo_tag_status: 'No' }));
+        }
+    }, []);
 
     const handleChange = (field, val) => {
         setEditData(prev => ({ ...prev, [field]: val }));

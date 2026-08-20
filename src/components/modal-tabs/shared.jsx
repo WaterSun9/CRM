@@ -407,11 +407,15 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
     const handleFileSelected = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        // Save file ref and reset input immediately so re-renders don't re-trigger
+        const inputEl = e.target;
+        const wrappedEvent = { target: { files: [file], value: '' } };
+        inputEl.value = '';
         if (replacingDocId && onDelete) {
             const oldDoc = fieldDocs.find(d => d.id === replacingDocId);
             if (oldDoc) await onDelete(oldDoc);
         }
-        if (onUpload) await onUpload(e, field);
+        if (onUpload) await onUpload(wrappedEvent, field);
         // Automatically check when a file is uploaded
         if (onChange) {
             onChange(field, true);

@@ -56,9 +56,9 @@ export default function DiscomSubmissionTab({
                 <div className="flex flex-col gap-2">
                     <CheckboxRemarkItem label="File Status" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
                     <CheckboxRemarkItem label="DCR Certificate" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
-                    <CheckboxRemarkItem label="Signature Photo" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
+                    <CheckboxRemarkItem label="Signiture" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
                     <CheckboxRemarkItem label="Stamp" field="stamp" value={editData.stamp} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
-                    <CheckboxRemarkItem label="PM Surya GPAE Stamp" field="pm_surya_gpae_stamp" value={editData.pm_surya_gpae_stamp} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
+                    <CheckboxRemarkItem label="PM Surya Ghar Stamp" field="pm_surya_gpae_stamp" value={editData.pm_surya_gpae_stamp} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
                 </div>
                 {isEditable && (editData.file_status !== customer.file_status || editData.dcr_certificate !== customer.dcr_certificate || editData.signature_pic !== customer.signature_pic || editData.stamp !== customer.stamp || editData.pm_surya_gpae_stamp !== customer.pm_surya_gpae_stamp) && (
                     <div className="flex justify-end pt-2">
@@ -66,7 +66,7 @@ export default function DiscomSubmissionTab({
                             type="button"
                             onClick={async () => {
                                 setSaving(true);
-                                await onUpdate(customer.id, { 
+                                await onUpdate(customer.id, {
                                     file_status: editData.file_status,
                                     dcr_certificate: editData.dcr_certificate,
                                     signature_pic: editData.signature_pic,

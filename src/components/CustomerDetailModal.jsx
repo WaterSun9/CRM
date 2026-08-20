@@ -595,6 +595,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const isOfficeFrozenTab = isOffice && (activeTab === 'METER INSTALLATION' || activeTab === 'DISCOM INSPECTION');
     const isEditable = !isFrozen && canUserEdit && !isOfficeFrozenTab;
     const saveBomRef = useRef(null);
+    const prevCustomerRef = useRef(customer);
     const [saved, setSaved] = useState(false);
     const [showAgreementPopup, setShowAgreementPopup] = useState(false);
     const [agreementData, setAgreementData] = useState({
@@ -923,10 +924,40 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     useEffect(() => {
-        setEditData({ ...customer });
-        setIsFormDirty(false);
+        setEditData(prev => {
+            // On first mount or customer ID change, do a full reset
+            if (!prev || prev.id !== customer.id) {
+                prevCustomerRef.current = customer;
+                return { ...customer };
+            }
+            // Smart merge: only update fields user hasn't locally changed
+            const merged = { ...prev };
+            const prevCust = prevCustomerRef.current;
+            for (const key of Object.keys(customer)) {
+                // If the field in prev still matches the OLD customer value
+                // (i.e. user didn't touch it), accept the new server value
+                const prevVal = prev[key];
+                const oldCustVal = prevCust?.[key];
+                // Use JSON.stringify for objects/arrays (e.g. subsidy_history)
+                const isSame = typeof prevVal === 'object' && prevVal !== null
+                    ? JSON.stringify(prevVal) === JSON.stringify(oldCustVal)
+                    : prevVal === oldCustVal;
+                if (isSame) {
+                    merged[key] = customer[key];
+                }
+                // Otherwise keep the user's local edit (prev[key])
+            }
+            // Also bring in any new keys from server that weren't in prev
+            for (const key of Object.keys(customer)) {
+                if (!(key in merged)) {
+                    merged[key] = customer[key];
+                }
+            }
+            prevCustomerRef.current = customer;
+            return merged;
+        });
         fetchLogs();
-    }, [customer?.id]);
+    }, [customer]);
 
 
 
@@ -1144,6 +1175,16 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return false;
 
+        if (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Yes') {
+            return false;
+        }
+
+        if (editData.stage === 'GEO TAG PHOTO') {
+            if (editData.geo_tag_status !== 'Proceed' || !editData.geo_tag_image) {
+                return false;
+            }
+        }
+
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return false;
 
@@ -1164,6 +1205,16 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const nextStageId = (() => {
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return null;
+
+        if (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Yes') {
+            return null;
+        }
+
+        if (editData.stage === 'GEO TAG PHOTO') {
+            if (editData.geo_tag_status !== 'Proceed' || !editData.geo_tag_image) {
+                return null;
+            }
+        }
 
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return null;
@@ -1247,12 +1298,61 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             return;
         }
 
+        if (editData.stage === 'MATERIAL DELIVERY') {
+            if (!editData.vendor || !editData.inverter_make || !editData.inverter_serial_no || !editData.invoice_no || !editData.material_delivery_date || !editData.driver_name || !editData.driver_phone_number || !editData.panel_serial_no) {
+                alert('All Material Delivery details (Vendor allotment, Inverter Make, Inverter Serial, Invoice No, Delivery Date, Driver Name, Driver Phone, and Panel Serials) must be filled to advance.');
+                return;
+            }
+        }
+
+        if (editData.stage === 'GEO TAG PHOTO') {
+            if (editData.geo_tag_status !== 'Proceed' || !editData.geo_tag_image) {
+                alert('Geo Tag Photo status must be "Proceed" and a photo must be uploaded to advance.');
+                return;
+            }
+        }
+
+        if (editData.stage === 'METER INSTALLATION') {
+            if (editData.meter_installation !== 'Yes' || !editData.meter_installation_photo) {
+                alert('Meter Installation status must be "Yes" and a photo must be uploaded to advance.');
+                return;
+            }
+        }
+
+        if (editData.stage === 'DISCOM INSPECTION') {
+            if (editData.discom_inspection !== 'Yes') {
+                alert('Discom Inspection status must be "Yes" to advance.');
+                return;
+            }
+        }
+
+        if (editData.stage === 'INSTALLATION STATUS') {
+            if (editData.installation_status !== 'Yes') {
+                alert('Physical Installation status must be "Yes" to advance.');
+                return;
+            }
+        }
+
         setSaving(true);
         if (saveBomRef.current) {
             try {
                 await saveBomRef.current();
             } catch (err) {
                 console.error('Error saving BOM during stage advance:', err);
+            }
+        }
+
+        if (editData.stage === 'MATERIAL INTEGRATION') {
+            const { data: bomData } = await supabase
+                .from('bom')
+                .select('paper_prepared_by, paper_prepared_date, material_loaded_by, material_loaded_date')
+                .eq('admin_id', customer.id)
+                .maybeSingle();
+
+            if (!bomData || !bomData.paper_prepared_by || !bomData.paper_prepared_date || !bomData.material_loaded_by || !bomData.material_loaded_date) {
+                alert('All Procurement & Loading Milestones (Paper Prepared By, Paper Prepared Date, Material Loaded By, and Material Loaded Date) must be filled to advance.');
+                setSaving(false);
+                return;
             }
         }
 
@@ -1479,7 +1579,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         }
 
         const stageChanged = editData.stage !== customer.stage;
-        delete updates.id; delete updates.created_at; delete updates.crn;
+        delete updates.id; delete updates.created_at; delete updates.crn; delete updates.updated_at;
         await onUpdate(customer.id, updates);
         if (changeSummary.length > 0) await logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id);
 
@@ -2225,7 +2325,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             )}
                         </button>
 
-                        {hasNextStage && (
+                        {hasNextStage && activeTab === customer.stage && (
                             <button
                                 onClick={() => {
                                     if (nextStageId === 'COMPLETED') {
@@ -2234,15 +2334,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                         handleAdvanceStage();
                                     }
                                 }}
-                                disabled={saving || (
-                                    (editData.stage === 'LEADS' && !isLeadFieldsFilled) ||
-                                    (editData.stage === 'REGISTRATION' && !isRegistrationReady) ||
-                                    (editData.stage === 'MATERIAL ORDER' && !isMaterialOrderFilled) ||
-                                    (editData.stage === 'GEO TAG PHOTO' && (editData.geo_tag_status !== 'Proceed' || !editData.geo_tag_image)) ||
-                                    (editData.stage === 'METER INSTALLATION' && (editData.meter_installation !== 'Yes' || !editData.meter_installation_photo)) ||
-                                    (editData.stage === 'DISCOM INSPECTION' && editData.discom_inspection !== 'Yes') ||
-                                    (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Process')
-                                )}
+                                disabled={saving}
                                 className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {saving ? 'Saving & Moving...' : `Save & Move to ${nextStageLabel}`}

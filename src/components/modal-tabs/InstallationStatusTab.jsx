@@ -42,10 +42,15 @@ export default function InstallationStatusTab({
     const handleToggleInstallationTag = (tagId) => {
         const newTag = editData.installation_status === tagId ? null : tagId;
         const todayStr = new Date().toISOString().split('T')[0];
+        // If user is moving away from "Give Up", reset the approval flag
+        const wasGiveUp = editData.installation_status === 'Give Up';
+        const resetApproval = wasGiveUp && newTag !== 'Give Up';
         setEditData(prev => ({
             ...prev,
             installation_status: newTag,
-            installation_date: (newTag === 'Process' || newTag === 'Yes') ? (prev.installation_date || todayStr) : prev.installation_date
+            // Auto-set installation date when moving to Process or Yes if not already set
+            installation_date: (newTag === 'Process' || newTag === 'Yes') ? (prev.installation_date || todayStr) : prev.installation_date,
+            ...(resetApproval ? { vendor_give_up_approved: false, vendor_note: '' } : {})
         }));
     };
 
@@ -62,7 +67,8 @@ export default function InstallationStatusTab({
             vendor_quote: parsedQuote,
             vendor_paid_date: editData.vendor_paid_date || null,
             installation_note: editData.installation_note || null,
-            vendor_note: editData.vendor_note || null
+            vendor_note: editData.vendor_note || null,
+            vendor_give_up_approved: editData.vendor_give_up_approved ?? customer.vendor_give_up_approved ?? false
         };
         await onUpdate(customer.id, updates);
         
@@ -230,7 +236,7 @@ export default function InstallationStatusTab({
                                 <label className="text-[9px] font-bold text-rose-800 uppercase tracking-wider block">
                                     Vendor Give Up Reason / Note
                                 </label>
-                                {isEditable ? (
+                                {isEditable && !(editData.vendor_give_up_approved || customer.vendor_give_up_approved) ? (
                                     <textarea
                                         rows={2}
                                         value={editData.vendor_note || ''}
@@ -252,16 +258,19 @@ export default function InstallationStatusTab({
                                         <button
                                             type="button"
                                             onClick={async () => {
-                                                setEditData(prev => ({ ...prev, vendor_give_up_approved: true }));
-                                                await onUpdate(customer.id, { 
-                                                    vendor_give_up_approved: true, 
-                                                    vendor_note: editData.vendor_note || null 
+                                                // First persist approval to backend
+                                                await onUpdate(customer.id, {
+                                                    vendor_give_up_approved: true,
+                                                    vendor_note: editData.vendor_note || null,
+                                                    installation_status: editData.installation_status || customer.installation_status,
                                                 });
+                                                // Then update local editData to reflect approval without causing flicker
+                                                setEditData(prev => ({ ...prev, vendor_give_up_approved: true }));
                                                 await logActivity(
-                                                    user.id, 
-                                                    'update', 
-                                                    `${customer.customer_name}: Approved vendor give up request (${customer.vendor || editData.vendor})`, 
-                                                    '', 
+                                                    user.id,
+                                                    'update',
+                                                    `${customer.customer_name}: Approved vendor give up request (${customer.vendor || editData.vendor})`,
+                                                    '',
                                                     customer.id
                                                 );
                                                 fetchLogs();
@@ -290,25 +299,23 @@ export default function InstallationStatusTab({
                                     <select
                                         disabled={!isEditable}
                                         value={editData.vendor || ''}
-                                        onChange={async (e) => {
+                                        onChange={(e) => {
                                             const selectedVal = e.target.value;
-                                            setEditData(prev => ({ 
-                                                ...prev, 
-                                                vendor: selectedVal, 
-                                                vendor_give_up_approved: false 
+                                            // Update local state instantly
+                                            setEditData(prev => ({
+                                                ...prev,
+                                                vendor: selectedVal
                                             }));
                                             setInfoSentStatus(null);
-                                            await onUpdate(customer.id, { 
-                                                vendor: selectedVal,
-                                                vendor_give_up_approved: false
-                                            });
-                                            await logActivity(
+                                            // Fire‑and‑forget backend update to avoid UI blocking
+                                            onUpdate(customer.id, { vendor: selectedVal }).catch(console.error);
+                                            logActivity(
                                                 user.id,
                                                 'update',
                                                 `${customer.customer_name}: Assigned new vendor to ${selectedVal || 'None'}`,
                                                 '',
                                                 customer.id
-                                            );
+                                            ).catch(console.error);
                                             fetchLogs();
                                         }}
                                         className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"

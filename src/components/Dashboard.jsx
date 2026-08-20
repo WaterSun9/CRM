@@ -105,11 +105,11 @@ export default function Dashboard({ user, onLogout }) {
     useEffect(() => {
         if (selectedCustomer) {
             const fresh = customers.find(c => c.id === selectedCustomer.id);
-            if (fresh && fresh !== selectedCustomer) {
+            if (fresh && JSON.stringify(fresh) !== JSON.stringify(selectedCustomer)) {
                 setSelectedCustomer(fresh);
             }
         }
-    }, [customers, selectedCustomer]);
+    }, [customers]);
 
     // Close global search / poc dropdowns when clicking outside
     useEffect(() => {

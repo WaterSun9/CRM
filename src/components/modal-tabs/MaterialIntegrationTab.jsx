@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ClipboardList, Save, Printer, ShoppingBag, User, Clock } from 'lucide-react';
+import { ClipboardList, Save, Printer, ShoppingBag, User, Clock, Sparkles } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, COMMON_BOM_ITEMS } from '../../constants';
@@ -28,6 +28,62 @@ export default function MaterialIntegrationTab({
     const [materialLoadedBy, setMaterialLoadedBy] = useState('');
     const [materialLoadedDate, setMaterialLoadedDate] = useState('');
     const [actionSaving, setActionSaving] = useState(false);
+
+    const handleFillMilestones = async () => {
+        const today = new Date().toISOString().split('T')[0];
+        setPaperPreparedBy('Ramesh Sharma');
+        setPaperPreparedDate(today);
+        setMaterialLoadedBy('Suresh Patel');
+        setMaterialLoadedDate(today);
+
+        setActionSaving(true);
+        try {
+            let currentBomId = bom?.id;
+            if (currentBomId) {
+                const { error } = await supabase
+                    .from('bom')
+                    .update({
+                        bom_type: activeType,
+                        paper_prepared_by: 'Ramesh Sharma',
+                        paper_prepared_date: today,
+                        material_loaded_by: 'Suresh Patel',
+                        material_loaded_date: today
+                    })
+                    .eq('id', currentBomId);
+                if (error) throw error;
+            } else {
+                const { data, error } = await supabase
+                    .from('bom')
+                    .insert({
+                        admin_id: customer.id,
+                        bom_type: activeType,
+                        paper_prepared_by: 'Ramesh Sharma',
+                        paper_prepared_date: today,
+                        material_loaded_by: 'Suresh Patel',
+                        material_loaded_date: today
+                    })
+                    .select()
+                    .single();
+                if (error) throw error;
+                setBom(data);
+            }
+            if (logActivity && user?.id) {
+                await logActivity(
+                    user.id,
+                    'update',
+                    `Auto-filled procurement milestones for ${customer.customer_name}`,
+                    '',
+                    customer.id
+                );
+            }
+            if (onUpdate) onUpdate();
+            await loadBOM();
+        } catch (err) {
+            console.error('handleFillMilestones error:', err);
+        } finally {
+            setActionSaving(false);
+        }
+    };
     const [showPrintModal, setShowPrintModal] = useState(false);
 
     // Integration By dropdown options
@@ -422,14 +478,27 @@ export default function MaterialIntegrationTab({
 
             {/* 3. Procurement & Loading Milestones (Own Edit Pencil) */}
             <section id="section-procurement_milestones" className="pt-1.5 border-t border-stone-100">
-                <SectionHeader 
-                    title="Procurement & Loading Milestones" 
-                    id="procurement_milestones" 
-                    icon={Clock} 
-                    isEditable={isEditable} 
-                    editingSection={editingSection} 
-                    setEditingSection={setEditingSection} 
-                />
+                <div className="flex justify-between items-center">
+                    <div className="flex-1">
+                        <SectionHeader 
+                            title="Procurement & Loading Milestones" 
+                            id="procurement_milestones" 
+                            icon={Clock} 
+                            isEditable={isEditable} 
+                            editingSection={editingSection} 
+                            setEditingSection={setEditingSection} 
+                        />
+                    </div>
+                    {isEditable && editingSection === 'procurement_milestones' && (
+                        <button
+                            type="button"
+                            onClick={handleFillMilestones}
+                            className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 px-2 py-0.5 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer mr-6 mt-2"
+                        >
+                            <Sparkles size={11} className="text-amber-500" /> Fill Test Values
+                        </button>
+                    )}
+                </div>
 
                 {isEditingMilestones ? (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-stone-50 p-2.5 rounded-xl border border-stone-200">
