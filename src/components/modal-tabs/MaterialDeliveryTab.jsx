@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
@@ -43,6 +43,7 @@ export default function MaterialDeliveryTab({
     const [copiedAll, setCopiedAll] = useState(false);
     const [showPrintModal, setShowPrintModal] = useState(false);
     const [pendingVendor, setPendingVendor] = useState(null);
+    const printableDeliveryRef = useRef(null);
 
     const handleFillTestData = () => {
         const randId = Math.floor(10000 + Math.random() * 90000);
@@ -144,7 +145,28 @@ export default function MaterialDeliveryTab({
     };
 
     const handlePrint = () => {
-        window.print();
+        const documentBody = printableDeliveryRef.current;
+        if (!documentBody) return;
+
+        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+            .map(element => element.outerHTML)
+            .join('');
+        const printFrame = document.createElement('iframe');
+        printFrame.setAttribute('aria-hidden', 'true');
+        printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
+
+        const removeFrame = () => setTimeout(() => printFrame.remove(), 250);
+        printFrame.onload = () => {
+            const printWindow = printFrame.contentWindow;
+            if (!printWindow) return removeFrame();
+            printWindow.onafterprint = removeFrame;
+            setTimeout(() => {
+                printWindow.focus();
+                printWindow.print();
+            }, 100);
+        };
+        printFrame.srcdoc = `<!doctype html><html><head><title>Delivery Note — ${customer?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-delivery { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-delivery">${documentBody.innerHTML}</main></body></html>`;
+        document.body.appendChild(printFrame);
     };
 
     const filledCount = panelSerials.filter(Boolean).length;
@@ -646,7 +668,7 @@ export default function MaterialDeliveryTab({
                         </div>
 
                         {/* Printable Document Body */}
-                        <div className="flex-1 overflow-y-auto p-8 bg-white text-stone-900 print-document" id="printable-delivery">
+                        <div ref={printableDeliveryRef} className="flex-1 overflow-y-auto p-8 bg-white text-stone-900 print-document" id="printable-delivery">
                             {/* Company Header */}
                             <div className="border-b-2 border-stone-900 pb-4 mb-6 text-center">
                                 <h1 className="text-xl font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>

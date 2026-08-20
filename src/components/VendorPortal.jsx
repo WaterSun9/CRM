@@ -110,6 +110,24 @@ export default function VendorPortal({ user, onLogout }) {
         }
     };
 
+    // Keep the read-only Material Integration reference card current without
+    // forcing the vendor to open the print preview first.
+    useEffect(() => {
+        if (activeTab !== 'MATERIAL' || !selectedCust?.id) return;
+        let cancelled = false;
+
+        supabase
+            .from('bom')
+            .select('*')
+            .eq('admin_id', selectedCust.id)
+            .maybeSingle()
+            .then(({ data }) => {
+                if (!cancelled) setBomData(data || null);
+            });
+
+        return () => { cancelled = true; };
+    }, [activeTab, selectedCust?.id]);
+
     const handlePrintVendorBom = () => {
         const documentBody = vendorBomPrintRef.current;
         if (!documentBody) return;
@@ -120,8 +138,6 @@ export default function VendorPortal({ user, onLogout }) {
         const printFrame = document.createElement('iframe');
         printFrame.setAttribute('aria-hidden', 'true');
         printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
-        document.body.appendChild(printFrame);
-
         const removeFrame = () => setTimeout(() => printFrame.remove(), 250);
         printFrame.onload = () => {
             const printWindow = printFrame.contentWindow;
@@ -132,8 +148,8 @@ export default function VendorPortal({ user, onLogout }) {
                 printWindow.print();
             }, 100);
         };
-        printFrame.contentDocument.write(`<!doctype html><html><head><title>BOM — ${targetBomCust?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-vendor-bom { border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body>${documentBody.innerHTML}</body></html>`);
-        printFrame.contentDocument.close();
+        printFrame.srcdoc = `<!doctype html><html><head><title>BOM — ${targetBomCust?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-vendor-bom { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-vendor-bom">${documentBody.innerHTML}</main></body></html>`;
+        document.body.appendChild(printFrame);
     };
 
     // Fetch customer leads assigned to this vendor
@@ -846,13 +862,30 @@ export default function VendorPortal({ user, onLogout }) {
                                                 <Printer size={12} /> View & Print
                                             </button>
                                         </div>
-                                        <div className="pt-3">
-                                            <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-stone-400">Customer Information</p>
-                                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                                                <div><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">Party Name</p><p className="font-semibold text-stone-900">{selectedCust.customer_name || '–'}</p></div>
-                                                <div><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">Capacity</p><p className="font-semibold text-stone-900">{selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : '–'}</p></div>
-                                                <div><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">Channel Partner</p><p className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</p></div>
-                                                <div><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">Registration Date</p><p className="font-semibold text-stone-900">{selectedCust.registration_date || '–'}</p></div>
+                                        <div className="space-y-4 pt-3">
+                                            <div>
+                                                <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-stone-400">Material Order Specifications <span className="ml-1 font-semibold normal-case tracking-normal">(View Only)</span></p>
+                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                                    {[
+                                                        ['Roof / Shed', selectedCust.roof_shed], ['DC Cable (Meters)', selectedCust.dc_cable], ['AC Cable (Meters)', selectedCust.ac_cable], ['Structure Front Leg Height (ft)', selectedCust.structure_front_leg_height], ['Structure Rear Leg Height (ft)', selectedCust.structure_rear_leg_height], ['Invoice Value (₹)', selectedCust.invoice_value ? `₹${toIndianCommas(selectedCust.invoice_value)}` : '–'], ['Notes / Special Instructions', selectedCust.material_order_notes],
+                                                    ].map(([label, value]) => <div key={label}><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">{label}</p><p className="font-semibold text-stone-900">{value || '–'}</p></div>)}
+                                                </div>
+                                            </div>
+                                            <div className="border-t border-amber-200/70 pt-3">
+                                                <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-stone-400">Customer Lead Details <span className="ml-1 font-semibold normal-case tracking-normal">(View Only)</span></p>
+                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                                    {[
+                                                        ['Customer Name', selectedCust.customer_name], ['Phone Number', selectedCust.phone_number], ['Email Address', selectedCust.email], ['Consumer No', selectedCust.consumer_no], ['Villages', selectedCust.villages], ['Sub Division', selectedCust.sub_divisions], ['Channel Partner Name', selectedCust.channel_partner], ['Sub Channel Partner Name', selectedCust.sub_channel_partner], ['Module Brand', selectedCust.module_brand], ['Module WP', selectedCust.module_wp], ['No of Modules', selectedCust.no_of_modules], ['System Capacity (kWp)', selectedCust.system_capacity_kwp ? toIndianCommas(selectedCust.system_capacity_kwp) : '–'],
+                                                    ].map(([label, value]) => <div key={label}><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">{label}</p><p className="font-semibold text-stone-900 break-words">{value || '–'}</p></div>)}
+                                                </div>
+                                            </div>
+                                            <div className="border-t border-amber-200/70 pt-3">
+                                                <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-stone-400">Procurement & Loading Milestones <span className="ml-1 font-semibold normal-case tracking-normal">(View Only)</span></p>
+                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                                    {[
+                                                        ['Paper Prepared By', bomData?.paper_prepared_by], ['Paper Prepared Date', bomData?.paper_prepared_date], ['Material Loaded By', bomData?.material_loaded_by], ['Material Loaded Date', bomData?.material_loaded_date],
+                                                    ].map(([label, value]) => <div key={label}><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">{label}</p><p className="font-semibold text-stone-900">{value || '–'}</p></div>)}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -1193,33 +1226,26 @@ export default function VendorPortal({ user, onLogout }) {
                                     )}
 
                                     <div className="pt-2">
-                                        {(geoTagStatus === 'Proceed' && geoDocs.length > 0) ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleSaveChanges('DISCOM SUBMISSION')}
-                                                disabled={saving}
-                                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                            >
-                                                {saving ? (
-                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Moving Stage...</>
-                                                ) : (
-                                                    <><CheckCircle2 size={14} /> Save & Move to Discom Submission</>
-                                                )}
-                                            </button>
-                                        ) : (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleSaveChanges(null)}
-                                                disabled={saving}
-                                                className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                            >
-                                                {saving ? (
-                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
-                                                ) : (
-                                                    'Save Geo Tag Report'
-                                                )}
-                                            </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSaveChanges('DISCOM SUBMISSION')}
+                                            disabled={saving || geoTagStatus !== 'Proceed' || geoDocs.length === 0}
+                                            title={geoTagStatus !== 'Proceed' || geoDocs.length === 0 ? 'Set status to Proceed and upload a geo-tag photo first.' : undefined}
+                                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
+                                        >
+                                            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving & Moving...</> : <><CheckCircle2 size={14} /> Save & Move to Discom Submission</>}
+                                        </button>
+                                        {(geoTagStatus !== 'Proceed' || geoDocs.length === 0) && (
+                                            <p className="mt-2 text-center text-[10px] font-semibold text-rose-600">Set status to Proceed and upload a geo-tag photo to continue.</p>
                                         )}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSaveChanges(null)}
+                                            disabled={saving}
+                                            className="mt-2 w-full text-stone-600 hover:text-stone-900 font-bold text-[10px] py-2 transition disabled:opacity-50 cursor-pointer"
+                                        >
+                                            Save Geo Tag Report Only
+                                        </button>
                                     </div>
                                 </div>
                             )}

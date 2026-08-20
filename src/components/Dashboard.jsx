@@ -14,13 +14,13 @@ import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, normali
 import { PRIMARY_STAGES } from '../constants';
 
 import DashboardView from './DashboardView';
+import CustomerCard from './CustomerCard';
 
 // Secondary views and modals are large, especially the document and agreement
 // tools. Deferring them makes the main customer list render much sooner.
 const SubsidyView = lazy(() => import('./SubsidyView'));
 const LoanView = lazy(() => import('./LoanView'));
 const InstallationView = lazy(() => import('./InstallationView'));
-const CustomerCard = lazy(() => import('./CustomerCard'));
 const CustomerDetailModal = lazy(() => import('./CustomerDetailModal'));
 const AddLeadModal = lazy(() => import('./AddLeadModal'));
 const ActivityLogView = lazy(() => import('./ActivityLogView'));

@@ -460,8 +460,6 @@ export default function AgentPortal({ user, onLogout }) {
         const printFrame = document.createElement('iframe');
         printFrame.setAttribute('aria-hidden', 'true');
         printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
-        document.body.appendChild(printFrame);
-
         const removeFrame = () => setTimeout(() => printFrame.remove(), 250);
         printFrame.onload = () => {
             const printWindow = printFrame.contentWindow;
@@ -472,8 +470,8 @@ export default function AgentPortal({ user, onLogout }) {
                 printWindow.print();
             }, 100);
         };
-        printFrame.contentDocument.write(`<!doctype html><html><head><title>BOM — ${selectedCust?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } .print-document-container { border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; } </style></head><body><main class="print-document-container">${documentBody.innerHTML}</main></body></html>`);
-        printFrame.contentDocument.close();
+        printFrame.srcdoc = `<!doctype html><html><head><title>BOM — ${selectedCust?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } .print-document-container { border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; } </style></head><body><main class="print-document-container">${documentBody.innerHTML}</main></body></html>`;
+        document.body.appendChild(printFrame);
     };
 
     return (
