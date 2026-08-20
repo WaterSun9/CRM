@@ -42,7 +42,7 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
     // Filter installations where installation_status is 'Proceed' or 'Yes'
     const installations = useMemo(() => {
         return (customers || []).filter(c => {
-            return c.installation_status === 'Proceed' || c.installation_status === 'Yes';
+            return c.installation_status === 'Process' || c.installation_status === 'Yes';
         });
     }, [customers]);
 

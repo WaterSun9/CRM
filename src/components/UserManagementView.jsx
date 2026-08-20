@@ -57,37 +57,7 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
             throw new Error(response.data.error);
         }
 
-        if (finalForm.user_type === 'agent' || finalForm.role === 'Channel Partners' || finalForm.user_type === 'channel_partner_office' || finalForm.role === 'Channel Partner Office') {
-            const partnerName = finalForm.name;
-            const { data: existingMeta } = await supabase
-                .from('metadata')
-                .select('id')
-                .eq('category', 'channel_partner')
-                .eq('label', partnerName)
-                .maybeSingle();
 
-            if (!existingMeta) {
-                await supabase
-                    .from('metadata')
-                    .insert({ category: 'channel_partner', label: partnerName });
-            }
-        }
-
-        if (finalForm.user_type === 'vendor' || finalForm.role === 'Vendors') {
-            const vendorName = finalForm.name;
-            const vendorEmail = finalForm.email;
-            const { data: existingVendor } = await supabase
-                .from('vendors')
-                .select('id')
-                .eq('email', vendorEmail)
-                .maybeSingle();
-
-            if (!existingVendor) {
-                await supabase
-                    .from('vendors')
-                    .insert({ name: vendorName, email: vendorEmail });
-            }
-        }
 
         logActivity(
             currentUser.id,
@@ -547,23 +517,7 @@ export default function UserManagementView({ currentUser }) {
                                                             setProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, user_type: selected.user_type, role: selected.role } : p));
                                                             logActivity(currentUser.id, 'update', `Updated role for ${profile.name} to ${selected.label}`, '');
 
-                                                            if (selected.user_type === 'agent' || selected.role === 'Channel Partners' || selected.user_type === 'channel_partner_office' || selected.role === 'Channel Partner Office') {
-                                                                const partnerName = (profile.channel_partner || profile.name || '').trim();
-                                                                if (partnerName) {
-                                                                    const { data: existingMeta } = await supabase
-                                                                        .from('metadata')
-                                                                        .select('id')
-                                                                        .eq('category', 'channel_partner')
-                                                                        .eq('label', partnerName)
-                                                                        .maybeSingle();
 
-                                                                    if (!existingMeta) {
-                                                                        await supabase
-                                                                            .from('metadata')
-                                                                            .insert({ category: 'channel_partner', label: partnerName });
-                                                                    }
-                                                                }
-                                                            }
                                                         }
                                                         setActionLoading(null);
                                                     }}

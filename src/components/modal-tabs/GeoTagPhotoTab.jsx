@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, ClipboardList, ShieldAlert } from 'lucide-react';
+import { Camera, ClipboardList, ShieldAlert, MapPin } from 'lucide-react';
 import { CheckboxRemarkItem } from './shared';
 
 export default function GeoTagPhotoTab({

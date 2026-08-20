@@ -775,14 +775,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (customer?.id) {
             getCustomerDocuments(customer.id).then(docs => {
                 setDocuments(docs);
-                // Pre-generate signed view URLs in the background for instant preview
-                docs.forEach(doc => {
-                    if (!urlCacheRef.current[doc.storage_path]) {
-                        getViewUrl(doc.storage_path).then(url => {
-                            if (url) urlCacheRef.current[doc.storage_path] = url;
-                        });
-                    }
-                });
             });
         }
     }, [customer?.id]);
@@ -792,7 +784,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (!file) return;
 
         setUploading(true);
-        const newDoc = await uploadDocument(file, customer.id, docType);
+        const newDoc = await uploadDocument(file, customer.id, docType, user?.id);
         if (newDoc) {
             setDocuments(prev => [newDoc, ...prev]);
             // Pre-cache the new doc URL
@@ -1038,7 +1030,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         setEditData(prev => ({
             ...prev,
             installation_status: newTag,
-            installation_date: (newTag === 'Proceed' || newTag === 'Yes') ? (prev.installation_date || todayStr) : prev.installation_date
+            installation_date: (newTag === 'Process' || newTag === 'Yes') ? (prev.installation_date || todayStr) : prev.installation_date
         }));
     };
 
@@ -1052,7 +1044,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         await onUpdate(customer.id, updates);
 
         let logMsg = `${customer.customer_name}: Updated Installation Status to ${editData.installation_status}`;
-        if (editData.installation_status === 'Proceed') {
+        if (editData.installation_status === 'Process') {
             logMsg += ` (Date: ${editData.installation_date || 'N/A'}, Installed By: ${editData.installed_by || 'N/A'})`;
         }
         await logActivity(user.id, 'update', logMsg, '', customer.id);
@@ -2249,7 +2241,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     (editData.stage === 'GEO TAG PHOTO' && (editData.geo_tag_status !== 'Proceed' || !editData.geo_tag_image)) ||
                                     (editData.stage === 'METER INSTALLATION' && (editData.meter_installation !== 'Yes' || !editData.meter_installation_photo)) ||
                                     (editData.stage === 'DISCOM INSPECTION' && editData.discom_inspection !== 'Yes') ||
-                                    (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Proceed')
+                                    (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Process')
                                 )}
                                 className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >

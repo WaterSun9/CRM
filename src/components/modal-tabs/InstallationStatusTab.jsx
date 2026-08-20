@@ -45,7 +45,7 @@ export default function InstallationStatusTab({
         setEditData(prev => ({
             ...prev,
             installation_status: newTag,
-            installation_date: (newTag === 'Proceed' || newTag === 'Yes') ? (prev.installation_date || todayStr) : prev.installation_date
+            installation_date: (newTag === 'Process' || newTag === 'Yes') ? (prev.installation_date || todayStr) : prev.installation_date
         }));
     };
 
@@ -171,12 +171,12 @@ export default function InstallationStatusTab({
                     </div>
                 </div>
 
-                {/* 4 Status Buttons: Give Up, Yes, Proceed, Pending */}
+                {/* 4 Status Buttons: Give Up, Yes, Process, Pending */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
                     {[
                         { id: 'Give Up', label: 'Give Up', activeClass: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/10', dotClass: 'bg-white' },
                         { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
-                        { id: 'Proceed', label: 'Proceed', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
+                        { id: 'Process', label: 'Process', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
                         { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
                     ].map(tag => {
                         const isSelected = editData.installation_status === tag.id;
@@ -379,8 +379,8 @@ export default function InstallationStatusTab({
                     </div>
                 )}
 
-                {/* WHEN STATUS IS "PROCEED" — Installation Date & Automatically Grabbed Vendor Name */}
-                {(editData.installation_status === 'Proceed' || editData.installation_status === 'Yes') && (
+                {/* WHEN STATUS IS "PROCESS" — Installation Date & Automatically Grabbed Vendor Name */}
+                {(editData.installation_status === 'Process' || editData.installation_status === 'Yes') && (
                     <div className="pt-4 border-t border-stone-100 grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-300">
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1 flex items-center gap-1">

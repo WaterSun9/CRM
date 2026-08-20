@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as ImageIcon, Download } from 'lucide-react';
+import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as ImageIcon, Download, MessageSquare } from 'lucide-react';
 import { formatINR, toIndianCommas, parseIndianNumber, formatInputValue } from '../../utils';
 
 const fmt = formatINR;

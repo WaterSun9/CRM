@@ -5,14 +5,14 @@ import { normalizeInstallationStatus } from '../utils';
 const INSTALLATION_TAGS = [
     { id: 'Give Up', label: 'Give Up' },
     { id: 'Yes', label: 'Yes' },
-    { id: 'Proceed', label: 'Proceed' },
+    { id: 'Process', label: 'Process' },
     { id: 'Pending', label: 'Pending' }
 ];
 
 const INSTALLATION_TAG_COLORS = {
     'Give Up': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', dot: 'bg-rose-500' },
     'Yes': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-    'Proceed': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', dot: 'bg-teal-500' },
+    'Process': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', dot: 'bg-teal-500' },
     'Pending': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' }
 };
 

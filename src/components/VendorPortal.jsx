@@ -246,7 +246,7 @@ export default function VendorPortal({ user, onLogout }) {
 
         setUploadingPhoto(true);
         try {
-            const newDoc = await uploadDocument(file, selectedCust.id, 'geo_tag_image');
+            const newDoc = await uploadDocument(file, selectedCust.id, 'geo_tag_image', user?.id);
             if (newDoc) {
                 setDocuments(prev => [newDoc, ...(prev || [])]);
                 setGeoTagImage(true);

@@ -347,17 +347,17 @@ export default function Dashboard({ user, onLogout }) {
             alert(`Failed to add lead: ${error.message} (Code: ${error.code})`);
             throw error;
         } else {
-            // Upload any attached files
+            // Upload any attached files in parallel to prevent UI lag
             if (attachedFiles && attachedFiles.length > 0) {
-                for (const item of attachedFiles) {
+                const uploadPromises = attachedFiles.map(item => {
                     if (item.file) {
-                        try {
-                            await uploadDocument(item.file, newCustomer.id, item.doc_type);
-                        } catch (uploadErr) {
+                        return uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id).catch(uploadErr => {
                             console.error('Failed to upload file for new lead:', uploadErr);
-                        }
+                        });
                     }
-                }
+                    return Promise.resolve(null);
+                });
+                await Promise.all(uploadPromises);
             }
 
             logActivity(user.id, 'create', `Added new lead: ${data.customer_name}`, `Done by: ${user.name}`, newCustomer.id);

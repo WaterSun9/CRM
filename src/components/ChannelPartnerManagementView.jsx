@@ -442,157 +442,170 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             ) : (
                 <div className="space-y-8 animate-in fade-in duration-700">
 
-                    {/* Top Performance Ranking Chart - Full Width */}
-                    <div className="bg-white rounded-[32px] p-8 border border-stone-100 shadow-sm space-y-6">
-                        <div className="flex items-center gap-2 border-b border-stone-50 pb-4">
-                            <Award className="w-5 h-5 text-amber-500 animate-bounce" />
-                            <h3 className="text-sm font-bold text-stone-800">Channel Partner Performance (Top 5 Volume)</h3>
-                        </div>
-                        <div className="space-y-4">
-                            {sortedPerformance.length > 0 ? (
-                                sortedPerformance.slice(0, 5).map((item, idx) => {
-                                    const totalProjects = active.length;
-                                    const perc = totalProjects > 0 ? (item.count / totalProjects) * 100 : 0;
-                                    const isFirst = idx === 0 && item.name !== 'No Channel Partner';
-                                    return (
-                                        <div key={item.name} className="flex flex-col">
-                                            <div className="flex justify-between text-xs font-bold text-stone-600 mb-1 tracking-tight">
-                                                <span className="flex items-center gap-1.5 truncate">
-                                                    {isFirst && <span className="text-amber-500">🏆</span>}
-                                                    <span className="truncate">{item.name}</span>
-                                                </span>
-                                                <span className="text-stone-400">{item.count} leads ({perc.toFixed(0)}%)</span>
-                                            </div>
-                                            <div className="h-2 bg-stone-50 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-amber-400 transition-all duration-1000 rounded-full"
-                                                    style={{ width: `${perc}%` }}
-                                                />
-                                            </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                        
+                        {/* Directories Grid (Left 2/3) */}
+                        <div className="lg:col-span-2 space-y-4">
+                            <div className="flex items-center gap-2 border-b border-stone-100 pb-3">
+                                <Users className="w-4 h-4 text-stone-700" />
+                                <h3 className="text-xs font-bold text-stone-800 uppercase tracking-wider">Directories & Allotments</h3>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                                {/* Channel Partners Card */}
+                                <button
+                                    onClick={() => setActiveManageCategory('channel_partner')}
+                                    className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex flex-col justify-between h-44 hover:shadow-md hover:border-stone-300 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                                >
+                                    <div className="space-y-3.5 w-full">
+                                        <div className="p-2.5 bg-stone-50 group-hover:bg-amber-100/70 rounded-xl w-fit transition-colors duration-305">
+                                            <Users className="w-5 h-5 text-stone-600 group-hover:text-amber-600 transition-colors duration-305" />
                                         </div>
-                                    );
-                                })
-                            ) : (
-                                <p className="text-xs text-stone-400 italic text-center py-4">No performance metrics available.</p>
-                            )}
+                                        <div>
+                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-600 transition-colors duration-305">Channel Partner Directory</h3>
+                                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">{partners.length} active partners</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1 transition-colors duration-305">
+                                        Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
+                                    </span>
+                                </button>
+
+                                {/* Module Brands Card */}
+                                <button
+                                    onClick={() => setActiveManageCategory('module_brand')}
+                                    className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex flex-col justify-between h-44 hover:shadow-md hover:border-stone-300 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                                >
+                                    <div className="space-y-3.5 w-full">
+                                        <div className="p-2.5 bg-stone-50 group-hover:bg-amber-100/70 rounded-xl w-fit transition-colors duration-305">
+                                            <Tag className="w-5 h-5 text-stone-600 group-hover:text-amber-600 transition-colors duration-305" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-600 transition-colors duration-305">Module Brands Directory</h3>
+                                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">{brands.length} active brands</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1 transition-colors duration-305">
+                                        Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
+                                    </span>
+                                </button>
+
+                                {/* Registration Staff Card */}
+                                <button
+                                    onClick={() => setActiveManageCategory('registration_by')}
+                                    className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex flex-col justify-between h-44 hover:shadow-md hover:border-stone-300 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                                >
+                                    <div className="space-y-3.5 w-full">
+                                        <div className="p-2.5 bg-stone-50 group-hover:bg-amber-100/70 rounded-xl w-fit transition-colors duration-305">
+                                            <Award className="w-5 h-5 text-stone-600 group-hover:text-amber-600 transition-colors duration-305" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-600 transition-colors duration-305">Registration Staff</h3>
+                                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">{registrations.length} active processors</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1 transition-colors duration-305">
+                                        Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
+                                    </span>
+                                </button>
+
+                                {/* Inverter Make Card */}
+                                <button
+                                    onClick={() => setActiveManageCategory('inverter_make')}
+                                    className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex flex-col justify-between h-44 hover:shadow-md hover:border-stone-300 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                                >
+                                    <div className="space-y-3.5 w-full">
+                                        <div className="p-2.5 bg-stone-50 group-hover:bg-amber-100/70 rounded-xl w-fit transition-colors duration-305">
+                                            <Zap className="w-5 h-5 text-stone-600 group-hover:text-amber-600 transition-colors duration-305" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-600 transition-colors duration-305">Inverter Make Directory</h3>
+                                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">{inverters.length} active inverter brands</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1 transition-colors duration-305">
+                                        Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
+                                    </span>
+                                </button>
+
+                                {/* Integration Staff Card */}
+                                <button
+                                    onClick={() => setActiveManageCategory('integration_by')}
+                                    className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex flex-col justify-between h-44 hover:shadow-md hover:border-stone-300 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                                >
+                                    <div className="space-y-3.5 w-full">
+                                        <div className="p-2.5 bg-stone-50 group-hover:bg-amber-100/70 rounded-xl w-fit transition-colors duration-305">
+                                            <UserCheck className="w-5 h-5 text-stone-600 group-hover:text-amber-600 transition-colors duration-305" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-600 transition-colors duration-305">Integration Staff</h3>
+                                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">{integrations.length} active members</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1 transition-colors duration-305">
+                                        Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
+                                    </span>
+                                </button>
+
+                                {/* Vendors Card */}
+                                <button
+                                    onClick={() => setActiveManageCategory('vendor')}
+                                    className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex flex-col justify-between h-44 hover:shadow-md hover:border-stone-300 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                                >
+                                    <div className="space-y-3.5 w-full">
+                                        <div className="p-2.5 bg-stone-50 group-hover:bg-amber-100/70 rounded-xl w-fit transition-colors duration-305">
+                                            <Users className="w-5 h-5 text-stone-600 group-hover:text-amber-600 transition-colors duration-305" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-600 transition-colors duration-305">Vendors Allotment</h3>
+                                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">{vendors.length} active vendors</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1 transition-colors duration-305">
+                                        Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
+                                    </span>
+                                </button>
+                            </div>
                         </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
-
-                        {/* Channel Partners Card */}
-                        <button
-                            onClick={() => setActiveManageCategory('channel_partner')}
-                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
-                        >
-                            <div className="space-y-3 w-full">
-                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
-                                    <Users className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
-                                </div>
-                                <div>
-                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Channel Partner Directory</h3>
-                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{partners.length} active channel partners</p>
+                        {/* Top Performance Ranking Chart (Right 1/3) */}
+                        <div className="space-y-4 flex flex-col h-full">
+                            <div className="flex items-center gap-2 border-b border-stone-100 pb-3">
+                                <Award className="w-4 h-4 text-amber-500 animate-bounce" />
+                                <h3 className="text-xs font-bold text-stone-850 uppercase tracking-wider">Top 5 Performers</h3>
+                            </div>
+                            
+                            <div className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex-1 lg:h-[368px] flex flex-col justify-between">
+                                <div className="space-y-4 flex-1 flex flex-col justify-around py-1">
+                                    {sortedPerformance.length > 0 ? (
+                                        sortedPerformance.slice(0, 5).map((item, idx) => {
+                                            const totalProjects = active.length;
+                                            const perc = totalProjects > 0 ? (item.count / totalProjects) * 100 : 0;
+                                            const isFirst = idx === 0 && item.name !== 'No Channel Partner';
+                                            return (
+                                                <div key={item.name} className="flex flex-col">
+                                                    <div className="flex justify-between text-[11px] font-bold text-stone-600 mb-1 tracking-tight">
+                                                        <span className="flex items-center gap-1.5 truncate">
+                                                            {isFirst && <span className="text-amber-500">🏆</span>}
+                                                            <span className="truncate">{item.name}</span>
+                                                        </span>
+                                                        <span className="text-stone-400 flex-shrink-0">{item.count} leads ({perc.toFixed(0)}%)</span>
+                                                    </div>
+                                                    <div className="h-2 bg-stone-50 rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-amber-400 transition-all duration-1000 rounded-full"
+                                                            style={{ width: `${perc}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    ) : (
+                                        <p className="text-xs text-stone-400 italic text-center py-4 my-auto">No performance metrics available.</p>
+                                    )}
                                 </div>
                             </div>
-                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
-                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
-                            </span>
-                        </button>
-
-                        {/* Module Brands Card */}
-                        <button
-                            onClick={() => setActiveManageCategory('module_brand')}
-                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
-                        >
-                            <div className="space-y-3 w-full">
-                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
-                                    <Tag className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
-                                </div>
-                                <div>
-                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Module Brands Directory</h3>
-                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{brands.length} active module brands</p>
-                                </div>
-                            </div>
-                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
-                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
-                            </span>
-                        </button>
-
-                        {/* Registration Staff Card */}
-                        <button
-                            onClick={() => setActiveManageCategory('registration_by')}
-                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
-                        >
-                            <div className="space-y-3 w-full">
-                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
-                                    <Award className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
-                                </div>
-                                <div>
-                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Registration Staff</h3>
-                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{registrations.length} active registration staff</p>
-                                </div>
-                            </div>
-                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
-                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
-                            </span>
-                        </button>
-
-                        {/* Inverter Make Card */}
-                        <button
-                            onClick={() => setActiveManageCategory('inverter_make')}
-                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
-                        >
-                            <div className="space-y-3 w-full">
-                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
-                                    <Zap className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
-                                </div>
-                                <div>
-                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Inverter Make Directory</h3>
-                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{inverters.length} active inverter makes</p>
-                                </div>
-                            </div>
-                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
-                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
-                            </span>
-                        </button>
-
-                        {/* Integration Staff Card */}
-                        <button
-                            onClick={() => setActiveManageCategory('integration_by')}
-                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
-                        >
-                            <div className="space-y-3 w-full">
-                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
-                                    <UserCheck className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
-                                </div>
-                                <div>
-                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Integration Staff</h3>
-                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{integrations.length} active integration staff</p>
-                                </div>
-                            </div>
-                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
-                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
-                            </span>
-                        </button>
-
-                        {/* Vendors Card */}
-                        <button
-                            onClick={() => setActiveManageCategory('vendor')}
-                            className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex flex-col justify-between h-48 hover:shadow-md hover:border-stone-200 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
-                        >
-                            <div className="space-y-3 w-full">
-                                <div className="p-3 bg-stone-50 group-hover:bg-amber-100/70 rounded-2xl w-fit transition-colors duration-300">
-                                    <Users className="w-6 h-6 text-stone-600 group-hover:text-amber-600 transition-colors duration-300" />
-                                </div>
-                                <div>
-                                    <h3 className="font-extrabold text-stone-850 text-sm group-hover:text-amber-600 transition-colors duration-300">Vendors Allotment</h3>
-                                    <p className="text-xs text-stone-400 font-medium mt-0.5">{vendors.length} active vendors</p>
-                                </div>
-                            </div>
-                            <span className="text-xs font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1.5 transition-colors duration-300">
-                                Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-300">→</span>
-                            </span>
-                        </button>
+                        </div>
 
                     </div>
 

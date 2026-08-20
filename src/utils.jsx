@@ -151,7 +151,7 @@ export function formatDate(dateStr) {
     return new Date(dateStr).toLocaleDateString('en-IN');
 }
 
-export const uploadDocument = async (file, customerId, docType = null) => {
+export const uploadDocument = async (file, customerId, docType = null, passedUserId = null) => {
     try {
         const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const filePath = `${customerId}/${Date.now()}_${cleanName}`;
@@ -168,12 +168,14 @@ export const uploadDocument = async (file, customerId, docType = null) => {
             throw new Error(uploadError.message || 'Storage upload failed');
         }
 
-        let userId = null;
-        try {
-            const { data: authData } = await supabase.auth.getUser();
-            userId = authData?.user?.id || null;
-        } catch {
-            userId = null;
+        let userId = passedUserId;
+        if (!userId) {
+            try {
+                const { data: sessionData } = await supabase.auth.getSession();
+                userId = sessionData?.session?.user?.id || null;
+            } catch {
+                userId = null;
+            }
         }
 
         const { data, error } = await supabase
@@ -262,7 +264,7 @@ export const normalizeInstallationStatus = (status) => {
     const s = String(status).trim().toLowerCase();
     if (s === 'give up' || s === 'giveup' || s === 'given up') return 'Give Up';
     if (s === 'yes') return 'Yes';
-    if (s === 'proceed' || s === 'completed' || s === 'done' || s === 'installed') return 'Proceed';
+    if (s === 'proceed' || s === 'completed' || s === 'done' || s === 'installed' || s === 'process') return 'Process';
     if (s === 'pending' || s === 'in progress' || s === 'waiting') return 'Pending';
     return 'Pending';
 };

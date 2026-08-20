@@ -189,17 +189,17 @@ export default function AgentPortal({ user, onLogout }) {
             throw error;
         }
 
-        // Upload attached files to storage & documents table
+        // Upload attached files to storage & documents table in parallel to prevent UI lag
         if (attachedFiles && attachedFiles.length > 0) {
-            for (const item of attachedFiles) {
+            const uploadPromises = attachedFiles.map(item => {
                 if (item.file) {
-                    try {
-                        await uploadDocument(item.file, newCustomer.id, item.doc_type);
-                    } catch (uploadErr) {
+                    return uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id).catch(uploadErr => {
                         console.error('Failed to upload file for lead:', uploadErr);
-                    }
+                    });
                 }
-            }
+                return Promise.resolve(null);
+            });
+            await Promise.all(uploadPromises);
         }
 
         await logActivity(
@@ -258,7 +258,7 @@ export default function AgentPortal({ user, onLogout }) {
         if (!file || !selectedCust?.id) return;
         setUploadingDoc(true);
         try {
-            await uploadDocument(file, selectedCust.id, uploadDocType);
+            await uploadDocument(file, selectedCust.id, uploadDocType, user?.id);
             const updatedDocs = await getCustomerDocuments(selectedCust.id);
             setCustDocs(updatedDocs || []);
             alert('Document uploaded successfully!');
