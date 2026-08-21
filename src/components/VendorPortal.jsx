@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, formatInputValue, parseIndianNumber, updateDocumentRemark } from '../utils';
 import { 
@@ -6,7 +6,7 @@ import {
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Hash, Folder, Tag, ChevronLeft, Search, ClipboardList, Banknote, Calendar, ClipboardCheck,
     Camera, Paperclip, Eye, Trash2, Upload, Image as ImageIcon, X,
-    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, ClipboardPaste, Plus, Check, Copy, Wrench
+    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, ClipboardPaste, Plus, Check, Copy, Wrench, RefreshCw
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
 
@@ -30,8 +30,10 @@ export default function VendorPortal({ user, onLogout }) {
     const [view, setView] = useState('list'); // 'list', 'details'
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [refreshingAssignments, setRefreshingAssignments] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState('MATERIAL'); // 'MATERIAL', 'DELIVERY', 'GEO', 'INSTALLATION'
+    // Material Integration and Material Delivery are intentionally hidden from vendors.
+    const [activeTab, setActiveTab] = useState('GEO'); // 'GEO', 'INSTALLATION'
     const [selectedCust, setSelectedCust] = useState(null);
     
     // Edit Form State (for selected customer)
@@ -153,8 +155,9 @@ export default function VendorPortal({ user, onLogout }) {
     };
 
     // Fetch customer leads assigned to this vendor
-    const fetchCustomers = async () => {
-        setLoading(true);
+    const fetchCustomers = useCallback(async ({ silent = false } = {}) => {
+        if (silent) setRefreshingAssignments(true);
+        else setLoading(true);
         try {
             // Select all active leads and filter locally for case-insensitivity & whitespace checks
             const { data, error } = await supabase
@@ -163,7 +166,8 @@ export default function VendorPortal({ user, onLogout }) {
                 .is('deleted_at', null)
                 .order('created_at', { ascending: false });
 
-            if (!error && data) {
+            if (error) throw error;
+            if (data) {
                 const myName = (user.name || '').trim().toLowerCase();
                 const myCustomers = data.filter(c => {
                     const vendorName = (c.vendor || '').trim().toLowerCase();
@@ -171,17 +175,18 @@ export default function VendorPortal({ user, onLogout }) {
                     if (c.installation_status === 'Give Up' && vendorName === myName) {
                         return false;
                     }
-                    // Include leads assigned to this vendor OR any lead currently in the MATERIAL INTEGRATION stage
-                    return vendorName === myName || c.stage === 'MATERIAL INTEGRATION';
+                    // Vendors only work on their assigned site-installation and geo-tag tasks.
+                    return vendorName === myName && ['GEO TAG PHOTO', 'INSTALLATION STATUS'].includes(c.stage);
                 });
                 setCustomers(myCustomers);
             }
         } catch (err) {
             console.error('Error fetching vendor customers:', err);
         } finally {
-            setLoading(false);
+            if (silent) setRefreshingAssignments(false);
+            else setLoading(false);
         }
-    };
+    }, [user?.name]);
 
     useEffect(() => {
         if (!user?.name) return;
@@ -193,7 +198,8 @@ export default function VendorPortal({ user, onLogout }) {
                 const record = payload.new;
                 const isVisibleToVendor = record && !record.deleted_at &&
                     !((record.installation_status === 'Give Up') && (record.vendor || '').trim().toLowerCase() === vendorName) &&
-                    ((record.vendor || '').trim().toLowerCase() === vendorName || record.stage === 'MATERIAL INTEGRATION');
+                    (record.vendor || '').trim().toLowerCase() === vendorName &&
+                    ['GEO TAG PHOTO', 'INSTALLATION STATUS'].includes(record.stage);
 
                 setCustomers(previous => {
                     if (payload.eventType === 'DELETE' || !isVisibleToVendor) {
@@ -207,18 +213,35 @@ export default function VendorPortal({ user, onLogout }) {
             .subscribe();
 
         return () => supabase.removeChannel(channel);
-    }, [user]);
+    }, [user?.id, user?.name, fetchCustomers]);
+
+    // Realtime is the primary update path. This lightweight fallback keeps
+    // assignments current when a mobile browser temporarily drops that connection.
+    useEffect(() => {
+        if (!user?.name) return;
+
+        const refreshAssignments = () => fetchCustomers({ silent: true });
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') refreshAssignments();
+        };
+
+        const refreshInterval = window.setInterval(refreshAssignments, 15000);
+        window.addEventListener('focus', refreshAssignments);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            window.clearInterval(refreshInterval);
+            window.removeEventListener('focus', refreshAssignments);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [user?.name, fetchCustomers]);
 
     // Handle selecting a customer card
     const handleSelectCustomer = async (cust) => {
         setSelectedCust(cust);
         
-        // Match active tab to customer stage
-        if (cust.stage === 'MATERIAL INTEGRATION') {
-            setActiveTab('MATERIAL');
-        } else if (cust.stage === 'MATERIAL DELIVERY') {
-            setActiveTab('DELIVERY');
-        } else if (cust.stage === 'GEO TAG PHOTO') {
+        // Match active tab to the vendor-facing customer stage.
+        if (cust.stage === 'GEO TAG PHOTO') {
             setActiveTab('GEO');
         } else if (cust.stage === 'INSTALLATION STATUS') {
             setActiveTab('INSTALLATION');
@@ -512,8 +535,6 @@ export default function VendorPortal({ user, onLogout }) {
     };
 
     // Stats calculations
-    const materialCount = customers.filter(c => c.stage === 'MATERIAL INTEGRATION').length;
-    const deliveryCount = customers.filter(c => c.stage === 'MATERIAL DELIVERY').length;
     const geoPendingCount = customers.filter(c => c.stage === 'GEO TAG PHOTO' && (c.geo_tag_status || 'Pending') !== 'Proceed').length;
     const installationCount = customers.filter(c => c.stage === 'INSTALLATION STATUS').length;
 
@@ -537,11 +558,7 @@ export default function VendorPortal({ user, onLogout }) {
         }
 
         // When not searching, filter by active tab stage
-        if (activeTab === 'MATERIAL') {
-            return c.stage === 'MATERIAL INTEGRATION';
-        } else if (activeTab === 'DELIVERY') {
-            return c.stage === 'MATERIAL DELIVERY';
-        } else if (activeTab === 'INSTALLATION') {
+        if (activeTab === 'INSTALLATION') {
             return c.stage === 'INSTALLATION STATUS';
         } else {
             return c.stage === 'GEO TAG PHOTO';
@@ -567,6 +584,16 @@ export default function VendorPortal({ user, onLogout }) {
                 <div className="flex items-center gap-3">
                     <span className="text-xs font-bold text-stone-600 truncate max-w-[120px]">{user.name}</span>
                     <button
+                        type="button"
+                        onClick={() => fetchCustomers({ silent: true })}
+                        disabled={refreshingAssignments}
+                        className="p-2 text-stone-400 hover:text-amber-600 transition-colors rounded-xl hover:bg-amber-50 disabled:opacity-50"
+                        title="Refresh assignments"
+                        aria-label="Refresh assignments"
+                    >
+                        <RefreshCw className={`w-4 h-4 ${refreshingAssignments ? 'animate-spin' : ''}`} />
+                    </button>
+                    <button
                         onClick={onLogout}
                         className="p-2 text-stone-400 hover:text-red-500 transition-colors rounded-xl hover:bg-stone-50"
                         title="Logout"
@@ -585,25 +612,11 @@ export default function VendorPortal({ user, onLogout }) {
                         </div>
                         <p className="text-[9px] uppercase tracking-widest text-amber-400 font-bold">Allotted Vendor</p>
                         <h2 className="text-lg font-bold mt-0.5">{user.name}</h2>
-                        <p className="text-[11px] text-stone-300 mt-2 font-medium">Manage Material Integration BOMs, material deliveries, and site geo tagging.</p>
+                        <p className="text-[11px] text-stone-300 mt-2 font-medium">Manage assigned installation updates and site geo tagging.</p>
                     </div>
 
                     {/* Stats */}
                     <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
-                        <div 
-                            className={`min-w-[104px] flex-1 snap-start p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'MATERIAL' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
-                            onClick={() => setActiveTab('MATERIAL')}
-                        >
-                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'MATERIAL' ? 'text-amber-100' : 'text-stone-400'}`}>Material Int.</p>
-                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'MATERIAL' ? 'text-white' : 'text-stone-850'}`}>{materialCount}</p>
-                        </div>
-                        <div 
-                            className={`min-w-[104px] flex-1 snap-start p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'DELIVERY' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`} 
-                            onClick={() => setActiveTab('DELIVERY')}
-                        >
-                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'DELIVERY' ? 'text-amber-100' : 'text-stone-400'}`}>Delivery</p>
-                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'DELIVERY' ? 'text-white' : 'text-stone-850'}`}>{deliveryCount}</p>
-                        </div>
                         <div
                             className={`min-w-[104px] flex-1 snap-start p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'INSTALLATION' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`}
                             onClick={() => setActiveTab('INSTALLATION')}
@@ -807,8 +820,6 @@ export default function VendorPortal({ user, onLogout }) {
                         {/* Stage Tabs inside Customer View */}
                         <div className="flex gap-1 overflow-x-auto p-1 bg-stone-100/80 rounded-xl border border-stone-200/60 snap-x">
                             {[
-                                { id: 'MATERIAL', label: 'Material (BOM)', icon: Package },
-                                { id: 'DELIVERY', label: 'Delivery', icon: Truck },
                                 { id: 'INSTALLATION', label: 'Installation', icon: Wrench },
                                 { id: 'GEO', label: 'Geo Tag', icon: Camera },
                             ].map(tab => {
@@ -827,7 +838,7 @@ export default function VendorPortal({ user, onLogout }) {
                                     >
                                         <Icon size={11} />
                                         <span className="hidden sm:inline">{tab.label}</span>
-                                        <span className="sm:hidden">{tab.id === 'MATERIAL' ? 'BOM' : tab.id === 'DELIVERY' ? 'Deliv' : tab.id === 'GEO' ? 'Geo' : 'Install'}</span>
+                                        <span className="sm:hidden">{tab.id === 'GEO' ? 'Geo' : 'Install'}</span>
                                     </button>
                                 );
                             })}
@@ -836,13 +847,7 @@ export default function VendorPortal({ user, onLogout }) {
                         {/* Editable Form Card */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest border-b border-stone-100 pb-1.5">
-                                {activeTab === 'MATERIAL'
-                                    ? 'Material Integration & BOM Specification'
-                                    : activeTab === 'DELIVERY'
-                                        ? 'Material Delivery Equipment Details'
-                                        : activeTab === 'INSTALLATION'
-                                            ? 'Installation Status & Details'
-                                            : 'Geo Tag Photo Report'}
+                                {activeTab === 'INSTALLATION' ? 'Installation Status & Details' : 'Geo Tag Photo Report'}
                             </h3>
 
                             {/* ─── Active Tab: MATERIAL INTEGRATION & BOM ─── */}
