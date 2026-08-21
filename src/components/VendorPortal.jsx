@@ -33,7 +33,7 @@ export default function VendorPortal({ user, onLogout }) {
     const [refreshingAssignments, setRefreshingAssignments] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     // Material Integration and Material Delivery are intentionally hidden from vendors.
-    const [activeTab, setActiveTab] = useState('GEO'); // 'GEO', 'INSTALLATION'
+    const [activeTab, setActiveTab] = useState('DELIVERY'); // 'DELIVERY', 'INSTALLATION', 'GEO'
     const [selectedCust, setSelectedCust] = useState(null);
     
     // Edit Form State (for selected customer)
@@ -175,8 +175,8 @@ export default function VendorPortal({ user, onLogout }) {
                     if (c.installation_status === 'Give Up' && vendorName === myName) {
                         return false;
                     }
-                    // Vendors only work on their assigned site-installation and geo-tag tasks.
-                    return vendorName === myName && ['GEO TAG PHOTO', 'INSTALLATION STATUS'].includes(c.stage);
+                    // Vendors see their assigned projects from Material Delivery onward.
+                    return vendorName === myName && ['MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO'].includes(c.stage);
                 });
                 setCustomers(myCustomers);
             }
@@ -199,7 +199,7 @@ export default function VendorPortal({ user, onLogout }) {
                 const isVisibleToVendor = record && !record.deleted_at &&
                     !((record.installation_status === 'Give Up') && (record.vendor || '').trim().toLowerCase() === vendorName) &&
                     (record.vendor || '').trim().toLowerCase() === vendorName &&
-                    ['GEO TAG PHOTO', 'INSTALLATION STATUS'].includes(record.stage);
+                    ['MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO'].includes(record.stage);
 
                 setCustomers(previous => {
                     if (payload.eventType === 'DELETE' || !isVisibleToVendor) {
@@ -241,7 +241,9 @@ export default function VendorPortal({ user, onLogout }) {
         setSelectedCust(cust);
         
         // Match active tab to the vendor-facing customer stage.
-        if (cust.stage === 'GEO TAG PHOTO') {
+        if (cust.stage === 'MATERIAL DELIVERY') {
+            setActiveTab('DELIVERY');
+        } else if (cust.stage === 'GEO TAG PHOTO') {
             setActiveTab('GEO');
         } else if (cust.stage === 'INSTALLATION STATUS') {
             setActiveTab('INSTALLATION');
@@ -535,6 +537,7 @@ export default function VendorPortal({ user, onLogout }) {
     };
 
     // Stats calculations
+    const materialDeliveryCount = customers.filter(c => c.stage === 'MATERIAL DELIVERY').length;
     const geoPendingCount = customers.filter(c => c.stage === 'GEO TAG PHOTO' && (c.geo_tag_status || 'Pending') !== 'Proceed').length;
     const installationCount = customers.filter(c => c.stage === 'INSTALLATION STATUS').length;
 
@@ -558,7 +561,9 @@ export default function VendorPortal({ user, onLogout }) {
         }
 
         // When not searching, filter by active tab stage
-        if (activeTab === 'INSTALLATION') {
+        if (activeTab === 'DELIVERY') {
+            return c.stage === 'MATERIAL DELIVERY';
+        } else if (activeTab === 'INSTALLATION') {
             return c.stage === 'INSTALLATION STATUS';
         } else {
             return c.stage === 'GEO TAG PHOTO';
@@ -617,6 +622,13 @@ export default function VendorPortal({ user, onLogout }) {
 
                     {/* Stats */}
                     <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
+                        <div
+                            className={`min-w-[104px] flex-1 snap-start p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'DELIVERY' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`}
+                            onClick={() => setActiveTab('DELIVERY')}
+                        >
+                            <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'DELIVERY' ? 'text-amber-100' : 'text-stone-400'}`}>Delivery</p>
+                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'DELIVERY' ? 'text-white' : 'text-stone-850'}`}>{materialDeliveryCount}</p>
+                        </div>
                         <div
                             className={`min-w-[104px] flex-1 snap-start p-3 rounded-2xl border transition-all cursor-pointer ${activeTab === 'INSTALLATION' ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20' : 'bg-white border-stone-100 shadow-sm'}`}
                             onClick={() => setActiveTab('INSTALLATION')}
@@ -820,6 +832,7 @@ export default function VendorPortal({ user, onLogout }) {
                         {/* Stage Tabs inside Customer View */}
                         <div className="flex gap-1 overflow-x-auto p-1 bg-stone-100/80 rounded-xl border border-stone-200/60 snap-x">
                             {[
+                                { id: 'DELIVERY', label: 'Delivery', icon: Truck },
                                 { id: 'INSTALLATION', label: 'Installation', icon: Wrench },
                                 { id: 'GEO', label: 'Geo Tag', icon: Camera },
                             ].map(tab => {
