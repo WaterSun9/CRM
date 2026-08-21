@@ -286,7 +286,6 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         if (!formData.consumer_no?.toString().trim()) return alert('Consumer Number is required');
         if (!formData.villages?.trim()) return alert('Villages / Address is required');
         if (!isAgent && !isChannelPartnerOffice && !formData.channel_partner?.trim()) return alert('Channel Partner Name is required');
-        if (!isAgent && !formData.sub_channel_partner?.trim()) return alert('Sub Channel Partner Name is required');
         if (!formData.module_brand?.trim()) return alert('Module Brand is required');
         if (!formData.module_wp?.toString().trim()) return alert('Module Wp is required');
         if (!formData.no_of_modules?.toString().trim()) return alert('No of Modules is required');
@@ -472,11 +471,11 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 />
                             </div>
 
-                            {/* Channel Partner Name */}
-                            {isChannelPartnerOffice ? (
+                            {/* Agents and Channel Partner Office users are always assigned to themselves. */}
+                            {(isAgent || isChannelPartnerOffice) ? (
                                 <div className="space-y-1">
                                     <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
-                                        Channel Partner Name
+                                        Channel Partner Name <span className="text-red-500 font-bold">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -485,7 +484,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         className="w-full bg-stone-100 border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-stone-700 cursor-not-allowed"
                                     />
                                 </div>
-                            ) : !isAgent ? (
+                            ) : (
                                 <ChannelPartnerAutocomplete
                                     label="Channel Partner Name"
                                     value={formData.channel_partner}
@@ -494,24 +493,21 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     required={true}
                                     isAdmin={user?.userType === 'admin'}
                                 />
-                            ) : null}
-
-                            {/* Sub Channel Partner Name */}
-                            {!isAgent && (
-                                <div className="space-y-1">
-                                    <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
-                                        Sub Channel Partner Name <span className="text-red-500 font-bold">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.sub_channel_partner || ''}
-                                        onChange={e => handleChange('sub_channel_partner', e.target.value)}
-                                        className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                                        placeholder="Sub channel partner"
-                                        required
-                                    />
-                                </div>
                             )}
+
+                            {/* Optional for every user, including channel partners. */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
+                                    Sub Channel Partner Name <span className="normal-case text-stone-400 font-medium">(optional)</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.sub_channel_partner || ''}
+                                    onChange={e => handleChange('sub_channel_partner', e.target.value)}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                    placeholder="Sub channel partner (optional)"
+                                />
+                            </div>
 
                             {/* MODULE BRAND */}
                             <div className="space-y-1">

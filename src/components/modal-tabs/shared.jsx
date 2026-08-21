@@ -4,6 +4,14 @@ import { formatINR, toIndianCommas, parseIndianNumber, formatInputValue } from '
 
 const fmt = formatINR;
 
+// Render trailing required markers consistently. String labels such as
+// "Customer Name *" would otherwise inherit the surrounding grey label colour.
+function RequiredLabel({ label }) {
+    if (typeof label !== 'string' || !label.trim().endsWith('*')) return <>{label}</>;
+    const text = label.trim().slice(0, -1).trimEnd();
+    return <>{text} <span className="text-red-500">*</span></>;
+}
+
 export function getStageRemarkFromData(remarks, stageId) {
     if (!remarks) return '';
     if (typeof remarks === 'object') {
@@ -17,7 +25,7 @@ export function MetaSelect({ label, field, value, onChange, options = [], isEdit
     if (!isEditing) {
         return (
             <div className="bg-stone-50 p-3 rounded-xl">
-                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
+                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold"><RequiredLabel label={label} /></p>
                 <p className="text-sm font-semibold truncate text-stone-800">{value || '–'}</p>
             </div>
         );
@@ -25,7 +33,7 @@ export function MetaSelect({ label, field, value, onChange, options = [], isEdit
 
     return (
         <div className="bg-stone-50 p-3 rounded-xl">
-            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
+            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold"><RequiredLabel label={label} /></p>
             <select value={value || ''} onChange={e => onChange(field, e.target.value)}
                 className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300">
                 <option value="">Select...</option>
@@ -97,12 +105,12 @@ export function StageRemarkSection({ stageId, editData, setEditData, isFrozen, o
 // ─── DetailItem / EditableDetailItem ──────────────────────────────────────────
 export function DetailItem({ label, value, isMoney = false, isEnergy = false }) {
     let displayVal = value;
-    if (label && label.toLowerCase().includes('capacity') && value) {
+    if (label && typeof label === 'string' && label.toLowerCase().includes('capacity') && value) {
         displayVal = toIndianCommas(value);
     }
     return (
         <div className="bg-stone-50 p-2.5 rounded-xl">
-            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-0.5 font-bold">{label}</p>
+            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-0.5 font-bold"><RequiredLabel label={label} /></p>
             <p className={`text-sm font-semibold truncate ${isMoney ? 'text-emerald-600' : isEnergy ? 'text-amber-600' : 'text-stone-800'}`}>
                 {isMoney ? fmt(value) : (displayVal || '–')}
             </p>
@@ -184,7 +192,7 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
     if (field === 'channel_partner') {
         return (
             <div className="bg-stone-50 p-2.5 rounded-xl">
-                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
+                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold"><RequiredLabel label={label} /></p>
                 <ChannelPartnerAutocomplete label={label} value={value} onChange={(val) => onChange(field, val)} suggestions={channel_partners} isAdmin={isAdmin} />
             </div>
         );
@@ -192,7 +200,7 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
 
     return (
         <div className="bg-stone-50 p-2.5 rounded-xl">
-            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
+            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold"><RequiredLabel label={label} /></p>
             {options ? (
                 <select value={value || ''} onChange={e => onChange(field, e.target.value)}
                     className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300">

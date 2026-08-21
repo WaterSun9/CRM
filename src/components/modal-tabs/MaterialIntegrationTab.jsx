@@ -19,7 +19,8 @@ export default function MaterialIntegrationTab({
     handleAdvanceStage,
     saving,
     setSaving,
-    saveBomRef
+    saveBomRef,
+    onDirty
 }) {
     const [bom, setBom] = useState(null);
     const [bomItems, setBomItems] = useState([]);
@@ -35,6 +36,7 @@ export default function MaterialIntegrationTab({
         setPaperPreparedDate(today);
         setMaterialLoadedBy('Suresh Patel');
         setMaterialLoadedDate(today);
+        onDirty?.();
 
         setActionSaving(true);
         try {
@@ -76,7 +78,6 @@ export default function MaterialIntegrationTab({
                     customer.id
                 );
             }
-            if (onUpdate) onUpdate();
             await loadBOM();
         } catch (err) {
             console.error('handleFillMilestones error:', err);
@@ -180,6 +181,7 @@ export default function MaterialIntegrationTab({
     }, [customer?.id, editData?.roof_shed, customer?.roof_shed]);
 
     const handleItemFieldChange = (index, field, value) => {
+        onDirty?.();
         setBomItems(prev =>
             prev.map((item, i) => {
                 if (i !== index) return item;
@@ -245,7 +247,6 @@ export default function MaterialIntegrationTab({
                 );
             }
 
-            if (onUpdate) onUpdate();
             await loadBOM();
             setEditingSection(null);
         } catch (err) {
@@ -337,13 +338,14 @@ export default function MaterialIntegrationTab({
                 );
             }
 
-            if (onUpdate) onUpdate();
             await loadBOM();
             setEditingSection(null);
+            return true;
 
         } catch (err) {
             console.error('saveBOM exception:', err);
             alert('Failed to save BOM items: ' + err.message);
+            return false;
         } finally {
             setActionSaving(false);
         }
@@ -352,7 +354,7 @@ export default function MaterialIntegrationTab({
     useEffect(() => {
         if (saveBomRef) {
             saveBomRef.current = async () => {
-                await saveBOM();
+                return saveBOM();
             };
         }
         return () => {
@@ -360,7 +362,9 @@ export default function MaterialIntegrationTab({
                 saveBomRef.current = null;
             }
         };
-    }, [saveBomRef]);
+    // Keep the parent stage action connected to the latest local milestone and
+    // BOM values, rather than the values present when this tab first mounted.
+    }, [saveBomRef, bom, bomItems, paperPreparedBy, paperPreparedDate, materialLoadedBy, materialLoadedDate, activeType]);
 
     const handlePrint = () => {
         const documentBody = printableBomRef.current;
@@ -515,43 +519,43 @@ export default function MaterialIntegrationTab({
                 {isEditingMilestones ? (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-stone-50 p-2.5 rounded-xl border border-stone-200">
                         <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Paper Prepared By</label>
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Paper Prepared By <span className="text-red-500">*</span></label>
                             <input
                                 type="text"
                                 placeholder="Prepared by name..."
                                 value={paperPreparedBy}
-                                onChange={(e) => setPaperPreparedBy(e.target.value)}
+                                onChange={(e) => { setPaperPreparedBy(e.target.value); onDirty?.(); }}
                                 disabled={!isEditable}
                                 className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
                             />
                         </div>
                         <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Paper Prepared Date</label>
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Paper Prepared Date <span className="text-red-500">*</span></label>
                             <input
                                 type="date"
                                 value={paperPreparedDate}
-                                onChange={(e) => setPaperPreparedDate(e.target.value)}
+                                onChange={(e) => { setPaperPreparedDate(e.target.value); onDirty?.(); }}
                                 disabled={!isEditable}
                                 className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
                             />
                         </div>
                         <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loaded By</label>
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loaded By <span className="text-red-500">*</span></label>
                             <input
                                 type="text"
                                 placeholder="Loaded by name..."
                                 value={materialLoadedBy}
-                                onChange={(e) => setMaterialLoadedBy(e.target.value)}
+                                onChange={(e) => { setMaterialLoadedBy(e.target.value); onDirty?.(); }}
                                 disabled={!isEditable}
                                 className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
                             />
                         </div>
                         <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loaded Date</label>
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loaded Date <span className="text-red-500">*</span></label>
                             <input
                                 type="date"
                                 value={materialLoadedDate}
-                                onChange={(e) => setMaterialLoadedDate(e.target.value)}
+                                onChange={(e) => { setMaterialLoadedDate(e.target.value); onDirty?.(); }}
                                 disabled={!isEditable}
                                 className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
                             />
@@ -560,19 +564,19 @@ export default function MaterialIntegrationTab({
                 ) : (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-stone-50/70 p-2.5 rounded-xl border border-stone-200/60">
                         <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Paper Prepared By</label>
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Paper Prepared By <span className="text-red-500">*</span></label>
                             <p className="text-xs font-bold text-stone-700">{paperPreparedBy || "–"}</p>
                         </div>
                         <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Paper Prepared Date</label>
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Paper Prepared Date <span className="text-red-500">*</span></label>
                             <p className="text-xs font-bold text-stone-700">{paperPreparedDate || "–"}</p>
                         </div>
                         <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Material Loaded By</label>
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Material Loaded By <span className="text-red-500">*</span></label>
                             <p className="text-xs font-bold text-stone-700">{materialLoadedBy || "–"}</p>
                         </div>
                         <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Material Loaded Date</label>
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Material Loaded Date <span className="text-red-500">*</span></label>
                             <p className="text-xs font-bold text-stone-700">{materialLoadedDate || "–"}</p>
                         </div>
                     </div>
@@ -917,6 +921,10 @@ export default function MaterialIntegrationTab({
             {/* Print Specific CSS */}
             <style>{`
                 @media print {
+                    @page {
+                        size: A4 portrait;
+                        margin: 6mm;
+                    }
                     body * {
                         visibility: hidden;
                     }
@@ -927,12 +935,45 @@ export default function MaterialIntegrationTab({
                         position: absolute;
                         left: 0;
                         top: 0;
-                        width: 100%;
+                        width: 198mm;
+                        box-sizing: border-box;
                         margin: 0;
-                        padding: 20px;
+                        padding: 0;
                         background: #ffffff !important;
                         color: #000000 !important;
+                        font-size: 6.5pt;
+                        line-height: 1.08;
                     }
+                    #printable-bom .mb-6 { margin-bottom: 2.5mm !important; }
+                    #printable-bom .mb-8 { margin-bottom: 2.5mm !important; }
+                    #printable-bom .pb-4 { padding-bottom: 2mm !important; }
+                    #printable-bom .pt-10 { padding-top: 4mm !important; }
+                    #printable-bom h1 { font-size: 12pt !important; }
+                    #printable-bom h3 { font-size: 7pt !important; margin-bottom: 1mm !important; }
+                    #printable-bom p { line-height: 1.08 !important; }
+                    #printable-bom table {
+                        table-layout: fixed;
+                        font-size: 6.5pt !important;
+                        line-height: 1.05 !important;
+                        break-inside: avoid;
+                    }
+                    #printable-bom th,
+                    #printable-bom td {
+                        padding: 1.25px 3px !important;
+                        line-height: 1.05 !important;
+                        vertical-align: middle;
+                    }
+                    #printable-bom tbody tr {
+                        break-inside: avoid;
+                    }
+                    /* Long notes must not expand a BOM row and force a second sheet. */
+                    #printable-bom table:last-of-type td {
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                    }
+                    #printable-bom .grid { gap: 4mm !important; }
+                    #printable-bom .pb-8 { padding-bottom: 5mm !important; }
                     .no-print {
                         display: none !important;
                     }

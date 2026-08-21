@@ -28,6 +28,7 @@ export default function LoanTab({
     const [loanDraftRemark, setLoanDraftRemark] = useState('');
     const [isCustomEditing, setIsCustomEditing] = useState(false);
     const [savedSuccess, setSavedSuccess] = useState(false);
+    const [isPaymentsDirty, setIsPaymentsDirty] = useState(false);
 
     const handleLocalChange = (field, val) => {
         if (handleChange) {
@@ -126,6 +127,7 @@ export default function LoanTab({
     const canEditSecond = isCustomEditing || isSecondPaymentTag;
 
     const updatePaymentInHistory = (statusName, field, value) => {
+        setIsPaymentsDirty(true);
         const list = Array.isArray(editData.loan_history) ? [...editData.loan_history] : [];
         const idx = list.findIndex(h => h.status === statusName);
         
@@ -158,6 +160,7 @@ export default function LoanTab({
             customer.id
         );
         setSavedSuccess(true);
+        setIsPaymentsDirty(false);
         setTimeout(() => setSavedSuccess(false), 3000);
         setIsCustomEditing(false);
         fetchLogs();
@@ -279,7 +282,11 @@ export default function LoanTab({
                                     {isEditable && (
                                         <button
                                             type="button"
-                                            onClick={() => setIsCustomEditing(!isCustomEditing)}
+                                            onClick={() => {
+                                                const nextEditing = !isCustomEditing;
+                                                setIsCustomEditing(nextEditing);
+                                                if (nextEditing) setIsPaymentsDirty(true);
+                                            }}
                                             className="text-stone-400 hover:text-amber-600 text-xs font-semibold flex items-center gap-1 p-1 cursor-pointer transition-colors"
                                         >
                                             {isCustomEditing ? <X size={13} /> : <Edit3 size={12} />}
@@ -480,9 +487,13 @@ export default function LoanTab({
                                         <button
                                             type="button"
                                             onClick={handleSavePayments}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1"
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1 ${
+                                                isPaymentsDirty
+                                                    ? 'bg-stone-900 hover:bg-stone-800 text-white'
+                                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                            }`}
                                         >
-                                            <CheckCircle2 size={13} /> Save Payments
+                                            <CheckCircle2 size={13} /> {isPaymentsDirty ? 'Save Payments' : 'Saved'}
                                         </button>
                                     )}
                                 </div>

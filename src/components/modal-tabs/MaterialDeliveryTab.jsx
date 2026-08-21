@@ -5,18 +5,27 @@ import { SectionHeader, EditableDetailItem } from './shared';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
+    if (Array.isArray(raw)) {
+        const serials = raw.map(value => String(value || '').trim()).filter(Boolean);
+        return serials.length > 0 ? serials : [''];
+    }
+
+    const rawText = String(raw);
     try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed.length > 0 ? parsed : [''];
+        const parsed = JSON.parse(rawText);
+        if (Array.isArray(parsed)) {
+            const serials = parsed.map(value => String(value || '').trim()).filter(Boolean);
+            return serials.length > 0 ? serials : [''];
+        }
     } catch (e) { }
 
-    if (raw.includes('\n')) {
-        return raw.split('\n').map(s => s.trim()).filter(Boolean);
+    if (rawText.includes('\n')) {
+        return rawText.split('\n').map(s => s.trim()).filter(Boolean);
     }
-    if (raw.includes(',')) {
-        return raw.split(',').map(s => s.trim()).filter(Boolean);
+    if (rawText.includes(',')) {
+        return rawText.split(',').map(s => s.trim()).filter(Boolean);
     }
-    return [raw.trim()];
+    return [rawText.trim()];
 };
 
 export default function MaterialDeliveryTab({
@@ -197,12 +206,12 @@ export default function MaterialDeliveryTab({
             <section id="section-pick_vendor">
                 <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-1.5">
                     <h3 className="text-[9px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-2">
-                        <Building2 size={12} /> Pick a Vendor
+                        <Building2 size={12} /> Pick a Vendor <span className="text-red-500">*</span>
                     </h3>
                 </div>
                 <div className="bg-stone-50 p-4 rounded-[20px] border border-stone-150 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex-1 min-w-[200px]">
-                        <p className="text-[9px] text-stone-400 tracking-wide mb-1 font-bold">VENDOR ALLOTMENT</p>
+                        <p className="text-[9px] text-stone-400 tracking-wide mb-1 font-bold">VENDOR ALLOTMENT <span className="text-red-500">*</span></p>
                         <select
                             disabled={!isEditable}
                             value={editData.vendor || ''}
@@ -372,7 +381,7 @@ export default function MaterialDeliveryTab({
                 {/* 6 Delivery Metadata Cards with Inverter Make Dropdown & Delivery Date */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <EditableDetailItem 
-                        label="INVERTER MAKE" 
+                        label="INVERTER MAKE *" 
                         field="inverter_make" 
                         value={editData.inverter_make} 
                         options={inverterMakeOptions}
@@ -382,21 +391,21 @@ export default function MaterialDeliveryTab({
                         isEditing={editingSection === 'equip_details'} 
                     />
                     <EditableDetailItem 
-                        label="INVERTER SERIAL NO." 
+                        label="INVERTER SERIAL NO. *" 
                         field="inverter_serial_no" 
                         value={editData.inverter_serial_no} 
                         onChange={handleChange} 
                         isEditing={editingSection === 'equip_details'} 
                     />
                     <EditableDetailItem 
-                        label="INVOICE NO" 
+                        label="INVOICE NO *" 
                         field="invoice_no" 
                         value={editData.invoice_no} 
                         onChange={handleChange} 
                         isEditing={editingSection === 'equip_details'} 
                     />
                     <EditableDetailItem 
-                        label="DELIVERY DATE" 
+                        label="DELIVERY DATE *" 
                         field="material_delivery_date" 
                         type="date"
                         value={editData.material_delivery_date} 
@@ -404,14 +413,14 @@ export default function MaterialDeliveryTab({
                         isEditing={editingSection === 'equip_details'} 
                     />
                     <EditableDetailItem 
-                        label="DRIVER NAME" 
+                        label="DRIVER NAME *" 
                         field="driver_name" 
                         value={editData.driver_name} 
                         onChange={handleChange} 
                         isEditing={editingSection === 'equip_details'} 
                     />
                     <EditableDetailItem 
-                        label="DRIVER PHONE NUMBER" 
+                        label="DRIVER PHONE NUMBER *" 
                         field="driver_phone_number" 
                         value={editData.driver_phone_number} 
                         onChange={handleChange} 
@@ -430,7 +439,7 @@ export default function MaterialDeliveryTab({
                         </div>
                         <div>
                             <h4 className="text-xs font-bold text-stone-800 uppercase tracking-wide flex items-center gap-2">
-                                Panel Serial Numbers
+                                Panel Serial Numbers <span className="text-red-500">*</span>
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-stone-100 text-stone-600 border border-stone-200">
                                     {filledCount} {filledCount === 1 ? 'Panel' : 'Panels'}
                                 </span>
@@ -442,27 +451,30 @@ export default function MaterialDeliveryTab({
                     <div className="flex items-center gap-1.5">
                         {isEditable ? (
                             <>
-                                {isSerialsDirty && (
-                                    <button
-                                        type="button"
-                                        onClick={async () => {
-                                            const filtered = panelSerials.filter(Boolean);
-                                            const serialized = filtered.length > 0 ? filtered.join('\n') : '';
-                                            await onUpdate(customer.id, { panel_serial_no: serialized });
-                                            await logActivity(
-                                                user.id,
-                                                'update',
-                                                `${customer.customer_name}: Updated Panel Serial Numbers (${filtered.length} panels)`,
-                                                '',
-                                                customer.id
-                                            );
-                                            fetchLogs();
-                                        }}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1 cursor-pointer"
-                                    >
-                                        <Check size={12} /> Save Serials
-                                    </button>
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        if (!isSerialsDirty) return;
+                                        const filtered = panelSerials.filter(Boolean);
+                                        const serialized = filtered.length > 0 ? filtered.join('\n') : '';
+                                        await onUpdate(customer.id, { panel_serial_no: serialized });
+                                        await logActivity(
+                                            user.id,
+                                            'update',
+                                            `${customer.customer_name}: Updated Panel Serial Numbers (${filtered.length} panels)`,
+                                            '',
+                                            customer.id
+                                        );
+                                        fetchLogs();
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md flex items-center gap-1 cursor-pointer ${
+                                        isSerialsDirty
+                                            ? 'bg-stone-900 hover:bg-stone-800 text-white shadow-stone-900/10'
+                                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/10'
+                                    }`}
+                                >
+                                    <Check size={12} /> {isSerialsDirty ? 'Save Serials' : 'Saved'}
+                                </button>
                                 <button
                                     type="button"
                                     onClick={() => setShowBulkPaste(prev => !prev)}

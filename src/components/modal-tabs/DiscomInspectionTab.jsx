@@ -42,7 +42,7 @@ export default function DiscomInspectionTab({
                         <ClipboardCheck size={18} />
                     </div>
                     <div>
-                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Discom Inspection Status</h4>
+                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Discom Inspection Status <span className="text-red-500">*</span></h4>
                         <p className="text-[11px] text-stone-500 font-medium mt-0.5">Utility official inspection schedules and joint verification status.</p>
                     </div>
                 </div>

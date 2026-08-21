@@ -147,7 +147,7 @@ export default function InstallationStatusTab({
                 )}
                 <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
                     <div>
-                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Installation Status</h4>
+                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Installation Status <span className="text-red-500">*</span></h4>
                         <p className="text-[11px] text-stone-500 font-medium mt-0.5">Track current physical installation state & vendor assignment.</p>
                     </div>
                     {isEditable && (

@@ -2,13 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import {
     User, Phone, Mail, MapPin, Zap, Building2, Sun,
-    CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle,
+    CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
     ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
     Package, PauseCircle, Truck, Wrench, Camera, Send, Printer
 } from 'lucide-react';
-import { logActivity, toIndianCommas, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark } from '../utils';
+import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES } from '../constants';
 import AddLeadModal from './AddLeadModal';
@@ -61,6 +61,9 @@ export default function AgentPortal({ user, onLogout }) {
     const [uploadingDoc, setUploadingDoc] = useState(false);
     const [uploadDocType, setUploadDocType] = useState('adhaar_card_front');
     const fileInputRef = useRef(null);
+    const [validationIssues, setValidationIssues] = useState([]);
+    const [showValidationModal, setShowValidationModal] = useState(false);
+    const [validationNextStage, setValidationNextStage] = useState('');
 
     const handleChange = (field, val) => {
         setEditData(prev => ({ ...prev, [field]: val }));
@@ -219,9 +222,11 @@ export default function AgentPortal({ user, onLogout }) {
             // The server has already confirmed the update. Keep the local list
             // in sync instead of downloading every lead again after each edit.
             setCustomers(prev => prev.map(customer => customer.id === id ? { ...customer, ...updates } : customer));
+            return true;
         } catch (err) {
             console.error('Update failed:', err);
             alert('Failed to update: ' + err.message);
+            return false;
         } finally {
             setSaving(false);
         }
@@ -419,6 +424,15 @@ export default function AgentPortal({ user, onLogout }) {
     const materialDeliveryCount = customers.filter(c => c.stage === 'MATERIAL DELIVERY').length;
     const meterPendingCount = customers.filter(c => c.stage === 'METER INSTALLATION').length;
     const inspPendingCount = customers.filter(c => c.stage === 'DISCOM INSPECTION').length;
+    const operationalQueueCount = materialOrderCount + meterPendingCount + inspPendingCount;
+    const inProgressCount = materialIntegrationCount + materialDeliveryCount + meterPendingCount + inspPendingCount;
+    const priorityWorkdeskTab = meterPendingCount > 0
+        ? 'METER_INSTALLATION'
+        : inspPendingCount > 0
+            ? 'DISCOM_INSPECTION'
+            : materialOrderCount > 0
+                ? 'MATERIAL_ORDER'
+                : 'LEADS';
     const displayedStage = activeCustomerStage || selectedCust?.stage;
     const customerStageNavigation = [
         { id: 'LEADS', label: 'Lead', icon: Users },
@@ -449,6 +463,113 @@ export default function AgentPortal({ user, onLogout }) {
             </span>
         );
     };
+
+    const handleAdvanceMaterialOrder = async () => {
+        if (!selectedCust) return;
+
+        const updates = {
+            roof_shed: editData.roof_shed ?? selectedCust.roof_shed,
+            dc_cable: editData.dc_cable ?? selectedCust.dc_cable,
+            ac_cable: editData.ac_cable ?? selectedCust.ac_cable,
+            structure_front_leg_height: editData.structure_front_leg_height ?? selectedCust.structure_front_leg_height,
+            structure_rear_leg_height: editData.structure_rear_leg_height ?? selectedCust.structure_rear_leg_height,
+            invoice_value: editData.invoice_value ?? selectedCust.invoice_value,
+        };
+        const issues = [];
+        const requireField = (condition, label) => { if (!condition) issues.push(label); };
+        requireField(updates.roof_shed, 'Roof / Shed');
+        requireField(Number(parseIndianNumber(updates.dc_cable)) > 0, 'DC Cable Length');
+        requireField(Number(parseIndianNumber(updates.ac_cable)) > 0, 'AC Cable Length');
+        requireField(String(updates.structure_front_leg_height || '').trim(), 'Structure Front Leg Height');
+        requireField(String(updates.structure_rear_leg_height || '').trim(), 'Structure Rear Leg Height');
+        requireField(Number(parseIndianNumber(updates.invoice_value)) > 0, 'Invoice Value');
+
+        if (issues.length) {
+            setValidationIssues(issues);
+            setValidationNextStage('Material Integration');
+            setShowValidationModal(true);
+            return;
+        }
+
+        const didSave = await handleUpdateCustomer(selectedCust.id, {
+            ...updates,
+            dc_cable: parseIndianNumber(updates.dc_cable),
+            ac_cable: parseIndianNumber(updates.ac_cable),
+            invoice_value: parseIndianNumber(updates.invoice_value),
+            stage: 'MATERIAL INTEGRATION',
+        });
+        if (didSave) setActiveCustomerStage('MATERIAL INTEGRATION');
+    };
+
+    const getMeterInstallationUpdates = () => {
+        const meterPhotoUploaded = custDocs.some(doc =>
+            doc.doc_type === 'meter_installation_photo' || doc.doc_type === 'meter_photo'
+        );
+        return {
+            meter_installation: editData.meter_installation ?? selectedCust?.meter_installation ?? '',
+            installation_date: editData.installation_date ?? selectedCust?.installation_date ?? '',
+            meter_installation_photo: meterPhotoUploaded,
+        };
+    };
+
+    const handleSaveMeterInstallation = async (moveToNextStage = false) => {
+        if (!selectedCust) return;
+        const updates = getMeterInstallationUpdates();
+
+        if (moveToNextStage) {
+            const issues = [];
+            const requireField = (condition, label) => { if (!condition) issues.push(label); };
+            requireField(updates.meter_installation === 'Yes', 'Meter Installation must be Yes');
+            requireField(updates.installation_date, 'Meter Installation Date');
+            requireField(updates.meter_installation_photo, 'Meter Installation Photo');
+            if (issues.length) {
+                setValidationIssues(issues);
+                setValidationNextStage('Discom Inspection');
+                setShowValidationModal(true);
+                return;
+            }
+            updates.stage = 'DISCOM INSPECTION';
+        }
+
+        const didSave = await handleUpdateCustomer(selectedCust.id, updates);
+        if (didSave && moveToNextStage) setActiveCustomerStage('DISCOM INSPECTION');
+    };
+
+    const handleSaveDiscomInspection = async (moveToNextStage = false) => {
+        if (!selectedCust) return;
+        const updates = {
+            discom_inspection: editData.discom_inspection ?? selectedCust.discom_inspection ?? '',
+        };
+
+        if (moveToNextStage) {
+            if (updates.discom_inspection !== 'Yes') {
+                setValidationIssues(['Discom Inspection must be Yes']);
+                setValidationNextStage('Subsidy Status');
+                setShowValidationModal(true);
+                return;
+            }
+            updates.stage = 'SUBSIDY STATUS';
+        }
+
+        const didSave = await handleUpdateCustomer(selectedCust.id, updates);
+        if (didSave && moveToNextStage) {
+            // This is the last Stage Operations task, so return to its filtered list.
+            setSelectedCust(null);
+            setActiveCustomerStage(null);
+            setActiveWorkdeskTab('DISCOM_INSPECTION');
+        }
+    };
+
+    const isMeterInstallationDirty = () => {
+        if (!selectedCust) return false;
+        const updates = getMeterInstallationUpdates();
+        return updates.meter_installation !== (selectedCust.meter_installation || '') ||
+            updates.installation_date !== (selectedCust.installation_date || '') ||
+            Boolean(editData.meter_installation_photo) !== Boolean(selectedCust.meter_installation_photo);
+    };
+
+    const isDiscomInspectionDirty = () => selectedCust &&
+        (editData.discom_inspection ?? selectedCust.discom_inspection ?? '') !== (selectedCust.discom_inspection || '');
 
     const handlePrintIntegrationPreview = () => {
         const documentBody = integrationPrintRef.current;
@@ -501,81 +622,76 @@ export default function AgentPortal({ user, onLogout }) {
 
             {/* Menu View (Clean Action Cards) */}
             {view === 'menu' && (
-                <main className="flex-1 p-4 max-w-md mx-auto w-full space-y-4 animate-in fade-in duration-300">
-                    {/* Welcome Banner - Warm Amber */}
-                    <div className="bg-gradient-to-br from-amber-500 via-amber-500 to-amber-600 text-white p-5 rounded-[28px] shadow-lg shadow-amber-500/15 relative overflow-hidden">
-                        <div className="absolute right-0 bottom-0 translate-x-4 translate-y-4 opacity-10">
-                            <Sun className="w-40 h-40" />
+                <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 animate-in fade-in duration-300">
+                    <section className="relative overflow-hidden rounded-[28px] bg-stone-950 px-5 py-6 text-white shadow-xl shadow-stone-900/10">
+                        <div className="absolute -right-10 -top-12 h-52 w-52 rounded-full bg-amber-400/20 blur-2xl" />
+                        <div className="absolute -bottom-16 right-24 h-40 w-40 rounded-full border-[18px] border-amber-400/10" />
+                        <div className="relative space-y-5">
+                            <div className="max-w-xl">
+                                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Channel Partner workspace</p>
+                                <h2 className="mt-2 text-2xl font-black tracking-tight">Good to see you, {user.name}.</h2>
+                                <p className="mt-2 max-w-lg text-sm font-medium leading-relaxed text-stone-300">A focused view of your pipeline, pending hand-offs, and the customer work that needs attention today.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => { setActiveWorkdeskTab(priorityWorkdeskTab); setView('workdesk'); }}
+                                className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-400 px-4 py-3 text-xs font-black text-stone-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-300 active:scale-[0.98] cursor-pointer"
+                            >
+                                <Layers size={15} /> Open work queue <ChevronRight size={15} className="transition-transform group-hover:translate-x-0.5" />
+                            </button>
                         </div>
-                        <p className="text-[10px] uppercase tracking-widest text-amber-100 font-bold">Welcome Back</p>
-                        <h2 className="text-xl font-bold mt-0.5">{user.name}</h2>
-                        <p className="text-xs text-amber-50/90 mt-1 font-medium">Manage leads, track CRM stages, and configure assigned installations.</p>
-                    </div>
+                    </section>
 
-                    {/* Action Cards */}
-                    <div className="space-y-3">
-                        {/* ── Add New Customer ── */}
-                        <button
-                            onClick={() => setShowAddLead(true)}
-                            className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white p-4.5 rounded-[24px] shadow-md shadow-amber-500/15 flex items-center justify-between transition-all active:scale-[0.98] cursor-pointer"
-                        >
-                            <div className="flex items-center gap-3.5 text-left">
-                                <div className="w-11 h-11 bg-white/20 rounded-2xl flex items-center justify-center">
-                                    <Plus className="w-6 h-6 text-white" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-sm">Add New Customer</h3>
-                                    <p className="text-[11px] text-amber-100 font-medium mt-0.5">Register a new lead into CRM with details & documents</p>
-                                </div>
+                    <section className="grid grid-cols-2 gap-3">
+                        {[
+                            { label: 'Total customers', value: customers.length, icon: Users, tone: 'bg-stone-100 text-stone-700' },
+                            { label: 'Action queue', value: operationalQueueCount, icon: ClipboardCheck, tone: 'bg-amber-50 text-amber-700' },
+                            { label: 'In progress', value: inProgressCount, icon: Layers, tone: 'bg-blue-50 text-blue-700' },
+                            { label: 'Ready for inspection', value: inspPendingCount, icon: Zap, tone: 'bg-emerald-50 text-emerald-700' },
+                        ].map(({ label, value, icon: Icon, tone }) => (
+                            <div key={label} className="rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm">
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${tone}`}><Icon size={15} /></div>
+                                <p className="mt-3 text-2xl font-black tracking-tight text-stone-900">{value}</p>
+                                <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-stone-400">{label}</p>
                             </div>
-                            <ChevronRight className="w-5 h-5 text-amber-100 flex-shrink-0" />
-                        </button>
+                        ))}
+                    </section>
 
-                        {/* ── Track Leads (All Stages Directory) ── */}
-                        <button
-                            onClick={() => setView('my_customers')}
-                            className="w-full bg-white hover:bg-stone-50/80 text-stone-850 border border-stone-200/80 p-4.5 rounded-[24px] shadow-xs flex items-center justify-between transition-all active:scale-[0.98] cursor-pointer"
-                        >
-                            <div className="flex items-center gap-3.5 text-left">
-                                <div className="w-11 h-11 bg-stone-100 rounded-2xl flex items-center justify-center text-stone-700">
-                                    <Users className="w-6 h-6" />
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-sm text-stone-900">Track Leads</h3>
-                                    <p className="text-[11px] text-stone-500 font-medium mt-0.5">
-                                        View all {customers.length} lead{customers.length === 1 ? '' : 's'} across pipeline stages with full details
-                                    </p>
-                                </div>
-                            </div>
-                            <ChevronRight className="w-5 h-5 text-stone-400 flex-shrink-0" />
-                        </button>
-
-                        {/* Stage Operations opens the workdesks on one focused screen. */}
+                    <section className="space-y-3">
                         <button
                             type="button"
-                            onClick={() => { setActiveWorkdeskTab('MATERIAL_ORDER'); setView('workdesk'); }}
-                            className="w-full bg-white hover:bg-stone-50 border border-stone-200/90 rounded-[28px] p-5 shadow-xs text-left transition-all active:scale-[0.98] cursor-pointer"
+                            onClick={() => { setActiveWorkdeskTab(priorityWorkdeskTab); setView('workdesk'); }}
+                            className="group rounded-[26px] border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-white p-5 text-left shadow-sm transition hover:border-amber-400 hover:shadow-md active:scale-[0.99] cursor-pointer"
                         >
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                                        <Layers size={16} />
-                                    </div>
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md shadow-amber-500/20"><ClipboardCheck size={20} /></div>
                                     <div>
-                                        <h3 className="font-bold text-sm text-stone-900">Stage Operations</h3>
-                                        <p className="text-[10px] text-stone-400 font-medium">Quick stage desk for assigned dealer tasks</p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-700">Next best action</p>
+                                        <h3 className="mt-1 text-base font-black text-stone-900">Continue stage operations</h3>
+                                        <p className="mt-1 text-xs font-medium leading-relaxed text-stone-500">{operationalQueueCount > 0 ? `${operationalQueueCount} customer${operationalQueueCount === 1 ? '' : 's'} need an operational update.` : 'Your operational queue is clear. Review your pipeline anytime.'}</p>
                                     </div>
                                 </div>
-                                <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/60">
-                                    {leadsCount + registrationCount + materialOrderCount + materialIntegrationCount + materialDeliveryCount + meterPendingCount + inspPendingCount} Records
-                                </span>
+                                <ChevronRight size={19} className="mt-1 shrink-0 text-amber-600 transition-transform group-hover:translate-x-1" />
                             </div>
-                            <div className="mt-3 flex items-center justify-between text-[11px] font-bold text-amber-700">
-                                <span>Open Leads, Registration, material views & operations</span>
-                                <ChevronRight size={16} />
+                            <div className="mt-5 flex flex-wrap gap-2">
+                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-stone-600 border border-stone-200">{materialOrderCount} material orders</span>
+                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-stone-600 border border-stone-200">{meterPendingCount} meter installs</span>
+                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-stone-600 border border-stone-200">{inspPendingCount} inspections</span>
                             </div>
                         </button>
-                    </div>
+
+                        <div className="grid gap-3">
+                            <button onClick={() => setShowAddLead(true)} className="group flex items-center justify-between rounded-2xl bg-amber-500 p-4 text-left text-white shadow-md shadow-amber-500/20 transition hover:bg-amber-600 active:scale-[0.99] cursor-pointer">
+                                <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20"><Plus size={18} /></span><span><span className="block text-xs font-black">Add customer</span><span className="mt-0.5 block text-[10px] font-medium text-amber-100">Create a new lead</span></span></div>
+                                <ChevronRight size={16} className="transition-transform group-hover:translate-x-0.5" />
+                            </button>
+                            <button onClick={() => setView('my_customers')} className="group flex items-center justify-between rounded-2xl border border-stone-200 bg-white p-4 text-left shadow-sm transition hover:border-stone-300 hover:shadow-md active:scale-[0.99] cursor-pointer">
+                                <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-100 text-stone-700"><Search size={17} /></span><span><span className="block text-xs font-black text-stone-900">Customer directory</span><span className="mt-0.5 block text-[10px] font-medium text-stone-400">Search and track all leads</span></span></div>
+                                <ChevronRight size={16} className="text-stone-400 transition-transform group-hover:translate-x-0.5" />
+                            </button>
+                        </div>
+                    </section>
                 </main>
             )}
 
@@ -1575,9 +1691,10 @@ export default function AgentPortal({ user, onLogout }) {
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Invoice Value</span>
                                                 <input
-                                                    type="number"
-                                                    value={editData.invoice_value ?? selectedCust.invoice_value ?? ''}
-                                                    onChange={e => setEditData(prev => ({ ...prev, invoice_value: e.target.value }))}
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={formatInputValue(editData.invoice_value ?? selectedCust.invoice_value ?? '')}
+                                                    onChange={e => setEditData(prev => ({ ...prev, invoice_value: formatInputValue(e.target.value) }))}
                                                     placeholder="₹ Amount"
                                                     className="w-32 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
                                                 />
@@ -1585,19 +1702,7 @@ export default function AgentPortal({ user, onLogout }) {
                                         </div>
                                         <div className="pt-2 border-t border-stone-200/60">
                                             <button
-                                                onClick={async () => {
-                                                    setSaving(true);
-                                                    await handleUpdateCustomer(selectedCust.id, {
-                                                        roof_shed: editData.roof_shed || selectedCust.roof_shed,
-                                                        dc_cable: editData.dc_cable !== undefined ? editData.dc_cable : selectedCust.dc_cable,
-                                                        ac_cable: editData.ac_cable !== undefined ? editData.ac_cable : selectedCust.ac_cable,
-                                                        structure_front_leg_height: editData.structure_front_leg_height !== undefined ? editData.structure_front_leg_height : selectedCust.structure_front_leg_height,
-                                                        structure_rear_leg_height: editData.structure_rear_leg_height !== undefined ? editData.structure_rear_leg_height : selectedCust.structure_rear_leg_height,
-                                                        invoice_value: editData.invoice_value !== undefined ? editData.invoice_value : selectedCust.invoice_value,
-                                                        stage: 'MATERIAL INTEGRATION'
-                                                    });
-                                                    setSaving(false);
-                                                }}
+                                                onClick={handleAdvanceMaterialOrder}
                                                 disabled={saving}
                                                 className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                                             >
@@ -1808,7 +1913,7 @@ export default function AgentPortal({ user, onLogout }) {
                                     </div>
                                     <div className="divide-y divide-stone-200/50 text-xs">
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Meter Installation</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Meter Installation <span className="text-red-500">*</span></span>
                                             <div className="flex items-center gap-1.5">
                                                 {['Yes', 'No'].map(val => (
                                                     <button
@@ -1827,17 +1932,17 @@ export default function AgentPortal({ user, onLogout }) {
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Installation Date</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Installation Date <span className="text-red-500">*</span></span>
                                             <input
                                                 type="date"
-                                                value={editData.installation_date || selectedCust.installation_date || ''}
+                                                value={editData.installation_date ?? selectedCust.installation_date ?? ''}
                                                 onChange={e => setEditData(prev => ({ ...prev, installation_date: e.target.value }))}
                                                 className="bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
                                             />
                                         </div>
                                     </div>
                                     <div className="pt-2">
-                                        <p className="text-[10px] font-bold text-stone-500 uppercase tracking-wide mb-1">Meter Installation Photo</p>
+                                        <p className="text-[10px] font-bold text-stone-500 uppercase tracking-wide mb-1">Meter Installation Photo <span className="text-red-500">*</span></p>
                                         <CheckboxRemarkItem
                                             label="Meter Installation Photo"
                                             field="meter_installation_photo"
@@ -1851,38 +1956,22 @@ export default function AgentPortal({ user, onLogout }) {
                                             onUpdateRemark={handleUpdateDocRemark}
                                         />
                                     </div>
-                                    <div className="pt-2 border-t border-stone-200/60">
+                                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-200/60">
                                         <button
-                                            onClick={async () => {
-                                                const currentMeter = editData.meter_installation || selectedCust.meter_installation || 'No';
-                                                const installationDate = editData.installation_date || selectedCust.installation_date || '';
-                                                const meterPhotoUploaded = custDocs.some(doc =>
-                                                    doc.doc_type === 'meter_installation_photo' || doc.doc_type === 'meter_photo'
-                                                );
-                                                if (currentMeter === 'Yes' && !installationDate) {
-                                                    alert('Installation date is required before moving to Discom Inspection.');
-                                                    return;
-                                                }
-                                                if (currentMeter === 'Yes' && !meterPhotoUploaded) {
-                                                    alert('Upload the Meter Installation Photo before moving to Discom Inspection.');
-                                                    return;
-                                                }
-                                                setSaving(true);
-                                                const updates = {
-                                                    meter_installation: currentMeter,
-                                                    installation_date: installationDate || null,
-                                                    meter_installation_photo: meterPhotoUploaded,
-                                                };
-                                                if (currentMeter === 'Yes') {
-                                                    updates.stage = 'DISCOM INSPECTION';
-                                                }
-                                                await handleUpdateCustomer(selectedCust.id, updates);
-                                                setSaving(false);
-                                            }}
+                                            onClick={() => handleSaveMeterInstallation(false)}
                                             disabled={saving}
-                                            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                            className={`py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                                                isMeterInstallationDirty() ? 'bg-stone-900 hover:bg-stone-800 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                            }`}
                                         >
-                                            <CheckCircle2 size={14} /> {saving ? 'Saving...' : ((editData.meter_installation || selectedCust.meter_installation) === 'Yes' ? 'Save & Move to Discom Inspection' : 'Save Details')}
+                                            <Save size={14} /> {saving ? 'Saving...' : (isMeterInstallationDirty() ? 'Save' : 'Saved')}
+                                        </button>
+                                        <button
+                                            onClick={() => handleSaveMeterInstallation(true)}
+                                            disabled={saving}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                        >
+                                            <CheckCircle2 size={14} /> {saving ? 'Saving...' : 'Save & Move'}
                                         </button>
                                     </div>
                                 </div>
@@ -1897,7 +1986,7 @@ export default function AgentPortal({ user, onLogout }) {
                                     </div>
                                     <div className="divide-y divide-stone-200/50 text-xs">
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Discom Inspection</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Discom Inspection <span className="text-red-500">*</span></span>
                                             <div className="flex items-center gap-1.5">
                                                 {['Yes', 'No'].map(val => (
                                                     <button
@@ -1916,24 +2005,22 @@ export default function AgentPortal({ user, onLogout }) {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="pt-2 border-t border-stone-200/60">
+                                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-200/60">
                                         <button
-                                            onClick={async () => {
-                                                setSaving(true);
-                                                const currentInsp = editData.discom_inspection || selectedCust.discom_inspection || 'No';
-                                                const updates = {
-                                                    discom_inspection: currentInsp
-                                                };
-                                                if (currentInsp === 'Yes') {
-                                                    updates.stage = 'SUBSIDY STATUS';
-                                                }
-                                                await handleUpdateCustomer(selectedCust.id, updates);
-                                                setSaving(false);
-                                            }}
+                                            onClick={() => handleSaveDiscomInspection(false)}
                                             disabled={saving}
-                                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                            className={`py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                                                isDiscomInspectionDirty() ? 'bg-stone-900 hover:bg-stone-800 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                            }`}
                                         >
-                                            <CheckCircle2 size={14} /> {saving ? 'Advancing...' : ((editData.discom_inspection || selectedCust.discom_inspection) === 'Yes' ? 'Save & Move to Subsidy Status' : 'Save Details')}
+                                            <Save size={14} /> {saving ? 'Saving...' : (isDiscomInspectionDirty() ? 'Save' : 'Saved')}
+                                        </button>
+                                        <button
+                                            onClick={() => handleSaveDiscomInspection(true)}
+                                            disabled={saving}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                        >
+                                            <CheckCircle2 size={14} /> {saving ? 'Saving...' : 'Save & Move'}
                                         </button>
                                     </div>
                                 </div>
@@ -2216,6 +2303,37 @@ export default function AgentPortal({ user, onLogout }) {
                             <section><h4 className="text-[11px] font-black uppercase border-b border-stone-400 pb-1 mb-2">4. BOM Equipment Checklist</h4>{integrationBomItems.length ? <table className="w-full text-[11px] border-collapse border border-stone-400"><thead><tr className="bg-stone-100 text-[9px] uppercase"><th className="border border-stone-400 p-1.5">#</th><th className="border border-stone-400 p-1.5 text-left">Product</th><th className="border border-stone-400 p-1.5 text-left">Make</th><th className="border border-stone-400 p-1.5">UOM</th><th className="border border-stone-400 p-1.5 text-left">Integration By</th><th className="border border-stone-400 p-1.5 text-left">Note</th></tr></thead><tbody>{integrationBomItems.map((item, index) => <tr key={item.id || index}><td className="border border-stone-400 p-1.5 text-center">{index + 1}</td><td className="border border-stone-400 p-1.5 font-bold">{item.product_name || '–'}</td><td className="border border-stone-400 p-1.5">{item.make || '–'}</td><td className="border border-stone-400 p-1.5 text-center">{item.uom || '–'}</td><td className="border border-stone-400 p-1.5">{item.integration_by || '–'}</td><td className="border border-stone-400 p-1.5">{item.note || '–'}</td></tr>)}</tbody></table> : <p className="py-4 text-center text-xs text-stone-400 border border-stone-200">No BOM checklist items configured yet.</p>}</section>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {showValidationModal && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-sm" onClick={() => setShowValidationModal(false)}>
+                    <section className="w-full max-w-md overflow-hidden rounded-[28px] border border-amber-200 bg-white shadow-2xl animate-in zoom-in-95 fade-in duration-200" onClick={event => event.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="requirements-title">
+                        <div className="bg-gradient-to-br from-amber-500 via-amber-500 to-orange-500 px-6 py-5 text-white">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="rounded-2xl bg-white/20 p-2.5"><AlertTriangle size={21} /></div>
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-50">Watersun checklist</p>
+                                        <h3 id="requirements-title" className="mt-0.5 text-lg font-black">A few details need attention</h3>
+                                    </div>
+                                </div>
+                                <button type="button" onClick={() => setShowValidationModal(false)} className="rounded-lg p-1 text-white/90 hover:bg-white/15 hover:text-white" aria-label="Close requirements popup"><X size={19} /></button>
+                            </div>
+                        </div>
+                        <div className="px-6 py-5">
+                            <p className="text-sm font-medium leading-relaxed text-stone-600">Complete the required items below before moving this customer to <span className="font-bold text-stone-800">{validationNextStage}</span>.</p>
+                            <ul className="mt-4 space-y-2.5">
+                                {validationIssues.map(issue => (
+                                    <li key={issue} className="flex items-center gap-3 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-800">
+                                        <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-rose-500 text-xs font-black text-white">!</span>
+                                        {issue}
+                                    </li>
+                                ))}
+                            </ul>
+                            <button type="button" onClick={() => setShowValidationModal(false)} className="mt-5 w-full rounded-xl bg-stone-900 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-stone-800">Review requirements</button>
+                        </div>
+                    </section>
                 </div>
             )}
 

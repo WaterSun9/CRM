@@ -49,7 +49,7 @@ export default function MeterInstallationTab({
                         <Zap size={18} />
                     </div>
                     <div>
-                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Meter Installation Status</h4>
+                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Meter Installation Status <span className="text-red-500">*</span></h4>
                         <p className="text-[11px] text-stone-500 font-medium mt-0.5">Has the net meter been successfully installed?</p>
                     </div>
                 </div>
@@ -122,7 +122,7 @@ export default function MeterInstallationTab({
                 )}
                 <div className="flex flex-col gap-2">
                     <CheckboxRemarkItem 
-                        label="Meter Installation Photo" 
+                        label="Meter Installation Photo *" 
                         field="meter_installation_photo" 
                         value={editData.meter_installation_photo} 
                         onChange={handleChange || ((field, val) => setEditData(prev => ({ ...prev, [field]: val })))} 

@@ -555,11 +555,20 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         setIsFormDirty(true);
         setEditData(updater);
     };
+
+    // Opening a pencil editor is an intentional edit action. Reflect that in
+    // the footer immediately, even before the first field is typed.
+    useEffect(() => {
+        if (editingSection) setIsFormDirty(true);
+    }, [editingSection]);
     const [followUpText, setFollowUpText] = useState('');
     const [saving, setSaving] = useState(false);
     const [sendingInfo, setSendingInfo] = useState(false);
     const [infoSentStatus, setInfoSentStatus] = useState(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [validationError, setValidationError] = useState(null);
+    const [validationIssues, setValidationIssues] = useState([]);
+    const [showValidationModal, setShowValidationModal] = useState(false);
     const [showCompletedConfirm, setShowCompletedConfirm] = useState(false);
     const [activityLogs, setActivityLogs] = useState([]);
     const [documents, setDocuments] = useState([]);
@@ -1176,16 +1185,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return false;
 
-        if (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Yes') {
-            return false;
-        }
-
-        if (editData.stage === 'GEO TAG PHOTO') {
-            if (editData.geo_tag_status !== 'Proceed' || !editData.geo_tag_image) {
-                return false;
-            }
-        }
-
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return false;
 
@@ -1206,16 +1205,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const nextStageId = (() => {
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return null;
-
-        if (editData.stage === 'INSTALLATION STATUS' && editData.installation_status !== 'Yes') {
-            return null;
-        }
-
-        if (editData.stage === 'GEO TAG PHOTO') {
-            if (editData.geo_tag_status !== 'Proceed' || !editData.geo_tag_image) {
-                return null;
-            }
-        }
 
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return null;
@@ -1242,11 +1231,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const isLeadFieldsFilled = !!(
         editData.customer_name?.trim() &&
         editData.phone_number?.toString().trim() &&
-        (editData.email?.trim() || editData.email_address?.trim()) &&
+        (editData.email_address?.trim() || editData.email_address?.trim()) &&
         editData.consumer_no?.toString().trim() &&
         editData.villages?.trim() &&
         editData.channel_partner?.trim() &&
-        editData.sub_channel_partner?.trim() &&
+// editData.sub_channel_partner?.trim() && // Sub Channel Partner is optional
         editData.module_brand?.trim() &&
         editData.module_wp?.toString().trim() &&
         editData.no_of_modules?.toString().trim() &&
@@ -1274,72 +1263,105 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         editData.invoice_value && Number(parseIndianNumber(editData.invoice_value)) > 0
     );
 
+    const getMissingStageRequirements = () => {
+        const issues = [];
+        const requireField = (condition, label) => { if (!condition) issues.push(label); };
+
+        switch (editData.stage) {
+            case 'LEADS':
+                requireField(editData.customer_name?.trim(), 'Customer Name');
+                requireField(editData.phone_number?.toString().trim(), 'Phone Number');
+                requireField(editData.email_address?.trim(), 'Email Address');
+                requireField(editData.consumer_no?.toString().trim(), 'Consumer Number');
+                requireField(editData.villages?.trim(), 'Village / Address');
+                requireField(editData.channel_partner?.trim(), 'Channel Partner Name');
+                requireField(editData.module_brand?.trim(), 'Module Brand');
+                requireField(editData.module_wp?.toString().trim(), 'Module WP');
+                requireField(editData.no_of_modules?.toString().trim(), 'Number of Modules');
+                requireField(editData.system_capacity_kwp, 'System Capacity');
+                requireField(editData.sub_divisions?.trim(), 'Sub Division');
+                requireField(editData.payment_type?.trim(), 'Payment Type');
+                break;
+            case 'REGISTRATION':
+                requireField(editData.registration_date, 'Registration Date');
+                requireField(editData.registration_by?.trim(), 'Registration By');
+                requireField(editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim(), 'Feasibility No');
+                requireField(editData.folder_no?.toString().trim(), 'File No');
+                requireField(hasFeasibilityDoc, 'Feasibility Document');
+                requireField(hasSubsidyTokenDoc, 'Subsidy Token Photo');
+                break;
+            case 'MATERIAL ORDER':
+                requireField(editData.roof_shed, 'Roof / Shed');
+                requireField(editData.dc_cable && Number(parseIndianNumber(editData.dc_cable)) > 0, 'DC Cable Length');
+                requireField(editData.ac_cable && Number(parseIndianNumber(editData.ac_cable)) > 0, 'AC Cable Length');
+                requireField(String(editData.structure_front_leg_height || '').trim(), 'Structure Front Leg Height');
+                requireField(String(editData.structure_rear_leg_height || '').trim(), 'Structure Rear Leg Height');
+                requireField(editData.invoice_value && Number(parseIndianNumber(editData.invoice_value)) > 0, 'Invoice Value');
+                break;
+            case 'MATERIAL DELIVERY':
+                requireField(editData.vendor?.trim(), 'Vendor Allotment');
+                requireField(editData.inverter_make?.trim(), 'Inverter Make');
+                requireField(editData.inverter_serial_no?.trim(), 'Inverter Serial Number');
+                requireField(editData.invoice_no?.trim(), 'Invoice Number');
+                requireField(editData.material_delivery_date, 'Delivery Date');
+                requireField(editData.driver_name?.trim(), 'Driver Name');
+                requireField(editData.driver_phone_number?.toString().trim(), 'Driver Phone Number');
+                requireField(
+                    Array.isArray(editData.panel_serial_no)
+                        ? editData.panel_serial_no.some(Boolean)
+                        : String(editData.panel_serial_no || '').trim(),
+                    'At Least One Panel Serial Number'
+                );
+                break;
+            case 'INSTALLATION STATUS':
+                requireField(editData.installation_status === 'Yes', 'Installation Status must be Yes');
+                break;
+            case 'GEO TAG PHOTO':
+                requireField(editData.geo_tag_status === 'Proceed', 'Geo Tag Photo Status must be Proceed');
+                requireField(editData.geo_tag_image, 'Geo Tag Photograph');
+                break;
+            case 'METER INSTALLATION':
+                requireField(editData.meter_installation === 'Yes', 'Meter Installation Status must be Yes');
+                requireField(editData.installation_date, 'Meter Installation Date');
+                requireField(editData.meter_installation_photo, 'Meter Installation Photo');
+                break;
+            case 'DISCOM INSPECTION':
+                requireField(editData.discom_inspection === 'Yes', 'Discom Inspection Status must be Yes');
+                break;
+            default:
+                break;
+        }
+
+        return issues;
+    };
+
+    const showMissingRequirements = (issues) => {
+        setValidationIssues(issues);
+        setShowValidationModal(true);
+    };
+
     const handleAdvanceStage = async (overrideNextStageId) => {
         const destStageId = overrideNextStageId || nextStageId;
         if (!destStageId) return;
 
-        if (editData.stage === 'LEADS' && !isLeadFieldsFilled) {
-            alert('Please fill all required Lead details (Customer Name, Phone, Email, Consumer No, Villages, Channel Partner, Sub Channel Partner, Module Brand, Module Wp, No of Modules, System Capacity, Sub Division, Payment Type) to advance to the next stage.');
+        const missingRequirements = getMissingStageRequirements();
+        if (missingRequirements.length > 0) {
+            showMissingRequirements(missingRequirements);
             return;
-        }
-
-        if (editData.stage === 'REGISTRATION') {
-            if (!isRegistrationFieldsFilled) {
-                alert('Please fill all Registration details (Registration Date, Registration By, Feasibility No, File No) before advancing.');
-                return;
-            }
-            if (!hasFeasibilityDoc || !hasSubsidyTokenDoc) {
-                alert('Both Feasibility Document and Subsidy Token Photo must be uploaded to advance to the next stage.');
-                return;
-            }
-        }
-
-        if (editData.stage === 'MATERIAL ORDER' && !isMaterialOrderFilled) {
-            alert('Please fill all mandatory Material Order specifications (Roof/Shed, DC Cable, AC Cable, Structure Front Leg Height, Structure Rear Leg Height, Invoice Value) to advance.');
-            return;
-        }
-
-        if (editData.stage === 'MATERIAL DELIVERY') {
-            if (!editData.vendor || !editData.inverter_make || !editData.inverter_serial_no || !editData.invoice_no || !editData.material_delivery_date || !editData.driver_name || !editData.driver_phone_number || !editData.panel_serial_no) {
-                alert('All Material Delivery details (Vendor allotment, Inverter Make, Inverter Serial, Invoice No, Delivery Date, Driver Name, Driver Phone, and Panel Serials) must be filled to advance.');
-                return;
-            }
-        }
-
-        if (editData.stage === 'GEO TAG PHOTO') {
-            if (editData.geo_tag_status !== 'Proceed' || !editData.geo_tag_image) {
-                alert('Geo Tag Photo status must be "Proceed" and a photo must be uploaded to advance.');
-                return;
-            }
-        }
-
-        if (editData.stage === 'METER INSTALLATION') {
-            if (editData.meter_installation !== 'Yes' || !editData.meter_installation_photo) {
-                alert('Meter Installation status must be "Yes" and a photo must be uploaded to advance.');
-                return;
-            }
-        }
-
-        if (editData.stage === 'DISCOM INSPECTION') {
-            if (editData.discom_inspection !== 'Yes') {
-                alert('Discom Inspection status must be "Yes" to advance.');
-                return;
-            }
-        }
-
-        if (editData.stage === 'INSTALLATION STATUS') {
-            if (editData.installation_status !== 'Yes') {
-                alert('Physical Installation status must be "Yes" to advance.');
-                return;
-            }
         }
 
         setSaving(true);
         if (saveBomRef.current) {
             try {
-                await saveBomRef.current();
+                const wasSaved = await saveBomRef.current();
+                if (wasSaved === false) {
+                    setSaving(false);
+                    return;
+                }
             } catch (err) {
                 console.error('Error saving BOM during stage advance:', err);
+                setSaving(false);
+                return;
             }
         }
 
@@ -1351,7 +1373,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 .maybeSingle();
 
             if (!bomData || !bomData.paper_prepared_by || !bomData.paper_prepared_date || !bomData.material_loaded_by || !bomData.material_loaded_date) {
-                alert('All Procurement & Loading Milestones (Paper Prepared By, Paper Prepared Date, Material Loaded By, and Material Loaded Date) must be filled to advance.');
+                const missingMilestones = [];
+                if (!bomData?.paper_prepared_by) missingMilestones.push('Paper Prepared By');
+                if (!bomData?.paper_prepared_date) missingMilestones.push('Paper Prepared Date');
+                if (!bomData?.material_loaded_by) missingMilestones.push('Material Loaded By');
+                if (!bomData?.material_loaded_date) missingMilestones.push('Material Loaded Date');
+                showMissingRequirements(missingMilestones);
                 setSaving(false);
                 return;
             }
@@ -1455,6 +1482,19 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
 
     const handleSave = async () => {
+        if (activeTab === 'REGISTRATION') {
+            const missing = [];
+            if (!editData.registration_date) missing.push('Registration date');
+            if (!editData.registration_by?.trim()) missing.push('Registration By');
+            if (!(editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim())) missing.push('Feasibility No');
+            if (!editData.folder_no?.toString().trim()) missing.push('File No');
+            
+            if (missing.length > 0) {
+                setValidationError(`Cannot save. The following required fields are missing:\n\n- ${missing.join('\n- ')}`);
+                return;
+            }
+        }
+
         setSaving(true);
         if (saveBomRef.current) {
             try {
@@ -1950,6 +1990,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             saving={saving}
                             setSaving={setSaving}
                             saveBomRef={saveBomRef}
+                            onDirty={() => setIsFormDirty(true)}
                         />
                     )}
 
@@ -2346,6 +2387,38 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     </div>
                 )}
             </div>
+
+            {/* Soft-delete confirm */}
+            {showValidationModal && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-sm" onClick={() => setShowValidationModal(false)}>
+                    <section className="w-full max-w-md overflow-hidden rounded-[28px] border border-amber-200 bg-white shadow-2xl animate-in zoom-in-95 fade-in duration-200" onClick={event => event.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="requirements-title">
+                        <div className="bg-gradient-to-br from-amber-500 via-amber-500 to-orange-500 px-6 py-5 text-white">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="rounded-2xl bg-white/20 p-2.5"><AlertTriangle size={21} /></div>
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-50">Watersun checklist</p>
+                                        <h3 id="requirements-title" className="mt-0.5 text-lg font-black">A few details need attention</h3>
+                                    </div>
+                                </div>
+                                <button type="button" onClick={() => setShowValidationModal(false)} className="rounded-lg p-1 text-white/90 hover:bg-white/15 hover:text-white" aria-label="Close requirements popup"><X size={19} /></button>
+                            </div>
+                        </div>
+                        <div className="px-6 py-5">
+                            <p className="text-sm font-medium leading-relaxed text-stone-600">Complete the required items below before moving this customer to <span className="font-bold text-stone-800">{nextStageLabel}</span>.</p>
+                            <ul className="mt-4 space-y-2.5">
+                                {validationIssues.map(issue => (
+                                    <li key={issue} className="flex items-center gap-3 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-800">
+                                        <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-rose-500 text-xs font-black text-white">!</span>
+                                        {issue}
+                                    </li>
+                                ))}
+                            </ul>
+                            <button type="button" onClick={() => setShowValidationModal(false)} className="mt-5 w-full rounded-xl bg-stone-900 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-stone-800">Review requirements</button>
+                        </div>
+                    </section>
+                </div>
+            )}
 
             {/* Soft-delete confirm */}
             {showDeleteConfirm && (

@@ -50,7 +50,7 @@ export default function RegistrationTab({
                 
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <EditableDetailItem 
-                        label="Registration date" 
+                        label={<span>Registration date <span className="text-red-500">*</span></span>} 
                         field="registration_date" 
                         value={editData.registration_date} 
                         onChange={handleChange} 
@@ -58,7 +58,7 @@ export default function RegistrationTab({
                         isEditing={editingSection === 'reg_details'} 
                     />
                     <EditableDetailItem 
-                        label="Registration By" 
+                        label={<span>Registration By <span className="text-red-500">*</span></span>} 
                         field="registration_by" 
                         value={editData.registration_by} 
                         onChange={handleChange} 
@@ -68,14 +68,14 @@ export default function RegistrationTab({
                         user={user} 
                     />
                     <EditableDetailItem 
-                        label="Feasibility No" 
+                        label={<span>Feasibility No <span className="text-red-500">*</span></span>} 
                         field="registration_no" 
                         value={editData.registration_no || editData.feasibility_no} 
                         onChange={handleChange} 
                         isEditing={editingSection === 'reg_details'} 
                     />
                     <EditableDetailItem 
-                        label="File No" 
+                        label={<span>File No <span className="text-red-500">*</span></span>} 
                         field="folder_no" 
                         value={editData.folder_no} 
                         onChange={handleChange} 
@@ -97,7 +97,7 @@ export default function RegistrationTab({
 
                     <div className="flex flex-col gap-2">
                         <CheckboxRemarkItem
-                            label="Feasibility Document"
+                            label="Feasibility Document *"
                             field="feasibilty_document"
                             value={editData.feasibilty_document}
                             onChange={handleChange}
@@ -109,7 +109,7 @@ export default function RegistrationTab({
                             onUpdateRemark={onUpdateRemark}
                         />
                         <CheckboxRemarkItem
-                            label="Subsidy Token Photo"
+                            label="Subsidy Token Photo *"
                             field="subsidy_token_photo"
                             value={editData.subsidy_token_photo}
                             onChange={handleChange}

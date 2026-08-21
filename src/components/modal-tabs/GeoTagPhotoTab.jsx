@@ -63,7 +63,7 @@ export default function GeoTagPhotoTab({
                         <MapPin size={18} />
                     </div>
                     <div>
-                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Geo Tag Photo Status</h4>
+                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Geo Tag Photo Status <span className="text-red-500">*</span></h4>
                         <p className="text-[11px] text-stone-500 font-medium mt-0.5">Verify site geo-tagging and site readiness.</p>
                     </div>
                 </div>
@@ -114,7 +114,7 @@ export default function GeoTagPhotoTab({
                 )}
                 <div className="flex flex-col gap-2">
                     <CheckboxRemarkItem 
-                        label="Geo Tag Image Uploaded" 
+                        label="Geo Tag Image Uploaded *" 
                         field="geo_tag_image" 
                         value={editData.geo_tag_image} 
                         onChange={handleChange} 
