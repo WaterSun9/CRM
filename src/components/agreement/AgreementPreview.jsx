@@ -14,18 +14,25 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
     const printContainer = containerRef.current;
     if (!printContainer) return;
 
-    const win = window.open('', '_blank', 'width=900,height=1000');
-    if (!win) {
-      alert('Pop-up blocked. Please enable pop-ups for this site to print.');
-      return;
-    }
-
-    // Capture stylesheet and link elements from parent document head
+    // Capture all styles from the parent document
     const parentStyles = Array.from(document.head.querySelectorAll('style, link[rel="stylesheet"]'))
       .map(tag => tag.outerHTML)
       .join('\n');
 
-    win.document.write(`
+    // Create a hidden 0x0 iframe — no new tab, prints in same page
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.opacity = '0';
+    document.body.appendChild(iframe);
+
+    const iframeDoc = iframe.contentWindow.document;
+    iframeDoc.open();
+    iframeDoc.write(`
       <!DOCTYPE html>
       <html>
         <head>
@@ -38,63 +45,64 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
               html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
             }
             body { font-family: Calibri, 'Calibri Light', sans-serif; font-weight: 400; background: white; margin: 0; padding: 0; }
-            .doc-page { 
-              width: 210mm !important; 
-              min-height: 297mm !important; 
-              height: 297mm !important; 
-              margin: 0 auto !important; 
-              padding: 12mm 15mm 16mm 15mm !important; 
-              box-sizing: border-box !important; 
-              page-break-after: always !important; 
+            .doc-page {
+              width: 210mm !important;
+              min-height: 297mm !important;
+              height: 297mm !important;
+              margin: 0 auto !important;
+              padding: 12mm 15mm 16mm 15mm !important;
+              box-sizing: border-box !important;
+              page-break-after: always !important;
               break-after: page !important;
-              position: relative !important; 
-              font-weight: 400 !important; 
+              position: relative !important;
+              font-weight: 400 !important;
               background: white !important;
               color: #1e293b !important;
               box-shadow: none !important;
               border: none !important;
+            }
+            .stamp-page {
+              padding: 0 !important;
+              margin: 0 auto !important;
             }
             .font-normal { font-weight: 400 !important; }
             .font-medium { font-weight: 500 !important; }
             .font-semibold { font-weight: 600 !important; }
             .font-bold, b, strong { font-weight: 700 !important; }
             .no-print { display: none !important; }
-            
-            /* Footer pinning */
             .doc-page .absolute.bottom-5 {
               position: absolute !important;
               bottom: 12mm !important;
               left: 15mm !important;
               right: 15mm !important;
             }
-            /* Reset zoom transform in print window */
-            div[style*="transform"] {
-              transform: none !important;
-            }
+            div[style*="transform"] { transform: none !important; }
           </style>
+
         </head>
         <body style="background: white; margin: 0; padding: 0;">
-          <div style="padding: 0; margin: 0;">
-            ${printContainer.innerHTML}
-          </div>
-          <script>
-            window.onload = () => {
-              setTimeout(() => {
-                window.print();
-                window.close();
-              }, 400);
-            };
-            // Fallback timeout in case onload event was already triggered
-            setTimeout(() => {
-              window.print();
-              window.close();
-            }, 1200);
-          </script>
+          ${printContainer.innerHTML}
         </body>
       </html>
     `);
-    win.document.close();
+    iframeDoc.close();
+
+    iframe.contentWindow.onload = () => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => document.body.removeChild(iframe), 1000);
+    };
+
+    // Fallback in case onload already fired
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
+      }, 1000);
+    }, 500);
   };
+
 
   const scrollToPage = (pageNum) => {
     const pageEl = document.getElementById(`crm-agreement-page-${pageNum}`);
@@ -221,23 +229,14 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
             {data.gpaeStampUrl && (
               <div id="crm-agreement-page-0" className="print:m-0 print:p-0">
                 <div 
-                  className="doc-page bg-white relative flex flex-col items-center justify-center p-4 mx-auto shadow-2xl rounded-sm overflow-hidden" 
-                  style={{ minHeight: '297mm', height: '297mm', width: '210mm', boxSizing: 'border-box' }}
+                  className="doc-page stamp-page bg-white relative mx-auto shadow-2xl rounded-sm overflow-hidden" 
+                  style={{ minHeight: '297mm', height: '297mm', width: '210mm', boxSizing: 'border-box', padding: 0 }}
                 >
-                  {data.gpaeStampUrl.toLowerCase().includes('.pdf') ? (
-                    <iframe 
-                      src={data.gpaeStampUrl} 
-                      className="w-full h-full border-0 rounded"
-                      style={{ minHeight: '275mm', width: '100%' }}
-                      title="PM Surya GPAE Stamp" 
-                    />
-                  ) : (
-                    <img 
-                      src={data.gpaeStampUrl} 
-                      alt="PM Surya GPAE Stamp" 
-                      className="w-full h-full object-contain max-h-[280mm]" 
-                    />
-                  )}
+                  <img 
+                    src={data.gpaeStampUrl} 
+                    alt="PM Surya GPAE Stamp" 
+                    style={{ width: '210mm', height: '297mm', display: 'block', objectFit: 'fill' }}
+                  />
                 </div>
               </div>
             )}
