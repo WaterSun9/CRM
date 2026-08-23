@@ -22,7 +22,7 @@ export default function MaterialOrderTab({
     // Channel Partner / Agent / Channel Partner Office can edit; Office has view-only access
     const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners' || user?.userType === 'dealer' || user?.role === 'Dealers';
     const isAdmin = user?.userType === 'admin' || user?.role === 'Super Admin' || user?.role === 'Admin';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager' || user?.role === 'Channel Partner Office' || user?.role === 'Channel Partner Office Manager';
     const canEdit = isAgent || isChannelPartnerOffice || (isAdmin && isEditable);
 
     const [validationError, setValidationError] = useState('');

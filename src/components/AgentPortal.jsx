@@ -90,10 +90,11 @@ export default function AgentPortal({ user, onLogout }) {
     const fetchCustomers = async () => {
         setLoading(true);
         try {
+            const cpFilter = user.channel_partner || user.name;
             const { data, error } = await supabase
                 .from('admin')
                 .select('*')
-                .eq('channel_partner', user.name)
+                .eq('channel_partner', cpFilter)
                 .is('deleted_at', null)
                 .order('created_at', { ascending: false });
 
@@ -111,7 +112,7 @@ export default function AgentPortal({ user, onLogout }) {
         if (!user?.name) return;
 
         fetchCustomers();
-        const partnerName = user.name.trim().toLowerCase();
+        const partnerName = (user.channel_partner || user.name).trim().toLowerCase();
         const channel = supabase.channel(`agent_customers_${user.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
                 const record = payload.new;
@@ -148,6 +149,16 @@ export default function AgentPortal({ user, onLogout }) {
         };
         fetchMetadata();
     }, []);
+
+    // Sync selectedCust state with fresh database values when updates occur
+    useEffect(() => {
+        if (selectedCust) {
+            const fresh = customers.find(c => c.id === selectedCust.id);
+            if (fresh && JSON.stringify(fresh) !== JSON.stringify(selectedCust)) {
+                setSelectedCust(fresh);
+            }
+        }
+    }, [customers]);
 
     // Load documents and sync customer data when a customer profile is opened
     useEffect(() => {
@@ -234,9 +245,11 @@ export default function AgentPortal({ user, onLogout }) {
 
     // Submit new lead from AddLeadModal
     const handleSubmitLead = async (formData, attachedFiles = []) => {
+        const isSubAgent = !!user.channel_partner;
         const leadData = {
             ...formData,
-            channel_partner: user.name,
+            channel_partner: isSubAgent ? user.channel_partner : user.name,
+            sub_channel_partner: isSubAgent ? user.name : null,
             application_done_by: user.name,
             created_at: new Date().toISOString()
         };
@@ -981,7 +994,7 @@ export default function AgentPortal({ user, onLogout }) {
                         <div className="flex items-center justify-between">
                             <div>
                                 <h2 className="text-sm font-black text-stone-900 uppercase tracking-widest">Track All Leads</h2>
-                                <p className="text-[10px] text-stone-400 font-semibold mt-0.5">Directory of all leads registered under {user.name}.</p>
+                                <p className="text-[10px] text-stone-400 font-semibold mt-0.5">Directory of all leads registered under {user.channel_partner || user.name}.</p>
                             </div>
                             <button
                                 onClick={() => setShowAddLead(true)}

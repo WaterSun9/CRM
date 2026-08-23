@@ -17,13 +17,19 @@ export default function CashTab({
     saving,
     setSaving
 }) {
-    const cashDetails = editData.cash_details || {
-        total_amount: 0,
-        payments: [
-            { name: '1st Payment', amount: 0, type: 'Cash', date: '', transaction_id: '' },
-            { name: '2nd Payment', amount: 0, type: 'Cash', date: '', transaction_id: '' },
-            { name: '3rd Payment', amount: 0, type: 'Cash', date: '', transaction_id: '' },
-        ]
+    const defaultPaymentNames = ['Down Payment', '1st Payment', '2nd Payment'];
+    const rawCashDetails = editData.cash_details || { total_amount: 0, payments: [] };
+    const rawPayments = Array.isArray(rawCashDetails.payments) ? rawCashDetails.payments : [];
+
+    const cashDetails = {
+        total_amount: rawCashDetails.total_amount || 0,
+        payments: [0, 1, 2].map(i => ({
+            name: defaultPaymentNames[i],
+            amount: rawPayments[i]?.amount || 0,
+            type: rawPayments[i]?.type || 'Cash',
+            date: rawPayments[i]?.date || '',
+            transaction_id: rawPayments[i]?.transaction_id || ''
+        }))
     };
 
     const handleCashFieldChange = (field, val) => {

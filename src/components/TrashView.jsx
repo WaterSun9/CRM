@@ -4,7 +4,8 @@
 // Hard delete (permanent) for admin only.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from "../supabase";
 import { Trash2, RotateCcw, Eye, AlertTriangle, X } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS } from '../constants';
 import { formatINR } from '../utils';
@@ -54,9 +55,33 @@ function TrashDetailDrawer({ customer, onClose }) {
     );
 }
 
-export default function TrashView({ trashedCustomers, onRecover, onHardDelete, isAdmin }) {
+export default function TrashView({ onRecover, onHardDelete, isAdmin }) {
     const [viewing, setViewing] = useState(null);
     const [confirmHard, setConfirmHard] = useState(null);
+    const [trashedCustomers, setTrashedCustomers] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchTrashed = async () => {
+            setLoading(true);
+            const { data } = await supabase.from('admin').select('*').not('deleted_at', 'is', null).order('deleted_at', { ascending: false });
+            setTrashedCustomers(data || []);
+            setLoading(false);
+        };
+        fetchTrashed();
+    }, []);
+
+    const handleRecover = async (id) => {
+        await onRecover(id);
+        setTrashedCustomers(prev => prev.filter(c => c.id !== id));
+    };
+
+    const handleHardDelete = async (id) => {
+        await onHardDelete(id);
+        setTrashedCustomers(prev => prev.filter(c => c.id !== id));
+    };
+
+    if (loading) return <div className="p-10 text-center animate-pulse text-stone-400">Loading trash...</div>;
 
     if (trashedCustomers.length === 0) return (
         <div className="flex flex-col items-center justify-center h-64 text-stone-400">
@@ -92,7 +117,7 @@ export default function TrashView({ trashedCustomers, onRecover, onHardDelete, i
                             className="p-2 text-stone-400 hover:text-stone-600 hover:bg-stone-50 rounded-xl transition-colors" title="View">
                             <Eye className="w-4 h-4" />
                         </button>
-                        <button onClick={() => onRecover(c.id)}
+                        <button onClick={() => handleRecover(c.id)}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors">
                             <RotateCcw className="w-3.5 h-3.5" /> Recover
                         </button>
@@ -122,7 +147,7 @@ export default function TrashView({ trashedCustomers, onRecover, onHardDelete, i
                         </p>
                         <div className="flex gap-3">
                             <button onClick={() => setConfirmHard(null)} className="flex-1 py-2.5 border border-stone-300 text-stone-700 rounded-xl text-sm font-medium">Cancel</button>
-                            <button onClick={() => { onHardDelete(confirmHard.id); setConfirmHard(null); }}
+                            <button onClick={() => { handleHardDelete(confirmHard.id); setConfirmHard(null); }}
                                 className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium flex items-center justify-center gap-2">
                                 <Trash2 className="w-4 h-4" /> Delete Forever
                             </button>

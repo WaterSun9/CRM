@@ -36,7 +36,7 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>PM Surya Ghar Agreement</title>
+          <title>${(data.consumerName || 'Client').replace(/\s+/g, '_')}_model draft agreement</title>
           <meta charset="utf-8">
           ${parentStyles}
           <style>
@@ -87,20 +87,20 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
     `);
     iframeDoc.close();
 
-    iframe.contentWindow.onload = () => {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-      setTimeout(() => document.body.removeChild(iframe), 1000);
-    };
-
-    // Fallback in case onload already fired
-    setTimeout(() => {
+    let hasPrinted = false;
+    const doPrint = () => {
+      if (hasPrinted) return;
+      hasPrinted = true;
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
       setTimeout(() => {
         if (document.body.contains(iframe)) document.body.removeChild(iframe);
       }, 1000);
-    }, 500);
+    };
+
+    iframe.contentWindow.onload = doPrint;
+    // Fallback in case onload already fired
+    setTimeout(doPrint, 600);
   };
 
 
@@ -121,11 +121,11 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
           <div className="flex items-center gap-3">
             <span className="font-bold text-sm text-slate-200 flex items-center gap-2">
               <FileText className="w-5 h-5 text-amber-400" />
-              PM Surya Ghar Agreement {data.gpaeStampUrl ? '(5 Pages · GPAE Stamp Attached)' : '(4 Pages)'}
+              PM Surya Ghar Agreement {data.gpaStampUrl ? '(5 Pages · GPA Stamp Attached)' : '(4 Pages)'}
             </span>
             <div className="h-4 w-[1px] bg-slate-800 mx-1" />
             <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded border border-slate-800">
-              {data.gpaeStampUrl && (
+              {data.gpaStampUrl && (
                 <button
                   type="button"
                   onClick={() => scrollToPage(0)}
@@ -226,15 +226,15 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
             className="transition-transform origin-top mx-auto space-y-8 print:space-y-0 print:p-0 print:m-0 print:transform-none"
             style={{ transform: `scale(${zoom / 100})`, width: '210mm' }}
           >
-            {data.gpaeStampUrl && (
+            {data.gpaStampUrl && (
               <div id="crm-agreement-page-0" className="print:m-0 print:p-0">
                 <div 
                   className="doc-page stamp-page bg-white relative mx-auto shadow-2xl rounded-sm overflow-hidden" 
                   style={{ minHeight: '297mm', height: '297mm', width: '210mm', boxSizing: 'border-box', padding: 0 }}
                 >
                   <img 
-                    src={data.gpaeStampUrl} 
-                    alt="PM Surya GPAE Stamp" 
+                    src={data.gpaStampUrl} 
+                    alt="PM Surya GPA Stamp" 
                     style={{ width: '210mm', height: '297mm', display: 'block', objectFit: 'fill' }}
                   />
                 </div>

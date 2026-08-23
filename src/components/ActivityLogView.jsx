@@ -28,10 +28,24 @@ export default function ActivityLogView() {
             if (!error) setLogs(data || []);
             setLoading(false);
         };
+        
         fetchLogs();
+
         const channel = supabase.channel('activity_log_realtime')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_log' }, fetchLogs)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_log' }, async (payload) => {
+                // Fetch just the newly inserted row to get the joined profile name
+                const { data } = await supabase
+                    .from('activity_log')
+                    .select('*, profiles(name)')
+                    .eq('id', payload.new.id)
+                    .single();
+                    
+                if (data) {
+                    setLogs(prev => [data, ...prev].slice(0, 200));
+                }
+            })
             .subscribe();
+
         return () => supabase.removeChannel(channel);
     }, []);
 

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { Zap, MapPin, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3 } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 
-export default function CustomerCard({ customer, onSelect, onMoveStage, currentUser }) {
+const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStage, currentUser }) {
     const [showStageMenu, setShowStageMenu] = useState(false);
     const [menuDirection, setMenuDirection] = useState('down');
     const dropdownRef = useRef(null);
@@ -155,4 +155,5 @@ export default function CustomerCard({ customer, onSelect, onMoveStage, currentU
             </div>
         </div>
     );
-}
+});
+export default CustomerCard;

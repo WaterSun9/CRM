@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, toIndianCommas } from '../utils';
 import { 
@@ -39,12 +39,23 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
         };
     };
 
-    // Filter installations where installation_status is 'Proceed' or 'Yes'
-    const installations = useMemo(() => {
-        return (customers || []).filter(c => {
-            return c.installation_status === 'Process' || c.installation_status === 'Yes';
-        });
-    }, [customers]);
+    // Fetch installations directly from the database instead of relying on parent state
+    const [installations, setInstallations] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchInstallations = async () => {
+            setLoading(true);
+            const { data } = await supabase
+                .from('admin')
+                .select('*')
+                .is('deleted_at', null)
+                .in('installation_status', ['Process', 'Yes']);
+            setInstallations(data || []);
+            setLoading(false);
+        };
+        fetchInstallations();
+    }, []);
 
     // Map payout details to records using material_delivery_date from delivery stage
     const records = useMemo(() => {

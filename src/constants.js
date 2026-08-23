@@ -69,6 +69,7 @@ export const APP_ROLES = [
     { id: 'channel_partner_office', label: 'Channel Partner Office', user_type: 'channel_partner_office', role: 'Channel Partner Office' },
     { id: 'channel_partner', label: 'Channel Partners', user_type: 'agent', role: 'Channel Partners' },
     { id: 'vendor', label: 'Vendors', user_type: 'vendor', role: 'Vendors' },
+    { id: 'stamp', label: 'Stamp Guy', user_type: 'stamp', role: 'Stamp' },
 ];
 
 

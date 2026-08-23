@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Wrench } from 'lucide-react';
 import { normalizeInstallationStatus } from '../utils';
+import { supabase } from '../supabase';
 
 const INSTALLATION_TAGS = [
     { id: 'Give Up', label: 'Give Up' },
@@ -18,11 +19,33 @@ const INSTALLATION_TAG_COLORS = {
 
 export { normalizeInstallationStatus };
 
-export default function InstallationView({ customers, onSelectCustomer }) {
+export default function InstallationView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
     const [activeFilter, setActiveFilter] = useState(null);
+    const [installationCustomers, setInstallationCustomers] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchInstallation = async () => {
+            setLoading(true);
+            let query = supabase.from('admin').select('*').is('deleted_at', null).neq('installation_status', null).neq('installation_status', '');
+            
+            if (isChannelPartnerOffice) {
+                query = query.ilike('channel_partner', partnerName);
+            } else if (channelPartnerFilter) {
+                query = query.ilike('channel_partner', channelPartnerFilter);
+            }
+
+            const { data } = await query;
+            setInstallationCustomers(data || []);
+            setLoading(false);
+        };
+        fetchInstallation();
+    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
+
+    if (loading) return <div className="p-10 text-center animate-pulse text-stone-400">Loading installation tags...</div>;
 
     // Normalize customer installation statuses for consistent grouping
-    const normalizedCustomers = (customers || []).map(c => ({
+    const normalizedCustomers = installationCustomers.map(c => ({
         ...c,
         normalized_installation_status: normalizeInstallationStatus(c.installation_status)
     }));

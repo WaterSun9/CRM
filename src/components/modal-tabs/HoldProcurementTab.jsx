@@ -79,10 +79,56 @@ export default function HoldProcurementTab({
         };
     };
 
-    const holdData = getHoldState();
-    const [savedSuccess, setSavedSuccess] = useState(false);
+    const getSavedHoldState = () => {
+        const raw = customer.hold_procurement;
+        let defaultOrigin = customer.stage !== 'HOLD PROCUREMENT' ? customer.stage : 'LEADS';
+        if (!raw) {
+            return {
+                previous_stage: defaultOrigin,
+                hold_status: '',
+                comment: '',
+                hold_date: today
+            };
+        }
+        if (typeof raw === 'string') {
+            try {
+                const parsed = JSON.parse(raw);
+                if (typeof parsed === 'object' && parsed) {
+                    return {
+                        previous_stage: parsed.previous_stage || defaultOrigin,
+                        hold_status: parsed.hold_status || '',
+                        comment: parsed.comment || '',
+                        hold_date: parsed.hold_date || today
+                    };
+                }
+            } catch (e) {
+                return {
+                    previous_stage: defaultOrigin,
+                    hold_status: raw,
+                    comment: '',
+                    hold_date: today
+                };
+            }
+        }
+        return {
+            previous_stage: raw.previous_stage || defaultOrigin,
+            hold_status: raw.hold_status || '',
+            comment: raw.comment || '',
+            hold_date: raw.hold_date || today
+        };
+    };
 
-    const updateHoldField = async (field, value, autoSave = false) => {
+    const holdData = getHoldState();
+    const savedHoldData = getSavedHoldState();
+
+    const isHoldDirty = (
+        (holdData.previous_stage || '') !== (savedHoldData.previous_stage || '') ||
+        (holdData.hold_status || '') !== (savedHoldData.hold_status || '') ||
+        (holdData.comment || '').trim() !== (savedHoldData.comment || '').trim() ||
+        (holdData.hold_date || '') !== (savedHoldData.hold_date || '')
+    );
+
+    const updateHoldField = (field, value) => {
         const updated = {
             ...holdData,
             [field]: value
@@ -91,27 +137,11 @@ export default function HoldProcurementTab({
             ...prev,
             hold_procurement: updated
         }));
-
-        if (autoSave) {
-            await onUpdate(customer.id, { hold_procurement: updated });
-            if (logActivity && user?.id) {
-                await logActivity(
-                    user.id,
-                    'update',
-                    `${customer.customer_name}: Selected Hold Tag: ${value || 'Cleared'}`,
-                    '',
-                    customer.id
-                );
-            }
-            setSavedSuccess(true);
-            setTimeout(() => setSavedSuccess(false), 2500);
-            if (fetchLogs) fetchLogs();
-        }
     };
 
-    const handleToggleStatus = async (statusId) => {
+    const handleToggleStatus = (statusId) => {
         const nextStatus = holdData.hold_status === statusId ? '' : statusId;
-        await updateHoldField('hold_status', nextStatus, true);
+        updateHoldField('hold_status', nextStatus);
     };
 
     const handleSaveHoldDetails = async () => {
@@ -132,8 +162,6 @@ export default function HoldProcurementTab({
             );
         }
         setSaving(false);
-        setSavedSuccess(true);
-        setTimeout(() => setSavedSuccess(false), 3000);
         if (fetchLogs) fetchLogs();
     };
 
@@ -196,12 +224,6 @@ export default function HoldProcurementTab({
                         <AlertTriangle size={12} className="text-amber-500" /> Hold Classification & Origin
                     </h4>
                 </div>
-
-                {savedSuccess && (
-                    <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2 animate-in fade-in">
-                        <CheckCircle2 size={14} className="text-emerald-600" /> Hold details saved successfully!
-                    </div>
-                )}
 
                 {/* Origin Stage & Hold Date Details */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -296,9 +318,26 @@ export default function HoldProcurementTab({
                             type="button"
                             onClick={handleSaveHoldDetails}
                             disabled={saving}
-                            className="flex-1 bg-stone-900 hover:bg-stone-800 text-white py-3 px-4 rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                            className={`flex-1 py-3 px-4 rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${
+                                isHoldDirty
+                                    ? 'bg-stone-900 hover:bg-stone-800 text-white'
+                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/15'
+                            }`}
                         >
-                            <Save size={14} /> {saving ? 'Saving...' : 'Save'}
+                            {saving ? (
+                                <>
+                                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    Saving...
+                                </>
+                            ) : isHoldDirty ? (
+                                <>
+                                    <Save size={14} /> Save
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle2 size={14} /> Saved
+                                </>
+                            )}
                         </button>
 
                         <button

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as ImageIcon, Download, MessageSquare } from 'lucide-react';
+import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as ImageIcon, Download, MessageSquare, Check } from 'lucide-react';
 import { formatINR, toIndianCommas, parseIndianNumber, formatInputValue } from '../../utils';
 
 const fmt = formatINR;
@@ -222,8 +222,9 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
 // ─── FilePreviewModal ─────────────────────────────────────────────────────────
 export function FilePreviewModal({ file, fileUrl, onClose, onDownload, onUpdateRemark }) {
     if (!file) return null;
-    const isImage = file.file_type?.startsWith('image/');
-    const isPdf = file.file_type === 'application/pdf';
+    const ext = (file.file_name || '').split('.').pop()?.toLowerCase();
+    const isImage = file.file_type?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg'].includes(ext);
+    const isPdf = file.file_type === 'application/pdf' || ext === 'pdf' || (fileUrl && fileUrl.toLowerCase().includes('.pdf'));
     const [remark, setRemark] = useState(file.remark || '');
     const [savingRemark, setSavingRemark] = useState(false);
     const [remarkSaved, setRemarkSaved] = useState(false);
@@ -399,7 +400,7 @@ function DocRemarkRow({ doc, onUpdateRemark, isEditing }) {
     return null;
 }
 
-export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onUpdateRemark }) {
+export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onUpdateRemark, note }) {
     const fieldDocs = documents.filter(d => d.doc_type === field);
     const fileInputRef = React.useRef(null);
     const [replacingDocId, setReplacingDocId] = React.useState(null);
@@ -419,11 +420,18 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
         const inputEl = e.target;
         const wrappedEvent = { target: { files: [file], value: '' } };
         inputEl.value = '';
+
+        // If replacing a specific document, or if field already has a document, delete old one first
         if (replacingDocId && onDelete) {
             const oldDoc = fieldDocs.find(d => d.id === replacingDocId);
             if (oldDoc) await onDelete(oldDoc);
+        } else if (fieldDocs.length > 0 && onDelete) {
+            for (const oldDoc of fieldDocs) {
+                await onDelete(oldDoc);
+            }
         }
-        if (onUpload) await onUpload(wrappedEvent, field);
+
+        if (onUpload) await onUpload(wrappedEvent, field, replacingDocId);
         // Automatically check when a file is uploaded
         if (onChange) {
             onChange(field, true);
@@ -472,6 +480,11 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
                     )}
                 </div>
             </div>
+            {note && (
+                <div className="ml-6.5 mt-0.5 mb-1.5">
+                    <p className="text-[10px] text-stone-500 font-medium italic">{note}</p>
+                </div>
+            )}
 
             <input
                 ref={fileInputRef}
@@ -625,4 +638,95 @@ export function SectionHeader({ title, id, icon: Icon, isEditable, editingSectio
             )}
         </div>
     );
+}
+
+export function DocGalleryRemarkRow({ doc, onUpdateRemark, isEditable }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [remarkVal, setRemarkVal] = useState(doc.remark || '');
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        setRemarkVal(doc.remark || '');
+    }, [doc.remark]);
+
+    const handleSave = async () => {
+        if (!onUpdateRemark) return;
+        setSaving(true);
+        await onUpdateRemark(doc.id, remarkVal);
+        setSaving(false);
+        setIsEditing(false);
+    };
+
+    if (isEditing) {
+        return (
+            <div className="pt-2 mt-1 border-t border-stone-200/60 flex items-center gap-1.5 animate-in fade-in">
+                <input
+                    type="text"
+                    value={remarkVal}
+                    placeholder="Remark for this document..."
+                    onChange={e => setRemarkVal(e.target.value)}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') handleSave();
+                        if (e.key === 'Escape') setIsEditing(false);
+                    }}
+                    autoFocus
+                    className="flex-1 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                />
+                <button
+                    type="button"
+                    disabled={saving}
+                    onClick={handleSave}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                >
+                    {saving ? '...' : 'Save'}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="px-2 py-1 text-stone-400 hover:text-stone-600 text-xs font-medium cursor-pointer"
+                >
+                    Cancel
+                </button>
+            </div>
+        );
+    }
+
+    if (doc.remark) {
+        return (
+            <div className="pt-2 mt-1 border-t border-stone-200/60 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1 bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60">
+                    <MessageSquare size={11} className="text-amber-600 flex-shrink-0" />
+                    <span className="text-[11px] text-amber-900 font-medium truncate" title={doc.remark}>
+                        {doc.remark}
+                    </span>
+                </div>
+                {isEditable && (
+                    <button
+                        type="button"
+                        onClick={() => setIsEditing(true)}
+                        className="text-[10px] font-bold text-stone-500 hover:text-stone-800 underline cursor-pointer flex-shrink-0"
+                    >
+                        Edit Remark
+                    </button>
+                )}
+            </div>
+        );
+    }
+
+    if (isEditable) {
+        return (
+            <div className="pt-1.5 mt-0.5 border-t border-dashed border-stone-200 flex justify-end">
+                <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="text-[10px] text-stone-400 hover:text-stone-700 font-bold flex items-center gap-1 cursor-pointer transition"
+                >
+                    <MessageSquare size={10} />
+                    <span>+ Add Remark</span>
+                </button>
+            </div>
+        );
+    }
+
+    return null;
 }

@@ -1,12 +1,32 @@
-import { useState } from 'react';
-import { IndianRupee, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { IndianRupee, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 import { LOAN_TAGS, LOAN_TAG_COLORS } from '../constants';
+import { supabase } from '../supabase';
 
-export default function LoanView({ customers, onSelectCustomer }) {
+export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
     const [activeFilter, setActiveFilter] = useState(null);
+    const [loanCustomers, setLoanCustomers] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // All customers associated with Loan (either tagged or payment_type is LOAN)
-    const loanCustomers = (customers || []).filter(c => c?.loan_tag || String(c?.payment_type || '').trim().toLowerCase() === 'loan');
+    useEffect(() => {
+        const fetchLoanCustomers = async () => {
+            setLoading(true);
+            // Fetch customers that are tagged or have payment_type 'loan'
+            let query = supabase.from('admin').select('*').is('deleted_at', null).or('loan_tag.not.is.null,payment_type.eq.loan');
+            
+            if (isChannelPartnerOffice) {
+                query = query.ilike('channel_partner', partnerName);
+            } else if (channelPartnerFilter) {
+                query = query.ilike('channel_partner', channelPartnerFilter);
+            }
+
+            const { data } = await query;
+            setLoanCustomers(data || []);
+            setLoading(false);
+        };
+        fetchLoanCustomers();
+    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
+
     const allClearGroup = loanCustomers.filter(c => !c?.loan_tag);
 
     const grouped = LOAN_TAGS.reduce((acc, tag) => {

@@ -56,6 +56,16 @@ export function useMetadata() {
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────
 export function exportAllToCSV(customers) {
+    const escapeCSV = (val) => {
+        let str = String(val ?? '');
+        // Prevent CSV Formula Injection
+        if (/^[=+\-@]/.test(str)) {
+            str = "'" + str;
+        }
+        // Escape double quotes and wrap in quotes
+        return `"${str.replace(/"/g, '""')}"`;
+    };
+
     const headers = [
         'CRN', 'Customer Name', 'Phone', 'Email', 'Location', 'Branch',
         'Capacity (kWp)', 'Project Type', 'Channel Partner', 'Stage',
@@ -80,9 +90,9 @@ export function exportAllToCSV(customers) {
             c.registration_no || '',
             subsidyLabel,
             c.created_at ? new Date(c.created_at).toLocaleDateString('en-IN') : '',
-        ].join(',');
+        ].map(escapeCSV).join(',');
     });
-    const csv = [headers.join(','), ...rows].join('\n');
+    const csv = [headers.map(escapeCSV).join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -151,14 +161,85 @@ export function formatDate(dateStr) {
     return new Date(dateStr).toLocaleDateString('en-IN');
 }
 
+/**
+ * High-speed client-side image compression
+ * Automatically downscales large phone/camera images (5-15MB) to ~200-400KB
+ * Keeps PDFs and non-image files untouched.
+ */
+export async function compressImage(file, { maxWidth = 1920, maxHeight = 1920, quality = 0.82 } = {}) {
+    if (!file || !file.type || !file.type.startsWith('image/')) {
+        return file;
+    }
+
+    // Skip SVGs or tiny images
+    if (file.type === 'image/svg+xml' || file.size < 300 * 1024) {
+        return file;
+    }
+
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
+
+                if (width <= maxWidth && height <= maxHeight && file.size < 800 * 1024) {
+                    return resolve(file);
+                }
+
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width = Math.round((width * maxHeight) / height);
+                        height = maxHeight;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob(
+                    (blob) => {
+                        if (!blob || blob.size >= file.size) {
+                            return resolve(file);
+                        }
+                        const cleanExt = file.name.replace(/\.[^/.]+$/, '.jpg');
+                        const compressedFile = new File([blob], cleanExt, {
+                            type: 'image/jpeg',
+                            lastModified: Date.now(),
+                        });
+                        resolve(compressedFile);
+                    },
+                    'image/jpeg',
+                    quality
+                );
+            };
+            img.onerror = () => resolve(file);
+        };
+        reader.onerror = () => resolve(file);
+    });
+}
+
 export const uploadDocument = async (file, customerId, docType = null, passedUserId = null) => {
     try {
-        const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const processedFile = await compressImage(file);
+        const cleanName = processedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const filePath = `${customerId}/${Date.now()}_${cleanName}`;
 
         const { error: uploadError } = await supabase.storage
             .from('customer-documents')
-            .upload(filePath, file, {
+            .upload(filePath, processedFile, {
                 cacheControl: '3600',
                 upsert: true
             });
@@ -182,9 +263,9 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
             .from('documents')
             .insert({
                 customer_id: customerId,
-                file_name: file.name,
+                file_name: processedFile.name,
                 storage_path: filePath,
-                file_type: file.type || 'image/jpeg',
+                file_type: processedFile.type || 'image/jpeg',
                 doc_type: docType,
                 uploaded_by: userId
             })

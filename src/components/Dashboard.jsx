@@ -13,6 +13,31 @@ import { supabase } from '../supabase';
 import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, normalizeInstallationStatus } from '../utils';
 import { PRIMARY_STAGES } from '../constants';
 
+
+// ── NavBtn ────────────────────────────────────────────────────────────────────
+const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, selectedStage, setCurrentView, setSelectedStage, setSidebarOpen }) => {
+    const isActive = view === 'stages'
+        ? (currentView === 'stages' && selectedStage === stage)
+        : currentView === view;
+    return (
+        <button
+            onClick={() => {
+                if (view === 'stages') { setCurrentView('stages'); setSelectedStage(stage); }
+                else setCurrentView(view);
+                // intentionally not closing sidebar to preserve scroll position
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold mb-0.5 transition-colors ${isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
+            <Icon className="w-4 h-4 flex-shrink-0" />
+            <span className="flex-1 text-left truncate">{label}</span>
+            {count > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-bold ${isActive ? 'bg-white/20 text-white' : redBadge ? 'bg-red-100 text-red-500' : 'bg-stone-100 text-stone-500'}`}>
+                    {count}
+                </span>
+            )}
+        </button>
+    );
+};
+
 import DashboardView from './DashboardView';
 import CustomerCard from './CustomerCard';
 
@@ -46,6 +71,7 @@ export default function Dashboard({ user, onLogout }) {
     const [channelPartnerFilter, setChannelPartnerFilter] = useState('');    // applied channel partner filter
     const [showChannelPartnerDrop, setShowChannelPartnerDrop] = useState(false);
     const channelPartnerFilterRef = useRef(null);
+    const sidebarRef = useRef(null);
     const [globalSearch, setGlobalSearch] = useState('');    // global search
     const [globalResults, setGlobalResults] = useState([]);
     const [showGlobalDrop, setShowGlobalDrop] = useState(false);
@@ -55,17 +81,31 @@ export default function Dashboard({ user, onLogout }) {
     const globalSearchRef = useRef(null);
     const [meta, setMeta] = useState({});
 
+    const PAGE_SIZE = 50;
+    const [page, setPage] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [metrics, setMetrics] = useState(null);
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const partnerName = (user?.channel_partner || user?.name || ' ').trim();
+
+
     // ── Data fetching ──────────────────────────────────────────────────────────
-    const fetchData = async (showSpinner = true) => {
-        if (showSpinner) setLoading(true);
-        // Load customers and metadata in parallel
-        const [customersRes, metaRes] = await Promise.all([
-            supabase.from('admin').select('*').order('created_at', { ascending: false }),
+    const fetchMetricsAndMeta = async () => {
+        const [metricsRes, metaRes] = await Promise.all([
+            supabase.rpc('get_dashboard_metrics', { 
+                p_channel_partner: isChannelPartnerOffice ? partnerName : channelPartnerFilter 
+            }),
             supabase.from('metadata').select('category, label'),
         ]);
 
-        if (!customersRes.error) setCustomers(customersRes.data || []);
-        else console.error('Fetch error:', customersRes.error);
+        if (!metricsRes.error && metricsRes.data) {
+            setMetrics(metricsRes.data);
+        } else {
+            console.error('Metrics fetch error:', metricsRes.error);
+            setMetrics({
+                totalProjects: 0, completedCount: 0, liveProjects: 0, loanCount: 0, cashCount: 0, stageCounts: {}
+            });
+        }
 
         if (!metaRes.error && metaRes.data) {
             const grouped = {};
@@ -74,36 +114,94 @@ export default function Dashboard({ user, onLogout }) {
                 grouped[category].push(label);
             });
             setMeta(grouped);
-        } else {
-            console.error('Metadata fetch error:', metaRes.error);
         }
-        if (showSpinner) setLoading(false);
+    };
+
+
+    const fetchStageCustomers = async (stage = selectedStage, pageNum = 0) => {
+        setLoading(true);
+        let query = supabase
+            .from('admin')
+            .select('*')
+            .eq('stage', stage)
+            .order('created_at', { ascending: false })
+            .range(pageNum * 50, (pageNum + 1) * 50 - 1);
+            
+        if (isChannelPartnerOffice) {
+            query = query.ilike('channel_partner', partnerName);
+        } else if (channelPartnerFilter) {
+            query = query.ilike('channel_partner', channelPartnerFilter);
+        }
+
+        const { data, error } = await query;
+        if (!error && data) {
+            if (pageNum === 0) {
+                setCustomers(data);
+            } else {
+                setCustomers(prev => {
+                    // Prevent duplicate keys
+                    const existingIds = new Set(prev.map(c => c.id));
+                    const uniqueNew = data.filter(c => !existingIds.has(c.id));
+                    return [...prev, ...uniqueNew];
+                });
+            }
+            setHasMore(data.length === 50);
+        } else {
+            console.error("Error fetching stage customers:", error);
+            if (pageNum === 0) setCustomers([]);
+        }
+        setLoading(false);
+    };
+
+    const loadMore = () => {
+        const nextPage = page + 1;
+        setPage(nextPage);
+        fetchStageCustomers(selectedStage, nextPage);
     };
 
     useEffect(() => {
-        fetchData(true); // initial load — show spinner
+        setPage(0);
+        fetchMetricsAndMeta();
+        fetchStageCustomers(selectedStage, 0);
+    }, [selectedStage, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
 
+    useEffect(() => {
         const channel = supabase.channel('admin_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, (payload) => {
-                // Handle each event type directly to avoid full refetch flicker
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'admin'
+            }, (payload) => {
+                fetchMetricsAndMeta(); 
+                
                 if (payload.eventType === 'INSERT') {
-                    setCustomers(prev => {
-                        if (prev.some(c => c.id === payload.new.id)) return prev;
-                        return [payload.new, ...prev];
-                    });
+                    if (payload.new.stage === selectedStage) {
+                        setCustomers(prev => {
+                            if (prev.some(c => c.id === payload.new.id)) return prev;
+                            return [payload.new, ...prev];
+                        });
+                    }
                 } else if (payload.eventType === 'UPDATE') {
-                    setCustomers(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
+                    const isInStage = payload.new.stage === selectedStage;
+                    setCustomers(prev => {
+                        const exists = prev.some(c => c.id === payload.new.id);
+                        if (exists && isInStage) {
+                            return prev.map(c => c.id === payload.new.id ? payload.new : c);
+                        } else if (exists && !isInStage) {
+                            return prev.filter(c => c.id !== payload.new.id);
+                        } else if (!exists && isInStage) {
+                            return [payload.new, ...prev];
+                        }
+                        return prev;
+                    });
                 } else if (payload.eventType === 'DELETE') {
-                    setCustomers(prev => prev.filter(c => c.id !== payload.old.id));
-                } else {
-                    // Fallback: silent full refresh
-                    fetchData(false);
+                    setCustomers(prev => prev.filter(c => c.id !== (payload.old?.id || payload.new?.id)));
                 }
             })
             .subscribe();
 
         return () => supabase.removeChannel(channel);
-    }, []);
+    }, [selectedStage]);
 
     // Sync selectedCustomer state with fresh database values when updates occur
     useEffect(() => {
@@ -129,28 +227,46 @@ export default function Dashboard({ user, onLogout }) {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
-    const partnerName = (user?.channel_partner || user?.name || '').trim();
 
-    // ── Global search: across ALL non-deleted stages (respects channel partner scoping) ─────
+    // ── Global search: Server-side search across ALL non-deleted stages ─────
     useEffect(() => {
-        const q = (globalSearch || '').trim().toLowerCase();
-        if (!q) { setGlobalResults([]); setShowGlobalDrop(false); return; }
-        const activeNow = (customers || []).filter(c => !c?.deleted_at);
-        const channelPartnerMatched = isChannelPartnerOffice
-            ? activeNow.filter(c => (c?.channel_partner || '').trim().toLowerCase() === partnerName.toLowerCase())
-            : channelPartnerFilter
-                ? activeNow.filter(c => (c?.channel_partner || '').toLowerCase() === channelPartnerFilter.toLowerCase())
-                : activeNow;
-        const authorized = channelPartnerMatched.filter(isAuthorized);
-        const results = authorized.filter(c =>
-            String(c?.customer_name || '').toLowerCase().includes(q) ||
-            String(c?.phone_number || '').includes(globalSearch.trim()) ||
-            String(c?.consumer_no || '').toLowerCase().includes(q)
-        ).slice(0, 8);
-        setGlobalResults(results);
-        setShowGlobalDrop(results.length > 0);
-    }, [globalSearch, customers, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
+        const q = (globalSearch || '').trim();
+        if (!q) { 
+            setGlobalResults([]); 
+            setShowGlobalDrop(false); 
+            return; 
+        }
+
+        const fetchSearch = async () => {
+            let query = supabase
+                .from('admin')
+                .select('id, customer_name, phone_number, consumer_no, stage')
+                
+;
+                
+            let orString = `customer_name.ilike.%${q}%`;
+            if (!isNaN(q) && q.length > 0) {
+                // If the user types a number, search it exactly in the numeric columns
+                orString += `,phone_number.eq.${q},consumer_no.eq.${q}`;
+            }
+            query = query.or(orString);
+                query = query.limit(8);
+                
+            if (isChannelPartnerOffice) {
+                query = query.ilike('channel_partner', partnerName);
+            } else if (channelPartnerFilter) {
+                query = query.ilike('channel_partner', channelPartnerFilter);
+            }
+
+            const { data, error } = await query;
+            if (error) console.error("Search error:", error);
+            setGlobalResults(data || []);
+            setShowGlobalDrop((data || []).length > 0);
+        };
+
+        const timer = setTimeout(fetchSearch, 300); // 300ms debounce
+        return () => clearTimeout(timer);
+    }, [globalSearch, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
 
     const handleGlobalSelect = (customer) => {
         // Navigate to the customer's stage so context is clear
@@ -203,37 +319,37 @@ export default function Dashboard({ user, onLogout }) {
 
     const handleUpdateCustomer = async (id, updates) => {
         const cleanUpdates = { ...updates };
-        if (cleanUpdates.system_capacity_kwp !== undefined && cleanUpdates.system_capacity_kwp !== null && cleanUpdates.system_capacity_kwp !== '') {
-            cleanUpdates.system_capacity_kwp = parseIndianNumber(cleanUpdates.system_capacity_kwp);
+        
+        // Clean numeric fields
+        const numericFields = ['system_capacity_kwp', 'module_wp', 'no_of_modules', 'invoice_value', 'dc_cable', 'ac_cable', 'vendor_quote'];
+        for (const field of numericFields) {
+            if (cleanUpdates[field] !== undefined) {
+                if (cleanUpdates[field] === '') cleanUpdates[field] = null;
+                else if (cleanUpdates[field] !== null) cleanUpdates[field] = parseIndianNumber(cleanUpdates[field]);
+            }
         }
-        if (cleanUpdates.module_wp !== undefined && cleanUpdates.module_wp !== null && cleanUpdates.module_wp !== '') {
-            cleanUpdates.module_wp = parseIndianNumber(cleanUpdates.module_wp);
-        }
-        if (cleanUpdates.no_of_modules !== undefined && cleanUpdates.no_of_modules !== null && cleanUpdates.no_of_modules !== '') {
-            cleanUpdates.no_of_modules = parseIndianNumber(cleanUpdates.no_of_modules);
-        }
-        if (cleanUpdates.invoice_value !== undefined && cleanUpdates.invoice_value !== null && cleanUpdates.invoice_value !== '') {
-            cleanUpdates.invoice_value = parseIndianNumber(cleanUpdates.invoice_value);
-        }
-        if (cleanUpdates.dc_cable !== undefined && cleanUpdates.dc_cable !== null && cleanUpdates.dc_cable !== '') {
-            cleanUpdates.dc_cable = parseIndianNumber(cleanUpdates.dc_cable);
-        }
-        if (cleanUpdates.ac_cable !== undefined && cleanUpdates.ac_cable !== null && cleanUpdates.ac_cable !== '') {
-            cleanUpdates.ac_cable = parseIndianNumber(cleanUpdates.ac_cable);
-        }
-        if (cleanUpdates.vendor_quote !== undefined && cleanUpdates.vendor_quote !== null && cleanUpdates.vendor_quote !== '') {
-            cleanUpdates.vendor_quote = parseIndianNumber(cleanUpdates.vendor_quote);
-        } else if (cleanUpdates.vendor_quote === '') {
-            cleanUpdates.vendor_quote = null;
-        }
-        const { error } = await supabase.from('admin').update(cleanUpdates).eq('id', id);
-        if (!error) {
+
+        // 1. Optimistic UI Update (instant feedback)
+        const previousCustomer = customers.find(c => c.id === id);
+        if (previousCustomer) {
             setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...cleanUpdates } : c));
             if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...cleanUpdates }));
+        }
+
+        // 2. Background Database Save
+        const { error } = await supabase.from('admin').update(cleanUpdates).eq('id', id);
+        
+        if (!error) {
             syncMetadata(cleanUpdates);
         } else {
             console.error('Error updating customer:', error);
             alert('Database Save Error: ' + error.message + '\nDetails: ' + error.details);
+            
+            // 3. Rollback on failure
+            if (previousCustomer) {
+                setCustomers(prev => prev.map(c => c.id === id ? previousCustomer : c));
+                if (selectedCustomer?.id === id) setSelectedCustomer(previousCustomer);
+            }
         }
     };
 
@@ -277,40 +393,41 @@ export default function Dashboard({ user, onLogout }) {
         if (!customer) return;
         const oldStage = customer.stage;
 
-        // Get old remark from stages_remarks mapping
+        // Extract old remark before clearing it from the JSON mapping
         const oldRemark = (typeof customer.stages_remarks === 'object' && customer.stages_remarks ? customer.stages_remarks[oldStage] : '') || '';
 
-        let updatedInternalRemarks = customer.internal_remarks || '';
-        if (oldRemark.trim()) {
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const now = new Date();
-            const d = now.getDate().toString().padStart(2, '0');
-            const m = months[now.getMonth()];
-            let hours = now.getHours();
-            const minutes = now.getMinutes().toString().padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12;
-            const h = hours.toString().padStart(2, '0');
-            const formattedTime = `${d} ${m}, ${h}:${minutes} ${ampm}`;
-
-            const appendText = `${oldStage} (${formattedTime}): ${oldRemark.trim()}`;
-            updatedInternalRemarks = updatedInternalRemarks
-                ? `${updatedInternalRemarks}\n${appendText}`
-                : appendText;
-        }
-
         const prevObj = typeof customer.stages_remarks === 'object' && customer.stages_remarks ? customer.stages_remarks : {};
-        const updatedRemarks = {
-            ...prevObj,
-            [oldStage]: ''
+        const optimisticUpdates = {
+            stage: newStage,
+            stages_remarks: { ...prevObj, [oldStage]: '' }
         };
 
-        await handleUpdateCustomer(id, {
-            stage: newStage,
-            stages_remarks: updatedRemarks,
-            internal_remarks: updatedInternalRemarks
+        // 1. Optimistic Update (UI)
+        setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...optimisticUpdates } : c));
+        if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...optimisticUpdates }));
+
+        // 2. Call Atomic RPC to append remarks safely on the server
+        const { data: updatedRecord, error } = await supabase.rpc('move_stage', {
+            p_customer_id: id,
+            p_new_stage: newStage,
+            p_old_stage: oldStage,
+            p_remark: oldRemark
         });
+
+        if (error) {
+            console.error('Error moving stage:', error);
+            alert('Error moving stage: ' + error.message);
+            // Rollback on failure by reloading this stage
+            fetchStageCustomers(selectedStage, page);
+            return;
+        }
+
+        // Apply server returned state which includes exact formatted timestamp
+        setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updatedRecord } : c));
+        if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...updatedRecord }));
+
+        // Update the JSON column to clear the old remark (since RPC only did stage & internal_remarks)
+        await supabase.from('admin').update({ stages_remarks: optimisticUpdates.stages_remarks }).eq('id', id);
 
         await logActivity(
             user.id,
@@ -404,58 +521,26 @@ export default function Dashboard({ user, onLogout }) {
 
     // Everything downstream — stage counts, the stages grid, dashboard stats
     // is built from this one channel partner-scoped list
-    const { channelPartnerScoped, subsidyTagCount, loanTagCount, installationTagCount, stageCounts } = useMemo(() => {
-        const scoped = [];
-        const counts = Object.fromEntries(PRIMARY_STAGES.map(stage => [stage.id, 0]));
-        let subsidy = 0;
-        let loan = 0;
-        let installation = 0;
-        active.forEach(customer => {
-            if (!matchesChannelPartnerFilter(customer) || !isAuthorized(customer)) return;
-            scoped.push(customer);
-            if (customer?.subsidy_tag) subsidy += 1;
-            if (customer?.loan_tag) loan += 1;
-            if (normalizeInstallationStatus(customer?.installation_status)) installation += 1;
-            if (customer?.stage in counts) counts[customer.stage] += 1;
-        });
-        return { channelPartnerScoped: scoped, subsidyTagCount: subsidy, loanTagCount: loan, installationTagCount: installation, stageCounts: counts };
-    }, [active, channelPartnerFilter, isChannelPartnerOffice, partnerName, user]);
-    const trashCount = trashed.length;
+    // Sidebar counts now come straight from the server metrics to avoid downloading all records
+    const subsidyTagCount = metrics?.subsidyTagCount || 0;
+    const loanTagCount = metrics?.loanTagCount || 0;
+    const installationTagCount = metrics?.installationTagCount || 0;
+    const stageCounts = metrics?.stageCounts || {};
+    const trashCount = trashed.length; // Still local for now, could be moved to RPC later
 
-    // Per-stage filtered cards — now respects the channel partner filter too
-    const filtered = channelPartnerScoped.filter(c => {
+    // Per-stage filtered cards (server already filtered by stage and channel partner)
+    // We only need to apply the local search bar filter here
+    const filtered = customers.filter(c => {
+        if (c.deleted_at) return false;
         const q = (stageSearch || '').toLowerCase();
-        const matchesSearch = !stageSearch ||
+        return !stageSearch ||
             String(c?.customer_name || '').toLowerCase().includes(q) ||
             String(c?.phone_number || '').includes(stageSearch) ||
             String(c?.consumer_no || '').toLowerCase().includes(q);
-        return c?.stage === selectedStage && matchesSearch;
     });
 
     // ── Nav button helper ─────────────────────────────────────────────────────
-    const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge }) => {
-        const isActive = view === 'stages'
-            ? (currentView === 'stages' && selectedStage === stage)
-            : currentView === view;
-        return (
-            <button
-                onClick={() => {
-                    if (view === 'stages') { setCurrentView('stages'); setSelectedStage(stage); }
-                    else setCurrentView(view);
-                    setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold mb-0.5 transition-colors ${isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                <span className="flex-1 text-left truncate">{label}</span>
-                {count > 0 && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-bold ${isActive ? 'bg-white/20 text-white' : redBadge ? 'bg-red-100 text-red-500' : 'bg-stone-100 text-stone-500'}`}>
-                        {count}
-                    </span>
-                )}
-            </button>
-        );
-    };
-
+    
     // ── Role-based routing (agent only — sales/operations now share this shell) ─
 
     const headerTitle =
@@ -472,11 +557,11 @@ export default function Dashboard({ user, onLogout }) {
 
     return (
         <div className="min-h-screen bg-[#FCFBFA] flex">
-            {sidebarOpen && <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+            {sidebarOpen && <div className="fixed inset-0 bg-black/40 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
             {/* ── Sidebar ── */}
-            <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-stone-100 flex flex-col transform transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                <div className="p-5 border-b border-stone-100 flex justify-between items-center">
+            <aside className={`fixed top-0 bottom-0 left-0 z-50 w-64 bg-white border-r border-stone-100 flex flex-col h-screen max-h-screen overflow-hidden transform transition-transform duration-300 ${sidebarOpen ? 'flex' : 'hidden'} md:flex`}>
+                <div className="p-5 border-b border-stone-100 flex justify-between items-center shrink-0">
                     <div className="flex items-center gap-3">
                         <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600">
                             <Sun size={20} />
@@ -486,38 +571,50 @@ export default function Dashboard({ user, onLogout }) {
                             <p className="text-[9px] text-stone-400 font-bold uppercase tracking-widest">Portal</p>
                         </div>
                     </div>
-                    <button className="lg:hidden text-stone-400" onClick={() => setSidebarOpen(false)}><X className="w-5 h-5" /></button>
+                    <button className="md:hidden text-stone-400" onClick={() => setSidebarOpen(false)}><X className="w-5 h-5" /></button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-3">
-                    <NavBtn view="dashboard" icon={LayoutDashboard} label="Dashboard" count={0} />
-                    <NavBtn view="subsidy" icon={Tag} label="Subsidy Tags" count={subsidyTagCount} />
-                    <NavBtn view="loan_tags" icon={IndianRupee} label="Loan Tags" count={loanTagCount} />
-                    <NavBtn view="installation_tags" icon={Wrench} label="Installation Tags" count={installationTagCount} />
+                <div 
+                    ref={sidebarRef} 
+                    className="flex-1 overflow-y-auto p-3 space-y-0.5"
+                    style={{ minHeight: 0, maxHeight: 'calc(100vh - 150px)', WebkitOverflowScrolling: 'touch' }}
+                >
+                    <NavBtn view="dashboard" icon={LayoutDashboard} label="Dashboard" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                    <NavBtn view="subsidy" icon={Tag} label="Subsidy Tags" count={subsidyTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                    <NavBtn view="loan_tags" icon={IndianRupee} label="Loan Tags" count={loanTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                    <NavBtn view="installation_tags" icon={Wrench} label="Installation Tags" count={installationTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
 
 
 
                     {/* Project Stages — identical for every role */}
                     <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-4 pb-2 tracking-widest">Project Stages</div>
                     {PRIMARY_STAGES.map(s => (
-                        <NavBtn key={s.id} view="stages" stage={s.id} icon={s.icon} label={s.label} count={stageCounts[s.id] || 0} />
+                        <NavBtn key={s.id} view="stages" stage={s.id} icon={s.icon} label={s.label} count={stageCounts[s.id] || 0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     ))}
 
                     {/* System — admin only */}
                     {user.userType === 'admin' && (
                         <>
                             <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-5 pb-2 tracking-widest">System</div>
-                            <NavBtn view="channel_partner_mgmt" icon={Users} label="Operations" count={0} />
-                            <NavBtn view="installation_payments" icon={CreditCard} label="Installation Payments" count={0} />
-                            <NavBtn view="activity" icon={Activity} label="Activity Log" count={0} />
-                            <NavBtn view="users" icon={UserCog} label="User Management" count={0} />
-                            <NavBtn view="trash" icon={Trash2} label="Trash" count={trashCount} redBadge />
+                            <NavBtn view="channel_partner_mgmt" icon={Users} label="Operations" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                            <NavBtn view="installation_payments" icon={CreditCard} label="Installation Payments" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                            <NavBtn view="activity" icon={Activity} label="Activity Log" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                            <NavBtn view="users" icon={UserCog} label="User Management" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                            <NavBtn view="trash" icon={Trash2} label="Trash" count={trashCount} redBadge currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                        </>
+                    )}
+
+                    {/* Partner Office — channel_partner_office only */}
+                    {user.userType === 'channel_partner_office' && (
+                        <>
+                            <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-5 pb-2 tracking-widest">Partner Office</div>
+                            <NavBtn view="users" icon={UserCog} label="User Management" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                         </>
                     )}
                 </div>
 
                 {/* User + Logout */}
-                <div className="p-3 border-t border-stone-100">
+                <div className="p-3 border-t border-stone-100 shrink-0 bg-white">
                     <div className="flex items-center gap-3 px-3 py-2 mb-1">
                         <div className="w-8 h-8 bg-stone-900 rounded-full flex items-center justify-center text-white text-xs font-bold">
                             {user.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'A'}
@@ -535,11 +632,11 @@ export default function Dashboard({ user, onLogout }) {
             </aside>
 
             {/* ── Main ── */}
-            <main className="flex-1 lg:ml-64 flex flex-col min-h-screen">
+            <main className="flex-1 md:ml-64 flex flex-col min-h-screen">
                 {/* Header */}
                 <header className="h-16 bg-white/90 backdrop-blur-md border-b border-stone-100 px-4 lg:px-6 flex items-center justify-between sticky top-0 z-30">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-stone-500"><Menu className="w-6 h-6" /></button>
+                        <button onClick={() => setSidebarOpen(true)} className="md:hidden text-stone-500"><Menu className="w-6 h-6" /></button>
                         <h2 className="font-bold text-stone-800">{headerTitle}</h2>
 
                         {isChannelPartnerOffice ? (
@@ -657,20 +754,19 @@ export default function Dashboard({ user, onLogout }) {
                 {/* View router */}
                 <div className="flex-1 p-4 lg:p-6">
                     <Suspense fallback={<ViewLoader />}>
-                    {currentView === 'dashboard' && <DashboardView customers={channelPartnerScoped} loading={loading} />}
-                    {currentView === 'subsidy' && <SubsidyView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
-                    {currentView === 'loan_tags' && <LoanView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
-                    {currentView === 'installation_tags' && <InstallationView customers={channelPartnerScoped} onSelectCustomer={setSelectedCustomer} />}
+                    {currentView === 'dashboard' && <DashboardView metrics={metrics} loading={loading} />}
+                    {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
+                    {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
+                    {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
 
-                    {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView customers={customers} currentUser={user} />}
-                    {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView customers={customers} onSelectCustomer={setSelectedCustomer} currentUser={user} />}
+                    {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView currentUser={user} />}
+                    {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} />}
                     {currentView === 'activity' && user.userType === 'admin' && <ActivityLogView />}
-                    {currentView === 'users' && user.userType === 'admin' && <UserManagementView currentUser={user} />}
+                    {currentView === 'users' && (user.userType === 'admin' || user.userType === 'channel_partner_office') && <UserManagementView currentUser={user} />}
 
                     {/* Trash view — admin only */}
                     {currentView === 'trash' && user.userType === 'admin' && (
                         <TrashView
-                            trashedCustomers={trashed}
                             onRecover={handleRecover}
                             onHardDelete={handleHardDelete}
                             isAdmin={user.userType === 'admin'}
@@ -679,15 +775,27 @@ export default function Dashboard({ user, onLogout }) {
 
                     {/* Stage grid — identical for every role */}
                     {currentView === 'stages' && (
-                        loading ? (
+                        (loading && page === 0) ? (
                             <div className="flex items-center justify-center h-64">
                                 <div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" />
                             </div>
                         ) : filtered.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                                {filtered.map(c => (
-                                    <CustomerCard key={c.id} customer={c} onSelect={setSelectedCustomer} onMoveStage={handleMoveStage} currentUser={user} />
-                                ))}
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                                    {filtered.map(c => (
+                                        <CustomerCard key={c.id} customer={c} onSelect={setSelectedCustomer} onMoveStage={handleMoveStage} currentUser={user} />
+                                    ))}
+                                </div>
+                                {hasMore && (
+                                    <div className="flex justify-center pt-4 pb-8">
+                                        <button 
+                                            onClick={loadMore} 
+                                            disabled={loading}
+                                            className="px-6 py-2.5 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-sm font-semibold shadow-md transition-colors disabled:opacity-70 disabled:cursor-wait">
+                                            {loading ? 'Loading...' : 'Load More Leads'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="flex flex-col items-center justify-center h-64 text-stone-400">

@@ -22,7 +22,7 @@ export default function MeterInstallationTab({
     // Admin, Vendor, and Channel Partner Office can edit. Office is view-only.
     const isVendor = user?.userType === 'vendor' || user?.role === 'Vendors';
     const isAdmin = user?.userType === 'admin' || user?.role === 'Super Admin' || user?.role === 'Admin';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager' || user?.role === 'Channel Partner Office' || user?.role === 'Channel Partner Office Manager';
     const canEditMeter = (isVendor || isAdmin || isChannelPartnerOffice) && isEditable;
 
     const meterData = editData.meter_installation || 'No';

@@ -133,11 +133,12 @@ export const Page4 = ({ data, fontSizeClass = 'text-[17px]' }) => {
             <div className="pt-2">
               <span className="font-semibold block mb-1">Stamp & Sign:</span>
               {data.secondPartyStamp || data.stampUrl ? (
-                <div className="w-full min-h-[85px] h-[85px] flex items-center justify-center pl-6 sm:pl-10 gap-2">
+                <div className="w-full min-h-[85px] h-[85px] flex items-center justify-start pl-2 gap-2" style={{ marginTop: '20px' }}>
                   <img 
                     src={data.secondPartyStamp || data.stampUrl} 
                     alt="Vendor Stamp" 
-                    className="max-h-[82px] max-w-[240px] object-contain" 
+                    className="object-contain" 
+                    style={{ maxHeight: '134px', maxWidth: '390px' }}
                   />
                   {(data.secondPartySignature || data.vendorSignatureUrl) && (
                     <img 

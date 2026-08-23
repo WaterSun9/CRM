@@ -1,11 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Tag, CheckCircle2, Clock, AlertTriangle, Banknote } from 'lucide-react';
 import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
+import { supabase } from '../supabase';
 
-export default function SubsidyView({ customers, onSelectCustomer }) {
+export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
     const [activeFilter, setActiveFilter] = useState(null);
+    const [tagged, setTagged] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    const tagged = (customers || []).filter(c => c?.subsidy_tag);
+    useEffect(() => {
+        const fetchTags = async () => {
+            setLoading(true);
+            let query = supabase.from('admin').select('*').is('deleted_at', null).neq('subsidy_tag', null);
+            
+            if (isChannelPartnerOffice) {
+                query = query.ilike('channel_partner', partnerName);
+            } else if (channelPartnerFilter) {
+                query = query.ilike('channel_partner', channelPartnerFilter);
+            }
+
+            const { data } = await query;
+            setTagged(data || []);
+            setLoading(false);
+        };
+        fetchTags();
+    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
+
+    if (loading) return <div className="p-10 text-center animate-pulse text-stone-400">Loading subsidy tags...</div>;
 
     const grouped = SUBSIDY_TAGS.reduce((acc, tag) => {
         const group = tagged.filter(c => c.subsidy_tag === tag.id);

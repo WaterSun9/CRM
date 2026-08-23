@@ -50,9 +50,19 @@ export function reportError(error, context = {}) {
 
     // Optional: Log to activity_log table if user_id is provided in context or localStorage
     try {
-        const storedUser = localStorage.getItem('watersun_user');
-        const user = storedUser ? JSON.parse(storedUser) : null;
-        const userId = context.userId || user?.id || null;
+        let userId = context.userId || null;
+        if (!userId && typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
+                    try {
+                        const parsed = JSON.parse(sessionStorage.getItem(key));
+                        userId = parsed?.user?.id || null;
+                        break;
+                    } catch (e) {}
+                }
+            }
+        }
 
         if (userId && supabase) {
             supabase.from('activity_log').insert({

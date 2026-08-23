@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 // ─── DashboardView.jsx ────────────────────────────────────────────────────────
 // Metrics overview: project counts, financial summary, stage pipeline bar chart.
 // • "Total" = all non-deleted records
@@ -30,32 +31,35 @@ const MetricBox = ({ label, value, sub, icon: Icon, color }) => {
     );
 };
 
-export default function DashboardView({ customers = [], loading }) {
-    if (loading) return (
+export default function DashboardView({ metrics, loading }) {
+    if (loading || !metrics) return (
         <div className="p-20 text-center text-stone-400 font-medium italic animate-pulse">
             Calculating solar metrics...
         </div>
     );
 
-    // Exclude soft-deleted records from all metrics
-    const active = customers.filter(c => !c.deleted_at);
+    const {
+        totalProjects = 0,
+        completedCount = 0,
+        liveProjects = 0,
+        loanCount = 0,
+        cashCount = 0,
+        stageCounts = {}
+    } = metrics;
 
-    const totalProjects   = active.length;
-    const completedCount  = active.filter(c => c.stage === 'COMPLETED').length;
-    const liveProjects    = active.filter(c => c.stage !== 'COMPLETED').length;
-
-    // Loan vs Cash
-    const loanCount = active.filter(c => c.payment_type?.trim().toUpperCase() === 'LOAN').length;
-    const cashCount = active.filter(c => c.payment_type?.trim().toUpperCase() === 'CASH').length;
-    const totalCategorized = loanCount + cashCount;
-    const loanPerc = totalCategorized > 0 ? (loanCount / totalCategorized) * 100 : 0;
-    const cashPerc = totalCategorized > 0 ? (cashCount / totalCategorized) * 100 : 0;
+    // Loan vs Cash (memoized)
+    const { loanPerc, cashPerc } = useMemo(() => {
+        const totalCategorized = loanCount + cashCount;
+        const loanPerc = totalCategorized > 0 ? (loanCount / totalCategorized) * 100 : 0;
+        const cashPerc = totalCategorized > 0 ? (cashCount / totalCategorized) * 100 : 0;
+        return { loanPerc, cashPerc };
+    }, [loanCount, cashCount]);
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700">
             {/* Project counts */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <MetricBox label="Total Database" value={totalProjects}  icon={FolderOpen}   color="blue"    sub={`${active.length} active records`} />
+                <MetricBox label="Total Database" value={totalProjects}  icon={FolderOpen}   color="blue"    sub={`${liveProjects} active records`} />
                 <MetricBox label="Live Projects"  value={liveProjects}   icon={Activity}     color="amber"   sub="Excluding Completed" />
                 <MetricBox label="Completed"      value={completedCount} icon={CheckCircle2} color="emerald" sub="Fully commissioned" />
             </div>
@@ -98,7 +102,7 @@ export default function DashboardView({ customers = [], loading }) {
                 <h3 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-8">Operational Density (Stage Breakdown)</h3>
                 <div className="space-y-5">
                     {PRIMARY_STAGES.map(stage => {
-                        const count = active.filter(c => c.stage === stage.id).length;
+                        const count = stageCounts[stage.id] || 0;
                         const perc  = totalProjects > 0 ? (count / totalProjects) * 100 : 0;
                         return (
                             <div key={stage.id} className="group">

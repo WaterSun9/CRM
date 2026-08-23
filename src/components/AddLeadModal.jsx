@@ -1,10 +1,11 @@
+import { leadSchema } from '../utils/validation';
 // src/components/AddLeadModal.jsx  —  Watersun Electrical Solutions Pvt Ltd
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useRef } from 'react';
 import { 
     X, Plus, User, ClipboardList, Paperclip, Eye, Trash2, 
-    Upload, FileText, Image as ImageIcon, Loader2, Banknote
+    Upload, FileText, Image as ImageIcon, Loader2, Banknote, AlertTriangle
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
@@ -70,7 +71,7 @@ function ChannelPartnerAutocomplete({ label, value, onChange, suggestions = [], 
                 {label} {required && <span className="text-red-500 font-bold">*</span>}
             </label>
             <div className="relative">
-                <input
+                <input name="channel_partner" id="channel_partner"
                     type="text"
                     value={inputValue}
                     onChange={handleInputChange}
@@ -214,9 +215,10 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     const [pendingFiles, setPendingFiles] = useState({}); // { [doc_type]: File }
     const [previewDoc, setPreviewDoc] = useState(null); // { doc, url }
     const [saving, setSaving] = useState(false);
+    const [validationErrors, setValidationErrors] = useState([]);
 
     const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager' || user?.role === 'Channel Partner Office' || user?.role === 'Channel Partner Office Manager';
     const partnerName = (user?.channel_partner || user?.name || '').trim();
 
     useEffect(() => {
@@ -234,6 +236,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     if (!isOpen) return null;
 
     const handleChange = (field, value) => {
+        setValidationErrors([]);
         setFormData(prev => {
             const next = { ...prev, [field]: value };
             if (field === 'module_wp' || field === 'no_of_modules') {
@@ -280,18 +283,29 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         if (e) e.preventDefault();
         if (saving) return; // Prevent double-submission from fast clicking
         
-        if (!formData.customer_name?.trim()) return alert('Customer Name is required');
-        if (!formData.phone_number?.toString().trim()) return alert('Customer Phone Number is required');
-        if (!formData.email_address?.trim()) return alert('Email Address is required');
-        if (!formData.consumer_no?.toString().trim()) return alert('Consumer Number is required');
-        if (!formData.villages?.trim()) return alert('Villages / Address is required');
-        if (!isAgent && !isChannelPartnerOffice && !formData.channel_partner?.trim()) return alert('Channel Partner Name is required');
-        if (!formData.module_brand?.trim()) return alert('Module Brand is required');
-        if (!formData.module_wp?.toString().trim()) return alert('Module Wp is required');
-        if (!formData.no_of_modules?.toString().trim()) return alert('No of Modules is required');
-        if (!formData.system_capacity_kwp) return alert('System Capacity is required');
-        if (!formData.sub_divisions?.trim()) return alert('Sub Division is required');
-        if (!formData.payment_type?.trim()) return alert('Payment Type Selection is required');
+        const finalData = {
+            ...formData,
+            channel_partner: (isAgent || isChannelPartnerOffice) ? partnerName : (formData.channel_partner || '').trim()
+        };
+
+        // Ensure string fields are strings to pass Zod schema
+        ['customer_name', 'phone_number', 'email_address', 'consumer_no', 'villages', 'channel_partner', 'module_brand', 'module_wp', 'no_of_modules', 'system_capacity_kwp', 'sub_divisions'].forEach(key => {
+            if (finalData[key] !== undefined && finalData[key] !== null) {
+                finalData[key] = String(finalData[key]);
+            }
+        });
+
+        const result = leadSchema.safeParse(finalData);
+        if (!result.success) {
+            setValidationErrors(result.error.issues.map(err => err.message));
+            // Scroll to top
+            const bodyEl = document.querySelector('.modal-body');
+            if (bodyEl) bodyEl.scrollTop = 0;
+            return;
+        }
+
+        // Apply validated data
+        const validatedData = result.data;
 
         // Package attached files as list of { file, doc_type }
         const filesToUpload = Object.entries(pendingFiles).map(([doc_type, file]) => ({
@@ -299,14 +313,9 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             doc_type
         }));
 
-        const finalData = {
-            ...formData,
-            channel_partner: (isAgent || isChannelPartnerOffice) ? partnerName : (formData.channel_partner || '').trim()
-        };
-
         setSaving(true);
         try {
-            await onSave(finalData, filesToUpload);
+            await onSave(validatedData, filesToUpload);
             onClose();
         } catch (err) {
             console.error('Error in onSave:', err);
@@ -370,7 +379,20 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                 </div>
 
                 {/* Modal Scrollable Body */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                <div className="flex-1 overflow-y-auto p-5 space-y-5 modal-body">
+                    {validationErrors.length > 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="flex items-center gap-2 text-red-800 font-bold text-xs uppercase tracking-wide">
+                                <AlertTriangle className="w-4 h-4 text-red-500" />
+                                Please fix the following errors
+                            </div>
+                            <ul className="list-disc pl-5 text-xs text-red-750 font-medium space-y-1">
+                                {validationErrors.map((err, idx) => (
+                                    <li key={idx}>{err}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                     {/* Section 1: Customer Info (Strictly Line-by-Line) */}
                     <section>
                         <div className="flex items-center gap-2 mb-3 pb-1.5 border-b border-stone-100">

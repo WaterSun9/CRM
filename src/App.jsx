@@ -22,8 +22,30 @@ import { Sun } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import SetPasswordPage from './components/SetPassword';
-import AgentPortal from './components/AgentPortal';
-import VendorPortal from './components/VendorPortal';
+import { lazy } from 'react';
+
+function lazyWithRetry(componentImport) {
+    return lazy(async () => {
+        const isRefreshed = window.sessionStorage.getItem('retry-lazy-refreshed') === 'true';
+        try {
+            const component = await componentImport();
+            window.sessionStorage.setItem('retry-lazy-refreshed', 'false');
+            return component;
+        } catch (error) {
+            console.warn('Dynamic import failed, reloading latest module chunk...', error);
+            if (!isRefreshed) {
+                window.sessionStorage.setItem('retry-lazy-refreshed', 'true');
+                window.location.reload();
+                return { default: () => null };
+            }
+            throw error;
+        }
+    });
+}
+
+const AgentPortal = lazyWithRetry(() => import('./components/AgentPortal'));
+const VendorPortal = lazyWithRetry(() => import('./components/VendorPortal'));
+const StampPortal = lazyWithRetry(() => import('./components/StampPortal'));
 
 function ScreenLoader() {
     return (
@@ -57,8 +79,17 @@ export default function App() {
             if (isPasswordRecovery) { setLoading(false); return; }
 
             if (session?.user) {
-                const { data: profile } = await supabase
-                    .from('profiles').select('*').eq('id', session.user.id).single();
+                const { data: profile, error: profileError } = await supabase
+  .from('profiles')
+  .select('*,created_by')
+  .eq('id', session.user.id)
+  .single();
+if (profileError && profileError.code !== 'PGRST100') {
+  // Real error – sign out user
+  await supabase.auth.signOut();
+  setLoading(false);
+  return;
+}
                 if (profile && profile.status !== 'inactive') {
                     setUser({
                         id: session.user.id,
@@ -98,6 +129,7 @@ export default function App() {
 
     const isAgent = user.userType === 'agent' || user.role === 'Channel Partners';
     const isVendor = user.userType === 'vendor' || user.role === 'Vendors';
+    const isStamp = user.userType === 'stamp' || user.role === 'Stamp';
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -125,6 +157,15 @@ export default function App() {
     if (isVendor) {
         return (<Suspense fallback={<ScreenLoader />}>
             <VendorPortal
+                user={user}
+                onLogout={handleLogout}
+            />
+        </Suspense>);
+    }
+
+    if (isStamp) {
+        return (<Suspense fallback={<ScreenLoader />}>
+            <StampPortal
                 user={user}
                 onLogout={handleLogout}
             />

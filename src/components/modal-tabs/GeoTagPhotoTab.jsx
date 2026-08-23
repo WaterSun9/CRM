@@ -22,7 +22,7 @@ export default function GeoTagPhotoTab({
     // Vendor can edit geo tag, office can only view, Channel Partner Office & Admin have full edit
     const isVendor = user?.userType === 'vendor' || user?.role === 'Vendors';
     const isAdmin = user?.userType === 'admin' || user?.role === 'Super Admin' || user?.role === 'Admin';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager' || user?.role === 'Channel Partner Office' || user?.role === 'Channel Partner Office Manager';
     const canEditGeoTag = isVendor || ((isAdmin || isChannelPartnerOffice) && isEditable);
 
     // Ensure a default Geo Tag status of 'No' for new records (only on mount)

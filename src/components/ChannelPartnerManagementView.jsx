@@ -1,9 +1,6 @@
-// src/components/ChannelPartnerManagementView.jsx  —  Watersun Electrical Solutions Pvt Ltd
-// ─────────────────────────────────────────────────────────────────────────────
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap } from 'lucide-react';
+import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, UserPlus, Phone, Mail } from 'lucide-react';
 import { logActivity } from '../utils';
 
 export default function ChannelPartnerManagementView({ customers = [], currentUser }) {
@@ -12,6 +9,10 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [registrations, setRegistrations] = useState([]);
     const [integrations, setIntegrations] = useState([]);
     const [inverters, setInverters] = useState([]);
+    const [cpos, setCpos] = useState([]);
+    const [subAgents, setSubAgents] = useState([]);
+    const [selectedCpo, setSelectedCpo] = useState(null);
+    const [cpoLeadsCount, setCpoLeadsCount] = useState({});
     const [newPartner, setNewPartner] = useState('');
     const [newBrand, setNewBrand] = useState('');
     const [newRegistration, setNewRegistration] = useState('');
@@ -28,15 +29,26 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [editingVendorName, setEditingVendorName] = useState('');
     const [editingVendorEmail, setEditingVendorEmail] = useState('');
 
-    // Fetch partners, brands, registrations, integrations, and inverters from metadata table
+    // Fetch partners, brands, registrations, integrations, inverters, and CPOs
     const fetchMetadata = async () => {
         try {
-            const { data, error } = await supabase
-                .from('metadata')
-                .select('id, category, label')
-                .in('category', ['channel_partner', 'module_brand', 'registration_by', 'integration_by', 'inverter_make']);
+            const [metaRes, profilesRes, adminRes] = await Promise.all([
+                supabase
+                    .from('metadata')
+                    .select('id, category, label')
+                    .in('category', ['channel_partner', 'module_brand', 'registration_by', 'integration_by', 'inverter_make']),
+                supabase
+                    .from('profiles')
+                    .select('*')
+                    .order('created_at', { ascending: false }),
+                supabase
+                    .from('admin')
+                    .select('channel_partner')
+                    .is('deleted_at', null)
+            ]);
 
-            if (error) throw error;
+            if (metaRes.error) throw metaRes.error;
+            const data = metaRes.data || [];
 
             const partnerList = data.filter(d => d.category === 'channel_partner');
             const brandList = data.filter(d => d.category === 'module_brand');
@@ -49,8 +61,27 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             setRegistrations(registrationList);
             setIntegrations(integrationList);
             setInverters(inverterList);
+
+            if (profilesRes.data) {
+                const allProfiles = profilesRes.data;
+                const cpoList = allProfiles.filter(p => p.user_type === 'channel_partner_office' || p.role === 'Channel Partner Office');
+                const agentList = allProfiles.filter(p => p.user_type === 'agent' || p.role === 'Channel Partners');
+                setCpos(cpoList);
+                setSubAgents(agentList);
+            }
+
+            if (adminRes.data) {
+                const counts = {};
+                adminRes.data.forEach(c => {
+                    const partner = (c.channel_partner || '').trim().toLowerCase();
+                    if (partner) {
+                        counts[partner] = (counts[partner] || 0) + 1;
+                    }
+                });
+                setCpoLeadsCount(counts);
+            }
         } catch (e) {
-            console.error('Error fetching metadata:', e);
+            console.error('Error fetching metadata & CPOs:', e);
         } finally {
             setLoading(false);
         }
@@ -413,16 +444,25 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     };
 
     // ─── Calculate Channel Partner Performance statistics ───
-    const active = customers.filter(c => !c.deleted_at);
-    const channelPartnerCounts = {};
-    active.forEach(c => {
-        const partnerName = c.channel_partner?.trim() || 'No Channel Partner';
-        channelPartnerCounts[partnerName] = (channelPartnerCounts[partnerName] || 0) + 1;
-    });
-
-    const sortedPerformance = Object.entries(channelPartnerCounts)
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count);
+    const [performanceStats, setPerformanceStats] = useState([]);
+    
+    useEffect(() => {
+        const fetchStats = async () => {
+            const { data } = await supabase.from('admin').select('channel_partner').is('deleted_at', null);
+            if (data) {
+                const counts = {};
+                data.forEach(c => {
+                    const name = c.channel_partner?.trim() || 'No Channel Partner';
+                    counts[name] = (counts[name] || 0) + 1;
+                });
+                const sorted = Object.entries(counts)
+                    .map(([name, count]) => ({ name, count }))
+                    .sort((a, b) => b.count - a.count);
+                setPerformanceStats(sorted);
+            }
+        };
+        fetchStats();
+    }, []);
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700 max-w-7xl mx-auto">
@@ -452,6 +492,28 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                             </div>
                             
                             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                                {/* Channel Partner Offices (CPO) Card */}
+                                <button
+                                    onClick={() => {
+                                        setSelectedCpo(null);
+                                        setActiveManageCategory('cpo_office');
+                                    }}
+                                    className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex flex-col justify-between h-44 hover:shadow-md hover:border-amber-400 hover:bg-amber-50/20 active:scale-[0.98] transition-all text-left focus:outline-none w-full group relative overflow-hidden"
+                                >
+                                    <div className="space-y-3.5 w-full">
+                                        <div className="p-2.5 bg-amber-50 group-hover:bg-amber-100 rounded-xl w-fit transition-colors duration-305 text-amber-700">
+                                            <Building2 className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-700 transition-colors duration-305">CPO Offices & Sub-Agents</h3>
+                                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">{cpos.length} registered office branches</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1 transition-colors duration-305">
+                                        Manage Offices & Teams <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
+                                    </span>
+                                </button>
+
                                 {/* Channel Partners Card */}
                                 <button
                                     onClick={() => setActiveManageCategory('channel_partner')}
@@ -577,9 +639,9 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                             
                             <div className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex-1 lg:h-[368px] flex flex-col justify-between">
                                 <div className="space-y-4 flex-1 flex flex-col justify-around py-1">
-                                    {sortedPerformance.length > 0 ? (
-                                        sortedPerformance.slice(0, 5).map((item, idx) => {
-                                            const totalProjects = active.length;
+                                    {performanceStats.length > 0 ? (
+                                        performanceStats.slice(0, 5).map((item, idx) => {
+                                            const totalProjects = performanceStats.reduce((s, p) => s + p.count, 0);
                                             const perc = totalProjects > 0 ? (item.count / totalProjects) * 100 : 0;
                                             const isFirst = idx === 0 && item.name !== 'No Channel Partner';
                                             return (
@@ -614,6 +676,165 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
             {/* Manage Directory Full Modal */}
             {activeManageCategory && (() => {
+                if (activeManageCategory === 'cpo_office') {
+                    return (
+                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl overflow-hidden border border-stone-100 flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+                                {/* Modal Header */}
+                                <div className="bg-stone-900 px-6 py-5 flex justify-between items-center text-white">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
+                                            <Building2 size={20} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold tracking-tight">Channel Partner Offices & Sub-Agents</h3>
+                                            <p className="text-[10px] text-stone-400 mt-0.5 uppercase font-bold tracking-wider">{cpos.length} Registered CPO Branches</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setActiveManageCategory(null);
+                                            setSelectedCpo(null);
+                                        }}
+                                        className="text-stone-400 hover:text-white p-2 hover:bg-stone-800 rounded-xl transition"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                </div>
+
+                                {/* Modal Body */}
+                                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                                    {selectedCpo ? (
+                                        // Drilldown: Sub-Agents under Selected CPO
+                                        <div className="space-y-4">
+                                            <button
+                                                onClick={() => setSelectedCpo(null)}
+                                                className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-xl transition"
+                                            >
+                                                ← Back to all CPO Offices
+                                            </button>
+
+                                            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200/80 flex justify-between items-center">
+                                                <div>
+                                                    <h4 className="text-sm font-extrabold text-stone-850">{selectedCpo.name}</h4>
+                                                    <p className="text-xs text-stone-500 font-medium">Branch Partner: <strong className="text-stone-700">{selectedCpo.channel_partner || selectedCpo.name}</strong> • {selectedCpo.email}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-lg bg-stone-900 text-white">
+                                                        {cpoLeadsCount[(selectedCpo.channel_partner || selectedCpo.name || '').trim().toLowerCase()] || 0} Total Leads
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <h5 className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-2">
+                                                    Sub-Agents Registered Under this CPO
+                                                </h5>
+                                                {(() => {
+                                                    const partnerKey = (selectedCpo.channel_partner || selectedCpo.name || '').trim().toLowerCase();
+                                                    const team = subAgents.filter(a => 
+                                                        a.created_by === selectedCpo.id ||
+                                                        (a.channel_partner && a.channel_partner.trim().toLowerCase() === partnerKey)
+                                                    );
+
+                                                    if (team.length === 0) {
+                                                        return (
+                                                            <div className="text-center py-8 bg-stone-50/50 rounded-2xl border border-stone-100">
+                                                                <Users className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                                                                <p className="text-xs text-stone-500 font-medium">No sub-agents added by this CPO yet.</p>
+                                                                <p className="text-[10px] text-stone-400 mt-0.5">When this CPO logs in and adds sub-agents, they will appear here.</p>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div className="space-y-2">
+                                                            {team.map(agent => (
+                                                                <div key={agent.id} className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-stone-200/70 hover:border-amber-300 transition-all shadow-xs">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-xs font-bold">
+                                                                            {agent.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'A'}
+                                                                        </div>
+                                                                        <div>
+                                                                            <p className="text-xs font-bold text-stone-800">{agent.name}</p>
+                                                                            <p className="text-[10px] text-stone-400">{agent.email}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${agent.status === 'inactive' ? 'bg-stone-100 text-stone-400' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                                                                            {agent.status || 'active'}
+                                                                        </span>
+                                                                        <span className="text-[10px] text-stone-400 font-medium">
+                                                                            {agent.created_at ? new Date(agent.created_at).toLocaleDateString() : ''}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        // Main CPO List
+                                        <div className="space-y-3">
+                                            {cpos.length === 0 ? (
+                                                <div className="text-center py-10 bg-stone-50 rounded-2xl border border-stone-100">
+                                                    <Building2 className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                                                    <p className="text-xs text-stone-600 font-bold">No Channel Partner Offices registered yet.</p>
+                                                    <p className="text-[10px] text-stone-400 mt-1">To add a new CPO branch, go to User Management and create a user with role "Channel Partner Office".</p>
+                                                </div>
+                                            ) : (
+                                                cpos.map(cpo => {
+                                                    const partnerKey = (cpo.channel_partner || cpo.name || '').trim().toLowerCase();
+                                                    const teamCount = subAgents.filter(a => 
+                                                        a.created_by === cpo.id ||
+                                                        (a.channel_partner && a.channel_partner.trim().toLowerCase() === partnerKey)
+                                                    ).length;
+                                                    const leadsCount = cpoLeadsCount[partnerKey] || 0;
+
+                                                    return (
+                                                        <div
+                                                            key={cpo.id}
+                                                            onClick={() => setSelectedCpo(cpo)}
+                                                            className="p-4 bg-stone-50 hover:bg-amber-50/40 rounded-2xl border border-stone-200/70 hover:border-amber-300 transition-all cursor-pointer flex flex-col sm:flex-row justify-between sm:items-center gap-3 group"
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 rounded-xl bg-stone-900 text-white flex items-center justify-center font-bold text-xs shadow-xs group-hover:bg-amber-600 transition-colors">
+                                                                    {cpo.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'CP'}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <h4 className="text-xs font-bold text-stone-900 group-hover:text-amber-800 transition-colors">{cpo.name}</h4>
+                                                                        <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${cpo.status === 'inactive' ? 'bg-stone-200 text-stone-500' : 'bg-emerald-100 text-emerald-800'}`}>
+                                                                            {cpo.status || 'active'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-[10px] text-stone-400 font-medium mt-0.5">Partner Branch: <strong className="text-stone-600">{cpo.channel_partner || cpo.name}</strong> • {cpo.email}</p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex items-center gap-3 self-end sm:self-center">
+                                                                <div className="text-right">
+                                                                    <span className="text-xs font-extrabold text-stone-900 block">{teamCount} Sub-Agents</span>
+                                                                    <span className="text-[10px] font-semibold text-amber-700">{leadsCount} Leads</span>
+                                                                </div>
+                                                                <div className="p-1.5 rounded-lg bg-stone-200/70 group-hover:bg-amber-200 text-stone-600 group-hover:text-amber-900 transition-colors">
+                                                                    <ChevronRight size={14} />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
                 let title = '';
                 let list = [];
                 let inputVal = '';

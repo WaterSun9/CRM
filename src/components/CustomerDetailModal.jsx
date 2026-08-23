@@ -1,3 +1,4 @@
+import { customerSchema } from '../utils/validation';
 // ─── CustomerDetailModal.jsx ──────────────────────────────────────────────────
 // Full customer detail: 4-tab layout (Overview, Finance & Bank, Checklist,
 // Notes & History). Section-level editing, payments array editor, generic
@@ -47,9 +48,9 @@ const DOC_TYPE_LABELS = {
     stamp_pic: 'Vendor Stamp',
     vendor_stamp: 'Vendor Stamp',
     secondPartyStamp: 'Vendor Stamp',
-    pm_surya_gpae_stamp: 'PM Surya GPAE Stamp',
-    surya_gpae_stamp: 'PM Surya GPAE Stamp',
-    gpae_stamp: 'PM Surya GPAE Stamp',
+    pm_surya_ghar_stamp: 'PM Surya GPAE Stamp',
+    surya_gpa_stamp: 'PM Surya GPA Stamp',
+    gpa_stamp: 'PM Surya GPA Stamp',
     meter_installation_photo: 'Meter Installation Photo',
     meter_photo: 'Meter Installation Photo',
     warranty_card: 'Warranty Card',
@@ -65,6 +66,7 @@ const getDocTypeLabel = (type) => {
     return String(type).split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 };
 
+import CustomerModalTabsRouter from './CustomerModalTabsRouter';
 import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
 import LoanTab from './modal-tabs/LoanTab';
@@ -81,7 +83,7 @@ import DiscomInspectionTab from './modal-tabs/DiscomInspectionTab';
 import SubsidyStatusTab from './modal-tabs/SubsidyStatusTab';
 import FinalReviewTab from './modal-tabs/FinalReviewTab';
 import HistoryTab from './modal-tabs/HistoryTab';
-import { FilePreviewModal } from './modal-tabs/shared';
+import { FilePreviewModal, DocGalleryRemarkRow } from './modal-tabs/shared';
 
 // ─── formatMoney: uses centralized Indian comma system from utils ─────────────
 const fmt = formatINR;
@@ -135,408 +137,6 @@ const getStageRemarkFromData = (stagesRemarksObj, stageName) => {
     return '';
 };
 
-// ─── MetaSelect: standard select dropdown for metadata fields ─────────────────
-function MetaSelect({ label, field, value, onChange, options = [], isEditing }) {
-    if (!isEditing) {
-        return (
-            <div className="bg-stone-50 p-3 rounded-xl">
-                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
-                <p className="text-sm font-semibold truncate text-stone-800">{value || '–'}</p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="bg-stone-50 p-3 rounded-xl">
-            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
-            <select value={value || ''} onChange={e => onChange(field, e.target.value)}
-                className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300">
-                <option value="">Select...</option>
-                {options.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-        </div>
-    );
-}
-
-// ─── StageRemarkSection ───────────────────────────────────────────────────────
-function StageRemarkSection({ stageId, editData, setEditData, isFrozen, onSave }) {
-    const [localSaved, setLocalSaved] = useState(true);
-    const remark = getStageRemarkFromData(editData.stages_remarks, stageId);
-
-    return (
-        <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-2 mb-1">
-                <label className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block">Stage Remark ({stageId})</label>
-                {!isFrozen && !localSaved && (
-                    <button
-                        onClick={async () => {
-                            await onSave(stageId);
-                            setLocalSaved(true);
-                        }}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-bold transition-all shadow-md shadow-emerald-600/10"
-                    >
-                        Save Remark
-                    </button>
-                )}
-            </div>
-            {isFrozen ? (
-                <div className="text-xs text-stone-500 font-medium italic min-h-[36px] bg-stone-50 p-2.5 rounded-xl">
-                    {remark || 'No remarks for this stage.'}
-                </div>
-            ) : (
-                <div className="flex gap-2">
-                    <input
-                        type="text"
-                        placeholder={`Add remark for ${stageId}...`}
-                        value={remark}
-                        onChange={e => {
-                            const newVal = e.target.value;
-                            setLocalSaved(false);
-                            setEditData(prev => {
-                                const prevObj = typeof prev.stages_remarks === 'object' && prev.stages_remarks ? prev.stages_remarks : {};
-                                return {
-                                    ...prev,
-                                    stages_remarks: {
-                                        ...prevObj,
-                                        [stageId]: newVal
-                                    }
-                                };
-                            });
-                        }}
-                        onKeyDown={async (e) => {
-                            if (e.key === 'Enter') {
-                                await onSave(stageId);
-                                setLocalSaved(true);
-                            }
-                        }}
-                        className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300"
-                    />
-                </div>
-            )}
-        </section>
-    );
-}
-
-// ─── DetailItem / EditableDetailItem ──────────────────────────────────────────
-function DetailItem({ label, value, isMoney = false, isEnergy = false }) {
-    return (
-        <div className="bg-stone-50 p-3 rounded-xl">
-            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
-            <p className={`text-sm font-semibold truncate ${isMoney ? 'text-emerald-600' : isEnergy ? 'text-amber-600' : 'text-stone-800'}`}>
-                {isMoney ? fmt(value) : (value || '–')}
-            </p>
-        </div>
-    );
-}
-
-// Autocomplete component for Channel Partner Name selector inside editing view
-function ChannelPartnerAutocomplete({ label, value, onChange, suggestions = [], isAdmin = false }) {
-    const [inputValue, setInputValue] = useState(value || '');
-    const [showSuggestions, setShowSuggestions] = useState(false);
-    const containerRef = useRef(null);
-
-    useEffect(() => {
-        setInputValue(value || '');
-    }, [value]);
-
-    useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (containerRef.current && !containerRef.current.contains(e.target)) {
-                setShowSuggestions(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const filtered = inputValue.trim()
-        ? (suggestions || []).filter(s => String(s || '').toLowerCase().includes(inputValue.trim().toLowerCase()))
-        : (suggestions || []);
-
-    const handleSelect = (val) => {
-        setInputValue(val);
-        onChange(val);
-        setShowSuggestions(false);
-    };
-
-    const handleInputChange = (e) => {
-        const val = e.target.value;
-        setInputValue(val);
-        onChange(val);
-        setShowSuggestions(true);
-    };
-
-    return (
-        <div className="relative w-full" ref={containerRef}>
-            <input
-                type="text"
-                value={inputValue}
-                onChange={handleInputChange}
-                onFocus={() => setShowSuggestions(true)}
-                className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300"
-                placeholder={label}
-            />
-            {showSuggestions && filtered.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-stone-100 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto py-1">
-                    {filtered.map(s => (
-                        <button
-                            key={s}
-                            type="button"
-                            onClick={() => handleSelect(s)}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 text-stone-700 font-medium transition-colors"
-                        >
-                            {s}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
-
-function EditableDetailItem({ label, field, value, onChange, type = 'text', isMoney = false, isEnergy = false, isEditing, options, category, meta, channel_partners = [], isAdmin = false, user }) {
-    // Metadata-driven dropdown with add-new
-    if (options && category) {
-        return <MetaSelect label={label} field={field} value={value} onChange={onChange} options={options} isEditing={isEditing} />;
-    }
-    if (!isEditing) return <DetailItem label={label} value={value} isMoney={isMoney} isEnergy={isEnergy} />;
-
-    if (field === 'channel_partner') {
-        return (
-            <div className="bg-stone-50 p-3 rounded-xl">
-                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
-                <ChannelPartnerAutocomplete label={label} value={value} onChange={(val) => onChange(field, val)} suggestions={channel_partners} isAdmin={isAdmin} />
-            </div>
-        );
-    }
-
-    return (
-        <div className="bg-stone-50 p-3 rounded-xl">
-            <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1 font-bold">{label}</p>
-            {options ? (
-                <select value={value || ''} onChange={e => onChange(field, e.target.value)}
-                    className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300">
-                    <option value="">Select...</option>
-                    {options.map(o => <option key={o}>{o}</option>)}
-                </select>
-            ) : isMoney ? (
-                <input type="text" inputMode="decimal" value={value ? toIndianCommas(value) : ''}
-                    onChange={e => onChange(field, parseIndianNumber(e.target.value))}
-                    className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300" />
-            ) : (
-                <input type={type} value={value || ''} onChange={e => onChange(field, e.target.value)}
-                    className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300" />
-            )}
-        </div>
-    );
-}
-
-function CheckboxRemarkItem({ label, field, value, onChange, isEditing }) {
-    const isUploaded = Boolean(value);
-
-    return (
-        <div className="py-1.5 flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                    <div 
-                        className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${
-                            isUploaded 
-                                ? 'bg-emerald-500 border-emerald-500 text-white' 
-                                : 'bg-stone-100 border-stone-300 text-transparent'
-                        }`}
-                        title={isUploaded ? 'Uploaded' : 'Not Uploaded'}
-                    >
-                        {isUploaded && (
-                            <svg className="w-2.5 h-2.5 stroke-[3] stroke-current" fill="none" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                            </svg>
-                        )}
-                    </div>
-                    <span className={`text-xs select-none ${isUploaded ? 'font-bold text-stone-900' : 'font-medium text-stone-600'}`}>
-                        {label}
-                    </span>
-                    {isUploaded ? (
-                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                            Uploaded
-                        </span>
-                    ) : (
-                        <span className="text-[9px] font-bold text-stone-400 bg-stone-100 px-1.5 py-0.2 rounded">
-                            Not Uploaded
-                        </span>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function DocGalleryRemarkRow({ doc, onUpdateRemark, isEditable }) {
-    const [isEditing, setIsEditing] = useState(false);
-    const [remarkVal, setRemarkVal] = useState(doc.remark || '');
-    const [saving, setSaving] = useState(false);
-
-    useEffect(() => {
-        setRemarkVal(doc.remark || '');
-    }, [doc.remark]);
-
-    const handleSave = async () => {
-        if (!onUpdateRemark) return;
-        setSaving(true);
-        await onUpdateRemark(doc.id, remarkVal);
-        setSaving(false);
-        setIsEditing(false);
-    };
-
-    if (isEditing) {
-        return (
-            <div className="pt-2 mt-1 border-t border-stone-200/60 flex items-center gap-1.5 animate-in fade-in">
-                <input
-                    type="text"
-                    value={remarkVal}
-                    placeholder="Remark for this document..."
-                    onChange={e => setRemarkVal(e.target.value)}
-                    onKeyDown={e => {
-                        if (e.key === 'Enter') handleSave();
-                        if (e.key === 'Escape') setIsEditing(false);
-                    }}
-                    autoFocus
-                    className="flex-1 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
-                />
-                <button
-                    type="button"
-                    disabled={saving}
-                    onClick={handleSave}
-                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
-                >
-                    {saving ? '...' : 'Save'}
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setIsEditing(false)}
-                    className="px-2 py-1 text-stone-400 hover:text-stone-600 text-xs font-medium cursor-pointer"
-                >
-                    Cancel
-                </button>
-            </div>
-        );
-    }
-
-    if (doc.remark) {
-        return (
-            <div className="pt-2 mt-1 border-t border-stone-200/60 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 min-w-0 flex-1 bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60">
-                    <MessageSquare size={11} className="text-amber-600 flex-shrink-0" />
-                    <span className="text-[11px] text-amber-900 font-medium truncate" title={doc.remark}>
-                        {doc.remark}
-                    </span>
-                </div>
-                {isEditable && (
-                    <button
-                        type="button"
-                        onClick={() => setIsEditing(true)}
-                        className="text-[10px] font-bold text-stone-500 hover:text-stone-800 underline cursor-pointer flex-shrink-0"
-                    >
-                        Edit Remark
-                    </button>
-                )}
-            </div>
-        );
-    }
-
-    if (isEditable) {
-        return (
-            <div className="pt-1.5 mt-0.5 border-t border-dashed border-stone-200 flex justify-end">
-                <button
-                    type="button"
-                    onClick={() => setIsEditing(true)}
-                    className="text-[10px] text-stone-400 hover:text-stone-700 font-bold flex items-center gap-1 cursor-pointer transition"
-                >
-                    <MessageSquare size={10} />
-                    <span>+ Add Remark</span>
-                </button>
-            </div>
-        );
-    }
-
-    return null;
-}
-
-// ─── PaymentsEditor ───────────────────────────────────────────────────────────
-// onChange(newPayments, totalReceived) — passes total up so parent can save it
-function PaymentsEditor({ payments = [], onChange, isEditing }) {
-    const handleChange = (idx, field, val) => {
-        const next = payments.map((p, i) => i === idx ? { ...p, [field]: val } : p);
-        const total = next.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-        onChange(next, total);
-    };
-    const addPayment = () => {
-        const next = [...payments, { no: payments.length + 1, amount: '', date: '' }];
-        const total = next.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-        onChange(next, total);
-    };
-    const removePayment = (idx) => {
-        const next = payments.filter((_, i) => i !== idx);
-        const total = next.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-        onChange(next, total);
-    };
-
-    const displayTotal = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-
-    if (!isEditing) return (
-        <div className="space-y-2">
-            {payments.length === 0 && <p className="text-xs text-stone-400 italic">No payments recorded</p>}
-            {payments.map((p, i) => (
-                <div key={i} className="bg-stone-50 p-3 rounded-xl flex justify-between items-center">
-                    <div>
-                        <p className="text-[9px] text-stone-400 font-bold uppercase">Payment {p.no || i + 1}</p>
-                        <p className="text-sm font-semibold text-emerald-600">{formatINR(p.amount)}</p>
-                    </div>
-                    {p.date && <p className="text-xs text-stone-400">{p.date}</p>}
-                </div>
-            ))}
-            {payments.length > 0 && (
-                <div className="bg-emerald-50 rounded-xl p-3 flex justify-between items-center border border-emerald-100">
-                    <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">Total Received</p>
-                    <p className="text-sm font-bold text-emerald-700">{formatINR(displayTotal)}</p>
-                </div>
-            )}
-        </div>
-    );
-
-    return (
-        <div className="space-y-2">
-            {payments.map((p, i) => (
-                <div key={i} className="bg-stone-50 p-3 rounded-xl space-y-2 border border-stone-200">
-                    <div className="flex items-center justify-between">
-                        <p className="text-[9px] font-bold text-stone-400 uppercase">Payment {p.no || i + 1}</p>
-                        <button onClick={() => removePayment(i)} className="text-red-400 hover:text-red-600">
-                            <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <input type="text" inputMode="decimal" placeholder="Amount (₹)" value={p.amount ? toIndianCommas(p.amount) : ''}
-                            onChange={e => handleChange(i, 'amount', parseIndianNumber(e.target.value))}
-                            className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300" />
-                        <input type="date" value={p.date || ''}
-                            onChange={e => handleChange(i, 'date', e.target.value)}
-                            className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300" />
-                    </div>
-                </div>
-            ))}
-            <button onClick={addPayment}
-                className="w-full flex items-center justify-center gap-1.5 border border-dashed border-stone-300 rounded-xl py-2 text-xs text-stone-500 hover:border-amber-400 hover:text-amber-600 transition-colors">
-                <Plus className="w-3.5 h-3.5" /> Add Payment
-            </button>
-            {payments.length > 0 && (
-                <div className="bg-amber-50 rounded-xl p-3 flex justify-between items-center border border-amber-100">
-                    <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Auto Total (will save)</p>
-                    <p className="text-sm font-bold text-amber-700">{formatINR(displayTotal)}</p>
-                </div>
-            )}
-        </div>
-    );
-}
-
 // ─── Subsidy status options ───────────────────────────────────────────────────
 const SUBSIDY_STATUS_OPTIONS = ['Approved', 'Returned', 'Rejected', 'Redeemed', 'Received'];
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
@@ -561,6 +161,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     useEffect(() => {
         if (editingSection) setIsFormDirty(true);
     }, [editingSection]);
+
+    // Keep editData in sync with realtime prop updates if the user isn't currently editing
+    useEffect(() => {
+        if (!isFormDirty) {
+            setEditData({ ...customer });
+        }
+    }, [customer, isFormDirty]);
     const [followUpText, setFollowUpText] = useState('');
     const [saving, setSaving] = useState(false);
     const [sendingInfo, setSendingInfo] = useState(false);
@@ -581,29 +188,29 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     // Frozen for ALL users when completed. Admin can temporarily unlock.
     const isFrozen = isCompleted && !(isAdmin && adminUnlocked);
     const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners';
-    const isSales = user?.userType === 'sales';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
-    const isOffice = (user?.userType === 'sales' || user?.role === 'Office') && !isChannelPartnerOffice;
+    const isSales = user?.userType === 'sales' || user?.userType === 'office';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager' || user?.role === 'Channel Partner Office' || user?.role === 'Channel Partner Office Manager';
+    const isOffice = (user?.userType === 'sales' || user?.userType === 'office' || user?.role === 'Office' || user?.role === 'Backend Office' || user?.role?.toLowerCase().includes('office')) && !isChannelPartnerOffice;
 
     const isDiscomOrMeterStage = editData.stage === 'DISCOM SUBMISSION' || editData.stage === 'METER INSTALLATION';
 
     const canUserEdit = (() => {
-        if (isAdmin || isChannelPartnerOffice) return true; // Full unrestricted edit access for Channel Partner Office
+        if (isAdmin || isChannelPartnerOffice || isOffice || isSales) return true;
+        if (user?.role?.toLowerCase().includes('office') || user?.role?.toLowerCase().includes('admin') || user?.role?.toLowerCase().includes('sales')) return true;
         if (isAgent) {
-            // Agent can edit if it's their client AND the customer is in DISCOM SUBMISSION or METER INSTALLATION stage
+            // Agent can edit if it's their client AND in DISCOM SUBMISSION or METER INSTALLATION stage
             const isMyClient = (customer.channel_partner || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase();
             return isMyClient && isDiscomOrMeterStage;
         }
-        if (isSales) {
-            // Sales can edit if the customer is NOT in DISCOM SUBMISSION or METER INSTALLATION stage
-            return !isDiscomOrMeterStage;
-        }
+        // In main Dashboard, all staff members (except external vendor/stamp portals) can edit
+        if (user?.userType !== 'vendor' && user?.userType !== 'stamp') return true;
         return false;
     })();
 
-    const isOfficeFrozenTab = isOffice && (activeTab === 'METER INSTALLATION' || activeTab === 'DISCOM INSPECTION');
-    const isEditable = !isFrozen && canUserEdit && !isOfficeFrozenTab;
-    const isInstallationDetailsEditable = isEditable && !isOffice;
+    const isEditable = !isFrozen && canUserEdit;
+    // Sales and Office can always add remarks and edit fields
+    const canAddRemark = isEditable || !isFrozen;
+    const isInstallationDetailsEditable = isEditable;
     const saveBomRef = useRef(null);
     const prevCustomerRef = useRef(customer);
     const [saved, setSaved] = useState(false);
@@ -643,15 +250,15 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 d.doc_type === 'vendor_stamp' || 
                 d.doc_type === 'secondPartyStamp'
             );
-            const gpaeStampDoc = documents.find(d => 
-                d.doc_type === 'pm_surya_gpae_stamp' || 
-                d.doc_type === 'surya_gpae_stamp' || 
-                d.doc_type === 'gpae_stamp'
+            const gpaStampDoc = documents.find(d => 
+                d.doc_type === 'pm_surya_ghar_stamp' || 
+                d.doc_type === 'surya_ghar_stamp' || 
+                d.doc_type === 'ghar_stamp'
             );
 
             const initialSigUrl = sigDoc ? (urlCacheRef.current[sigDoc.storage_path] || '') : '';
             const initialStampUrl = stampDoc ? (urlCacheRef.current[stampDoc.storage_path] || '') : '';
-            const initialGpaeStampUrl = gpaeStampDoc ? (urlCacheRef.current[gpaeStampDoc.storage_path] || '') : '';
+            const initialGpaStampUrl = gpaStampDoc ? (urlCacheRef.current[gpaStampDoc.storage_path] || '') : '';
 
             setAgreementData({
                 executionDate: formattedDate,
@@ -664,11 +271,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
                 paymentTerms: 'Mutually Agreed Terms of Payment',
                 firstPartySignature: initialSigUrl,
-                secondPartyStamp: initialStampUrl,
+                secondPartyStamp: '/stamp.png',
                 secondPartySignature: '',
                 signatureUrl: initialSigUrl,
-                stampUrl: initialStampUrl,
-                gpaeStampUrl: initialGpaeStampUrl,
+                stampUrl: '/stamp.png',
+                gpaStampUrl: initialGpaStampUrl,
                 highlightColor: '#fef08a',
                 showHighlights: true,
             });
@@ -700,13 +307,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 });
             }
 
-            if (gpaeStampDoc && !initialGpaeStampUrl) {
-                getViewUrl(gpaeStampDoc.storage_path).then(url => {
+            if (gpaStampDoc && !initialGpaStampUrl) {
+                getViewUrl(gpaStampDoc.storage_path).then(url => {
                     if (url) {
-                        urlCacheRef.current[gpaeStampDoc.storage_path] = url;
+                        urlCacheRef.current[gpaStampDoc.storage_path] = url;
                         setAgreementData(prev => ({
                             ...prev,
-                            gpaeStampUrl: url,
+                            gpaStampUrl: url,
                         }));
                     }
                 });
@@ -728,19 +335,19 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             d.doc_type === 'vendor_stamp' || 
             d.doc_type === 'secondPartyStamp'
         );
-        const gpaeStampDoc = documents.find(d => 
-            d.doc_type === 'pm_surya_gpae_stamp' || 
+        const gpaStampDoc = documents.find(d => 
+            d.doc_type === 'pm_surya_ghar_stamp' || 
             d.doc_type === 'surya_gpae_stamp' || 
             d.doc_type === 'gpae_stamp'
         );
 
         let sigUrl = sigDoc ? (urlCacheRef.current[sigDoc.storage_path] || await getViewUrl(sigDoc.storage_path)) : '';
         let stampUrl = stampDoc ? (urlCacheRef.current[stampDoc.storage_path] || await getViewUrl(stampDoc.storage_path)) : '';
-        let gpaeStampUrl = gpaeStampDoc ? (urlCacheRef.current[gpaeStampDoc.storage_path] || await getViewUrl(gpaeStampDoc.storage_path)) : '';
+        let gpaStampUrl = gpaStampDoc ? (urlCacheRef.current[gpaStampDoc.storage_path] || await getViewUrl(gpaStampDoc.storage_path)) : '';
 
         if (sigDoc && sigUrl) urlCacheRef.current[sigDoc.storage_path] = sigUrl;
         if (stampDoc && stampUrl) urlCacheRef.current[stampDoc.storage_path] = stampUrl;
-        if (gpaeStampDoc && gpaeStampUrl) urlCacheRef.current[gpaeStampDoc.storage_path] = gpaeStampUrl;
+        if (gpaStampDoc && gpaStampUrl) urlCacheRef.current[gpaStampDoc.storage_path] = gpaStampUrl;
 
         const rawDate = editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0];
         const formattedDate = formatDateToDDMMYYYY(rawDate);
@@ -756,11 +363,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
             paymentTerms: 'Mutually Agreed Terms of Payment',
             firstPartySignature: sigUrl || '',
-            secondPartyStamp: stampUrl || '',
+            secondPartyStamp: '/stamp.png',
             secondPartySignature: '',
             signatureUrl: sigUrl || '',
-            stampUrl: stampUrl || '',
-            gpaeStampUrl: gpaeStampUrl || '',
+            stampUrl: '/stamp.png',
+            gpaStampUrl: gpaStampUrl || '',
             highlightColor: '#fef08a',
             showHighlights: true,
         });
@@ -790,14 +397,31 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         }
     }, [customer?.id]);
 
-    const handleFileUpload = async (e, docType = null) => {
+    const handleFileUpload = async (e, docType = null, replacingDocId = null) => {
         const file = e.target.files[0];
         if (!file) return;
 
         setUploading(true);
+
+        // Delete old document if replacing or if field already had a document
+        if (replacingDocId) {
+            const oldDoc = documents.find(d => d.id === replacingDocId);
+            if (oldDoc) {
+                await deleteDocument(oldDoc.id, oldDoc.storage_path);
+            }
+        } else if (docType) {
+            const existingDocs = documents.filter(d => d.doc_type === docType);
+            for (const oldDoc of existingDocs) {
+                await deleteDocument(oldDoc.id, oldDoc.storage_path);
+            }
+        }
+
         const newDoc = await uploadDocument(file, customer.id, docType, user?.id);
         if (newDoc) {
-            setDocuments(prev => [newDoc, ...prev]);
+            setDocuments(prev => [
+                newDoc,
+                ...prev.filter(d => replacingDocId ? d.id !== replacingDocId : (docType ? d.doc_type !== docType : true))
+            ]);
             // Pre-cache the new doc URL
             getViewUrl(newDoc.storage_path).then(url => {
                 if (url) urlCacheRef.current[newDoc.storage_path] = url;
@@ -1167,6 +791,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const handleChange = (field, val) => {
         setIsFormDirty(true);
+        if (field === 'driver_phone_number' || field === 'phone_number') {
+            val = String(val).replace(/[^0-9]/g, '');
+        }
         setEditData(prev => {
             const next = { ...prev, [field]: val };
             if (field === 'module_wp' || field === 'no_of_modules') {
@@ -1406,22 +1033,22 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         };
 
         if (updates.system_capacity_kwp !== undefined && updates.system_capacity_kwp !== null && updates.system_capacity_kwp !== '') {
-            updates.system_capacity_kwp = parseIndianNumber(updates.system_capacity_kwp);
+            updates.system_capacity_kwp = String(parseIndianNumber(updates.system_capacity_kwp));
         }
         if (updates.module_wp !== undefined && updates.module_wp !== null && updates.module_wp !== '') {
-            updates.module_wp = parseIndianNumber(updates.module_wp);
+            updates.module_wp = String(parseIndianNumber(updates.module_wp));
         }
         if (updates.no_of_modules !== undefined && updates.no_of_modules !== null && updates.no_of_modules !== '') {
-            updates.no_of_modules = parseIndianNumber(updates.no_of_modules);
+            updates.no_of_modules = String(parseIndianNumber(updates.no_of_modules));
         }
         if (updates.invoice_value !== undefined && updates.invoice_value !== null && updates.invoice_value !== '') {
-            updates.invoice_value = parseIndianNumber(updates.invoice_value);
+            updates.invoice_value = String(parseIndianNumber(updates.invoice_value));
         }
         if (updates.dc_cable !== undefined && updates.dc_cable !== null && updates.dc_cable !== '') {
-            updates.dc_cable = parseIndianNumber(updates.dc_cable);
+            updates.dc_cable = String(parseIndianNumber(updates.dc_cable));
         }
         if (updates.ac_cable !== undefined && updates.ac_cable !== null && updates.ac_cable !== '') {
-            updates.ac_cable = parseIndianNumber(updates.ac_cable);
+            updates.ac_cable = String(parseIndianNumber(updates.ac_cable));
         }
 
         if (destStageId === 'HOLD PROCUREMENT') {
@@ -1448,6 +1075,22 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
         }
 
+        // Ensure string fields are strings to pass Zod schema
+        ['customer_name', 'phone_number', 'email_address', 'consumer_no', 'villages', 'channel_partner', 'module_brand', 'module_wp', 'no_of_modules', 'system_capacity_kwp', 'sub_divisions'].forEach(key => {
+            if (updates[key] !== undefined && updates[key] !== null) {
+                updates[key] = String(updates[key]);
+            }
+        });
+
+        // Validate updates with customerSchema
+        const result = customerSchema.safeParse(updates);
+        if (!result.success) {
+            const errors = result.error.issues.map(err => `- ${err.message}`).join('\n');
+            alert('Please fix the following validation errors:\n\n' + errors);
+            setSaving(false);
+            return;
+        }
+
         if (updates.subsidy_history) {
             updates.subsidy_history = updates.subsidy_history.map(({ isNew, ...rest }) => rest);
         }
@@ -1467,34 +1110,26 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         delete updates.crn;
         delete updates.updated_at;
 
-        await onUpdate(customer.id, updates);
-
-        await logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${destStageId}`, '', customer.id);
-        if (changeSummary.length > 0) {
-            await logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id);
-        }
-
         setEditingSection(null);
-        setSaving(false);
-        fetchLogs();
         setActiveTab(destStageId);
+        
+        // Fire and forget in the background to avoid 2-second UI freeze
+        (async () => {
+            const promises = [
+                onUpdate(customer.id, updates),
+                logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${destStageId}`, '', customer.id)
+            ];
+            if (changeSummary.length > 0) {
+                promises.push(logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id));
+            }
+            await Promise.all(promises);
+            fetchLogs();
+        })().catch(err => console.error("Background save error:", err));
+        setSaving(false);
     };
 
 
     const handleSave = async () => {
-        if (activeTab === 'REGISTRATION') {
-            const missing = [];
-            if (!editData.registration_date) missing.push('Registration date');
-            if (!editData.registration_by?.trim()) missing.push('Registration By');
-            if (!(editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim())) missing.push('Feasibility No');
-            if (!editData.folder_no?.toString().trim()) missing.push('File No');
-            
-            if (missing.length > 0) {
-                setValidationError(`Cannot save. The following required fields are missing:\n\n- ${missing.join('\n- ')}`);
-                return;
-            }
-        }
-
         setSaving(true);
         if (saveBomRef.current) {
             try {
@@ -1506,25 +1141,25 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const updates = { ...editData };
 
         if (updates.system_capacity_kwp !== undefined && updates.system_capacity_kwp !== null && updates.system_capacity_kwp !== '') {
-            updates.system_capacity_kwp = parseIndianNumber(updates.system_capacity_kwp);
+            updates.system_capacity_kwp = String(parseIndianNumber(updates.system_capacity_kwp));
         }
         if (updates.module_wp !== undefined && updates.module_wp !== null && updates.module_wp !== '') {
-            updates.module_wp = parseIndianNumber(updates.module_wp);
+            updates.module_wp = String(parseIndianNumber(updates.module_wp));
         }
         if (updates.no_of_modules !== undefined && updates.no_of_modules !== null && updates.no_of_modules !== '') {
-            updates.no_of_modules = parseIndianNumber(updates.no_of_modules);
+            updates.no_of_modules = String(parseIndianNumber(updates.no_of_modules));
         }
         if (updates.invoice_value !== undefined && updates.invoice_value !== null && updates.invoice_value !== '') {
-            updates.invoice_value = parseIndianNumber(updates.invoice_value);
+            updates.invoice_value = String(parseIndianNumber(updates.invoice_value));
         }
         if (updates.dc_cable !== undefined && updates.dc_cable !== null && updates.dc_cable !== '') {
-            updates.dc_cable = parseIndianNumber(updates.dc_cable);
+            updates.dc_cable = String(parseIndianNumber(updates.dc_cable));
         }
         if (updates.ac_cable !== undefined && updates.ac_cable !== null && updates.ac_cable !== '') {
-            updates.ac_cable = parseIndianNumber(updates.ac_cable);
+            updates.ac_cable = String(parseIndianNumber(updates.ac_cable));
         }
         if (updates.vendor_quote !== undefined && updates.vendor_quote !== null && updates.vendor_quote !== '') {
-            updates.vendor_quote = parseIndianNumber(updates.vendor_quote);
+            updates.vendor_quote = String(parseIndianNumber(updates.vendor_quote));
         } else if (updates.vendor_quote === '') {
             updates.vendor_quote = null;
         }
@@ -1619,19 +1254,27 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
         }
 
+        // We do not run safeParse here because regular save should allow partial/invalid data to be saved as drafts.
+        // Validation only happens strictly when advancing stages.
+
         const stageChanged = editData.stage !== customer.stage;
         delete updates.id; delete updates.created_at; delete updates.crn; delete updates.updated_at;
-        await onUpdate(customer.id, updates);
-        if (changeSummary.length > 0) await logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id);
-
+        
         setEditingSection(null);
-        setSaving(false);
         setIsFormDirty(false);
         setSaved(true);
-        fetchLogs();
         if (stageChanged) {
             setActiveTab(editData.stage);
         }
+
+        // Fire and forget in the background
+        (async () => {
+            const promises = [onUpdate(customer.id, updates)];
+            if (changeSummary.length > 0) promises.push(logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id));
+            await Promise.all(promises);
+            fetchLogs();
+        })().catch(err => console.error("Background save error:", err));
+        setSaving(false);
     };
 
     const handleAddNote = async () => {
@@ -1706,6 +1349,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         </div>
     );
 
+    const tabProps = {
+        activeTab, customer, editData, setEditData: handleEditDataChange, handleChange, 
+        isEditable, editingSection, setEditingSection, channel_partners, isAdmin, 
+        isOffice, meta, user, isRegChecklistDirty, handleSaveRegChecklist, 
+        isOperationalChecklistDirty, handleSaveOperationalChecklist, documents, 
+        uploading, onFileUpload: handleFileUpload, onFileDelete: handleDeleteDoc, 
+        onFilePreview: handlePreviewDoc, onUpdateRemark: handleUpdateDocRemark, 
+        onUpdate, logActivity, fetchLogs, saving, setSaving, handleAdvanceStage, 
+        saveBomRef, onDirty: () => setIsFormDirty(true), onGenerateAgreement: handleGenerateAgreement,
+        isInstallationDetailsEditable, isSfdcEditable: isEditable
+    };
+
     return (
         <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-5xl h-[94vh] overflow-hidden flex flex-col border border-stone-100">
@@ -1770,7 +1425,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 </div>
 
                 {/* Body */}
-                <div className="flex-1 overflow-y-auto p-6 bg-[#FCFBFA]">
+                <div className="flex-1 min-h-0 overflow-y-auto p-6 bg-[#FCFBFA]">
 
                     {/* Frozen banner for completed cards */}
                     {isCompleted && isFrozen && (
@@ -1810,7 +1465,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm flex flex-col justify-between">
                                 <div>
                                     <label className="text-[9px] text-stone-400 font-bold uppercase mb-2 block">Stage Remark (Current Stage)</label>
-                                    {!isEditable ? (
+                                    {!canAddRemark ? (
                                         <div className="text-xs text-stone-500 font-medium italic min-h-[38px] bg-stone-50 p-2 rounded-lg">
                                             {(typeof editData.stages_remarks === 'object' && editData.stages_remarks ? editData.stages_remarks[editData.stage] : '') || 'No remarks for this stage.'}
                                         </div>
@@ -1862,315 +1517,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         </div>
                     )}
 
-                    {/* ── LEADS ── */}
-                    {activeTab === 'LEADS' && (
-                        <LeadsTab
-                            customer={customer}
-                            editData={editData}
-                            isEditable={isEditable}
-                            handleChange={handleChange}
-                            editingSection={editingSection}
-                            setEditingSection={setEditingSection}
-                            channel_partners={channel_partners}
-                            isAdmin={isAdmin}
-                            meta={meta}
-                            user={user}
-                            isRegChecklistDirty={isRegChecklistDirty}
-                            handleSaveRegChecklist={handleSaveRegChecklist}
-                            documents={documents}
-                            uploading={uploading}
-                            onFileUpload={handleFileUpload}
-                            onViewDocument={handlePreviewDoc}
-                            onDeleteDocument={handleDeleteDoc}
-                            onUpdateRemark={handleUpdateDocRemark}
-                        />
-                    )}
-
-                    {/* ── REGISTRATION ── */}
-                    {activeTab === 'REGISTRATION' && (
-                        <RegistrationTab
-                            customer={customer}
-                            editData={editData}
-                            isEditable={isEditable}
-                            handleChange={handleChange}
-                            editingSection={editingSection}
-                            setEditingSection={setEditingSection}
-                            meta={meta}
-                            user={user}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            saving={saving}
-                            setSaving={setSaving}
-                            documents={documents}
-                            onFileUpload={handleFileUpload}
-                            onFileDelete={handleDeleteDoc}
-                            onFilePreview={handlePreviewDoc}
-                            onUpdateRemark={handleUpdateDocRemark}
-                        />
-                    )}
-
-                    {/* ── LOAN ── */}
-                    {activeTab === 'LOAN' && (
-                        <LoanTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            handleChange={handleChange}
-                            isEditable={isEditable}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                            documents={documents}
-                            onFileUpload={handleFileUpload}
-                            onFileDelete={handleDeleteDoc}
-                            onFilePreview={handlePreviewDoc}
-                            onUpdateRemark={handleUpdateDocRemark}
-                        />
-                    )}
-
-                    {/* ── CASH ── */}
-                    {activeTab === 'CASH' && (
-                        <CashTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            isEditable={isEditable}
-                            editingSection={editingSection}
-                            setEditingSection={setEditingSection}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                            saving={saving}
-                            setSaving={setSaving}
-                            documents={documents}
-                            onFileUpload={handleFileUpload}
-                            onFileDelete={handleDeleteDoc}
-                            onFilePreview={handlePreviewDoc}
-                            onUpdateRemark={handleUpdateDocRemark}
-                        />
-                    )}
-
-                    {/* ── MATERIAL ORDER ── */}
-                    {activeTab === 'MATERIAL ORDER' && (
-                        <MaterialOrderTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            handleChange={handleChange}
-                            editingSection={editingSection}
-                            setEditingSection={setEditingSection}
-                            isEditable={isEditable}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                            meta={meta}
-                            saving={saving}
-                            setSaving={setSaving}
-                        />
-                    )}
-
-                    {/* ── MATERIAL INTEGRATION ── */}
-                    {activeTab === 'MATERIAL INTEGRATION' && (
-                        <MaterialIntegrationTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            isEditable={isEditable}
-                            user={user}
-                            meta={meta}
-                            logActivity={logActivity}
-                            editingSection={editingSection}
-                            setEditingSection={setEditingSection}
-                            onUpdate={onUpdate}
-                            handleAdvanceStage={handleAdvanceStage}
-                            saving={saving}
-                            setSaving={setSaving}
-                            saveBomRef={saveBomRef}
-                            onDirty={() => setIsFormDirty(true)}
-                        />
-                    )}
-
-                    {/* ── HOLD PROCUREMENT ── */}
-                    {activeTab === 'HOLD PROCUREMENT' && (
-                        <HoldProcurementTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            isEditable={isEditable}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                            saving={saving}
-                            setSaving={setSaving}
-                        />
-                    )}
-
-                    {/* ── MATERIAL DELIVERY ── */}
-                    {activeTab === 'MATERIAL DELIVERY' && (
-                        <MaterialDeliveryTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            isEditable={isEditable}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                            meta={meta}
-                            handleChange={handleChange}
-                            editingSection={editingSection}
-                            setEditingSection={setEditingSection}
-                        />
-                    )}
-
-                    {/* ── INSTALLATION STATUS ── */}
-                    {activeTab === 'INSTALLATION STATUS' && (
-                        <InstallationStatusTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            isEditable={isInstallationDetailsEditable}
-                            isSfdcEditable={isEditable}
-                            isOffice={isOffice}
-                            isAdmin={isAdmin}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                            handleChange={handleChange}
-                            saving={saving}
-                            setSaving={setSaving}
-                            documents={documents}
-                            onFileUpload={handleFileUpload}
-                            onFileDelete={handleDeleteDoc}
-                            onFilePreview={handlePreviewDoc}
-                            onUpdateRemark={handleUpdateDocRemark}
-                        />
-                    )}
-
-                    {/* ── GEO TAG PHOTO ── */}
-                    {activeTab === 'GEO TAG PHOTO' && (
-                        <GeoTagPhotoTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            isEditable={isEditable}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                            saving={saving}
-                            setSaving={setSaving}
-                            documents={documents}
-                            onFileUpload={handleFileUpload}
-                            onFileDelete={handleDeleteDoc}
-                            onFilePreview={handlePreviewDoc}
-                            onUpdateRemark={handleUpdateDocRemark}
-                        />
-                    )}
-
-                    {/* ── DISCOM SUBMISSION ── */}
-                    {activeTab === 'DISCOM SUBMISSION' && (
-                        <DiscomSubmissionTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            isEditable={isEditable}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                            handleChange={handleChange}
-                            saving={saving}
-                            setSaving={setSaving}
-                            onGenerateAgreement={handleGenerateAgreement}
-                            documents={documents}
-                            onFileUpload={handleFileUpload}
-                            onFileDelete={handleDeleteDoc}
-                            onFilePreview={handlePreviewDoc}
-                            onUpdateRemark={handleUpdateDocRemark}
-                        />
-                    )}
-
-                    {/* ── METER INSTALLATION ── */}
-                    {activeTab === 'METER INSTALLATION' && (
-                        <MeterInstallationTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            handleChange={handleChange}
-                            isEditable={isEditable}
-                            isOffice={isOffice}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                            documents={documents}
-                            onFileUpload={handleFileUpload}
-                            onFileDelete={handleDeleteDoc}
-                            onFilePreview={handlePreviewDoc}
-                            onUpdateRemark={handleUpdateDocRemark}
-                        />
-                    )}
-
-                    {/* ── DISCOM INSPECTION ── */}
-                    {activeTab === 'DISCOM INSPECTION' && (
-                        <DiscomInspectionTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            handleChange={handleChange}
-                            isEditable={isEditable}
-                            isOffice={isOffice}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                            documents={documents}
-                            onFileUpload={handleFileUpload}
-                            onFileDelete={handleDeleteDoc}
-                            onFilePreview={handlePreviewDoc}
-                            onUpdateRemark={handleUpdateDocRemark}
-                        />
-                    )}
-
-                    {/* ── SUBSIDY STATUS ── */}
-                    {activeTab === 'SUBSIDY STATUS' && (
-                        <SubsidyStatusTab
-                            customer={customer}
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            isEditable={isEditable}
-                            onUpdate={onUpdate}
-                            logActivity={logActivity}
-                            fetchLogs={fetchLogs}
-                            user={user}
-                        />
-                    )}
-
-                    {/* ── FINAL REVIEW ── */}
-                    {activeTab === 'FINAL REVIEW' && (
-                        <FinalReviewTab
-                            editData={editData}
-                            setEditData={handleEditDataChange}
-                            handleChange={handleChange}
-                            isEditable={isEditable}
-                            isOperationalChecklistDirty={isOperationalChecklistDirty}
-                            handleSaveOperationalChecklist={handleSaveOperationalChecklist}
-                            documents={documents}
-                            onFileUpload={handleFileUpload}
-                            onFileDelete={handleDeleteDoc}
-                            onFilePreview={handlePreviewDoc}
-                            onUpdateRemark={handleUpdateDocRemark}
-                        />
-                    )}
-
-
+                    <CustomerModalTabsRouter {...tabProps} />
 
                     {/* ── DOCUMENTS ── */}
                     {activeTab === 'DOCUMENTS' && (() => {

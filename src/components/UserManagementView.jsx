@@ -11,7 +11,12 @@ import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, K
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
 function CreateUserModal({ onClose, onCreated, currentUser }) {
-    const [form, setForm] = useState({ name: '', email: '', password: '', role: 'Office', user_type: 'sales' });
+    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office' || currentUser?.role === 'Channel Partner Office';
+    const partnerName = (currentUser?.channel_partner || currentUser?.name || '').trim();
+    const initialFormState = isCP 
+        ? { name: '', email: '', password: '', role: 'Channel Partners', user_type: 'agent', channel_partner: partnerName }
+        : { name: '', email: '', password: '', role: 'Office', user_type: 'sales' };
+    const [form, setForm] = useState(initialFormState);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [showPw, setShowPw] = useState(false);
@@ -24,8 +29,17 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
         return;
     }
 
-    if (form.password.length < 8) {
-        setError('Password must be at least 8 characters.');
+    const validateComplexity = (pw) => {
+        if (pw.length < 8) return 'Password must be at least 8 characters.';
+        if (!/[A-Z]/.test(pw)) return 'Password must contain at least one uppercase letter.';
+        if (!/[a-z]/.test(pw)) return 'Password must contain at least one lowercase letter.';
+        if (!/[0-9]/.test(pw)) return 'Password must contain at least one number.';
+        if (!/[^A-Za-z0-9]/.test(pw)) return 'Password must contain at least one special character.';
+        return null;
+    };
+    const complexityError = validateComplexity(form.password);
+    if (complexityError) {
+        setError(complexityError);
         return;
     }
 
@@ -133,24 +147,26 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
                                 </button>
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-xs font-medium text-stone-600 mb-1">Role *</label>
-                            <select 
-                                value={APP_ROLES.find(r => r.user_type === form.user_type)?.id || 'office'} 
-                                onChange={e => {
-                                    const val = e.target.value;
-                                    const selected = APP_ROLES.find(r => r.id === val);
-                                    setForm(prev => ({
-                                        ...prev,
-                                        user_type: selected.user_type,
-                                        role: selected.role
-                                    }));
-                                }}
-                                className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white"
-                            >
-                                {APP_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-                            </select>
-                        </div>
+                        {!isCP && (
+                            <div>
+                                <label className="block text-xs font-medium text-stone-600 mb-1">Role *</label>
+                                <select 
+                                    value={APP_ROLES.find(r => r.user_type === form.user_type)?.id || 'office'} 
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        const selected = APP_ROLES.find(r => r.id === val);
+                                        setForm(prev => ({
+                                            ...prev,
+                                            user_type: selected.user_type,
+                                            role: selected.role
+                                        }));
+                                    }}
+                                    className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white"
+                                >
+                                    {APP_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                                </select>
+                            </div>
+                        )}
 
                         {(form.user_type === 'channel_partner_office' || form.role === 'Channel Partner Office') && (
                             <div>
@@ -240,15 +256,48 @@ export default function UserManagementView({ currentUser }) {
         setTimeout(() => setToast(null), 4000);
     };
 
+    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office' || currentUser?.role === 'Channel Partner Office';
+    const partnerName = (currentUser?.channel_partner || currentUser?.name || '').trim();
+
     const fetchProfiles = async () => {
         setLoading(true);
-        const { data, error } = await supabase.from('profiles')
-            .select('*').order('created_at', { ascending: false });
-        if (!error) setProfiles(data || []);
+        let query = supabase.from('profiles').select('*').order('created_at', { ascending: false });
+        if (isCP) {
+            if (currentUser?.id && partnerName) {
+                query = query.or(`created_by.eq.${currentUser.id},channel_partner.ilike.${partnerName}`);
+            } else if (currentUser?.id) {
+                query = query.eq('created_by', currentUser.id);
+            } else if (partnerName) {
+                query = query.ilike('channel_partner', partnerName);
+            }
+        }
+        const { data, error } = await query;
+        if (!error && data) {
+            if (isCP) {
+                // For Channel Partner Office, show ONLY sub-agents under this partner / created by this CPO.
+                // Filter out Admins, Super Admins, and other CPOs.
+                const cpoFiltered = data.filter(p => 
+                    p.id !== currentUser.id &&
+                    p.user_type !== 'admin' &&
+                    p.role !== 'Admin' &&
+                    p.user_type !== 'channel_partner_office' &&
+                    p.role !== 'Channel Partner Office' &&
+                    (
+                        (p.created_by && p.created_by === currentUser.id) ||
+                        (partnerName && p.channel_partner && p.channel_partner.trim().toLowerCase() === partnerName.toLowerCase())
+                    )
+                );
+                setProfiles(cpoFiltered);
+            } else {
+                setProfiles(data);
+            }
+        } else {
+            setProfiles(data || []);
+        }
         setLoading(false);
     };
 
-    useEffect(() => { fetchProfiles(); }, []);
+    useEffect(() => { fetchProfiles(); }, [isCP, partnerName, currentUser?.id]);
 
     const handleUpdateRole = async (profileId, field, value) => {
         setActionLoading(profileId);
@@ -491,7 +540,7 @@ export default function UserManagementView({ currentUser }) {
                                         </div>
                                     </td>
                                     <td className="px-4 py-3">
-                                        {isYou || isInactive ? (
+                                        {isYou || isInactive || isCP ? (
                                             <div>
                                                 <span className="text-xs font-semibold text-stone-600">
                                                     {APP_ROLES.find(r => r.user_type === profile.user_type)?.label || profile.role || 'Admin'}

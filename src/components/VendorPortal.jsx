@@ -6,22 +6,25 @@ import {
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Hash, Folder, Tag, ChevronLeft, Search, ClipboardList, Banknote, Calendar, ClipboardCheck,
     Camera, Paperclip, Eye, Trash2, Upload, Image as ImageIcon, X,
-    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, ClipboardPaste, Plus, Check, Copy, Wrench, RefreshCw
+    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, ClipboardPaste, Plus, Check, Copy, Wrench, RefreshCw, Save
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
+    if (Array.isArray(raw)) return raw.length > 0 ? raw : [''];
+    if (typeof raw !== 'string') raw = String(raw);
+    
     try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) return parsed.length > 0 ? parsed : [''];
     } catch (e) { }
 
     if (raw.includes('\n')) {
-        return raw.split('\n').map(s => s.trim()).filter(Boolean);
+        return raw.split('\n').map(s => String(s).trim()).filter(Boolean);
     }
     if (raw.includes(',')) {
-        return raw.split(',').map(s => s.trim()).filter(Boolean);
+        return raw.split(',').map(s => String(s).trim()).filter(Boolean);
     }
     return [raw.trim()];
 };
@@ -76,6 +79,9 @@ export default function VendorPortal({ user, onLogout }) {
     const [showGiveUpModal, setShowGiveUpModal] = useState(false);
     const [giveUpReason, setGiveUpReason] = useState('');
     const [givingUp, setGivingUp] = useState(false);
+
+    // Custom Alert Popup Modal state (No browser alert popups)
+    const [customAlert, setCustomAlert] = useState(null);
 
     // Fetch BOM for Print (Read-Only)
     const handleOpenBomModal = async (cust) => {
@@ -159,26 +165,18 @@ export default function VendorPortal({ user, onLogout }) {
         if (silent) setRefreshingAssignments(true);
         else setLoading(true);
         try {
-            // Select all active leads and filter locally for case-insensitivity & whitespace checks
             const { data, error } = await supabase
                 .from('admin')
                 .select('*')
                 .is('deleted_at', null)
+                .in('stage', ['MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO'])
+                .neq('installation_status', 'Give Up')
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
             if (data) {
-                const myName = (user.name || '').trim().toLowerCase();
-                const myCustomers = data.filter(c => {
-                    const vendorName = (c.vendor || '').trim().toLowerCase();
-                    // If vendor gave up this project, remove it from active vendor view
-                    if (c.installation_status === 'Give Up' && vendorName === myName) {
-                        return false;
-                    }
-                    // Vendors see their assigned projects from Material Delivery onward.
-                    return vendorName === myName && ['MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO'].includes(c.stage);
-                });
-                setCustomers(myCustomers);
+                // With RLS enabled, data will only contain records assigned to this vendor
+                setCustomers(data);
             }
         } catch (err) {
             console.error('Error fetching vendor customers:', err);
@@ -235,6 +233,16 @@ export default function VendorPortal({ user, onLogout }) {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [user?.name, fetchCustomers]);
+
+    // Sync selectedCust state with fresh database values when updates occur
+    useEffect(() => {
+        if (selectedCust) {
+            const fresh = customers.find(c => c.id === selectedCust.id);
+            if (fresh && JSON.stringify(fresh) !== JSON.stringify(selectedCust)) {
+                setSelectedCust(fresh);
+            }
+        }
+    }, [customers]);
 
     // Handle selecting a customer card
     const handleSelectCustomer = async (cust) => {
@@ -336,9 +344,18 @@ export default function VendorPortal({ user, onLogout }) {
 
         setUploadingPhoto(true);
         try {
+            // Delete previous geo tag photos so the new photo replaces them cleanly
+            const existingGeo = (documents || []).filter(d => d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag');
+            for (const oldDoc of existingGeo) {
+                await deleteDocument(oldDoc);
+            }
+
             const newDoc = await uploadDocument(file, selectedCust.id, 'geo_tag_image', user?.id);
             if (newDoc) {
-                setDocuments(prev => [newDoc, ...(prev || [])]);
+                setDocuments(prev => [
+                    newDoc,
+                    ...(prev || []).filter(d => d.doc_type !== 'geo_tag_image' && d.doc_type !== 'geo_tag')
+                ]);
                 setGeoTagImage(true);
                 
                 // Update admin record directly
@@ -363,7 +380,11 @@ export default function VendorPortal({ user, onLogout }) {
             }
         } catch (err) {
             console.error('Error uploading geo photo:', err);
-            alert('Failed to upload photo: ' + (err.message || err));
+            setCustomAlert({
+                title: 'Upload Error',
+                message: 'Failed to upload photo: ' + (err.message || err),
+                type: 'error'
+            });
         } finally {
             setUploadingPhoto(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -408,23 +429,76 @@ export default function VendorPortal({ user, onLogout }) {
         }
     };
 
-    const commissionQuoteAmount = parseIndianNumber(vendorQuote);
-    const hasCommissionQuote = commissionQuoteAmount !== '' && Number.isFinite(commissionQuoteAmount) && commissionQuoteAmount > 0;
-    const canMoveToGeoTag = installationStatus === 'Yes' && Boolean(installationDate) && hasCommissionQuote;
+    const commissionQuoteAmount = vendorQuote !== '' && vendorQuote !== null && vendorQuote !== undefined ? parseIndianNumber(vendorQuote) : null;
+    const canMoveToGeoTag = installationStatus === 'Yes';
+
+    const isInstallationDirty = Boolean(
+        String(installationStatus || 'Pending').trim() !== String(selectedCust?.installation_status || 'Pending').trim() ||
+        String(installationDate || '').trim() !== String(selectedCust?.installation_date || '').trim() ||
+        String(vendorNote || '').trim() !== String(selectedCust?.vendor_note || '').trim() ||
+        String(vendorQuote || '').trim() !== String(selectedCust?.vendor_quote ?? '').trim()
+    );
+
+    const isDeliveryDirty = Boolean(
+        String(inverterSerialNo || '').trim() !== String(selectedCust?.inverter_serial_no || '').trim() ||
+        String(invoiceNo || '').trim() !== String(selectedCust?.invoice_no || '').trim() ||
+        String(driverName || '').trim() !== String(selectedCust?.driver_name || '').trim() ||
+        String(driverPhone || '').trim() !== String(selectedCust?.driver_phone_number || '').trim() ||
+        JSON.stringify(panelSerials.filter(Boolean)) !== JSON.stringify(parsePanelSerials(selectedCust?.panel_serial_no).filter(Boolean))
+    );
+
+    const isGeoTagDirty = Boolean(
+        String(geoTagStatus || 'Pending').trim() !== String(selectedCust?.geo_tag_status || 'Pending').trim()
+    );
 
     // Save changes to Supabase and optionally progress stage
     const handleSaveChanges = async (nextStage = null) => {
-        // Keep the hand-off requirements enforced even if this handler is called
-        // outside of the button shown in the installation form.
-        if (nextStage === 'GEO TAG PHOTO' && !canMoveToGeoTag) {
-            alert('To move forward, enter the Commission Quote, select an Installation Date, and set Installation Status to Yes.');
-            return;
+        const todayStr = new Date().toISOString().split('T')[0];
+        const effectiveInstallDate = installationDate || (installationStatus === 'Yes' ? todayStr : null);
+
+        // Comprehensive Logical Validation when advancing from Installation to Geo Tag
+        if (nextStage === 'GEO TAG PHOTO') {
+            const missingItems = [];
+            if (installationStatus !== 'Yes') {
+                missingItems.push('Physical Installation Status must be marked "Yes".');
+            }
+            if (!effectiveInstallDate) {
+                missingItems.push('Installation Date must be selected.');
+            }
+            const quoteNum = parseIndianNumber(vendorQuote);
+            if (vendorQuote === '' || vendorQuote === null || vendorQuote === undefined || !Number.isFinite(quoteNum) || quoteNum <= 0) {
+                missingItems.push('Commission Quote Amount (₹) is required and must be greater than 0.');
+            }
+
+            if (missingItems.length > 0) {
+                setCustomAlert({
+                    title: 'Installation Incomplete',
+                    message: `To move forward to Geo Tag Photo, please complete the following:\n\n• ${missingItems.join('\n• ')}`,
+                    type: 'warning'
+                });
+                return;
+            }
         }
 
-        const hasGeoTagPhoto = documents.some(doc => doc.doc_type === 'geo_tag_image' || doc.doc_type === 'geo_tag');
-        if (nextStage === 'DISCOM SUBMISSION' && (geoTagStatus !== 'Proceed' || !hasGeoTagPhoto)) {
-            alert('To move forward, set Geo Tag Photo Status to Proceed and attach a geo-tag photograph.');
-            return;
+        // Comprehensive Logical Validation when advancing from Geo Tag to Discom Submission
+        if (nextStage === 'DISCOM SUBMISSION') {
+            const missingItems = [];
+            if (geoTagStatus !== 'Proceed') {
+                missingItems.push('Geo Tag Photo Status must be set to "Proceed".');
+            }
+            const hasGeoTagPhoto = (documents || []).some(doc => doc.doc_type === 'geo_tag_image' || doc.doc_type === 'geo_tag');
+            if (!hasGeoTagPhoto) {
+                missingItems.push('Uploading a Geo-Tag site photograph is compulsory.');
+            }
+
+            if (missingItems.length > 0) {
+                setCustomAlert({
+                    title: 'Geo Tag Report Incomplete',
+                    message: `To move forward to Discom Submission, please complete the following:\n\n• ${missingItems.join('\n• ')}`,
+                    type: 'warning'
+                });
+                return;
+            }
         }
 
         setSaving(true);
@@ -442,9 +516,9 @@ export default function VendorPortal({ user, onLogout }) {
                 geo_tag_status: geoTagStatus,
                 geo_tag_image: geoTagImage,
                 installation_status: installationStatus,
-                installation_date: installationDate || null,
+                installation_date: effectiveInstallDate,
                 vendor_note: vendorNote || null,
-                vendor_quote: commissionQuoteAmount === '' ? null : commissionQuoteAmount,
+                vendor_quote: commissionQuoteAmount,
             };
 
             if (nextStage) {
@@ -488,11 +562,29 @@ export default function VendorPortal({ user, onLogout }) {
                     stage: nextStage || prev.stage
                 }));
 
-                setTimeout(() => {
-                    setView('list');
-                }, 1000);
+                if (nextStage === 'GEO TAG PHOTO') {
+                    // Switch tab directly to Geo Tag so vendor can immediately upload the photo!
+                    setActiveTab('GEO');
+                    setTimeout(() => {
+                        setSaveSuccess(false);
+                    }, 3000);
+                } else if (nextStage === 'DISCOM SUBMISSION') {
+                    // Finished vendor flow for this lead, return to list
+                    setTimeout(() => {
+                        setView('list');
+                    }, 1000);
+                } else {
+                    // Regular save in place
+                    setTimeout(() => {
+                        setSaveSuccess(false);
+                    }, 3000);
+                }
             } else {
-                alert(`Error saving changes: ${error.message}`);
+                setCustomAlert({
+                    title: 'Database Error',
+                    message: `Error saving changes: ${error.message}`,
+                    type: 'error'
+                });
             }
         } catch (err) {
             console.error('Failed to save details:', err);
@@ -530,7 +622,11 @@ export default function VendorPortal({ user, onLogout }) {
             setView('list');
         } catch (err) {
             console.error('Error giving up project:', err);
-            alert('Failed to submit give up: ' + err.message);
+            setCustomAlert({
+                title: 'Submission Error',
+                message: 'Failed to submit give up: ' + err.message,
+                type: 'error'
+            });
         } finally {
             setGivingUp(false);
         }
@@ -538,8 +634,8 @@ export default function VendorPortal({ user, onLogout }) {
 
     // Stats calculations
     const materialDeliveryCount = customers.filter(c => c.stage === 'MATERIAL DELIVERY').length;
-    const geoPendingCount = customers.filter(c => c.stage === 'GEO TAG PHOTO' && (c.geo_tag_status || 'Pending') !== 'Proceed').length;
     const installationCount = customers.filter(c => c.stage === 'INSTALLATION STATUS').length;
+    const geoTagCount = customers.filter(c => c.stage === 'GEO TAG PHOTO').length;
 
     // Filtered lists: search across all fields safely and across all stages if a query is typed
     const filteredCustomers = customers.filter(c => {
@@ -641,7 +737,7 @@ export default function VendorPortal({ user, onLogout }) {
                             onClick={() => setActiveTab('GEO')}
                         >
                             <p className={`text-[8px] font-bold uppercase tracking-wider ${activeTab === 'GEO' ? 'text-amber-100' : 'text-stone-400'}`}>Geo Tag</p>
-                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'GEO' ? 'text-white' : 'text-stone-850'}`}>{geoPendingCount}</p>
+                            <p className={`text-base sm:text-lg font-black mt-0.5 ${activeTab === 'GEO' ? 'text-white' : 'text-stone-850'}`}>{geoTagCount}</p>
                         </div>
                     </div>
 
@@ -860,7 +956,13 @@ export default function VendorPortal({ user, onLogout }) {
                         {/* Editable Form Card */}
                         <div className="space-y-4">
                             <h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest border-b border-stone-100 pb-1.5">
-                                {activeTab === 'INSTALLATION' ? 'Installation Status & Details' : 'Geo Tag Photo Report'}
+                                {activeTab === 'DELIVERY' 
+                                    ? 'Material Delivery Details' 
+                                    : activeTab === 'INSTALLATION' 
+                                        ? 'Installation Status & Details' 
+                                        : activeTab === 'MATERIAL'
+                                            ? 'Material Integration & BOM'
+                                            : 'Geo Tag Photo Report'}
                             </h3>
 
                             {/* ─── Active Tab: MATERIAL INTEGRATION & BOM ─── */}
@@ -983,7 +1085,7 @@ export default function VendorPortal({ user, onLogout }) {
                                                 type="text"
                                                 placeholder="e.g. 9876543210"
                                                 value={driverPhone}
-                                                onChange={e => setDriverPhone(e.target.value)}
+                                                onChange={e => setDriverPhone(e.target.value.replace(/[^0-9]/g, ''))}
                                                 className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
                                             />
                                         </div>
@@ -1106,10 +1208,19 @@ export default function VendorPortal({ user, onLogout }) {
                                             type="button"
                                             onClick={() => handleSaveChanges(null)}
                                             disabled={saving}
-                                            className="flex-1 bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                            className={`flex-1 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
+                                                isDeliveryDirty
+                                                    ? 'bg-stone-900 text-white hover:bg-stone-850'
+                                                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                            }`}
                                         >
-                                            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check size={12} />}
-                                            Save Delivery Info
+                                            {saving ? (
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            ) : isDeliveryDirty ? (
+                                                <><Save size={13} /> Save Delivery Info</>
+                                            ) : (
+                                                <><Check size={13} /> Saved</>
+                                            )}
                                         </button>
                                         {selectedCust.stage === 'MATERIAL DELIVERY' && (
                                             <button
@@ -1134,11 +1245,10 @@ export default function VendorPortal({ user, onLogout }) {
                                         <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider">
                                             Geo Tag Photo Status
                                         </label>
-                                        <div className="grid grid-cols-3 gap-2">
+                                        <div className="grid grid-cols-2 gap-2">
                                             {[
-                                                { id: 'No', label: 'No', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' },
-                                                { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' },
-                                                { id: 'Proceed', label: 'Proceed', activeClass: 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/10', dotClass: 'bg-white' }
+                                                { id: 'Proceed', label: 'Proceed', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
+                                                { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
                                             ].map(tag => {
                                                 const isSelected = geoTagStatus === tag.id;
                                                 return (
@@ -1146,7 +1256,7 @@ export default function VendorPortal({ user, onLogout }) {
                                                         key={tag.id}
                                                         type="button"
                                                         onClick={() => setGeoTagStatus(tag.id)}
-                                                        className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                                                        className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
                                                             isSelected
                                                                 ? tag.activeClass
                                                                 : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
@@ -1200,46 +1310,48 @@ export default function VendorPortal({ user, onLogout }) {
                                                     <div key={doc.id} className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-stone-200 shadow-xs">
                                                         <div className="flex items-center gap-2 min-w-0 flex-1">
                                                             <ImageIcon size={14} className="text-amber-500 flex-shrink-0" />
-                                                            <span className="text-[11px] font-semibold text-stone-800 truncate">{doc.file_name}</span>
+                                                            <span className="text-xs font-semibold text-stone-700 truncate">{doc.file_name}</span>
                                                         </div>
-                                                        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                                                        <div className="flex items-center gap-2">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handlePhotoPreview(doc)}
-                                                                className="text-[9px] font-bold text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                                                className="text-stone-500 hover:text-stone-800 p-1 rounded-lg hover:bg-stone-100 transition cursor-pointer"
+                                                                title="View full photo"
                                                             >
-                                                                <Eye size={10} /> View
+                                                                <Eye size={13} />
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => fileInputRef.current?.click()}
-                                                                className="text-[9px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                                                className="text-blue-600 hover:text-blue-800 p-1 rounded-lg hover:bg-blue-50 transition cursor-pointer"
+                                                                title="Change / Replace photo"
                                                             >
-                                                                <Upload size={10} /> Change
+                                                                <Upload size={13} />
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handlePhotoDelete(doc)}
-                                                                className="text-[9px] font-bold text-red-500 hover:text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                                                className="text-red-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                                                                title="Delete photo"
                                                             >
-                                                                <Trash2 size={10} /> Remove
+                                                                <Trash2 size={13} />
                                                             </button>
                                                         </div>
                                                     </div>
                                                 ))}
                                             </div>
                                         ) : (
-                                            <div className="text-center py-4 bg-white rounded-xl border border-dashed border-stone-200 text-stone-400">
-                                                <Camera size={18} className="mx-auto mb-1 text-stone-300" />
-                                                <p className="text-[10px] font-semibold">No geo-tag photograph uploaded yet</p>
-                                            </div>
+                                            <p className="text-[10px] text-stone-400 italic text-center py-2">
+                                                No photo uploaded yet. Tap "Attach / Upload Photo" to add one.
+                                            </p>
                                         )}
                                     </div>
 
                                     {saveSuccess && (
                                         <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl text-[10px] font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
                                             <CheckCircle2 className="w-4.5 h-4.5 flex-shrink-0" />
-                                            <span>Geo tag report saved successfully!</span>
+                                            <span>Geo Tag Report saved successfully!</span>
                                         </div>
                                     )}
 
@@ -1260,9 +1372,19 @@ export default function VendorPortal({ user, onLogout }) {
                                             type="button"
                                             onClick={() => handleSaveChanges(null)}
                                             disabled={saving}
-                                            className="mt-2 w-full text-stone-600 hover:text-stone-900 font-bold text-[10px] py-2 transition disabled:opacity-50 cursor-pointer"
+                                            className={`mt-2 w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
+                                                isGeoTagDirty
+                                                    ? 'bg-stone-900 text-white hover:bg-stone-850'
+                                                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                            }`}
                                         >
-                                            Save Geo Tag Report Only
+                                            {saving ? (
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            ) : isGeoTagDirty ? (
+                                                <><Save size={13} /> Save Geo Tag Report Only</>
+                                            ) : (
+                                                <><Check size={13} /> Saved</>
+                                            )}
                                         </button>
                                     </div>
                                 </div>
@@ -1293,6 +1415,9 @@ export default function VendorPortal({ user, onLogout }) {
                                                                 setShowGiveUpModal(true);
                                                             } else {
                                                                 setInstallationStatus(tag.id);
+                                                                if (tag.id === 'Yes' && !installationDate) {
+                                                                    setInstallationDate(new Date().toISOString().split('T')[0]);
+                                                                }
                                                             }
                                                         }}
                                                         className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
@@ -1380,39 +1505,58 @@ export default function VendorPortal({ user, onLogout }) {
                                     )}
 
                                     <div className="pt-2">
-                                        {selectedCust.stage === 'INSTALLATION STATUS' && canMoveToGeoTag ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleSaveChanges('GEO TAG PHOTO')}
-                                                disabled={saving}
-                                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                            >
-                                                {saving ? (
-                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Moving Stage...</>
-                                                ) : (
-                                                    <><ChevronRight size={14} /> Save & Move to Geo Tag Photo</>
-                                                )}
-                                            </button>
-                                        ) : (
-                                            <>
+                                        {installationStatus === 'Yes' ? (
+                                            <div className="space-y-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSaveChanges('GEO TAG PHOTO')}
+                                                    disabled={saving}
+                                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                                >
+                                                    {saving ? (
+                                                        <><Loader2 className="w-4 h-4 animate-spin" /> Moving Stage...</>
+                                                    ) : (
+                                                        <><ChevronRight size={14} /> Save & Move to Geo Tag Photo</>
+                                                    )}
+                                                </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => handleSaveChanges(null)}
                                                     disabled={saving}
-                                                    className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                                    className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
+                                                        isInstallationDirty
+                                                            ? 'bg-stone-900 text-white hover:bg-stone-850'
+                                                            : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                                    }`}
                                                 >
                                                     {saving ? (
-                                                        <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+                                                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>
+                                                    ) : isInstallationDirty ? (
+                                                        <><Save size={13} /> Save Installation Status</>
                                                     ) : (
-                                                        'Save Installation Status'
+                                                        <><Check size={13} /> Saved</>
                                                     )}
                                                 </button>
-                                                {selectedCust.stage === 'INSTALLATION STATUS' && (
-                                                    <p className="mt-2 text-center text-[10px] font-medium text-stone-400">
-                                                        To move forward: enter the Commission Quote, set Installation Status to Yes, and select the Installation Date.
-                                                    </p>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveChanges(null)}
+                                                disabled={saving}
+                                                className={`w-full py-3.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
+                                                    isInstallationDirty
+                                                        ? 'bg-stone-900 text-white hover:bg-stone-850'
+                                                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                                }`}
+                                            >
+                                                {saving ? (
+                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+                                                ) : isInstallationDirty ? (
+                                                    <><Save size={14} /> Save Installation Status</>
+                                                ) : (
+                                                    <><Check size={14} /> Saved</>
                                                 )}
-                                            </>
+                                            </button>
                                         )}
                                     </div>
                                 </div>
@@ -1666,6 +1810,32 @@ export default function VendorPortal({ user, onLogout }) {
                                 </>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Custom Alert Popup Modal (No native browser alert()) */}
+            {customAlert && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200" onClick={() => setCustomAlert(null)}>
+                    <div className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl border border-stone-150 animate-in zoom-in-95 duration-200 text-center space-y-4" onClick={e => e.stopPropagation()}>
+                        <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ${
+                            customAlert.type === 'error' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                            {customAlert.type === 'error' ? <AlertCircle size={24} /> : <AlertTriangle size={24} />}
+                        </div>
+                        <div>
+                            <h4 className="text-sm font-extrabold text-stone-850">{customAlert.title || 'Attention Required'}</h4>
+                            <p className="text-xs text-stone-600 font-medium mt-2 leading-relaxed whitespace-pre-line text-left bg-stone-50 p-3 rounded-xl border border-stone-200/60">
+                                {customAlert.message}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setCustomAlert(null)}
+                            className="w-full py-3 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer active:scale-[0.98]"
+                        >
+                            Understood
+                        </button>
                     </div>
                 </div>
             )}

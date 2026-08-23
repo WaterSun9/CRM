@@ -1,13 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
-const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, DELETE, OPTIONS",
+const ALLOWED_ORIGINS = ["https://watersun9.github.io", "http://localhost:5173", "http://localhost:3000"]
+
+function getCorsHeaders(req: Request) {
+    const origin = req.headers.get("Origin") || ""
+    const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+    return {
+        "Access-Control-Allow-Origin": allowed,
+        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+        "Access-Control-Allow-Methods": "POST, DELETE, OPTIONS",
+    }
 }
 
 serve(async (req) => {
+    const corsHeaders = getCorsHeaders(req)
     if (req.method === "OPTIONS") {
         return new Response("ok", { headers: corsHeaders })
     }
@@ -20,6 +27,58 @@ serve(async (req) => {
     try {
         const body = await req.json()
         const action = body.action || (req.method === "DELETE" ? "deactivate" : "create")
+
+        // ── Verify caller is admin ────────────────────────────────────────
+        const authHeader = req.headers.get("Authorization")
+        if (!authHeader) {
+            return new Response(
+                JSON.stringify({ error: "Unauthorized: No token provided" }),
+                { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+        }
+
+        const token = authHeader.replace("Bearer ", "")
+        const { data: { user: caller }, error: callerAuthErr } = await adminClient.auth.getUser(token)
+
+        if (callerAuthErr || !caller) {
+            return new Response(
+                JSON.stringify({ error: "Unauthorized: Invalid or expired token" }),
+                { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+        }
+
+        const { data: callerProfile } = await adminClient
+            .from("profiles")
+            .select("user_type, channel_partner")
+            .eq("id", caller.id)
+            .single()
+
+        if (callerProfile?.user_type !== "admin" && callerProfile?.user_type !== "channel_partner_office") {
+            return new Response(
+                JSON.stringify({ error: "Forbidden: Access denied" }),
+                { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+        }
+
+        const isCP = callerProfile?.user_type === "channel_partner_office";
+
+        // Security check: Channel Partner Office can only manage users belonging to their own channel partner
+        if (isCP && ["deactivate", "reactivate", "delete", "update_email"].includes(action)) {
+            const targetId = body.user_id;
+            if (targetId) {
+                const { data: targetProf } = await adminClient
+                    .from("profiles")
+                    .select("channel_partner")
+                    .eq("id", targetId)
+                    .single();
+                if (targetProf?.channel_partner !== callerProfile.channel_partner) {
+                    return new Response(
+                        JSON.stringify({ error: "Forbidden: You do not own this sub-partner account" }),
+                        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                    )
+                }
+            }
+        }
 
         // ── DEACTIVATE USER ───────────────────────────────────────────────
         if (action === "deactivate") {
@@ -135,7 +194,14 @@ serve(async (req) => {
         if (action === "create") {
             console.log("Body:", JSON.stringify(body))
 
-            const { name, email, password, role, user_type } = body
+            let { name, email, password, role, user_type, channel_partner } = body
+
+            if (isCP) {
+                // Limit creations for CP Office
+                user_type = "agent";
+                role = "Channel Partners";
+                channel_partner = (callerProfile?.channel_partner || callerProfile?.name || body.channel_partner || "").trim();
+            }
 
             // Step 1: create the auth user with the dummy/temp password
             const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
@@ -149,7 +215,13 @@ serve(async (req) => {
 
             // Step 2: create their profile row
             const { error: profileError } = await adminClient.from("profiles").insert({
-                id: authUser.user.id, name, email, role, user_type
+                id: authUser.user.id,
+                created_by: caller.id,
+                name,
+                email,
+                role,
+                user_type,
+                channel_partner
             })
 
             if (profileError) {

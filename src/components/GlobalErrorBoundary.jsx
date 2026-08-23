@@ -49,7 +49,11 @@ export default class GlobalErrorBoundary extends React.Component {
     };
 
     handleCopy = () => {
-        const payload = `Error: ${this.state.error?.message || 'Unknown'}\n\nStack:\n${this.state.error?.stack || 'No stack'}\n\nComponent Stack:\n${this.state.errorInfo?.componentStack || 'No component stack'}`;
+        const isDev = import.meta.env.DEV;
+        let payload = `Error: ${this.state.error?.message || 'Unknown'}`;
+        if (isDev) {
+            payload += `\n\nStack:\n${this.state.error?.stack || 'No stack'}\n\nComponent Stack:\n${this.state.errorInfo?.componentStack || 'No component stack'}`;
+        }
         navigator.clipboard.writeText(payload).then(() => {
             this.setState({ copied: true });
             setTimeout(() => this.setState({ copied: false }), 2000);
@@ -110,8 +114,8 @@ export default class GlobalErrorBoundary extends React.Component {
                             </div>
                         </div>
 
-                        {/* Component Stack */}
-                        {errorInfo?.componentStack && (
+                        {/* Component Stack (Dev only) */}
+                        {import.meta.env.DEV && errorInfo?.componentStack && (
                             <div>
                                 <span className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-1.5 block">
                                     Component Stack
@@ -122,8 +126,8 @@ export default class GlobalErrorBoundary extends React.Component {
                             </div>
                         )}
 
-                        {/* Technical Stack Trace */}
-                        {error?.stack && (
+                        {/* Technical Stack Trace (Dev only) */}
+                        {import.meta.env.DEV && error?.stack && (
                             <details className="group">
                                 <summary className="cursor-pointer text-xs font-semibold text-stone-600 hover:text-stone-900 select-none py-1 flex items-center gap-1.5">
                                     <span className="transition-transform group-open:rotate-90 text-[10px]">▶</span>
