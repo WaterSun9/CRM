@@ -504,7 +504,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         value={partnerName}
                                         disabled
                                         className="w-full bg-stone-100 border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-stone-700 cursor-not-allowed"
-                                    />
+                                    /> 
                                 </div>
                             ) : (
                                 <ChannelPartnerAutocomplete
