@@ -29,6 +29,7 @@ export default function MaterialIntegrationTab({
     const [materialLoadedBy, setMaterialLoadedBy] = useState('');
     const [materialLoadedDate, setMaterialLoadedDate] = useState('');
     const [actionSaving, setActionSaving] = useState(false);
+    const [errorMessage, setErrorMessage] = useState(null);
 
     const handleFillMilestones = async () => {
         const today = new Date().toISOString().split('T')[0];
@@ -249,9 +250,10 @@ export default function MaterialIntegrationTab({
 
             await loadBOM();
             setEditingSection(null);
+            setErrorMessage(null);
         } catch (err) {
             console.error('saveMilestones exception:', err);
-            alert('Failed to save milestones: ' + err.message);
+            setErrorMessage('Failed to save milestones: ' + err.message);
         } finally {
             setActionSaving(false);
         }
@@ -307,23 +309,24 @@ export default function MaterialIntegrationTab({
 
             if (deleteError) throw deleteError;
 
-            const itemsToInsert = bomItems.map(item => ({
-                bom_id: currentBomId,
-                product_name: item.product_name,
-                quantity:
-                    item.quantity !== undefined &&
-                    item.quantity !== null &&
-                    item.quantity !== ''
-                        ? String(item.quantity).trim()
-                        : null,
-                integration_by: item.integration_by || null,
-                note: item.note || null,
-            }));
+            // Filter out empty rows
+            const validItems = bomItems.filter(item => item.item_name && item.item_name.trim() !== '');
 
-            if (itemsToInsert.length > 0) {
+            if (validItems.length > 0) {
+                const rowsToInsert = validItems.map((item, index) => ({
+                    bom_id: currentBomId,
+                    item_name: item.item_name,
+                    specification: item.specification || null,
+                    rating: item.rating || null,
+                    quantity: Number(item.quantity) || 1,
+                    unit: item.unit || 'Nos',
+                    remark: item.remark || null,
+                    item_order: index + 1
+                }));
+
                 const { error: insertError } = await supabase
                     .from('bom_items')
-                    .insert(itemsToInsert);
+                    .insert(rowsToInsert);
 
                 if (insertError) throw insertError;
             }
@@ -340,11 +343,12 @@ export default function MaterialIntegrationTab({
 
             await loadBOM();
             setEditingSection(null);
+            setErrorMessage(null);
             return true;
 
         } catch (err) {
             console.error('saveBOM exception:', err);
-            alert('Failed to save BOM items: ' + err.message);
+            setErrorMessage('Failed to save BOM items: ' + err.message);
             return false;
         } finally {
             setActionSaving(false);
@@ -419,6 +423,18 @@ export default function MaterialIntegrationTab({
                     </button>
                 </div>
             </div>
+
+            {errorMessage && (
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-center justify-between text-xs text-rose-800">
+                    <div className="flex items-center gap-2">
+                        <AlertCircle size={15} className="text-rose-600 flex-shrink-0" />
+                        <span className="font-semibold">{errorMessage}</span>
+                    </div>
+                    <button type="button" onClick={() => setErrorMessage(null)} className="text-rose-400 hover:text-rose-700 cursor-pointer">
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
 
             {/* 1. Material Order Specifications (View-Only Reference exactly matching Material Order tab) */}
             <section id="section-mat_order_ref">

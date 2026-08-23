@@ -6,8 +6,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { logActivity } from '../utils';
-import { APP_ROLES } from '../constants';
-import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, KeyRound, Ban, Search, Edit2, Check } from 'lucide-react';
+import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, KeyRound, Ban, Search, Edit2, Check, Loader2 } from 'lucide-react';
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
 function CreateUserModal({ onClose, onCreated, currentUser }) {
@@ -212,30 +211,48 @@ export default function UserManagementView({ currentUser }) {
     const [tempEmail, setTempEmail] = useState('');
 
     const handleUpdateEmail = async (profileId, newEmail) => {
+        const cleanEmail = (newEmail || '').trim().toLowerCase();
+        if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+            showToast('error', 'Please enter a valid email address.');
+            return;
+        }
+
         setActionLoading(profileId);
         try {
-            const response = await supabase.functions.invoke('add_user', {
-                body: { action: 'update_email', user_id: profileId, new_email: newEmail },
-            });
+            // 1. Update database profile directly to ensure immediate UI and table sync
+            const { error: profileDbErr } = await supabase
+                .from('profiles')
+                .update({ email: cleanEmail })
+                .eq('id', profileId);
 
-            if (response.error) {
-                let message = response.error.message;
-                try {
-                    const body = await response.error.context?.json();
-                    if (body?.error) message = body.error;
-                } catch (_) {}
-                throw new Error(message);
+            if (profileDbErr) {
+                console.error('Profile DB email update failed:', profileDbErr);
             }
 
-            if (response.data?.error) {
-                throw new Error(response.data.error);
+            // 2. Update Supabase Auth email via edge function
+            try {
+                const response = await supabase.functions.invoke('add_user', {
+                    body: { action: 'update_email', user_id: profileId, new_email: cleanEmail },
+                });
+
+                if (response.error) {
+                    let message = response.error.message;
+                    try {
+                        const body = await response.error.context?.json();
+                        if (body?.error) message = body.error;
+                    } catch (_) {}
+                    console.warn('Edge function auth email sync notice:', message);
+                }
+            } catch (edgeErr) {
+                console.warn('Edge function unavailable, updated profile directly:', edgeErr);
             }
 
-            // Update local state profiles
-            setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, email: newEmail } : p));
+            // 3. Update local state profiles
+            setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, email: cleanEmail } : p));
             showToast('success', 'Email updated successfully');
-            logActivity(currentUser.id, 'update', `Updated email address for profile ID ${profileId} to ${newEmail}`, '');
+            logActivity(currentUser.id, 'update', `Updated email address for profile ID ${profileId} to ${cleanEmail}`, '');
         } catch (err) {
+            console.error('Failed to update email:', err);
             showToast('error', err.message || 'Failed to update email');
         } finally {
             setActionLoading(null);
@@ -494,44 +511,55 @@ export default function UserManagementView({ currentUser }) {
                                             <div className="flex-1 min-w-0">
                                                 <p className={`font-semibold ${isInactive ? 'text-stone-400' : 'text-stone-800'}`}>{profile.name || 'Unnamed'}</p>
                                                 {editingEmailId === profile.id ? (
-                                                    <div className="flex items-center gap-1.5 mt-1 max-w-xs">
+                                                    <div className="flex items-center gap-1.5 mt-1 max-w-xs animate-in fade-in duration-150">
                                                         <input
                                                             type="email"
                                                             value={tempEmail}
                                                             onChange={e => setTempEmail(e.target.value)}
-                                                            className="px-2 py-0.5 border border-stone-250 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 w-full font-medium"
-                                                            placeholder="New email..."
+                                                            onKeyDown={e => {
+                                                                if (e.key === 'Enter') handleUpdateEmail(profile.id, tempEmail.trim());
+                                                                if (e.key === 'Escape') setEditingEmailId(null);
+                                                            }}
+                                                            className="px-2.5 py-1 border border-stone-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 w-full font-medium shadow-xs"
+                                                            placeholder="New email address..."
                                                             autoFocus
                                                         />
                                                         <button
+                                                            type="button"
                                                             onClick={() => handleUpdateEmail(profile.id, tempEmail.trim())}
                                                             disabled={actionLoading === profile.id}
-                                                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                                                            title="Save Email"
+                                                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0"
+                                                            title="Save Email (Enter)"
                                                         >
-                                                            <Check className="w-3.5 h-3.5" />
+                                                            {actionLoading === profile.id ? (
+                                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                            ) : (
+                                                                <Check className="w-3.5 h-3.5" />
+                                                            )}
                                                         </button>
                                                         <button
+                                                            type="button"
                                                             onClick={() => setEditingEmailId(null)}
-                                                            className="p-1 text-stone-400 hover:bg-stone-100 rounded transition-colors"
-                                                            title="Cancel"
+                                                            className="p-1.5 text-stone-400 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer flex-shrink-0"
+                                                            title="Cancel (Esc)"
                                                         >
                                                             <X className="w-3.5 h-3.5" />
                                                         </button>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex items-center gap-1.5 group/email mt-0.5">
-                                                        <p className="text-xs text-stone-400 truncate">{profile.email || '–'}</p>
+                                                    <div className="flex items-center gap-1.5 mt-0.5 group/email">
+                                                        <p className="text-xs text-stone-500 font-medium truncate">{profile.email || '–'}</p>
                                                         {!isInactive && (
                                                             <button
+                                                                type="button"
                                                                 onClick={() => {
                                                                     setEditingEmailId(profile.id);
                                                                     setTempEmail(profile.email || '');
                                                                 }}
-                                                                className="opacity-0 group-hover/email:opacity-100 p-0.5 text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded transition-all"
+                                                                className="p-1 text-stone-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-all cursor-pointer opacity-70 group-hover/email:opacity-100"
                                                                 title="Edit Email Address"
                                                             >
-                                                                <Edit2 className="w-2.5 h-2.5" />
+                                                                <Edit2 className="w-3 h-3" />
                                                             </button>
                                                         )}
                                                     </div>

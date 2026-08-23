@@ -49,6 +49,7 @@ export const DEFAULT_LEAD_FORM = {
     dcr_certificate: false,
     signature_pic: false,
     stamp: false,
+    file_status: false,
     pm_surya_ghar_stamp: false,
     discom_submission: null,
     discom_inspection: 'No',

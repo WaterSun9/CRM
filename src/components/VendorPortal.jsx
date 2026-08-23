@@ -402,7 +402,6 @@ export default function VendorPortal({ user, onLogout }) {
 
     // Delete photo handler
     const handlePhotoDelete = async (doc) => {
-        if (!window.confirm(`Delete ${doc.file_name}?`)) return;
         try {
             await deleteDocument(doc);
             const remaining = (documents || []).filter(d => d.id !== doc.id);
@@ -414,6 +413,11 @@ export default function VendorPortal({ user, onLogout }) {
             }
         } catch (err) {
             console.error('Error deleting photo:', err);
+            setCustomAlert({
+                title: 'Delete Failed',
+                message: err.message || 'Could not delete the selected photo.',
+                type: 'error'
+            });
         }
     };
 

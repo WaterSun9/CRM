@@ -1085,8 +1085,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         // Validate updates with customerSchema
         const result = customerSchema.safeParse(updates);
         if (!result.success) {
-            const errors = result.error.issues.map(err => `- ${err.message}`).join('\n');
-            alert('Please fix the following validation errors:\n\n' + errors);
+            const issues = result.error.issues.map(err => ({
+                label: err.path.join(' › ') || 'Field',
+                text: err.message
+            }));
+            setValidationIssues(issues);
+            setShowValidationModal(true);
             setSaving(false);
             return;
         }

@@ -33,8 +33,9 @@ export default function LoginScreen({ onLogin }) {
             const { data: profile, error: profileError } = await supabase
                 .from('profiles').select('*').eq('id', authData.user.id).single();
             if (profileError || !profile) {
+                console.error('Profile fetch failed after auth:', profileError);
                 await supabase.auth.signOut();
-                throw new Error('Profile not found. Contact Admin.');
+                throw new Error(profileError?.message ? `Profile error: ${profileError.message}` : 'Profile not found. Contact Admin.');
             }
             if (profile.status === 'inactive') {
                 await supabase.auth.signOut();

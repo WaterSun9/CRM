@@ -64,6 +64,7 @@ export default function AgentPortal({ user, onLogout }) {
     const [validationIssues, setValidationIssues] = useState([]);
     const [showValidationModal, setShowValidationModal] = useState(false);
     const [validationNextStage, setValidationNextStage] = useState('');
+    const [customAlert, setCustomAlert] = useState(null);
 
     const handleChange = (field, val) => {
         setEditData(prev => ({ ...prev, [field]: val }));
@@ -236,7 +237,11 @@ export default function AgentPortal({ user, onLogout }) {
             return true;
         } catch (err) {
             console.error('Update failed:', err);
-            alert('Failed to update: ' + err.message);
+            setCustomAlert({
+                title: 'Update Failed',
+                message: err.message || 'Could not save changes to the database.',
+                type: 'error'
+            });
             return false;
         } finally {
             setSaving(false);
@@ -356,10 +361,13 @@ export default function AgentPortal({ user, onLogout }) {
             await uploadDocument(file, selectedCust.id, docType || uploadDocType, user?.id);
             const updatedDocs = await getCustomerDocuments(selectedCust.id);
             setCustDocs(updatedDocs || []);
-            alert('Document uploaded successfully!');
         } catch (err) {
             console.error('Upload failed:', err);
-            alert('Upload failed: ' + err.message);
+            setCustomAlert({
+                title: 'Upload Failed',
+                message: err.message || 'Failed to upload the document.',
+                type: 'error'
+            });
         } finally {
             setUploadingDoc(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -367,14 +375,17 @@ export default function AgentPortal({ user, onLogout }) {
     };
 
     const handleDeleteDoc = async (doc) => {
-        if (!window.confirm(`Delete ${doc.file_name}?`)) return;
         try {
             await deleteDocument(doc.id, doc.storage_path);
             const updatedDocs = await getCustomerDocuments(selectedCust.id);
             setCustDocs(updatedDocs || []);
         } catch (err) {
             console.error('Delete failed:', err);
-            alert('Delete failed: ' + err.message);
+            setCustomAlert({
+                title: 'Delete Failed',
+                message: err.message || 'Could not delete the selected document.',
+                type: 'error'
+            });
         }
     };
 
@@ -2359,6 +2370,36 @@ export default function AgentPortal({ user, onLogout }) {
                     onDownload={() => handleDownloadDoc(previewDoc.doc)}
                     onUpdateRemark={handleUpdateDocRemark}
                 />
+            )}
+
+            {/* Custom Alert Modal */}
+            {customAlert && (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200"
+                    onClick={() => setCustomAlert(null)}
+                >
+                    <div
+                        className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl border border-stone-150 animate-in zoom-in-95 duration-200 text-center space-y-4"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ${
+                            customAlert.type === 'error' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                            {customAlert.type === 'error' ? <AlertCircle size={24} /> : <AlertTriangle size={24} />}
+                        </div>
+                        <div className="space-y-1">
+                            <h4 className="text-base font-extrabold text-stone-900">{customAlert.title}</h4>
+                            <p className="text-xs text-stone-500 font-medium leading-relaxed">{customAlert.message}</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setCustomAlert(null)}
+                            className="w-full py-3 bg-stone-900 hover:bg-stone-850 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                        >
+                            Understood
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );

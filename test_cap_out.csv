@@ -1,0 +1,4 @@
+folder_no,customer_name,phone_number,registration_date,stamp,file_status
+4846,Client A,9876543210,2024-08-15,true,false
+4847,Client B,9876543211,2024-08-16,false,true
+4848,Client C,9876543212,2024-08-17,true,true

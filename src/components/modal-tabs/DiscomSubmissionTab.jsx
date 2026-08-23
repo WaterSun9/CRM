@@ -42,6 +42,7 @@ export default function DiscomSubmissionTab({
     const [sendingToStamp, setSendingToStamp] = useState(false);
     const [recalling, setRecalling] = useState(false);
     const [showConfirmSend, setShowConfirmSend] = useState(false);
+    const [showConfirmRecall, setShowConfirmRecall] = useState(false);
     const [approvingStamp, setApprovingStamp] = useState(false);
     const [showResendBox, setShowResendBox] = useState(false);
     const [actionError, setActionError] = useState(null);
@@ -76,7 +77,7 @@ export default function DiscomSubmissionTab({
 
     /* Recall — pull back from stamp maker */
     const handleRecall = async () => {
-        if (!window.confirm('Recall from stamp maker? They will no longer see this customer.')) return;
+        setShowConfirmRecall(false);
         setRecalling(true);
         setActionError(null);
         try {
@@ -324,7 +325,8 @@ export default function DiscomSubmissionTab({
                                 </div>
                                 {isEditable && !isStampSent && (
                                     <button
-                                        onClick={handleRecall}
+                                        type="button"
+                                        onClick={() => setShowConfirmRecall(true)}
                                         disabled={recalling}
                                         className="text-[10px] font-bold text-stone-500 hover:text-rose-600 underline underline-offset-2 cursor-pointer disabled:opacity-50 transition-colors"
                                     >
@@ -541,6 +543,40 @@ export default function DiscomSubmissionTab({
                             >
                                 <CheckCircle2 className="w-4 h-4" />
                                 Yes, Send Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showConfirmRecall && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center flex-shrink-0 text-rose-600">
+                                <AlertTriangle className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-stone-800">Recall from Stamp Maker?</h3>
+                                <p className="text-xs text-stone-500 font-medium mt-0.5">Please confirm before recalling.</p>
+                            </div>
+                        </div>
+                        <p className="text-sm text-stone-600 mb-6 font-medium">
+                            Are you sure you want to recall this customer from the stamp maker? They will no longer see this customer in their portal.
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowConfirmRecall(false)}
+                                className="px-4 py-2 text-sm font-bold text-stone-600 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleRecall}
+                                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors cursor-pointer flex items-center gap-2"
+                            >
+                                <RotateCcw className="w-4 h-4" />
+                                Yes, Recall
                             </button>
                         </div>
                     </div>
