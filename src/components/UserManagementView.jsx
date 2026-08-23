@@ -11,10 +11,10 @@ import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, K
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
 function CreateUserModal({ onClose, onCreated, currentUser }) {
-    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office' || currentUser?.role === 'Channel Partner Office';
+    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office' || currentUser?.role === 'Channel Partner Office' || currentUser?.user_type === 'office2' || currentUser?.userType === 'office2';
     const partnerName = (currentUser?.channel_partner || currentUser?.name || '').trim();
     const initialFormState = isCP 
-        ? { name: '', email: '', password: '', role: 'Channel Partners', user_type: 'agent', channel_partner: partnerName }
+        ? { name: '', email: '', password: '', role: 'Channel Partner Manager', user_type: 'office2', channel_partner: partnerName }
         : { name: '', email: '', password: '', role: 'Office', user_type: 'sales' };
     const [form, setForm] = useState(initialFormState);
     const [saving, setSaving] = useState(false);
@@ -147,7 +147,29 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
                                 </button>
                             </div>
                         </div>
-                        {!isCP && (
+                        {isCP ? (
+                            <div>
+                                <label className="block text-xs font-medium text-stone-600 mb-1">Role in Your Branch *</label>
+                                <select 
+                                    value={form.user_type === 'office2' ? 'office2' : 'agent2'} 
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        if (val === 'office2') {
+                                            setForm(prev => ({ ...prev, user_type: 'office2', role: 'Channel Partner Manager', channel_partner: partnerName }));
+                                        } else {
+                                            setForm(prev => ({ ...prev, user_type: 'agent2', role: 'Channel Partner', channel_partner: partnerName }));
+                                        }
+                                    }}
+                                    className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white"
+                                >
+                                    <option value="office2">Manager (office2 — Full Branch Pipeline)</option>
+                                    <option value="agent2">Channel Partner (agent2 — Field Agent)</option>
+                                </select>
+                                <p className="text-[10px] text-stone-400 mt-1">
+                                    Auto-assigned to branch: <span className="font-semibold text-stone-600">{partnerName}</span>
+                                </p>
+                            </div>
+                        ) : (
                             <div>
                                 <label className="block text-xs font-medium text-stone-600 mb-1">Role *</label>
                                 <select 
@@ -168,7 +190,7 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
                             </div>
                         )}
 
-                        {(form.user_type === 'channel_partner_office' || form.role === 'Channel Partner Office') && (
+                        {!isCP && (form.user_type === 'channel_partner_office' || form.role === 'Channel Partner Office') && (
                             <div>
                                 <label className="block text-xs font-medium text-stone-600 mb-1">
                                     Assigned Channel Partner Name *

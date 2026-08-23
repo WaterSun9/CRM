@@ -85,12 +85,16 @@ export default function Dashboard({ user, onLogout }) {
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [metrics, setMetrics] = useState(null);
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office' || user?.userType === 'office2' || user?.role === 'Channel Partner Manager';
     const partnerName = (user?.channel_partner || user?.name || ' ').trim();
 
 
     // ── Data fetching ──────────────────────────────────────────────────────────
     const fetchMetricsAndMeta = async () => {
+        if (isDemoMode) {
+            setMetrics(getDemoMetrics());
+            return;
+        }
         const [metricsRes, metaRes] = await Promise.all([
             supabase.rpc('get_dashboard_metrics', { 
                 p_channel_partner: isChannelPartnerOffice ? partnerName : channelPartnerFilter 
@@ -120,6 +124,14 @@ export default function Dashboard({ user, onLogout }) {
 
     const fetchStageCustomers = async (stage = selectedStage, pageNum = 0) => {
         setLoading(true);
+        if (isDemoMode) {
+            const targetStage = (stage || 'Leads').toLowerCase();
+            const demoStageList = DEMO_CUSTOMERS.filter(c => (c.stage || '').toLowerCase() === targetStage);
+            setCustomers(demoStageList);
+            setHasMore(false);
+            setLoading(false);
+            return;
+        }
         let query = supabase
             .from('admin')
             .select('*')
@@ -755,9 +767,9 @@ export default function Dashboard({ user, onLogout }) {
                 <div className="flex-1 p-4 lg:p-6">
                     <Suspense fallback={<ViewLoader />}>
                     {currentView === 'dashboard' && <DashboardView metrics={metrics} loading={loading} />}
-                    {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
-                    {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
-                    {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
+                    {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} isDemoMode={isDemoMode} />}
+                    {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} isDemoMode={isDemoMode} />}
+                    {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} isDemoMode={isDemoMode} />}
 
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView currentUser={user} />}
                     {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} />}

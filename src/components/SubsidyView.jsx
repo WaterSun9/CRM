@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { Tag, CheckCircle2, Clock, AlertTriangle, Banknote } from 'lucide-react';
 import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 import { normalizeSubsidyTag } from '../utils';
+import { DEMO_CUSTOMERS } from '../mock/demoData';
 import { supabase } from '../supabase';
 
-export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
+export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode = false }) {
     const [activeFilter, setActiveFilter] = useState(null);
     const [tagged, setTagged] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -12,6 +13,12 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
     useEffect(() => {
         const fetchTags = async () => {
             setLoading(true);
+            if (isDemoMode) {
+                const demoSubsidy = DEMO_CUSTOMERS.filter(c => c.subsidy_tag);
+                setTagged(demoSubsidy);
+                setLoading(false);
+                return;
+            }
             let allRows = [];
             let from = 0;
             const step = 1000;
@@ -42,7 +49,7 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
             setLoading(false);
         };
         fetchTags();
-    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
+    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode]);
 
     if (loading) return <div className="p-10 text-center animate-pulse text-stone-400">Loading subsidy tags...</div>;
 

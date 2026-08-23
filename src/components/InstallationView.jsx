@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { Wrench } from 'lucide-react';
 import { normalizeInstallationStatus } from '../utils';
 import { INSTALLATION_TAGS, INSTALLATION_TAG_COLORS } from '../constants';
+import { DEMO_CUSTOMERS } from '../mock/demoData';
 import { supabase } from '../supabase';
 
 export { normalizeInstallationStatus };
 
-export default function InstallationView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
+export default function InstallationView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode = false }) {
     const [activeFilter, setActiveFilter] = useState(null);
     const [installationCustomers, setInstallationCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -14,6 +15,12 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
     useEffect(() => {
         const fetchInstallation = async () => {
             setLoading(true);
+            if (isDemoMode) {
+                const demoInstall = DEMO_CUSTOMERS.filter(c => c.installation_status);
+                setInstallationCustomers(demoInstall);
+                setLoading(false);
+                return;
+            }
             let allRows = [];
             let from = 0;
             const step = 1000;
@@ -44,7 +51,7 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
             setLoading(false);
         };
         fetchInstallation();
-    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
+    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode]);
 
     if (loading) return <div className="p-10 text-center animate-pulse text-stone-400">Loading installation tags...</div>;
 
@@ -119,14 +126,18 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
                                                 <p className="text-[10px] text-stone-400 font-medium mt-0.5">{[c.crn, c.location].filter(Boolean).join(' · ')}</p>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-50 text-[10px]">
+                                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-stone-50 text-[10px]">
                                             <div>
-                                                <p className="text-stone-400 font-bold uppercase">System Capacity</p>
+                                                <p className="text-stone-400 font-bold uppercase">Capacity</p>
                                                 <p className="text-xs font-semibold text-stone-700 mt-0.5">{c.system_capacity_kwp ? `${c.system_capacity_kwp} kWp` : '–'}</p>
                                             </div>
                                             <div>
-                                                <p className="text-stone-400 font-bold uppercase">Current Stage</p>
-                                                <p className="text-xs font-semibold text-amber-600 mt-0.5">{c.stage || '–'}</p>
+                                                <p className="text-stone-400 font-bold uppercase">Delivery Date</p>
+                                                <p className="text-xs font-semibold text-stone-800 mt-0.5">{c.material_delivery_date || c.installation_date || '–'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-stone-400 font-bold uppercase">Technician / Vendor</p>
+                                                <p className="text-xs font-semibold text-amber-600 truncate mt-0.5">{c.vendor || c.installed_by || '–'}</p>
                                             </div>
                                         </div>
                                     </button>

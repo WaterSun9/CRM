@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { IndianRupee } from 'lucide-react';
 import { LOAN_TAGS, LOAN_TAG_COLORS } from '../constants';
 import { normalizeLoanTag } from '../utils';
+import { DEMO_CUSTOMERS } from '../mock/demoData';
 import { supabase } from '../supabase';
 
-export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
+export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode = false }) {
     const [activeFilter, setActiveFilter] = useState(null);
     const [loanCustomers, setLoanCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -12,6 +13,12 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
     useEffect(() => {
         const fetchLoanCustomers = async () => {
             setLoading(true);
+            if (isDemoMode) {
+                const demoLoan = DEMO_CUSTOMERS.filter(c => c.payment_type === 'Loan' || c.loan_tag);
+                setLoanCustomers(demoLoan);
+                setLoading(false);
+                return;
+            }
             // Fetch customers that are tagged or have payment_type 'loan'
             let query = supabase.from('admin').select('*').is('deleted_at', null).or('loan_tag.not.is.null,payment_type.ilike.%loan%');
             
@@ -26,7 +33,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
             setLoading(false);
         };
         fetchLoanCustomers();
-    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
+    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode]);
 
     // Normalize customer loan tags for consistent counts and grouping
     const normalizedCustomers = loanCustomers.map(c => ({

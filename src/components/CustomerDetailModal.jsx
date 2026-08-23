@@ -15,10 +15,11 @@ import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
-    Eye, Search, Image as ImageIcon, MessageSquare
+    Eye, Search, Image as ImageIcon, MessageSquare, Sparkles
 } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS } from '../constants';
 import { logActivity, formatLogDate, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
+import { generateSampleTabData } from '../mock/demoData';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
@@ -1362,7 +1363,25 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             )}
                         </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2">
+                        {/* Dev / Admin Autofill Sample Data Button */}
+                        {isEditable && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const sampleData = generateSampleTabData(activeTab, editData);
+                                    if (Object.keys(sampleData).length > 0) {
+                                        setEditData(prev => ({ ...prev, ...sampleData }));
+                                        setSaved(false);
+                                    }
+                                }}
+                                title="Autofill mock feature details for this tab to quickly test forms"
+                                className="flex items-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                            >
+                                <Sparkles size={12} className="text-amber-400 animate-pulse" />
+                                Autofill Sample Data
+                            </button>
+                        )}
                         {/* Admin unlock/lock toggle for completed cards */}
                         {isCompleted && isAdmin && (
                             <button onClick={() => { setAdminUnlocked(prev => !prev); setEditingSection(null); }}

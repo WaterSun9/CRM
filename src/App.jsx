@@ -61,6 +61,31 @@ export default function App() {
     const [loading, setLoading] = useState(true);
     const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
     const [devSwitcherOpen, setDevSwitcherOpen] = useState(false);
+    const [isDemoMode, setIsDemoMode] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return window.sessionStorage.getItem('watersun_demo_mode') === 'true';
+        }
+        return false;
+    });
+
+    const handleToggleDemoMode = () => {
+        const next = !isDemoMode;
+        setIsDemoMode(next);
+        if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem('watersun_demo_mode', String(next));
+        }
+        if (next && !user) {
+            setUser({
+                id: 'dev-admin_master',
+                email: 'admin@watersun.com',
+                name: 'Admin Master',
+                role: 'Admin',
+                userType: 'admin',
+                channel_partner: '',
+                isDevBackdoor: true
+            });
+        }
+    };
 
     useEffect(() => {
         // ── Detect recovery link from URL hash BEFORE any async work ──
@@ -104,6 +129,17 @@ if (profileError && profileError.code !== 'PGRST100') {
                     // Profile missing or deactivated — force sign out
                     await supabase.auth.signOut();
                 }
+            } else if (isDemoMode) {
+                // If demo mode is active and no session, provide default Master Admin demo session
+                setUser({
+                    id: 'dev-admin_master',
+                    email: 'admin@watersun.com',
+                    name: 'Admin Master',
+                    role: 'Admin',
+                    userType: 'admin',
+                    channel_partner: '',
+                    isDevBackdoor: true
+                });
             }
             setLoading(false);
         });
@@ -118,7 +154,7 @@ if (profileError && profileError.code !== 'PGRST100') {
         });
 
         return () => subscription.unsubscribe();
-    }, []);
+    }, [isDemoMode]);
 
     if (loading) return <ScreenLoader />;
 
@@ -126,13 +162,12 @@ if (profileError && profileError.code !== 'PGRST100') {
         return <Suspense fallback={<ScreenLoader />}><SetPasswordPage /></Suspense>;
     }
 
-    const isAgent = user && (user.userType === 'agent' || user.role === 'Channel Partners');
+    const isAgent = user && (user.userType === 'agent' || user.userType === 'agent2' || user.role === 'Channel Partners' || user.role === 'Channel Partner');
     const isVendor = user && (user.userType === 'vendor' || user.role === 'Vendors');
     const isStamp = user && (user.userType === 'stamp' || user.role === 'Stamp');
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
-        // Clear all Supabase auth tokens from both sessionStorage and localStorage
         if (typeof window !== 'undefined') {
             Object.keys(localStorage).forEach(key => {
                 if (key.startsWith('sb-')) localStorage.removeItem(key);
@@ -147,17 +182,33 @@ if (profileError && profileError.code !== 'PGRST100') {
 
     return (
         <>
+            {/* Demo Mode Top Alert Banner */}
+            {isDemoMode && (
+                <div className="bg-amber-400 text-stone-950 font-bold px-4 py-2 text-xs flex items-center justify-between shadow-md z-[99999] sticky top-0 border-b border-amber-500">
+                    <div className="flex items-center gap-2">
+                        <span className="bg-black text-amber-300 px-2 py-0.5 rounded-full text-[9px] font-mono uppercase tracking-wider">SANDBOX ACTIVE</span>
+                        <span className="truncate">Demo Sandbox: 16 Fully-Populated Stage Leads loaded with 100% feature data. Real database is unaffected.</span>
+                    </div>
+                    <button 
+                        onClick={handleToggleDemoMode}
+                        className="bg-stone-950 hover:bg-stone-800 text-amber-300 text-[10px] font-mono uppercase px-3 py-1 rounded-lg transition-colors cursor-pointer flex-shrink-0"
+                    >
+                        Exit Sandbox
+                    </button>
+                </div>
+            )}
+
             <Suspense fallback={<ScreenLoader />}>
                 {!user ? (
                     <LoginScreen onLogin={setUser} />
                 ) : isAgent ? (
-                    <AgentPortal user={user} onLogout={handleLogout} />
+                    <AgentPortal user={user} onLogout={handleLogout} isDemoMode={isDemoMode} />
                 ) : isVendor ? (
-                    <VendorPortal user={user} onLogout={handleLogout} />
+                    <VendorPortal user={user} onLogout={handleLogout} isDemoMode={isDemoMode} />
                 ) : isStamp ? (
-                    <StampPortal user={user} onLogout={handleLogout} />
+                    <StampPortal user={user} onLogout={handleLogout} isDemoMode={isDemoMode} />
                 ) : (
-                    <Dashboard user={user} onLogout={handleLogout} />
+                    <Dashboard user={user} onLogout={handleLogout} isDemoMode={isDemoMode} onToggleDemoMode={handleToggleDemoMode} />
                 )}
             </Suspense>
 
@@ -167,6 +218,8 @@ if (profileError && profileError.code !== 'PGRST100') {
                 onSwitchUser={setUser}
                 isOpen={devSwitcherOpen}
                 onToggle={setDevSwitcherOpen}
+                isDemoMode={isDemoMode}
+                onToggleDemoMode={handleToggleDemoMode}
             />
         </>
     );
