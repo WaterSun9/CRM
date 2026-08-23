@@ -13,6 +13,7 @@ export async function logActivity(
     details = '',
     customerId = null
 ) {
+    if (customerId && String(customerId).startsWith('demo-')) return;
     try {
         const { error } = await supabase
             .from('activity_log')
@@ -233,6 +234,18 @@ export async function compressImage(file, { maxWidth = 1920, maxHeight = 1920, q
 
 export const uploadDocument = async (file, customerId, docType = null, passedUserId = null) => {
     try {
+        if (!customerId || String(customerId).startsWith('demo-')) {
+            return {
+                id: 'demo-doc-' + Date.now(),
+                customer_id: customerId,
+                file_name: file.name,
+                storage_path: 'mock/' + file.name,
+                file_type: file.type || 'application/pdf',
+                doc_type: docType,
+                uploaded_by: passedUserId || 'demo-user',
+                uploaded_at: new Date().toISOString()
+            };
+        }
         const processedFile = await compressImage(file);
         const cleanName = processedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const filePath = `${customerId}/${Date.now()}_${cleanName}`;
@@ -284,6 +297,18 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
 };
 
 export const getCustomerDocuments = async (customerId) => {
+    if (!customerId) return [];
+    if (String(customerId).startsWith('demo-')) {
+        return [
+            { id: 'demo-doc-1', doc_type: 'adhaar_card_front', file_name: 'adhaar_card_front.pdf', file_type: 'application/pdf', storage_path: 'mock/adhaar_front.pdf' },
+            { id: 'demo-doc-2', doc_type: 'adhaar_card_back', file_name: 'adhaar_card_back.pdf', file_type: 'application/pdf', storage_path: 'mock/adhaar_back.pdf' },
+            { id: 'demo-doc-3', doc_type: 'electricity_bill', file_name: 'electricity_bill.pdf', file_type: 'application/pdf', storage_path: 'mock/electricity_bill.pdf' },
+            { id: 'demo-doc-4', doc_type: 'passport_photo', file_name: 'passport_photo.pdf', file_type: 'application/pdf', storage_path: 'mock/passport_photo.pdf' },
+            { id: 'demo-doc-5', doc_type: 'cancelled_cheque', file_name: 'cancelled_cheque.pdf', file_type: 'application/pdf', storage_path: 'mock/cancelled_cheque.pdf' },
+            { id: 'demo-doc-6', doc_type: 'geo_tag_photo', file_name: 'geo_tag_photo.jpg', file_type: 'image/jpeg', storage_path: 'mock/geo_tag_photo.jpg' },
+            { id: 'demo-doc-7', doc_type: 'meter_photo', file_name: 'meter_installation_photo.jpg', file_type: 'image/jpeg', storage_path: 'mock/meter_photo.jpg' },
+        ];
+    }
     const { data, error } = await supabase
         .from('documents')
         .select('*')
@@ -296,6 +321,9 @@ export const getCustomerDocuments = async (customerId) => {
 
 export const getViewUrl = async (storagePath) => {
     if (!storagePath) return null;
+    if (storagePath.startsWith('mock/') || storagePath.startsWith('http')) {
+        return 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=800&q=80';
+    }
     const { data, error } = await supabase.storage
         .from('customer-documents')
         .createSignedUrl(storagePath, 3600);
@@ -306,6 +334,9 @@ export const getViewUrl = async (storagePath) => {
 
 export const getDownloadUrl = async (storagePath, fileName) => {
     if (!storagePath) return null;
+    if (storagePath.startsWith('mock/') || storagePath.startsWith('http')) {
+        return 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=800&q=80';
+    }
     const { data, error } = await supabase.storage
         .from('customer-documents')
         .createSignedUrl(storagePath, 3600, { download: fileName || true });

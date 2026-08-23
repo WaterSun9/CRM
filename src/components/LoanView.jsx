@@ -20,7 +20,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                 return;
             }
             // Fetch customers that are tagged or have payment_type 'loan'
-            let query = supabase.from('admin').select('*').is('deleted_at', null).or('loan_tag.not.is.null,payment_type.ilike.%loan%');
+            let query = supabase.from('admin').select('id, customer_name, crn, location, system_capacity_kwp, stage, loan_tag, payment_type, channel_partner').is('deleted_at', null).or('loan_tag.not.is.null,payment_type.ilike.%loan%');
             
             if (isChannelPartnerOffice) {
                 query = query.ilike('channel_partner', partnerName);

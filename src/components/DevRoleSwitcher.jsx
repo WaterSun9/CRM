@@ -141,23 +141,27 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
         }
     };
 
+    const isAdminUser = currentUser && (currentUser.userType === 'admin' || currentUser.role === 'Admin' || currentUser.isDevBackdoor);
+
     return (
         <>
-            {/* Discrete Floating Trigger Button in Bottom Corner */}
-            <button
-                type="button"
-                onClick={() => onToggle(true)}
-                className="fixed bottom-3 right-3 z-[9999] flex items-center gap-1.5 bg-stone-900/90 hover:bg-stone-900 text-amber-400 hover:text-amber-300 border border-stone-700/80 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-xl backdrop-blur-md transition-all cursor-pointer hover:scale-105 active:scale-95 group"
-                title="Technician Control (Shortcut: Ctrl + Shift + S)"
-            >
-                <Wrench size={12} className="text-amber-400 animate-pulse" />
-                <span className="text-stone-300 group-hover:text-white font-mono">
-                    Technician Control
-                </span>
-                <span className="bg-amber-400/20 text-amber-300 text-[8px] px-1.5 py-0.5 rounded-full font-mono uppercase">
-                    {isDemoMode ? 'SANDBOX ON' : '8 Views'}
-                </span>
-            </button>
+            {/* Floating Trigger Button ONLY visible to Admin users */}
+            {isAdminUser && (
+                <button
+                    type="button"
+                    onClick={() => onToggle(true)}
+                    className="fixed bottom-3 right-3 z-[9999] flex items-center gap-1.5 bg-stone-900/90 hover:bg-stone-900 text-amber-400 hover:text-amber-300 border border-stone-700/80 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-xl backdrop-blur-md transition-all cursor-pointer hover:scale-105 active:scale-95 group"
+                    title="Technician Control (Shortcut: Ctrl + Shift + S)"
+                >
+                    <Wrench size={12} className="text-amber-400 animate-pulse" />
+                    <span className="text-stone-300 group-hover:text-white font-mono">
+                        Technician Control
+                    </span>
+                    <span className="bg-amber-400/20 text-amber-300 text-[8px] px-1.5 py-0.5 rounded-full font-mono uppercase">
+                        {isDemoMode ? 'SANDBOX ON' : '8 Views'}
+                    </span>
+                </button>
+            )}
 
             {/* Secret Backdoor Switcher Modal */}
             {isOpen && (

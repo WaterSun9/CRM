@@ -405,7 +405,9 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
     );
 }
 
-export default function StampPortal({ user, onLogout }) {
+import { DEMO_CUSTOMERS } from "../mock/demoData";
+
+export default function StampPortal({ user, onLogout, isDemoMode = false }) {
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
@@ -415,6 +417,12 @@ export default function StampPortal({ user, onLogout }) {
 
     const fetchCustomers = useCallback(async () => {
         setLoading(true);
+        if (isDemoMode) {
+            const demoStampList = DEMO_CUSTOMERS.filter(c => c.stage === "DISCOM SUBMISSION");
+            setCustomers(demoStampList);
+            setLoading(false);
+            return;
+        }
         try {
             const { data, error } = await supabase
                 .from("admin")

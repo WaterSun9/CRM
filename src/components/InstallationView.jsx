@@ -28,7 +28,7 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
             while (true) {
                 let query = supabase
                     .from('admin')
-                    .select('*')
+                    .select('id, customer_name, crn, location, system_capacity_kwp, stage, installation_status, material_delivery_date, installation_date, vendor, installed_by, channel_partner')
                     .is('deleted_at', null)
                     .neq('installation_status', null)
                     .neq('installation_status', '')

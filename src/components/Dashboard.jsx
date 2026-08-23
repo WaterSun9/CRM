@@ -53,6 +53,7 @@ const UserManagementView = lazy(() => import('./UserManagementView'));
 const TrashView = lazy(() => import('./TrashView'));
 const ChannelPartnerManagementView = lazy(() => import('./ChannelPartnerManagementView'));
 const InstallationPaymentsView = lazy(() => import('./InstallationPaymentsView'));
+import { DEMO_CUSTOMERS, getDemoMetrics } from '../mock/demoData';
 
 const ViewLoader = () => <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -61,11 +62,11 @@ import {
     Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard
 } from 'lucide-react';
 
-export default function Dashboard({ user, onLogout }) {
+export default function Dashboard({ user, onLogout, isDemoMode = false, onToggleDemoMode }) {
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentView, setCurrentView] = useState('dashboard');
-    const [selectedStage, setSelectedStage] = useState('Leads');
+    const [selectedStage, setSelectedStage] = useState('LEADS');
     const [stageSearch, setStageSearch] = useState('');    // per-stage search
     const [channelPartnerFilterInput, setChannelPartnerFilterInput] = useState('');  // typed channel partner name (not yet applied)
     const [channelPartnerFilter, setChannelPartnerFilter] = useState('');    // applied channel partner filter
@@ -95,9 +96,10 @@ export default function Dashboard({ user, onLogout }) {
             setMetrics(getDemoMetrics());
             return;
         }
+        const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
         const [metricsRes, metaRes] = await Promise.all([
             supabase.rpc('get_dashboard_metrics', { 
-                p_channel_partner: isChannelPartnerOffice ? partnerName : channelPartnerFilter 
+                p_channel_partner: targetPartner 
             }),
             supabase.from('metadata').select('category, label'),
         ]);
@@ -124,9 +126,9 @@ export default function Dashboard({ user, onLogout }) {
 
     const fetchStageCustomers = async (stage = selectedStage, pageNum = 0) => {
         setLoading(true);
+        const normalizedStage = (stage || 'LEADS').toUpperCase();
         if (isDemoMode) {
-            const targetStage = (stage || 'Leads').toLowerCase();
-            const demoStageList = DEMO_CUSTOMERS.filter(c => (c.stage || '').toLowerCase() === targetStage);
+            const demoStageList = DEMO_CUSTOMERS.filter(c => (c.stage || '').toUpperCase() === normalizedStage);
             setCustomers(demoStageList);
             setHasMore(false);
             setLoading(false);
@@ -135,14 +137,14 @@ export default function Dashboard({ user, onLogout }) {
         let query = supabase
             .from('admin')
             .select('*')
-            .eq('stage', stage)
+            .ilike('stage', normalizedStage)
             .order('created_at', { ascending: false })
             .range(pageNum * 50, (pageNum + 1) * 50 - 1);
             
         if (isChannelPartnerOffice) {
             query = query.ilike('channel_partner', partnerName);
-        } else if (channelPartnerFilter) {
-            query = query.ilike('channel_partner', channelPartnerFilter);
+        } else if (channelPartnerFilter && channelPartnerFilter.trim()) {
+            query = query.ilike('channel_partner', channelPartnerFilter.trim());
         }
 
         const { data, error } = await query;
@@ -175,7 +177,7 @@ export default function Dashboard({ user, onLogout }) {
         setPage(0);
         fetchMetricsAndMeta();
         fetchStageCustomers(selectedStage, 0);
-    }, [selectedStage, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
+    }, [selectedStage, channelPartnerFilter, isChannelPartnerOffice, partnerName, isDemoMode]);
 
     useEffect(() => {
         const channel = supabase.channel('admin_changes')
@@ -342,10 +344,13 @@ export default function Dashboard({ user, onLogout }) {
         }
 
         // 1. Optimistic UI Update (instant feedback)
-        const previousCustomer = customers.find(c => c.id === id);
-        if (previousCustomer) {
-            setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...cleanUpdates } : c));
-            if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...cleanUpdates }));
+        setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...cleanUpdates } : c));
+        if (selectedCustomer?.id === id) {
+            setSelectedCustomer(prev => ({ ...prev, ...cleanUpdates }));
+        }
+
+        if (isDemoMode || String(id).startsWith('demo-')) {
+            return;
         }
 
         // 2. Background Database Save
@@ -358,6 +363,7 @@ export default function Dashboard({ user, onLogout }) {
             alert('Database Save Error: ' + error.message + '\nDetails: ' + error.details);
             
             // 3. Rollback on failure
+            const previousCustomer = customers.find(c => c.id === id);
             if (previousCustomer) {
                 setCustomers(prev => prev.map(c => c.id === id ? previousCustomer : c));
                 if (selectedCustomer?.id === id) setSelectedCustomer(previousCustomer);
@@ -368,9 +374,13 @@ export default function Dashboard({ user, onLogout }) {
     // Soft-delete: sets deleted_at, never removes from DB
     const handleSoftDelete = async (id, deletedAt) => {
         const ts = deletedAt || new Date().toISOString();
-        await supabase.from('admin').update({ deleted_at: ts }).eq('id', id);
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: ts } : c));
         setSelectedCustomer(null);
+
+        if (isDemoMode || String(id).startsWith('demo-')) {
+            return;
+        }
+        await supabase.from('admin').update({ deleted_at: ts }).eq('id', id);
     };
 
     // Recover from trash
@@ -417,6 +427,10 @@ export default function Dashboard({ user, onLogout }) {
         // 1. Optimistic Update (UI)
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...optimisticUpdates } : c));
         if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...optimisticUpdates }));
+
+        if (isDemoMode || String(id).startsWith('demo-')) {
+            return;
+        }
 
         // 2. Call Atomic RPC to append remarks safely on the server
         const { data: updatedRecord, error } = await supabase.rpc('move_stage', {
@@ -782,6 +796,8 @@ export default function Dashboard({ user, onLogout }) {
                             onRecover={handleRecover}
                             onHardDelete={handleHardDelete}
                             isAdmin={user.userType === 'admin'}
+                            isDemoMode={isDemoMode}
+                            demoTrashed={trashed}
                         />
                     )}
 

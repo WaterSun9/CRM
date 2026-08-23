@@ -55,13 +55,18 @@ function TrashDetailDrawer({ customer, onClose }) {
     );
 }
 
-export default function TrashView({ onRecover, onHardDelete, isAdmin }) {
+export default function TrashView({ onRecover, onHardDelete, isAdmin, isDemoMode = false, demoTrashed = [] }) {
     const [viewing, setViewing] = useState(null);
     const [confirmHard, setConfirmHard] = useState(null);
     const [trashedCustomers, setTrashedCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (isDemoMode) {
+            setTrashedCustomers(demoTrashed || []);
+            setLoading(false);
+            return;
+        }
         const fetchTrashed = async () => {
             setLoading(true);
             const { data } = await supabase.from('admin').select('*').not('deleted_at', 'is', null).order('deleted_at', { ascending: false });
@@ -69,7 +74,7 @@ export default function TrashView({ onRecover, onHardDelete, isAdmin }) {
             setLoading(false);
         };
         fetchTrashed();
-    }, []);
+    }, [isDemoMode, demoTrashed]);
 
     const handleRecover = async (id) => {
         await onRecover(id);

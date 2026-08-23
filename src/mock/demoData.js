@@ -461,30 +461,63 @@ export const getDemoMetrics = () => {
 export const generateSampleTabData = (stageName, currentData = {}) => {
     const today = new Date().toISOString().split('T')[0];
     const rand = Math.floor(1000 + Math.random() * 9000);
+    const normalizedStage = String(stageName || '').toUpperCase().trim();
 
-    switch (stageName) {
+    switch (normalizedStage) {
+        case 'LEADS':
+            return {
+                customer_name: currentData.customer_name || `Rameshbhai Patel ${rand}`,
+                phone_number: currentData.phone_number || `98250${rand}`,
+                email_address: currentData.email_address || `ramesh${rand}@gmail.com`,
+                consumer_no: currentData.consumer_no || `84019${rand}`,
+                villages: currentData.villages || 'Kadi',
+                sub_divisions: currentData.sub_divisions || 'Mehsana City',
+                module_brand: currentData.module_brand || 'Adani Solar (Mono PERC)',
+                module_wp: String(currentData.module_wp || '550'),
+                no_of_modules: String(currentData.no_of_modules || '6'),
+                system_capacity_kwp: currentData.system_capacity_kwp || '3,300',
+                payment_type: currentData.payment_type || 'Cash',
+                channel_partner: currentData.channel_partner || 'Apex Solar Gujarat',
+                adhaar_card_front: true,
+                adhaar_card_back: true,
+                pan_card: true,
+                light_bill: true,
+                bank_details: true,
+                house_geo_tag_photo: true,
+            };
+
         case 'REGISTRATION':
             return {
-                adhaar_card_front: currentData.adhaar_card_front || 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=600&q=80',
-                adhaar_card_back: currentData.adhaar_card_back || 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=600&q=80',
-                pan_card: currentData.pan_card || 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&q=80',
-                light_bill: currentData.light_bill || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&q=80',
-                index_2: currentData.index_2 || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&q=80',
-                bank_details: currentData.bank_details || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&q=80',
+                adhaar_card_front: true,
+                adhaar_card_back: true,
+                pan_card: true,
+                light_bill: true,
+                index_2: true,
+                bank_details: true,
+                house_geo_tag_photo: true,
                 stamp: true,
                 file_status: true,
+                registration_date: currentData.registration_date || today,
+                registration_by: currentData.registration_by || 'Office Operations Team',
             };
 
         case 'LOAN':
             return {
                 payment_type: 'Loan',
-                loan_tag: 'Processed',
+                loan_tag: 'Sanctioned',
+                digital_certificate: true,
                 bank_name: currentData.bank_name || 'State Bank of India',
                 loan_account_no: currentData.loan_account_no || `SBI-SOLAR-${rand}`,
                 loan_sanction_amount: currentData.loan_sanction_amount || 180000,
                 loan_disbursed_amount: currentData.loan_disbursed_amount || 180000,
                 loan_sanction_date: currentData.loan_sanction_date || today,
                 loan_disbursed_date: currentData.loan_disbursed_date || today,
+                loan_history: Array.isArray(currentData.loan_history) && currentData.loan_history.length > 0
+                    ? currentData.loan_history
+                    : [
+                        { status: 'Processed', date: today, remark: 'Loan file submitted to bank', created_at: new Date().toISOString() },
+                        { status: 'Sanctioned', date: today, remark: 'Loan sanctioned by bank manager', created_at: new Date().toISOString() }
+                    ]
             };
 
         case 'CASH':
@@ -494,21 +527,38 @@ export const generateSampleTabData = (stageName, currentData = {}) => {
                 cash_advance_date: currentData.cash_advance_date || today,
                 cash_remaining_amount: currentData.cash_remaining_amount || 120000,
                 cash_payment_mode: currentData.cash_payment_mode || 'NEFT/RTGS Transfer',
+                cash_history: Array.isArray(currentData.cash_history) && currentData.cash_history.length > 0
+                    ? currentData.cash_history
+                    : [
+                        { amount: 50000, date: today, mode: 'NEFT/RTGS Transfer', remark: 'Advance received', created_at: new Date().toISOString() }
+                    ]
             };
 
         case 'HOLD PROCUREMENT':
             return {
                 hold_status: 'Waiting for Material',
                 hold_reason: 'Modules awaiting factory batch dispatch. Estimated delivery next Monday.',
+                hold_procurement: {
+                    status: 'Waiting for Material',
+                    hold_reason: 'Modules awaiting factory batch dispatch. Estimated delivery next Monday.',
+                    previous_stage: 'LEADS',
+                    hold_date: today
+                }
             };
 
         case 'MATERIAL ORDER':
             return {
+                roof_shed: currentData.roof_shed || 'Roof',
+                dc_cable: String(currentData.dc_cable || '35'),
+                ac_cable: String(currentData.ac_cable || '25'),
+                structure_front_leg_height: String(currentData.structure_front_leg_height || '5'),
+                structure_rear_leg_height: String(currentData.structure_rear_leg_height || '8'),
+                invoice_value: currentData.invoice_value ? String(currentData.invoice_value) : '1,25,000',
                 material_order_date: currentData.material_order_date || today,
                 po_number: currentData.po_number || `PO-WS-2026-${rand}`,
                 supplier_name: currentData.supplier_name || 'Goldi Solar Distribution Hub',
                 vendor: currentData.vendor || 'Shreeji Solar Installations',
-                vendor_quote: currentData.vendor_quote || 6500,
+                vendor_quote: currentData.vendor_quote ? String(currentData.vendor_quote) : '6,500',
             };
 
         case 'MATERIAL INTEGRATION':
@@ -516,7 +566,7 @@ export const generateSampleTabData = (stageName, currentData = {}) => {
                 inverter_brand: currentData.inverter_brand || 'Havells 3.3kW On-Grid',
                 inverter_serial_no: currentData.inverter_serial_no || `HAV-2026-${rand}`,
                 dcr_certificate: currentData.dcr_certificate || `DCR-CERT-2026-${rand}`,
-                panel_serial_no: currentData.panel_serial_no || `ADANI550-001\\nADANI550-002\\nADANI550-003\\nADANI550-004\\nADANI550-005\\nADANI550-006`,
+                panel_serial_no: currentData.panel_serial_no || `ADANI550-001\nADANI550-002\nADANI550-003\nADANI550-004\nADANI550-005\nADANI550-006`,
             };
 
         case 'MATERIAL DELIVERY':
@@ -525,6 +575,7 @@ export const generateSampleTabData = (stageName, currentData = {}) => {
                 delivery_driver_name: currentData.delivery_driver_name || 'Ramesh Bhai (Tempo)',
                 delivery_vehicle_no: currentData.delivery_vehicle_no || `GJ-02-WS-${rand}`,
                 delivery_status: 'Delivered',
+                invoice_no: currentData.invoice_no || `INV-WS-2026-${rand}`,
             };
 
         case 'INSTALLATION STATUS':
@@ -533,14 +584,14 @@ export const generateSampleTabData = (stageName, currentData = {}) => {
                 installation_date: currentData.installation_date || today,
                 material_delivery_date: currentData.material_delivery_date || today,
                 vendor: currentData.vendor || 'Shreeji Solar Installations',
-                vendor_quote: currentData.vendor_quote || 6500,
+                vendor_quote: currentData.vendor_quote ? String(currentData.vendor_quote) : '6,500',
                 installed_by: currentData.installed_by || 'Shreeji Solar Team (Jayesh Patel)',
             };
 
         case 'GEO TAG PHOTO':
             return {
-                geo_tag_image: currentData.geo_tag_image || 'https://images.unsplash.com/photo-1509391365360-2e959784a276?w=600&q=80',
-                house_geo_tag_photo: currentData.house_geo_tag_photo || 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=600&q=80',
+                geo_tag_image: true,
+                house_geo_tag_photo: true,
             };
 
         case 'DISCOM SUBMISSION':
@@ -548,18 +599,30 @@ export const generateSampleTabData = (stageName, currentData = {}) => {
                 discom_application_no: currentData.discom_application_no || `DIS-UGVCL-2026-${rand}`,
                 discom_submission_date: currentData.discom_submission_date || today,
                 discom_sub_division: currentData.discom_sub_division || 'Mehsana City Division',
-                feasibilty_document: currentData.feasibilty_document || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&q=80',
+                discom_submission: {
+                    application_no: currentData.discom_application_no || `DIS-UGVCL-2026-${rand}`,
+                    submission_date: today,
+                    feasibility_report: true,
+                    feasibilty_document: true,
+                    sent_to_stamp_maker: true,
+                    stamp_sent: true,
+                    stamp_completed_by: 'PM Surya Ghar Stamp Maker',
+                    stamp_completed_at: new Date().toISOString()
+                }
             };
 
         case 'METER INSTALLATION':
             return {
                 meter_number: currentData.meter_number || `MTR-L&T-${rand}`,
+                meter_installation: 'Yes',
+                installation_date: currentData.installation_date || today,
                 meter_installation_date: currentData.meter_installation_date || today,
-                meter_installation_photo: currentData.meter_installation_photo || 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?w=600&q=80',
+                meter_installation_photo: true,
             };
 
         case 'DISCOM INSPECTION':
             return {
+                discom_inspection: 'Yes',
                 inspection_officer_name: currentData.inspection_officer_name || 'R. K. Dave (AE UGVCL)',
                 inspection_date: currentData.inspection_date || today,
                 inspection_status: 'Approved',
@@ -569,7 +632,7 @@ export const generateSampleTabData = (stageName, currentData = {}) => {
             return {
                 subsidy_tag: 'Received',
                 subsidy_token_no: currentData.subsidy_token_no || `MNRE-TOKEN-2026-${rand}`,
-                subsidy_amount: currentData.subsidy_amount || 78000,
+                subsidy_amount: currentData.subsidy_amount ? String(currentData.subsidy_amount) : '78,000',
                 subsidy_credited_date: currentData.subsidy_credited_date || today,
             };
 
@@ -582,6 +645,9 @@ export const generateSampleTabData = (stageName, currentData = {}) => {
             };
 
         default:
-            return {};
+            return {
+                customer_name: currentData.customer_name || `Test Lead ${rand}`,
+                system_capacity_kwp: currentData.system_capacity_kwp || '3,300',
+            };
     }
 };

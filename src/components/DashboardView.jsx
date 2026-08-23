@@ -32,7 +32,7 @@ const MetricBox = ({ label, value, sub, icon: Icon, color }) => {
 };
 
 export default function DashboardView({ metrics, loading }) {
-    if (loading || !metrics) return (
+    if (!metrics) return (
         <div className="p-20 text-center text-stone-400 font-medium italic animate-pulse">
             Calculating solar metrics...
         </div>

@@ -26,7 +26,7 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
             while (true) {
                 let query = supabase
                     .from('admin')
-                    .select('*')
+                    .select('id, customer_name, crn, location, system_capacity_kwp, stage, subsidy_tag, channel_partner')
                     .is('deleted_at', null)
                     .neq('subsidy_tag', null)
                     .neq('subsidy_tag', '')

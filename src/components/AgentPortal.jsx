@@ -595,6 +595,17 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
         }
     };
 
+    const handleBypassValidationAndAdvance = async () => {
+        setShowValidationModal(false);
+        if (!selectedCust || !validationNextStage) return;
+        const targetStage = validationNextStage.toUpperCase();
+        const didSave = await handleUpdateCustomer(selectedCust.id, {
+            ...editData,
+            stage: targetStage
+        });
+        if (didSave) setActiveCustomerStage(targetStage);
+    };
+
     const isMeterInstallationDirty = () => {
         if (!selectedCust) return false;
         const updates = getMeterInstallationUpdates();
@@ -2366,7 +2377,22 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                                     </li>
                                 ))}
                             </ul>
-                            <button type="button" onClick={() => setShowValidationModal(false)} className="mt-5 w-full rounded-xl bg-stone-900 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-stone-800">Review requirements</button>
+                            <div className="mt-5 flex gap-2">
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowValidationModal(false)} 
+                                    className="flex-1 rounded-xl bg-stone-100 hover:bg-stone-200 px-4 py-3 text-xs font-bold text-stone-700 transition-colors cursor-pointer"
+                                >
+                                    Review
+                                </button>
+                                <button 
+                                    type="button" 
+                                    onClick={handleBypassValidationAndAdvance} 
+                                    className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-3 text-xs font-bold text-white transition-colors shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                    ⚡ Auto-Fill & Move Next
+                                </button>
+                            </div>
                         </div>
                     </section>
                 </div>

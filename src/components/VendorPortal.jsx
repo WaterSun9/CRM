@@ -29,7 +29,9 @@ const parsePanelSerials = (raw) => {
     return [raw.trim()];
 };
 
-export default function VendorPortal({ user, onLogout }) {
+import { DEMO_CUSTOMERS } from '../mock/demoData';
+
+export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
     const [view, setView] = useState('list'); // 'list', 'details'
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -164,6 +166,15 @@ export default function VendorPortal({ user, onLogout }) {
     const fetchCustomers = useCallback(async ({ silent = false } = {}) => {
         if (silent) setRefreshingAssignments(true);
         else setLoading(true);
+        if (isDemoMode) {
+            const demoVendorList = DEMO_CUSTOMERS.filter(c => 
+                ['MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO'].includes(c.stage)
+            );
+            setCustomers(demoVendorList);
+            setLoading(false);
+            if (silent) setRefreshingAssignments(false);
+            return;
+        }
         try {
             const { data, error } = await supabase
                 .from('admin')

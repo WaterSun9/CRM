@@ -178,6 +178,25 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     // Sales and Office can always add remarks and edit fields
     const canAddRemark = isEditable || !isFrozen;
     const isInstallationDetailsEditable = isEditable;
+
+    // Fetch full customer record in background if opened from lightweight views (Subsidy, Loan, Installation)
+    useEffect(() => {
+        if (!customer?.id || String(customer.id).startsWith('demo-')) return;
+        supabase.from('admin').select('*').eq('id', customer.id).single().then(({ data }) => {
+            if (data) {
+                setEditData(prev => ({ ...data, ...prev }));
+            }
+        });
+    }, [customer?.id]);
+
+    const handleAutofillSample = () => {
+        const sampleData = generateSampleTabData(activeTab, editData);
+        setEditData(prev => ({ ...prev, ...sampleData }));
+        if (activeTab === 'MATERIAL ORDER' && setEditingSection) {
+            setEditingSection('mat_order');
+        }
+        setSaved(false);
+    };
     const saveBomRef = useRef(null);
     const prevCustomerRef = useRef(customer);
     const [saved, setSaved] = useState(false);
@@ -934,6 +953,45 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         setShowValidationModal(true);
     };
 
+    const handleBypassValidationAndAdvance = async () => {
+        setShowValidationModal(false);
+        setValidationIssues([]);
+        const destStageId = nextStageId;
+        if (!destStageId) return;
+
+        setSaving(true);
+        const oldStage = editData.stage;
+        let prevObj = {};
+        if (typeof editData.stages_remarks === 'object' && editData.stages_remarks) {
+            prevObj = editData.stages_remarks;
+        }
+        const updatedRemarks = {
+            ...prevObj,
+            [oldStage]: ''
+        };
+
+        const sampleData = generateSampleTabData(oldStage || activeTab, editData);
+        const updates = {
+            ...editData,
+            ...sampleData,
+            stage: destStageId,
+            stages_remarks: updatedRemarks
+        };
+
+        setEditData(updates);
+        await onUpdate(customer.id, updates);
+        await logActivity(
+            user.id,
+            'update',
+            `${customer.customer_name}: Stage changed to ${destStageId} (Quick Bypass & Auto-fill)`,
+            `Moved from ${oldStage} to ${destStageId}`,
+            customer.id
+        );
+        setActiveTab(destStageId);
+        setSaved(true);
+        setSaving(false);
+    };
+
     const handleAdvanceStage = async (overrideNextStageId) => {
         const destStageId = overrideNextStageId || nextStageId;
         if (!destStageId) return;
@@ -1368,13 +1426,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         {isEditable && (
                             <button
                                 type="button"
-                                onClick={() => {
-                                    const sampleData = generateSampleTabData(activeTab, editData);
-                                    if (Object.keys(sampleData).length > 0) {
-                                        setEditData(prev => ({ ...prev, ...sampleData }));
-                                        setSaved(false);
-                                    }
-                                }}
+                                onClick={handleAutofillSample}
                                 title="Autofill mock feature details for this tab to quickly test forms"
                                 className="flex items-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all cursor-pointer shadow-xs active:scale-95"
                             >
@@ -1750,7 +1802,22 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     </li>
                                 ))}
                             </ul>
-                            <button type="button" onClick={() => setShowValidationModal(false)} className="mt-5 w-full rounded-xl bg-stone-900 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-stone-800">Review requirements</button>
+                            <div className="mt-5 flex gap-2">
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowValidationModal(false)} 
+                                    className="flex-1 rounded-xl bg-stone-100 hover:bg-stone-200 px-4 py-3 text-xs font-bold text-stone-700 transition-colors cursor-pointer"
+                                >
+                                    Review
+                                </button>
+                                <button 
+                                    type="button" 
+                                    onClick={handleBypassValidationAndAdvance} 
+                                    className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-3 text-xs font-bold text-white transition-colors shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                    ⚡ Auto-Fill & Move Next
+                                </button>
+                            </div>
                         </div>
                     </section>
                 </div>

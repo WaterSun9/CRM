@@ -329,6 +329,36 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         ? meta['module_wp']
         : ['540', '545', '550', '570', '575', '580', '585', '590', '600', '610', '615', '620'];
 
+    const handleAttachDummyDocs = () => {
+        const randId = Math.floor(1000 + Math.random() * 9000);
+        const createDummyFile = (docName) => {
+            const blob = new Blob([`%PDF-1.4 Mock sample document for ${docName} (${randId})`], { type: 'application/pdf' });
+            return new File([blob], `${docName}_${randId}.pdf`, { type: 'application/pdf' });
+        };
+
+        const mockFiles = {
+            adhaar_card_front: createDummyFile('adhaar_card_front'),
+            adhaar_card_back: createDummyFile('adhaar_card_back'),
+            pan_card: createDummyFile('pan_card'),
+            index_2: createDummyFile('index_2'),
+            light_bill: createDummyFile('light_bill'),
+            bank_details: createDummyFile('bank_details'),
+            house_geo_tag_photo: createDummyFile('house_geo_tag_photo'),
+        };
+
+        setPendingFiles(prev => ({ ...prev, ...mockFiles }));
+        setFormData(prev => ({
+            ...prev,
+            adhaar_card_front: true,
+            adhaar_card_back: true,
+            pan_card: true,
+            index_2: true,
+            light_bill: true,
+            bank_details: true,
+            house_geo_tag_photo: true,
+        }));
+    };
+
     const handleFillTestData = () => {
         const randId = Math.floor(1000 + Math.random() * 9000);
         const demoBrand = meta['module_brand']?.[0] || 'Adani';
@@ -352,7 +382,16 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             no_of_modules: String(demoModules),
             system_capacity_kwp: demoKwp,
             payment_type: 'CASH',
+            adhaar_card_front: true,
+            adhaar_card_back: true,
+            pan_card: true,
+            light_bill: true,
+            bank_details: true,
+            house_geo_tag_photo: true,
         }));
+
+        handleAttachDummyDocs();
+        setValidationErrors([]);
     };
 
     return (
@@ -369,6 +408,14 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleFillTestData}
+                            className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-xl text-[10px] font-extrabold flex items-center gap-1 shadow-sm transition-all cursor-pointer hover:scale-105 active:scale-95"
+                            title="Autofill all fields and attach mock documents"
+                        >
+                            ✨ Autofill Test Lead & Files
+                        </button>
                         <button 
                             onClick={onClose} 
                             className="p-2 hover:bg-stone-100 text-stone-400 hover:text-stone-700 rounded-xl transition cursor-pointer"
@@ -598,11 +645,21 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
 
                     {/* Section 2: Document Checklist (Strictly Line-by-Line) */}
                     <section>
-                        <div className="flex items-center gap-2 mb-3 pb-1.5 border-b border-stone-100">
-                            <ClipboardList size={13} className="text-amber-500" />
-                            <h3 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-                                Document Checklist
-                            </h3>
+                        <div className="flex items-center justify-between mb-3 pb-1.5 border-b border-stone-100">
+                            <div className="flex items-center gap-2">
+                                <ClipboardList size={13} className="text-amber-500" />
+                                <h3 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                                    Document Checklist
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleAttachDummyDocs}
+                                className="text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                                title="Attach mock test documents for all checklist items"
+                            >
+                                ⚡ Auto-Attach Test Files
+                            </button>
                         </div>
 
                         <div className="space-y-3">
