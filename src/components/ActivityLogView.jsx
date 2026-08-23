@@ -5,14 +5,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { Activity } from 'lucide-react';
-
-const ACTION_COLORS = {
-    create:       'bg-green-100 text-green-700',
-    update:       'bg-blue-100 text-blue-700',
-    delete:       'bg-red-100 text-red-700',
-    stage_change: 'bg-amber-100 text-amber-700',
-    note:         'bg-yellow-100 text-yellow-700',
-};
+import { ACTION_COLORS } from '../constants';
 
 export default function ActivityLogView() {
     const [logs, setLogs] = useState([]);
@@ -64,9 +57,14 @@ export default function ActivityLogView() {
                 </div>
             ) : logs.map(log => (
                 <div key={log.id} className="bg-white rounded-xl p-4 border border-stone-100 shadow-sm flex items-start gap-3">
-                    <span className={`text-xs px-2 py-1 rounded-full font-bold uppercase flex-shrink-0 ${ACTION_COLORS[log.action] || 'bg-stone-100 text-stone-700'}`}>
-                        {log.action}
-                    </span>
+                    {(() => {
+                        const c = ACTION_COLORS[log.action] || { bg: 'bg-stone-100', text: 'text-stone-700', border: 'border-stone-200' };
+                        return (
+                            <span className={`text-xs px-2 py-1 rounded-full font-bold uppercase flex-shrink-0 border ${c.bg} ${c.text} ${c.border || ''}`}>
+                                {log.action}
+                            </span>
+                        );
+                    })()}
                     <div className="flex-1 min-w-0">
                         <p className="text-sm text-stone-800">{log.message}</p>
                         {log.new_value && <p className="text-xs text-stone-500 mt-0.5">{log.new_value}</p>}

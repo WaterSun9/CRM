@@ -28,36 +28,42 @@ export const PRIMARY_STAGES = [
 ];
 
 export const SUBSIDY_TAGS = [
+    { id: 'Received', label: 'Received', icon: CheckCircle2 },
+    { id: 'In Process', label: 'In Process', icon: Clock },
     { id: 'Redeemed', label: 'Redeemed', icon: Banknote },
     { id: 'Returned', label: 'Returned', icon: Clock },
     { id: 'Approved', label: 'Approved', icon: CheckCircle2 },
-    { id: 'Received', label: 'Received', icon: CheckCircle2 },
 ];
 
 export const SUBSIDY_TAG_COLORS = {
-    'Approved': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
-    'Returned': { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-400' },
-    'Rejected': { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-400' },
-    'Redeemed': { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    dot: 'bg-blue-400' },
-    'Received': { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  dot: 'bg-indigo-400' },
+    'Received':   { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
+    'In Process': { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    dot: 'bg-teal-400' },
+    'Redeemed':   { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    dot: 'bg-blue-400' },
+    'Returned':   { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-400' },
+    'Approved':   { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  dot: 'bg-indigo-400' },
+    'Rejected':   { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-400' },
 };
 
 export const LOAN_TAGS = [
     { id: 'Processed', label: 'Processed', icon: Activity },
+    { id: 'In Progress', label: 'In Progress', icon: Clock },
+    { id: '1st Payment', label: '1st Payment', icon: Banknote },
+    { id: '2nd Payment', label: '2nd Payment', icon: Banknote },
     { id: 'Sanctioned', label: 'Sanctioned', icon: CheckCircle2 },
     { id: 'Returned', label: 'Returned', icon: Clock },
     { id: 'Rejected', label: 'Rejected', icon: AlertTriangle },
-    { id: '1st Payment', label: '1st Payment', icon: Banknote },
-    { id: '2nd Payment', label: '2nd Payment', icon: Banknote },
+    { id: 'All Clear', label: 'All Clear', icon: CheckCircle2 },
 ];
 
 export const LOAN_TAG_COLORS = {
-    'Processed':  { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  dot: 'bg-indigo-400' },
-    'Sanctioned': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
-    'Rejected':   { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-400' },
-    'Returned':   { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-400' },
-    '1st Payment': { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200',   dot: 'bg-blue-400' },
-    '2nd Payment': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-400' },
+    'Processed':   { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  dot: 'bg-indigo-400' },
+    'In Progress': { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    dot: 'bg-teal-400' },
+    '1st Payment': { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    dot: 'bg-blue-400' },
+    '2nd Payment': { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200',  dot: 'bg-purple-400' },
+    'Sanctioned':  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
+    'Returned':    { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-400' },
+    'Rejected':    { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-400' },
+    'All Clear':   { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', dot: 'bg-emerald-500' },
 };
 
 // Supabase metadata table categories (one per managed dropdown)
@@ -171,3 +177,122 @@ export const SHED_BOM_TEMPLATE = [
 export const COMMON_BOM_ITEMS = ROOF_BOM_TEMPLATE.filter(r => 
     SHED_BOM_TEMPLATE.some(s => s.product_name.toLowerCase().trim() === r.product_name.toLowerCase().trim())
 );
+
+// ════════════════════════════════════════════════════════════
+// INSTALLATION STATUS TAGS
+// ════════════════════════════════════════════════════════════
+export const INSTALLATION_TAGS = [
+    { id: 'Yes', label: 'Yes' },
+    { id: 'Process', label: 'Process' },
+    { id: 'Pending', label: 'Pending' },
+    { id: 'Give Up', label: 'Give Up' }
+];
+
+export const INSTALLATION_TAG_COLORS = {
+    'Yes':     { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+    'Process': { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    dot: 'bg-teal-500' },
+    'Pending': { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-500' },
+    'Give Up': { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-500' }
+};
+
+// ════════════════════════════════════════════════════════════
+// HOLD PROCUREMENT STATUS TAGS
+// ════════════════════════════════════════════════════════════
+export const HOLD_STATUS_TAGS = [
+    { 
+        id: 'Project Win', 
+        label: 'Project Win', 
+        activeClass: 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-500 ring-offset-2 shadow-md shadow-emerald-600/25 font-bold scale-[1.02]', 
+        dotClass: 'bg-white shadow-xs' 
+    },
+    { 
+        id: 'Project Lost', 
+        label: 'Project Lost', 
+        activeClass: 'bg-rose-600 text-white border-rose-600 ring-2 ring-rose-500 ring-offset-2 shadow-md shadow-rose-600/25 font-bold scale-[1.02]', 
+        dotClass: 'bg-white shadow-xs' 
+    },
+    { 
+        id: 'Project Return Win', 
+        label: 'Project Return Win', 
+        activeClass: 'bg-amber-500 text-white border-amber-500 ring-2 ring-amber-400 ring-offset-2 shadow-md shadow-amber-500/25 font-bold scale-[1.02]', 
+        dotClass: 'bg-white shadow-xs' 
+    }
+];
+
+// ════════════════════════════════════════════════════════════
+// DOCUMENT TYPE LABELS
+// ════════════════════════════════════════════════════════════
+export const DOC_TYPE_LABELS = {
+    adhaar_card_front: 'Aadhaar Card (Front)',
+    adhaar_card_back: 'Aadhaar Card (Back)',
+    pan_card: 'PAN Card',
+    light_bill: 'Electricity / Light Bill',
+    index_2: 'Index-2 / Name Match Copy',
+    bank_details: 'Bank Passbook / Cheque',
+    house_geo_tag_photo: 'House Photo with Geo Tag',
+    extra_docs: 'Extra Documents',
+    geo_tag_image: 'Site / Geo Tag Photo',
+    sfdc_photo: 'SFDC Photo',
+    file_status: 'File Status Doc',
+    dcr_certificate: 'DCR Certificate',
+    signature_pic: 'Customer Signature',
+    signature: 'Customer Signature',
+    firstPartySignature: 'Customer Signature',
+    customer_signature: 'Customer Signature',
+    stamp: 'Vendor Stamp',
+    stamp_pic: 'Vendor Stamp',
+    vendor_stamp: 'Vendor Stamp',
+    secondPartyStamp: 'Vendor Stamp',
+    pm_surya_ghar_stamp: 'PM Surya Ghar Stamp',
+    surya_gpa_stamp: 'PM Surya GPA Stamp',
+    gpa_stamp: 'PM Surya GPA Stamp',
+    meter_installation_photo: 'Meter Installation Photo',
+    meter_photo: 'Meter Installation Photo',
+    warranty_card: 'Warranty Card',
+    insurance_status: 'Insurance Document',
+    feasibilty_document: 'Feasibility Document',
+    feasibility_document: 'Feasibility Document',
+    subsidy_token_photo: 'Subsidy Token Photo',
+    digital_certificate: 'Digital Certificate'
+};
+
+// ════════════════════════════════════════════════════════════
+// ACTIVITY LOG & ACTION COLORS
+// ════════════════════════════════════════════════════════════
+export const ACTION_COLORS = {
+    create:   { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Created' },
+    update:   { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    dot: 'bg-blue-500',    label: 'Updated' },
+    delete:   { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-500',    label: 'Deleted' },
+    recall:   { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-500',   label: 'Recalled' },
+    upload:   { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200',  dot: 'bg-purple-500',  label: 'Uploaded' },
+    download: { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  dot: 'bg-indigo-500',  label: 'Downloaded' },
+    login:    { bg: 'bg-stone-50',   text: 'text-stone-700',   border: 'border-stone-200',   dot: 'bg-stone-500',   label: 'Logged In' },
+};
+
+// ════════════════════════════════════════════════════════════
+// CHECKLIST FIELDS
+// ════════════════════════════════════════════════════════════
+export const REG_CHECKLIST_FIELDS = [
+    { field: 'adhaar_card_front', label: 'Adhaar Card (Front)' },
+    { field: 'adhaar_card_back', label: 'Adhaar Card (Back)' },
+    { field: 'pan_card', label: 'PAN Card' },
+    { field: 'index_2', label: 'Index-2' },
+    { field: 'light_bill', label: 'Light Bill' },
+    { field: 'bank_details', label: 'Bank Details' },
+    { field: 'house_geo_tag_photo', label: 'House Photo with Geo Tag' },
+    { field: 'extra_docs', label: 'Extra Docs' },
+];
+
+export const OPERATIONAL_CHECKLIST_FIELDS = [
+    { field: 'digital_certificate', label: 'Digital Certificate' },
+    { field: 'feasibilty_document', label: 'Feasibility Document' },
+    { field: 'subsidy_token_photo', label: 'Subsidy Token Photo' },
+    { field: 'meter_installation_photo', label: 'Meter Installation Photo' },
+    { field: 'geo_tag_image', label: 'Geo Tag Image' },
+    { field: 'dcr_certificate', label: 'DCR Certificate' },
+    { field: 'signature_pic', label: 'Signature Pic' },
+    { field: 'pm_surya_ghar_stamp', label: 'PM Surya Ghar Stamp' },
+    { field: 'file_status', label: 'File Status Doc' },
+];
+
+export const DEFAULT_PAGE_SIZE = 50;

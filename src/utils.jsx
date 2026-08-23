@@ -339,13 +339,39 @@ export const updateDocumentRemark = async (documentId, remark) => {
     return data;
 };
 
-// ─── Installation Status Normalizer ──────────────────────────────────────────
+// ─── Tag Normalizers ──────────────────────────────────────────────────────────
+export const normalizeLoanTag = (tag) => {
+    if (!tag) return null;
+    const s = String(tag).trim().toLowerCase();
+    if (s === 'all clear' || s === 'all_clear' || s === 'allclear' || s === 'clear') return 'All Clear';
+    if (s === 'in progress' || s === 'in_progress' || s === 'inprogress' || s === 'pending') return 'In Progress';
+    if (s === 'processed' || s.includes('process')) return 'Processed';
+    if (s.includes('1st') || s.includes('first')) return '1st Payment';
+    if (s.includes('2nd') || s.includes('second')) return '2nd Payment';
+    if (s.includes('sanc') || s.includes('approved')) return 'Sanctioned';
+    if (s.includes('return')) return 'Returned';
+    if (s.includes('reject') || s.includes('decline')) return 'Rejected';
+    return tag.trim();
+};
+
+export const normalizeSubsidyTag = (tag) => {
+    if (!tag) return null;
+    const s = String(tag).trim().toLowerCase();
+    if (s === 'received' || s.includes('receiv') || s.includes('claim') || s.includes('credit')) return 'Received';
+    if (s === 'in process' || s === 'in_process' || s === 'inprocess' || s.includes('process')) return 'In Process';
+    if (s === 'redeemed' || s.includes('redeem')) return 'Redeemed';
+    if (s === 'return' || s === 'returned' || s.includes('return')) return 'Returned';
+    if (s === 'approved' || s.includes('approv')) return 'Approved';
+    if (s === 'rejected' || s.includes('reject')) return 'Rejected';
+    return tag.trim();
+};
+
 export const normalizeInstallationStatus = (status) => {
     if (!status) return null;
     const s = String(status).trim().toLowerCase();
-    if (s === 'give up' || s === 'giveup' || s === 'given up') return 'Give Up';
-    if (s === 'yes') return 'Yes';
-    if (s === 'proceed' || s === 'completed' || s === 'done' || s === 'installed' || s === 'process') return 'Process';
-    if (s === 'pending' || s === 'in progress' || s === 'waiting') return 'Pending';
+    if (s === 'give up' || s === 'giveup' || s === 'given up' || s === 'cancelled') return 'Give Up';
+    if (s === 'yes' || s === 'completed' || s === 'done' || s === 'installed') return 'Yes';
+    if (s === 'proceed' || s === 'process' || s === 'processing' || s === 'in progress' || s === 'wip') return 'Process';
+    if (s === 'pending' || s === 'no' || s === 'waiting' || s === 'not started') return 'Pending';
     return 'Pending';
 };

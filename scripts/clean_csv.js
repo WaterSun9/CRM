@@ -159,6 +159,44 @@ function cleanStage(val) {
     return s;
 }
 
+function cleanLoanTag(val) {
+    if (!val) return '';
+    const s = String(val).trim().toLowerCase();
+    if (['n/a', 'na', '-', '--', 'nil', 'null', 'none', 'no'].includes(s)) return '';
+    if (s === 'in progress' || s === 'in_progress' || s === 'inprogress' || s === 'pending') return 'In Progress';
+    if (s === 'processed' || s.includes('process')) return 'Processed';
+    if (s.includes('1st') || s.includes('first')) return '1st Payment';
+    if (s.includes('2nd') || s.includes('second')) return '2nd Payment';
+    if (s.includes('sanc') || s.includes('approved')) return 'Sanctioned';
+    if (s.includes('return')) return 'Returned';
+    if (s.includes('reject') || s.includes('decline')) return 'Rejected';
+    return cleanText(val);
+}
+
+function cleanSubsidyTag(val) {
+    if (!val) return '';
+    const s = String(val).trim().toLowerCase();
+    if (['n/a', 'na', '-', '--', 'nil', 'null', 'none', 'no'].includes(s)) return '';
+    if (s === 'received' || s.includes('receiv') || s.includes('claim') || s.includes('credit')) return 'Received';
+    if (s === 'in process' || s === 'in_process' || s === 'inprocess' || s.includes('process')) return 'In Process';
+    if (s === 'redeemed' || s.includes('redeem')) return 'Redeemed';
+    if (s === 'return' || s === 'returned' || s.includes('return')) return 'Returned';
+    if (s === 'approved' || s.includes('approv')) return 'Approved';
+    if (s === 'rejected' || s.includes('reject')) return 'Rejected';
+    return cleanText(val);
+}
+
+function cleanInstallationStatus(val) {
+    if (!val) return '';
+    const s = String(val).trim().toLowerCase();
+    if (['n/a', 'na', '-', '--', 'nil', 'null', 'none'].includes(s)) return '';
+    if (s === 'give up' || s === 'giveup' || s === 'given up' || s === 'cancelled') return 'Give Up';
+    if (s === 'yes' || s === 'completed' || s === 'done' || s === 'installed') return 'Yes';
+    if (s === 'proceed' || s === 'process' || s === 'processing' || s === 'in progress' || s === 'wip') return 'Process';
+    if (s === 'pending' || s === 'no' || s === 'waiting' || s === 'not started') return 'Pending';
+    return cleanText(val);
+}
+
 function parseLine(line, delimiter) {
     const result = [];
     let cur = '';
@@ -249,6 +287,12 @@ function main() {
                 return cleanPhone(raw);
             } else if (header === 'stage') {
                 return cleanStage(raw);
+            } else if (header === 'loan_tag') {
+                return cleanLoanTag(raw);
+            } else if (header === 'subsidy_tag') {
+                return cleanSubsidyTag(raw);
+            } else if (header === 'installation_status') {
+                return cleanInstallationStatus(raw);
             } else {
                 return cleanText(raw);
             }

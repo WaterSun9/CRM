@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { IndianRupee, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import { IndianRupee } from 'lucide-react';
 import { LOAN_TAGS, LOAN_TAG_COLORS } from '../constants';
+import { normalizeLoanTag } from '../utils';
 import { supabase } from '../supabase';
 
 export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
@@ -12,7 +13,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
         const fetchLoanCustomers = async () => {
             setLoading(true);
             // Fetch customers that are tagged or have payment_type 'loan'
-            let query = supabase.from('admin').select('*').is('deleted_at', null).or('loan_tag.not.is.null,payment_type.eq.loan');
+            let query = supabase.from('admin').select('*').is('deleted_at', null).or('loan_tag.not.is.null,payment_type.ilike.%loan%');
             
             if (isChannelPartnerOffice) {
                 query = query.ilike('channel_partner', partnerName);
@@ -27,10 +28,14 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
         fetchLoanCustomers();
     }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
 
-    const allClearGroup = loanCustomers.filter(c => !c?.loan_tag);
+    // Normalize customer loan tags for consistent counts and grouping
+    const normalizedCustomers = loanCustomers.map(c => ({
+        ...c,
+        normalized_loan_tag: normalizeLoanTag(c.loan_tag) || 'All Clear'
+    }));
 
     const grouped = LOAN_TAGS.reduce((acc, tag) => {
-        const group = loanCustomers.filter(c => c.loan_tag === tag.id);
+        const group = normalizedCustomers.filter(c => c.normalized_loan_tag === tag.id);
         if (group.length > 0) acc[tag.id] = group;
         return acc;
     }, {});
@@ -46,7 +51,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Tag filter buttons */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
                 <button 
                     onClick={() => setActiveFilter(null)}
                     className={`rounded-2xl p-4 border text-left transition-all cursor-pointer ${activeFilter === null ? 'bg-stone-900 border-stone-900 text-white shadow-lg shadow-stone-900/10' : 'bg-white border-stone-100 text-stone-800 hover:border-stone-200'}`}
@@ -70,14 +75,6 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                         </button>
                     );
                 })}
-
-                <button 
-                    onClick={() => setActiveFilter(activeFilter === 'all_clear' ? null : 'all_clear')}
-                    className={`rounded-2xl p-3 border transition-all text-left cursor-pointer ${activeFilter === 'all_clear' ? 'ring-2 ring-emerald-600 ring-offset-2 bg-emerald-50 border-emerald-300 shadow-xs' : 'bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300'}`}
-                >
-                    <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5 text-emerald-800">All Clear</p>
-                    <p className="text-xl font-bold text-emerald-950">{allClearGroup.length}</p>
-                </button>
             </div>
 
             {/* Tagged Groups */}
@@ -120,48 +117,6 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                     </div>
                 );
             })}
-
-            {/* All Clear (Untagged / No Active Tag) section at the end */}
-            {(!activeFilter || activeFilter === 'all_clear') && allClearGroup.length > 0 && (
-                <div className="animate-in slide-in-from-bottom-2 duration-300">
-                    <div className="flex items-center gap-2 mb-3">
-                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-emerald-600" />
-                        <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest">All Clear (No Tag)</h3>
-                        <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold border bg-emerald-50 text-emerald-800 border-emerald-200">
-                            {allClearGroup.length}
-                        </span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {allClearGroup.map(c => (
-                            <button 
-                                key={c.id} 
-                                onClick={() => onSelectCustomer(c)}
-                                className="w-full bg-white rounded-2xl border border-stone-100 p-4 text-left hover:border-amber-200 hover:shadow-sm transition-all group cursor-pointer"
-                            >
-                                <div className="flex justify-between items-start mb-2">
-                                    <div>
-                                        <p className="font-bold text-stone-800 text-sm group-hover:text-amber-600 transition-colors">{c.customer_name}</p>
-                                        <p className="text-[10px] text-stone-400 font-medium mt-0.5">{[c.crn, c.location].filter(Boolean).join(' · ')}</p>
-                                    </div>
-                                    <span className="text-[9px] bg-stone-100 text-stone-600 border border-stone-200 px-2 py-0.5 rounded font-bold">
-                                        All Clear
-                                    </span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-50 text-[10px]">
-                                    <div>
-                                        <p className="text-stone-400 font-bold uppercase">System Capacity</p>
-                                        <p className="text-xs font-semibold text-stone-700 mt-0.5">{c.system_capacity_kwp ? `${c.system_capacity_kwp} kWp` : '–'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-stone-400 font-bold uppercase">Current Stage</p>
-                                        <p className="text-xs font-semibold text-amber-600 mt-0.5">{c.stage || '–'}</p>
-                                    </div>
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

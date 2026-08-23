@@ -1,21 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Wrench } from 'lucide-react';
 import { normalizeInstallationStatus } from '../utils';
+import { INSTALLATION_TAGS, INSTALLATION_TAG_COLORS } from '../constants';
 import { supabase } from '../supabase';
-
-const INSTALLATION_TAGS = [
-    { id: 'Give Up', label: 'Give Up' },
-    { id: 'Yes', label: 'Yes' },
-    { id: 'Process', label: 'Process' },
-    { id: 'Pending', label: 'Pending' }
-];
-
-const INSTALLATION_TAG_COLORS = {
-    'Give Up': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', dot: 'bg-rose-500' },
-    'Yes': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-    'Process': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', dot: 'bg-teal-500' },
-    'Pending': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' }
-};
 
 export { normalizeInstallationStatus };
 
@@ -27,16 +14,33 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
     useEffect(() => {
         const fetchInstallation = async () => {
             setLoading(true);
-            let query = supabase.from('admin').select('*').is('deleted_at', null).neq('installation_status', null).neq('installation_status', '');
-            
-            if (isChannelPartnerOffice) {
-                query = query.ilike('channel_partner', partnerName);
-            } else if (channelPartnerFilter) {
-                query = query.ilike('channel_partner', channelPartnerFilter);
+            let allRows = [];
+            let from = 0;
+            const step = 1000;
+
+            while (true) {
+                let query = supabase
+                    .from('admin')
+                    .select('*')
+                    .is('deleted_at', null)
+                    .neq('installation_status', null)
+                    .neq('installation_status', '')
+                    .range(from, from + step - 1);
+                
+                if (isChannelPartnerOffice) {
+                    query = query.ilike('channel_partner', partnerName);
+                } else if (channelPartnerFilter) {
+                    query = query.ilike('channel_partner', channelPartnerFilter);
+                }
+
+                const { data, error } = await query;
+                if (error || !data || data.length === 0) break;
+                allRows.push(...data);
+                if (data.length < step) break;
+                from += step;
             }
 
-            const { data } = await query;
-            setInstallationCustomers(data || []);
+            setInstallationCustomers(allRows);
             setLoading(false);
         };
         fetchInstallation();

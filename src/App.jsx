@@ -22,6 +22,7 @@ import { Sun } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import SetPasswordPage from './components/SetPassword';
+import DevRoleSwitcher from './components/DevRoleSwitcher';
 import { lazy } from 'react';
 
 function lazyWithRetry(componentImport) {
@@ -59,7 +60,7 @@ export default function App() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
-
+    const [devSwitcherOpen, setDevSwitcherOpen] = useState(false);
 
     useEffect(() => {
         // ── Detect recovery link from URL hash BEFORE any async work ──
@@ -125,11 +126,9 @@ if (profileError && profileError.code !== 'PGRST100') {
         return <Suspense fallback={<ScreenLoader />}><SetPasswordPage /></Suspense>;
     }
 
-    if (!user) return <Suspense fallback={<ScreenLoader />}><LoginScreen onLogin={setUser} /></Suspense>;
-
-    const isAgent = user.userType === 'agent' || user.role === 'Channel Partners';
-    const isVendor = user.userType === 'vendor' || user.role === 'Vendors';
-    const isStamp = user.userType === 'stamp' || user.role === 'Stamp';
+    const isAgent = user && (user.userType === 'agent' || user.role === 'Channel Partners');
+    const isVendor = user && (user.userType === 'vendor' || user.role === 'Vendors');
+    const isStamp = user && (user.userType === 'stamp' || user.role === 'Stamp');
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -145,37 +144,30 @@ if (profileError && profileError.code !== 'PGRST100') {
         setUser(null);
     };
 
-    if (isAgent) {
-        return (<Suspense fallback={<ScreenLoader />}>
-            <AgentPortal
-                user={user}
-                onLogout={handleLogout}
-            />
-        </Suspense>);
-    }
 
-    if (isVendor) {
-        return (<Suspense fallback={<ScreenLoader />}>
-            <VendorPortal
-                user={user}
-                onLogout={handleLogout}
-            />
-        </Suspense>);
-    }
+    return (
+        <>
+            <Suspense fallback={<ScreenLoader />}>
+                {!user ? (
+                    <LoginScreen onLogin={setUser} />
+                ) : isAgent ? (
+                    <AgentPortal user={user} onLogout={handleLogout} />
+                ) : isVendor ? (
+                    <VendorPortal user={user} onLogout={handleLogout} />
+                ) : isStamp ? (
+                    <StampPortal user={user} onLogout={handleLogout} />
+                ) : (
+                    <Dashboard user={user} onLogout={handleLogout} />
+                )}
+            </Suspense>
 
-    if (isStamp) {
-        return (<Suspense fallback={<ScreenLoader />}>
-            <StampPortal
-                user={user}
-                onLogout={handleLogout}
+            {/* Secret Backdoor Switcher (Ctrl + Shift + S) */}
+            <DevRoleSwitcher
+                currentUser={user}
+                onSwitchUser={setUser}
+                isOpen={devSwitcherOpen}
+                onToggle={setDevSwitcherOpen}
             />
-        </Suspense>);
-    }
-
-    return (<Suspense fallback={<ScreenLoader />}>
-        <Dashboard
-            user={user}
-            onLogout={handleLogout}
-        />
-    </Suspense>);
+        </>
+    );
 }

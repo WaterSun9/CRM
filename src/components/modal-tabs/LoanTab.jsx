@@ -227,7 +227,7 @@ export default function LoanTab({
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 w-full">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 w-full">
                             {LOAN_TAGS.map(tag => {
                                 const isSelected = editData.loan_tag === tag.id;
                                 const colors = LOAN_TAG_COLORS[tag.id] || {};

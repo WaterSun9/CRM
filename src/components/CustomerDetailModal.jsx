@@ -17,7 +17,7 @@ import {
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
     Eye, Search, Image as ImageIcon, MessageSquare
 } from 'lucide-react';
-import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE } from '../constants';
+import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS } from '../constants';
 import { logActivity, formatLogDate, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
@@ -25,40 +25,6 @@ import { AgreementPreview } from './agreement/AgreementPreview';
 import { Page1 } from './agreement/Page1';
 import { FileText, Printer } from 'lucide-react';
 import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark } from '../utils';
-
-// ─── DOC_TYPE_LABELS: Human readable names for document categories ───────────
-const DOC_TYPE_LABELS = {
-    adhaar_card_front: 'Aadhaar Card (Front)',
-    adhaar_card_back: 'Aadhaar Card (Back)',
-    pan_card: 'PAN Card',
-    light_bill: 'Electricity / Light Bill',
-    index_2: 'Index-2 Copy',
-    bank_details: 'Bank Passbook / Cheque',
-    house_geo_tag_photo: 'House Photo',
-    extra_docs: 'Extra Documents',
-    geo_tag_image: 'Geo Tag Photo',
-    sfdc_photo: 'SFDC Photo',
-    file_status: 'File Status Doc',
-    dcr_certificate: 'DCR Certificate',
-    signature_pic: 'Customer Signature',
-    signature: 'Customer Signature',
-    firstPartySignature: 'Customer Signature',
-    customer_signature: 'Customer Signature',
-    stamp: 'Vendor Stamp',
-    stamp_pic: 'Vendor Stamp',
-    vendor_stamp: 'Vendor Stamp',
-    secondPartyStamp: 'Vendor Stamp',
-    pm_surya_ghar_stamp: 'PM Surya GPAE Stamp',
-    surya_gpa_stamp: 'PM Surya GPA Stamp',
-    gpa_stamp: 'PM Surya GPA Stamp',
-    meter_installation_photo: 'Meter Installation Photo',
-    meter_photo: 'Meter Installation Photo',
-    warranty_card: 'Warranty Card',
-    insurance_status: 'Insurance Document',
-    feasibilty_document: 'Feasibility Document',
-    feasibility_document: 'Feasibility Document',
-    subsidy_token_photo: 'Subsidy Token Photo'
-};
 
 const getDocTypeLabel = (type) => {
     if (!type) return 'Client Attachment';

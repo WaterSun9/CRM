@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Tag, CheckCircle2, Clock, AlertTriangle, Banknote } from 'lucide-react';
 import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
+import { normalizeSubsidyTag } from '../utils';
 import { supabase } from '../supabase';
 
 export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
@@ -11,16 +12,33 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
     useEffect(() => {
         const fetchTags = async () => {
             setLoading(true);
-            let query = supabase.from('admin').select('*').is('deleted_at', null).neq('subsidy_tag', null);
-            
-            if (isChannelPartnerOffice) {
-                query = query.ilike('channel_partner', partnerName);
-            } else if (channelPartnerFilter) {
-                query = query.ilike('channel_partner', channelPartnerFilter);
+            let allRows = [];
+            let from = 0;
+            const step = 1000;
+
+            while (true) {
+                let query = supabase
+                    .from('admin')
+                    .select('*')
+                    .is('deleted_at', null)
+                    .neq('subsidy_tag', null)
+                    .neq('subsidy_tag', '')
+                    .range(from, from + step - 1);
+                
+                if (isChannelPartnerOffice) {
+                    query = query.ilike('channel_partner', partnerName);
+                } else if (channelPartnerFilter) {
+                    query = query.ilike('channel_partner', channelPartnerFilter);
+                }
+
+                const { data, error } = await query;
+                if (error || !data || data.length === 0) break;
+                allRows.push(...data);
+                if (data.length < step) break;
+                from += step;
             }
 
-            const { data } = await query;
-            setTagged(data || []);
+            setTagged(allRows);
             setLoading(false);
         };
         fetchTags();
@@ -28,8 +46,14 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
 
     if (loading) return <div className="p-10 text-center animate-pulse text-stone-400">Loading subsidy tags...</div>;
 
+    // Normalize customer subsidy tags for consistent grouping and accurate counts
+    const normalizedCustomers = tagged.map(c => ({
+        ...c,
+        normalized_subsidy_tag: normalizeSubsidyTag(c.subsidy_tag)
+    }));
+
     const grouped = SUBSIDY_TAGS.reduce((acc, tag) => {
-        const group = tagged.filter(c => c.subsidy_tag === tag.id);
+        const group = normalizedCustomers.filter(c => c.normalized_subsidy_tag === tag.id);
         if (group.length > 0) acc[tag.id] = group;
         return acc;
     }, {});

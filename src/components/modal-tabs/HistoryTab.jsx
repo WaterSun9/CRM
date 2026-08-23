@@ -2,14 +2,7 @@ import React from 'react';
 import { ShieldCheck, Send } from 'lucide-react';
 import { SectionHeader } from './shared';
 import { formatLogDate } from '../../utils';
-
-const ACTION_COLORS = {
-    create: 'bg-emerald-100 text-emerald-700',
-    update: 'bg-blue-100 text-blue-700',
-    delete: 'bg-rose-100 text-rose-700',
-    stage_change: 'bg-amber-100 text-amber-700',
-    note: 'bg-indigo-100 text-indigo-700',
-};
+import { ACTION_COLORS } from '../../constants';
 
 export default function HistoryTab({
     editData,

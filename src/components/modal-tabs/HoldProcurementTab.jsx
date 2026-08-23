@@ -1,27 +1,6 @@
 import React, { useState } from 'react';
 import { PauseCircle, AlertTriangle, CheckCircle2, MessageSquare, CornerUpLeft, Save, Sparkles } from 'lucide-react';
-import { PRIMARY_STAGES } from '../../constants';
-
-const HOLD_STATUS_TAGS = [
-    { 
-        id: 'Project Win', 
-        label: 'Project Win', 
-        activeClass: 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-500 ring-offset-2 shadow-md shadow-emerald-600/25 font-bold scale-[1.02]', 
-        dotClass: 'bg-white shadow-xs' 
-    },
-    { 
-        id: 'Project Lost', 
-        label: 'Project Lost', 
-        activeClass: 'bg-rose-600 text-white border-rose-600 ring-2 ring-rose-500 ring-offset-2 shadow-md shadow-rose-600/25 font-bold scale-[1.02]', 
-        dotClass: 'bg-white shadow-xs' 
-    },
-    { 
-        id: 'Project Return Win', 
-        label: 'Project Return Win', 
-        activeClass: 'bg-amber-500 text-white border-amber-500 ring-2 ring-amber-400 ring-offset-2 shadow-md shadow-amber-500/25 font-bold scale-[1.02]', 
-        dotClass: 'bg-white shadow-xs' 
-    }
-];
+import { PRIMARY_STAGES, HOLD_STATUS_TAGS } from '../../constants';
 
 export default function HoldProcurementTab({
     customer,
