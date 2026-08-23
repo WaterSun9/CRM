@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { logActivity } from '../utils';
+import { APP_ROLES } from '../constants';
 import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, KeyRound, Ban, Search, Edit2, Check, Loader2 } from 'lucide-react';
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
