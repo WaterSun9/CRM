@@ -28,8 +28,9 @@ import MeterInstallationTab from './modal-tabs/MeterInstallationTab';
 import DiscomInspectionTab from './modal-tabs/DiscomInspectionTab';
 import SubsidyStatusTab from './modal-tabs/SubsidyStatusTab';
 import FinalReviewTab from './modal-tabs/FinalReviewTab';
+import { DEMO_CUSTOMERS } from '../mock/demoData';
 
-export default function AgentPortal({ user, onLogout }) {
+export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
     const [view, setView] = useState('menu'); // 'menu', 'my_customers', 'workdesk'
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -73,7 +74,10 @@ export default function AgentPortal({ user, onLogout }) {
     const getStageRemarks = (value) => {
         if (value && typeof value === 'object') return value;
         if (typeof value === 'string') {
-            try { return JSON.parse(value) || {}; } catch { return {}; }
+            try {
+                const parsed = JSON.parse(value);
+                if (parsed && typeof parsed === 'object') return parsed;
+            } catch (e) { }
         }
         return {};
     };
@@ -90,6 +94,11 @@ export default function AgentPortal({ user, onLogout }) {
     // Load agent's customers & metadata
     const fetchCustomers = async () => {
         setLoading(true);
+        if (isDemoMode) {
+            setCustomers(DEMO_CUSTOMERS);
+            setLoading(false);
+            return;
+        }
         try {
             const cpFilter = user.channel_partner || user.name;
             const { data, error } = await supabase
@@ -110,9 +119,11 @@ export default function AgentPortal({ user, onLogout }) {
     };
 
     useEffect(() => {
-        if (!user?.name) return;
+        if (!user?.name && !isDemoMode) return;
 
         fetchCustomers();
+        if (isDemoMode) return;
+
         const partnerName = (user.channel_partner || user.name).trim().toLowerCase();
         const channel = supabase.channel(`agent_customers_${user.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {

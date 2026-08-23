@@ -58,17 +58,30 @@ export const MOCK_DEV_ROLES = [
         description: 'Branch management view: oversees branch operations and assigned partner clients.'
     },
     {
+        id: 'direct_cp_agent',
+        name: 'Direct Channel Partner (Agent)',
+        title: 'Om Solar (Direct CP)',
+        email: 'direct.agent@watersun.com',
+        userType: 'agent',
+        role: 'Channel Partners',
+        channel_partner: 'Om Solar Direct',
+        icon: Users,
+        color: 'from-emerald-500 to-emerald-600',
+        badge: 'Direct CP (agent)',
+        description: 'Independent Channel Partner Portal: manages direct customer leads & document workdesk.'
+    },
+    {
         id: 'agent_partner_agent2',
-        name: 'Channel Partner (Agent 2)',
+        name: 'Channel Partner under CP Office (Agent 2)',
         title: 'Rahul Sharma (Field Agent)',
         email: 'agent2@watersun.com',
         userType: 'agent2',
         role: 'Channel Partner',
         channel_partner: 'Apex Solar Gujarat',
-        icon: Users,
-        color: 'from-emerald-500 to-emerald-600',
-        badge: 'Field CP (agent2)',
-        description: 'Mobile Agent Portal with fast lead entry, customer workdesk, and checklist inspection.'
+        icon: UserCheck,
+        color: 'from-teal-500 to-teal-600',
+        badge: 'Branch CP (agent2)',
+        description: 'Sub-agent under CP Office: leads are auto-linked to the parent branch (Apex Solar Gujarat).'
     },
     {
         id: 'vendor_tech',
@@ -142,7 +155,7 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                     Technician Control
                 </span>
                 <span className="bg-amber-400/20 text-amber-300 text-[8px] px-1.5 py-0.5 rounded-full font-mono uppercase">
-                    {isDemoMode ? 'SANDBOX ON' : '7 Views'}
+                    {isDemoMode ? 'SANDBOX ON' : '8 Views'}
                 </span>
             </button>
 

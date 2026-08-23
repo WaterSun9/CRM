@@ -53,14 +53,14 @@ serve(async (req) => {
             .eq("id", caller.id)
             .single()
 
-        if (callerProfile?.user_type !== "admin" && callerProfile?.user_type !== "channel_partner_office") {
+        if (callerProfile?.user_type !== "admin" && callerProfile?.user_type !== "channel_partner_office" && callerProfile?.user_type !== "office2") {
             return new Response(
                 JSON.stringify({ error: "Forbidden: Access denied" }),
                 { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             )
         }
 
-        const isCP = callerProfile?.user_type === "channel_partner_office";
+        const isCP = callerProfile?.user_type === "channel_partner_office" || callerProfile?.user_type === "office2";
 
         // Security check: Channel Partner Office can only manage users belonging to their own channel partner
         if (isCP && ["deactivate", "reactivate", "delete", "update_email"].includes(action)) {
@@ -197,9 +197,14 @@ serve(async (req) => {
             let { name, email, password, role, user_type, channel_partner } = body
 
             if (isCP) {
-                // Limit creations for CP Office
-                user_type = "agent";
-                role = "Channel Partners";
+                // Limit creations for CP Office: allow Manager (office2) or Field CP (agent2)
+                if (user_type === "office2") {
+                    user_type = "office2";
+                    role = "Channel Partner Manager";
+                } else {
+                    user_type = "agent2";
+                    role = "Channel Partner";
+                }
                 channel_partner = (callerProfile?.channel_partner || callerProfile?.name || body.channel_partner || "").trim();
             }
 
