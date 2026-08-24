@@ -182,15 +182,15 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
                         <button
                             type="button"
                             onClick={() => onPreview(pendingFile)}
-                            className="text-[9px] font-bold text-amber-700 hover:text-amber-900 px-1.5 py-0.5 rounded hover:bg-amber-100 transition-colors flex items-center gap-0.5"
-                            title="View preview"
+                            className="text-[9px] font-bold text-amber-700 hover:text-amber-900 px-1.5 py-0.5 rounded hover:bg-amber-100 transition-colors flex items-center gap-0.5 cursor-pointer"
+                            title="View preview & download"
                         >
                             <Eye size={10} /> View
                         </button>
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="text-[9px] font-bold text-blue-600 hover:text-blue-800 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors flex items-center gap-0.5"
+                            className="text-[9px] font-bold text-blue-600 hover:text-blue-800 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors flex items-center gap-0.5 cursor-pointer"
                             title="Change file"
                         >
                             <Upload size={10} /> Change
@@ -201,7 +201,7 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
                             className="text-[9px] font-bold text-red-500 hover:text-red-700 px-1.5 py-0.5 rounded hover:bg-red-50 transition-colors flex items-center gap-0.5 cursor-pointer"
                             title="Remove file"
                         >
-                            <Trash2 size={10} />
+                            <Trash2 size={10} /> Delete
                         </button>
                     </div>
                 </div>
@@ -218,20 +218,24 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     const [validationErrors, setValidationErrors] = useState([]);
 
     const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners';
+    const isAgent2 = user?.userType === 'agent2' || user?.role === 'Channel Partner (Agent 2)' || user?.role === 'Sub Agent';
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager' || user?.role === 'Channel Partner Office' || user?.role === 'Channel Partner Office Manager';
     const partnerName = (user?.channel_partner || user?.name || '').trim();
 
     useEffect(() => {
         if (isOpen) {
             const defaults = { ...DEFAULT_LEAD_FORM };
-            if (isAgent || isChannelPartnerOffice) {
+            if (isAgent2) {
+                defaults.channel_partner = user?.channel_partner || partnerName || '';
+                defaults.sub_channel_partner = user?.name || '';
+            } else if (isAgent || isChannelPartnerOffice) {
                 defaults.channel_partner = partnerName || '';
             }
             setFormData(defaults);
             setPendingFiles({});
             setSaving(false);
         }
-    }, [isOpen, user, isAgent, isChannelPartnerOffice, partnerName]);
+    }, [isOpen, user, isAgent, isAgent2, isChannelPartnerOffice, partnerName]);
 
     if (!isOpen) return null;
 
@@ -290,7 +294,8 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         
         const finalData = {
             ...formData,
-            channel_partner: (isAgent || isChannelPartnerOffice) ? partnerName : (formData.channel_partner || '').trim()
+            channel_partner: isAgent2 ? (user?.channel_partner || partnerName || '') : ((isAgent || isChannelPartnerOffice) ? partnerName : (formData.channel_partner || '').trim()),
+            sub_channel_partner: isAgent2 ? user?.name : (formData.sub_channel_partner || '').trim() || null
         };
 
         // Ensure string fields are strings to pass Zod schema

@@ -167,12 +167,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners';
     const isSales = user?.userType === 'sales' || user?.userType === 'office';
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager' || user?.role === 'Channel Partner Office' || user?.role === 'Channel Partner Office Manager';
-    const isOffice = (user?.userType === 'sales' || user?.userType === 'office' || user?.role === 'Office' || user?.role === 'Backend Office' || user?.role?.toLowerCase().includes('office')) && !isChannelPartnerOffice;
+    const isChannelPartnerManager = user?.userType === 'office2' || user?.role === 'Channel Partner Manager' || user?.role === 'CP Manager (Office 2)';
+    const isChannelPartnerOfficeOrManager = isChannelPartnerOffice || isChannelPartnerManager;
+    const isOffice = (user?.userType === 'sales' || user?.userType === 'office' || user?.role === 'Office' || user?.role === 'Backend Office' || user?.role?.toLowerCase().includes('office')) && !isChannelPartnerOfficeOrManager;
 
     const isDiscomOrMeterStage = editData.stage === 'DISCOM SUBMISSION' || editData.stage === 'METER INSTALLATION';
 
     const canUserEdit = (() => {
-        if (isAdmin || isChannelPartnerOffice || isOffice || isSales) return true;
+        if (isAdmin || isChannelPartnerOffice || isChannelPartnerManager || isOffice || isSales) return true;
         if (user?.role?.toLowerCase().includes('office') || user?.role?.toLowerCase().includes('admin') || user?.role?.toLowerCase().includes('sales')) return true;
         if (isAgent) {
             // Agent can edit if it's their client AND in DISCOM SUBMISSION or METER INSTALLATION stage
@@ -184,7 +186,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         return false;
     })();
 
-    const isEditable = !isFrozen && canUserEdit;
+    // Channel Partner Office and Channel Partner Manager cannot edit Material Integration and Material Delivery (View only)
+    const isStageRestrictedForUser = isChannelPartnerOfficeOrManager && (activeTab === 'MATERIAL INTEGRATION' || activeTab === 'MATERIAL DELIVERY');
+
+    const isEditable = !isFrozen && canUserEdit && !isStageRestrictedForUser;
     // Sales and Office can always add remarks and edit fields
     const canAddRemark = isEditable || !isFrozen;
     const isInstallationDetailsEditable = isEditable;
@@ -736,7 +741,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         await logActivity(
             user.id,
             'update',
-            `${customer.customer_name}: Hold Procurement status saved to ${newStatus || 'None'}`,
+            `${customer.customer_name}: Lost Project status saved to ${newStatus || 'None'}`,
             '',
             customer.id
         );
@@ -818,6 +823,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const hasNextStage = (() => {
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return false;
+        if (editData.stage === 'COMPLETED' || editData.stage === 'LOST PROJECT' || editData.stage === 'HOLD PROCUREMENT') return false;
 
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return false;
@@ -829,16 +835,17 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (nextStage.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') {
             nextIdx++;
         }
-        if (nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT') {
+        if (nextIdx < PRIMARY_STAGES.length && (PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT' || PRIMARY_STAGES[nextIdx].id === 'LOST PROJECT')) {
             nextIdx++;
         }
 
-        return nextIdx < PRIMARY_STAGES.length;
+        return nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id !== 'LOST PROJECT' && PRIMARY_STAGES[nextIdx].id !== 'HOLD PROCUREMENT';
     })();
 
     const nextStageId = (() => {
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return null;
+        if (editData.stage === 'COMPLETED' || editData.stage === 'LOST PROJECT' || editData.stage === 'HOLD PROCUREMENT') return null;
 
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return null;
@@ -850,11 +857,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (nextStage.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') {
             nextIdx++;
         }
-        if (nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT') {
+        if (nextIdx < PRIMARY_STAGES.length && (PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT' || PRIMARY_STAGES[nextIdx].id === 'LOST PROJECT')) {
             nextIdx++;
         }
 
-        if (nextIdx < PRIMARY_STAGES.length) {
+        if (nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id !== 'LOST PROJECT' && PRIMARY_STAGES[nextIdx].id !== 'HOLD PROCUREMENT') {
             return PRIMARY_STAGES[nextIdx].id;
         }
         return null;
@@ -931,20 +938,22 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(String(editData.structure_rear_leg_height || '').trim(), 'Structure Rear Leg Height');
                 requireField(editData.invoice_value && Number(parseIndianNumber(editData.invoice_value)) > 0, 'Invoice Value');
                 break;
-            case 'MATERIAL DELIVERY':
-                requireField(editData.vendor?.trim(), 'Vendor Allotment');
+            case 'MATERIAL INTEGRATION':
                 requireField(editData.inverter_make?.trim(), 'Inverter Make');
                 requireField(editData.inverter_serial_no?.trim(), 'Inverter Serial Number');
-                requireField(editData.invoice_no?.trim(), 'Invoice Number');
-                requireField(editData.material_delivery_date, 'Delivery Date');
-                requireField(editData.driver_name?.trim(), 'Driver Name');
-                requireField(editData.driver_phone_number?.toString().trim(), 'Driver Phone Number');
                 requireField(
                     Array.isArray(editData.panel_serial_no)
                         ? editData.panel_serial_no.some(Boolean)
                         : String(editData.panel_serial_no || '').trim(),
                     'At Least One Panel Serial Number'
                 );
+                break;
+            case 'MATERIAL DELIVERY':
+                requireField(editData.vendor?.trim(), 'Vendor Allotment');
+                requireField(editData.invoice_no?.trim(), 'Invoice Number');
+                requireField(editData.material_delivery_date, 'Delivery Date');
+                requireField(editData.driver_name?.trim(), 'Driver Name');
+                requireField(editData.driver_phone_number?.toString().trim(), 'Driver Phone Number');
                 break;
             case 'INSTALLATION STATUS':
                 requireField(editData.installation_status === 'Yes', 'Installation Status must be Yes');
@@ -1096,11 +1105,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             updates.ac_cable = String(parseIndianNumber(updates.ac_cable));
         }
 
-        if (destStageId === 'HOLD PROCUREMENT') {
+        if (destStageId === 'LOST PROJECT' || destStageId === 'HOLD PROCUREMENT') {
             const prevHold = (typeof updates.hold_procurement === 'object' && updates.hold_procurement) ? updates.hold_procurement : {};
             updates.hold_procurement = {
                 ...prevHold,
-                previous_stage: oldStage !== 'HOLD PROCUREMENT' ? oldStage : (prevHold.previous_stage || 'LEADS'),
+                previous_stage: (oldStage !== 'LOST PROJECT' && oldStage !== 'HOLD PROCUREMENT') ? oldStage : (prevHold.previous_stage || 'LEADS'),
                 hold_date: new Date().toISOString().split('T')[0]
             };
         }
@@ -1383,8 +1392,19 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         isEditable, editingSection, setEditingSection, channel_partners, isAdmin, 
         isOffice, meta, user, isRegChecklistDirty, handleSaveRegChecklist, 
         isOperationalChecklistDirty, handleSaveOperationalChecklist, documents, 
-        uploading, onFileUpload: handleFileUpload, onFileDelete: handleDeleteDoc, 
-        onFilePreview: handlePreviewDoc, onUpdateRemark: handleUpdateDocRemark, 
+        uploading, 
+        onFileUpload: handleFileUpload, 
+        onUpload: handleFileUpload,
+        onFileDelete: handleDeleteDoc, 
+        onDelete: handleDeleteDoc,
+        onDeleteDocument: handleDeleteDoc,
+        onFilePreview: handlePreviewDoc, 
+        onPreview: handlePreviewDoc,
+        onViewDocument: handlePreviewDoc,
+        onDownloadDocument: handleDownloadDoc,
+        onFileDownload: handleDownloadDoc,
+        onDownload: handleDownloadDoc,
+        onUpdateRemark: handleUpdateDocRemark, 
         onUpdate, logActivity, fetchLogs, saving, setSaving, handleAdvanceStage, 
         saveBomRef, onDirty: () => setIsFormDirty(true), onGenerateAgreement: handleGenerateAgreement,
         isInstallationDetailsEditable, isSfdcEditable: isEditable
@@ -1484,6 +1504,16 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             <div className="flex-1">
                                 <p className="text-xs font-bold text-amber-700">Admin edit mode — Record unlocked</p>
                                 <p className="text-[10px] text-amber-500">Click "Re-lock" when done to freeze the record again</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {isStageRestrictedForUser && (
+                        <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl mb-6 border bg-amber-50/70 border-amber-200/80 text-amber-950">
+                            <Eye className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                            <div className="flex-1">
+                                <p className="text-xs font-bold text-amber-900">View-Only Stage</p>
+                                <p className="text-[10px] text-amber-700 font-medium">Channel Partner Office and Channel Partner Manager accounts have view-only access to Material Integration and Material Delivery.</p>
                             </div>
                         </div>
                     )}
@@ -1665,6 +1695,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                                                     type="button"
                                                                     onClick={() => handlePreviewDoc(doc)}
                                                                     className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 shadow-xs flex items-center gap-1.5 cursor-pointer transition"
+                                                                    title="View Preview & Download"
                                                                 >
                                                                     <Eye size={13} className="text-stone-500" />
                                                                     <span>View</span>
@@ -1709,30 +1740,30 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         />
                     )}
 
-                    {isEditable && activeTab !== 'HOLD PROCUREMENT' && activeTab !== 'DOCUMENTS' && activeTab !== 'history' && customer.stage !== 'COMPLETED' && (
+                    {isEditable && activeTab !== 'LOST PROJECT' && activeTab !== 'HOLD PROCUREMENT' && activeTab !== 'DOCUMENTS' && activeTab !== 'history' && customer.stage !== 'COMPLETED' && (
                         <div className="mt-8 pt-4 border-t border-stone-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50/70 p-3.5 rounded-2xl border border-stone-200/60">
                             <div className="flex items-center gap-2.5">
                                 <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg flex-shrink-0">
                                     <PauseCircle size={16} />
                                 </div>
                                 <div>
-                                    <p className="text-xs font-bold text-stone-700">Need to pause or hold this project?</p>
-                                    <p className="text-[11px] text-stone-500 font-medium">Place the project on hold with an audit note.</p>
+                                    <p className="text-xs font-bold text-stone-700">Need to mark as lost project or put on hold?</p>
+                                    <p className="text-[11px] text-stone-500 font-medium">Classify this project as lost with origin stage details & audit notes.</p>
                                 </div>
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setActiveTab('HOLD PROCUREMENT')}
+                                onClick={() => setActiveTab('LOST PROJECT')}
                                 className="px-3.5 py-2 bg-white hover:bg-stone-100 text-stone-700 rounded-xl text-xs font-bold border border-stone-200 transition-colors shadow-2xs self-start sm:self-auto cursor-pointer"
                             >
-                                Move to Hold Procurement
+                                Move to Lost Project
                             </button>
                         </div>
                     )}
                 </div>
 
                 {/* Footer bar - 50/50 split buttons at customer card */}
-                {isEditable && activeTab !== 'HOLD PROCUREMENT' && (
+                {isEditable && activeTab !== 'LOST PROJECT' && activeTab !== 'HOLD PROCUREMENT' && (
                     <div className="p-4 border-t border-stone-100 bg-white flex-shrink-0 flex gap-3">
                         <button
                             onClick={handleSave}

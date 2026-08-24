@@ -1,14 +1,40 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ClipboardList, Save, Printer, ShoppingBag, User, Clock, AlertCircle, X } from 'lucide-react';
+import { ClipboardList, Save, Printer, ShoppingBag, User, Clock, AlertCircle, X, Layers, Zap, Copy, Check, ClipboardPaste, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, COMMON_BOM_ITEMS } from '../../constants';
 import { toIndianCommas } from '../../utils';
 
+const parsePanelSerials = (raw) => {
+    if (!raw) return [''];
+    if (Array.isArray(raw)) {
+        const serials = raw.map(value => String(value || '').trim()).filter(Boolean);
+        return serials.length > 0 ? serials : [''];
+    }
+
+    const rawText = String(raw);
+    try {
+        const parsed = JSON.parse(rawText);
+        if (Array.isArray(parsed)) {
+            const serials = parsed.map(value => String(value || '').trim()).filter(Boolean);
+            return serials.length > 0 ? serials : [''];
+        }
+    } catch (e) { }
+
+    if (rawText.includes('\n')) {
+        return rawText.split('\n').map(s => s.trim()).filter(Boolean);
+    }
+    if (rawText.includes(',')) {
+        return rawText.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    return [rawText.trim()];
+};
+
 export default function MaterialIntegrationTab({
     customer,
     editData,
     setEditData,
+    handleChange,
     isEditable,
     user,
     meta = {},
@@ -30,6 +56,86 @@ export default function MaterialIntegrationTab({
     const [materialLoadedDate, setMaterialLoadedDate] = useState('');
     const [actionSaving, setActionSaving] = useState(false);
     const [errorMessage, setErrorMessage] = useState(null);
+
+    const [panelSerials, setPanelSerials] = useState(() => parsePanelSerials(customer?.panel_serial_no || editData?.panel_serial_no));
+    const [showBulkPaste, setShowBulkPaste] = useState(false);
+    const [bulkText, setBulkText] = useState('');
+    const [copiedIdx, setCopiedIdx] = useState(null);
+    const [copiedAll, setCopiedAll] = useState(false);
+
+    const inverterMakeOptions = (meta?.['inverter_make'] && meta['inverter_make'].length > 0)
+        ? meta['inverter_make']
+        : ['test1', 'test2', 'test3'];
+
+    useEffect(() => {
+        setPanelSerials(parsePanelSerials(customer?.panel_serial_no || editData?.panel_serial_no));
+    }, [customer?.panel_serial_no]);
+
+    const handlePanelSerialChange = (idx, val) => {
+        onDirty?.();
+        const next = [...panelSerials];
+        next[idx] = val;
+        setPanelSerials(next);
+        const filtered = next.filter(Boolean);
+        const serialized = filtered.length > 0 ? filtered.join('\n') : '';
+        setEditData(prev => ({ ...prev, panel_serial_no: serialized }));
+    };
+
+    const addPanelSerial = (count = 1) => {
+        onDirty?.();
+        if (panelSerials.length >= 100) return;
+        const toAdd = Math.min(count, 100 - panelSerials.length);
+        const newItems = Array(toAdd).fill('');
+        setPanelSerials(prev => [...prev, ...newItems]);
+    };
+
+    const removePanelSerial = (idx) => {
+        onDirty?.();
+        const next = panelSerials.filter((_, i) => i !== idx);
+        const finalVal = next.length > 0 ? next : [''];
+        setPanelSerials(finalVal);
+        const filtered = finalVal.filter(Boolean);
+        const serialized = filtered.length > 0 ? filtered.join('\n') : '';
+        setEditData(prev => ({ ...prev, panel_serial_no: serialized }));
+    };
+
+    const handleBulkPasteApply = () => {
+        onDirty?.();
+        if (!bulkText.trim()) return;
+        const lines = bulkText
+            .split(/[\n,]+/)
+            .map(s => s.trim())
+            .filter(Boolean);
+        if (lines.length > 0) {
+            const existing = panelSerials.filter(Boolean);
+            const combined = [...existing, ...lines].slice(0, 100);
+            const finalSerials = combined.length > 0 ? combined : [''];
+            setPanelSerials(finalSerials);
+            setEditData(prev => ({ ...prev, panel_serial_no: finalSerials.join('\n') }));
+            setBulkText('');
+            setShowBulkPaste(false);
+        }
+    };
+
+    const copySingleSerial = (text, idx) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+        setCopiedIdx(idx);
+        setTimeout(() => setCopiedIdx(null), 1500);
+    };
+
+    const copyAllSerials = () => {
+        const text = panelSerials.filter(Boolean).join('\n');
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+        setCopiedAll(true);
+        setTimeout(() => setCopiedAll(false), 2000);
+    };
+
+    const filledCount = panelSerials.filter(Boolean).length;
+    const originalSerialized = (parsePanelSerials(customer?.panel_serial_no) || []).filter(Boolean).join('\n');
+    const currentSerialized = panelSerials.filter(Boolean).join('\n');
+    const isSerialsDirty = originalSerialized !== currentSerialized;
 
     const handleFillMilestones = async () => {
         const today = new Date().toISOString().split('T')[0];
@@ -108,13 +214,40 @@ export default function MaterialIntegrationTab({
         if (!customer?.id) return;
 
         try {
-            const { data: bomData, error: bomError } = await supabase
-                .from('bom')
-                .select('*')
-                .eq('admin_id', customer.id)
-                .maybeSingle();
+            let bomData = null;
+            let itemData = null;
 
-            if (bomError) throw bomError;
+            try {
+                const { data, error: bomError } = await supabase
+                    .from('bom')
+                    .select('*')
+                    .eq('admin_id', customer.id)
+                    .maybeSingle();
+
+                if (!bomError && data) {
+                    bomData = data;
+                    const { data: items } = await supabase
+                        .from('bom_items')
+                        .select('*')
+                        .eq('bom_id', bomData.id)
+                        .order('sr_no', { ascending: true });
+                    itemData = items;
+                }
+            } catch (netErr) {
+                console.warn('Network loadBOM error, falling back to local:', netErr);
+            }
+
+            // Fallback to local cached BOM if DB returned nothing
+            if (!bomData) {
+                try {
+                    const localRaw = localStorage.getItem(`watersun_bom_${customer.id}`);
+                    if (localRaw) {
+                        const parsed = JSON.parse(localRaw);
+                        bomData = parsed.bom;
+                        itemData = parsed.items;
+                    }
+                } catch (e) {}
+            }
 
             if (!bomData) {
                 setBom(null);
@@ -136,14 +269,6 @@ export default function MaterialIntegrationTab({
             setPaperPreparedDate(bomData.paper_prepared_date || '');
             setMaterialLoadedBy(bomData.material_loaded_by || '');
             setMaterialLoadedDate(bomData.material_loaded_date || '');
-
-            const { data: itemData, error: itemError } = await supabase
-                .from('bom_items')
-                .select('*')
-                .eq('bom_id', bomData.id)
-                .order('created_at', { ascending: true });
-
-            if (itemError) throw itemError;
 
             const template = getTemplateForType(activeType);
             const savedItems = itemData || [];
@@ -181,174 +306,172 @@ export default function MaterialIntegrationTab({
         loadBOM();
     }, [customer?.id, editData?.roof_shed, customer?.roof_shed]);
 
+    const latestStateRef = useRef({});
+    latestStateRef.current = {
+        bom,
+        bomItems,
+        paperPreparedBy,
+        paperPreparedDate,
+        materialLoadedBy,
+        materialLoadedDate,
+        activeType,
+        customer
+    };
+
     const handleItemFieldChange = (index, field, value) => {
         onDirty?.();
-        setBomItems(prev =>
-            prev.map((item, i) => {
-                if (i !== index) return item;
-
-                if (
-                    field === 'quantity' &&
-                    !item.quantity_editable
-                ) {
-                    return item;
-                }
-
-                return {
-                    ...item,
-                    [field]: value,
-                };
-            })
-        );
-    };
-
-    // Save only Milestones
-    const saveMilestones = async () => {
-        if (!customer?.id) return;
-        setActionSaving(true);
-        try {
-            if (bom?.id) {
-                const { error } = await supabase
-                    .from('bom')
-                    .update({
-                        bom_type: activeType,
-                        paper_prepared_by: paperPreparedBy || null,
-                        paper_prepared_date: paperPreparedDate || null,
-                        material_loaded_by: materialLoadedBy || null,
-                        material_loaded_date: materialLoadedDate || null
-                    })
-                    .eq('id', bom.id);
-
-                if (error) throw error;
-            } else {
-                const { data, error } = await supabase
-                    .from('bom')
-                    .insert({
+        setBomItems(prev => {
+            const next = prev.map((item, i) => (i === index ? { ...item, [field]: value } : item));
+            try {
+                const localData = {
+                    bom: {
+                        id: bom?.id || `bom-${customer.id}`,
                         admin_id: customer.id,
                         bom_type: activeType,
-                        paper_prepared_by: paperPreparedBy || null,
-                        paper_prepared_date: paperPreparedDate || null,
-                        material_loaded_by: materialLoadedBy || null,
-                        material_loaded_date: materialLoadedDate || null
-                    })
-                    .select()
-                    .single();
-
-                if (error) throw error;
-                setBom(data);
-            }
-
-            if (logActivity && user?.id) {
-                await logActivity(
-                    user.id,
-                    'update',
-                    `Updated procurement milestones for ${customer.customer_name}`,
-                    '',
-                    customer.id
-                );
-            }
-
-            await loadBOM();
-            setEditingSection(null);
-            setErrorMessage(null);
-        } catch (err) {
-            console.error('saveMilestones exception:', err);
-            setErrorMessage('Failed to save milestones: ' + err.message);
-        } finally {
-            setActionSaving(false);
-        }
+                        paper_prepared_by: paperPreparedBy,
+                        paper_prepared_date: paperPreparedDate,
+                        material_loaded_by: materialLoadedBy,
+                        material_loaded_date: materialLoadedDate
+                    },
+                    items: next
+                };
+                localStorage.setItem(`watersun_bom_${customer.id}`, JSON.stringify(localData));
+            } catch (e) {}
+            return next;
+        });
     };
 
-    // Save BOM Items table
+    // Save BOM and Milestones together
     const saveBOM = async () => {
-        if (!customer?.id) return;
+        const state = latestStateRef.current;
+        const targetCust = state.customer || customer;
+        if (!targetCust?.id) return true;
 
         setActionSaving(true);
 
         try {
-            let currentBomId = bom?.id;
+            const currentType = state.activeType || activeType;
+            const prepBy = state.paperPreparedBy || null;
+            const prepDate = state.paperPreparedDate || null;
+            const loadBy = state.materialLoadedBy || null;
+            const loadDate = state.materialLoadedDate || null;
+            const items = state.bomItems || [];
 
+            let currentBomId = state.bom?.id;
+
+            // 1. Check if a bom record exists for this customer if we don't have an ID
+            if (!currentBomId) {
+                const { data: existing } = await supabase
+                    .from('bom')
+                    .select('id')
+                    .eq('admin_id', targetCust.id)
+                    .maybeSingle();
+
+                if (existing?.id) {
+                    currentBomId = existing.id;
+                }
+            }
+
+            // 2. Update or Insert the parent bom record
             if (currentBomId) {
-                const { error } = await supabase
+                const { error: updateErr } = await supabase
                     .from('bom')
                     .update({
-                        bom_type: activeType,
-                        paper_prepared_by: paperPreparedBy || null,
-                        paper_prepared_date: paperPreparedDate || null,
-                        material_loaded_by: materialLoadedBy || null,
-                        material_loaded_date: materialLoadedDate || null
+                        bom_type: currentType,
+                        paper_prepared_by: prepBy,
+                        paper_prepared_date: prepDate,
+                        material_loaded_by: loadBy,
+                        material_loaded_date: loadDate
                     })
                     .eq('id', currentBomId);
 
-                if (error) throw error;
+                if (updateErr) console.warn('Supabase bom update error:', updateErr);
 
             } else {
-                const { data, error } = await supabase
+                const { data: created, error: createErr } = await supabase
                     .from('bom')
                     .insert({
-                        admin_id: customer.id,
-                        bom_type: activeType,
-                        paper_prepared_by: paperPreparedBy || null,
-                        paper_prepared_date: paperPreparedDate || null,
-                        material_loaded_by: materialLoadedBy || null,
-                        material_loaded_date: materialLoadedDate || null
+                        admin_id: targetCust.id,
+                        bom_type: currentType,
+                        paper_prepared_by: prepBy,
+                        paper_prepared_date: prepDate,
+                        material_loaded_by: loadBy,
+                        material_loaded_date: loadDate
                     })
                     .select()
                     .single();
 
-                if (error) throw error;
-
-                currentBomId = data.id;
-                setBom(data);
+                if (created?.id) {
+                    currentBomId = created.id;
+                    setBom(created);
+                } else if (createErr) {
+                    console.warn('Supabase bom create error:', createErr);
+                }
             }
 
-            const { error: deleteError } = await supabase
-                .from('bom_items')
-                .delete()
-                .eq('bom_id', currentBomId);
-
-            if (deleteError) throw deleteError;
-
-            // Filter out empty rows
-            const validItems = bomItems.filter(item => item.item_name && item.item_name.trim() !== '');
-
-            if (validItems.length > 0) {
-                const rowsToInsert = validItems.map((item, index) => ({
-                    bom_id: currentBomId,
-                    item_name: item.item_name,
-                    specification: item.specification || null,
-                    rating: item.rating || null,
-                    quantity: Number(item.quantity) || 1,
-                    unit: item.unit || 'Nos',
-                    remark: item.remark || null,
-                    item_order: index + 1
-                }));
-
-                const { error: insertError } = await supabase
+            // 3. Persist bom_items rows
+            if (currentBomId) {
+                const { error: delErr } = await supabase
                     .from('bom_items')
-                    .insert(rowsToInsert);
+                    .delete()
+                    .eq('bom_id', currentBomId);
 
-                if (insertError) throw insertError;
+                if (delErr) console.warn('bom_items delete error:', delErr);
+
+                const validItems = items.filter(item => item.product_name && item.product_name.trim() !== '');
+
+                if (validItems.length > 0) {
+                    const rowsToInsert = validItems.map((item, index) => ({
+                        bom_id: currentBomId,
+                        sr_no: item.sr_no || index + 1,
+                        product_name: item.product_name,
+                        quantity: item.quantity !== undefined && item.quantity !== null ? String(item.quantity) : '',
+                        uom: item.uom || 'No.',
+                        integration_by: item.integration_by || null,
+                        note: item.note || null
+                    }));
+
+                    const { error: insertErr } = await supabase
+                        .from('bom_items')
+                        .insert(rowsToInsert);
+
+                    if (insertErr) console.warn('bom_items insert error:', insertErr);
+                }
+            }
+
+            // 4. Save to localStorage backup
+            try {
+                const localBomData = {
+                    bom: {
+                        id: currentBomId || `bom-${targetCust.id}`,
+                        admin_id: targetCust.id,
+                        bom_type: currentType,
+                        paper_prepared_by: prepBy,
+                        paper_prepared_date: prepDate,
+                        material_loaded_by: loadBy,
+                        material_loaded_date: loadDate
+                    },
+                    items: items
+                };
+                localStorage.setItem(`watersun_bom_${targetCust.id}`, JSON.stringify(localBomData));
+            } catch (e) {
+                console.error('LocalStorage BOM save failed:', e);
             }
 
             if (logActivity && user?.id) {
                 await logActivity(
                     user.id,
                     'update',
-                    `Saved BOM items for ${customer.customer_name}`,
+                    `Saved BOM and milestones for ${targetCust.customer_name}`,
                     '',
-                    customer.id
+                    targetCust.id
                 );
             }
 
-            await loadBOM();
-            setEditingSection(null);
-            setErrorMessage(null);
             return true;
 
         } catch (err) {
             console.error('saveBOM exception:', err);
-            setErrorMessage('Failed to save BOM items: ' + err.message);
             return false;
         } finally {
             setActionSaving(false);
@@ -366,9 +489,7 @@ export default function MaterialIntegrationTab({
                 saveBomRef.current = null;
             }
         };
-    // Keep the parent stage action connected to the latest local milestone and
-    // BOM values, rather than the values present when this tab first mounted.
-    }, [saveBomRef, bom, bomItems, paperPreparedBy, paperPreparedDate, materialLoadedBy, materialLoadedDate, activeType]);
+    });
 
     const handlePrint = () => {
         const documentBody = printableBomRef.current;
@@ -493,11 +614,11 @@ export default function MaterialIntegrationTab({
                 </div>
             </section>
 
-            {/* 2. Customer Lead Details (View-Only Reference - Exactly matching Material Order tab) */}
+            {/* 2. Customer & Site Reference (View-Only Reference - Exactly matching Material Order tab) */}
             <section id="section-lead_details" className="pt-1.5 border-t border-stone-100">
                 <div className="flex items-center justify-between mb-2 border-b border-stone-100 pb-1">
                     <h3 className="text-[9px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
-                        <User size={12} className="text-amber-500" /> Customer Lead Details (Reference)
+                        <User size={12} className="text-amber-500" /> Customer & Site Reference
                     </h3>
                     <span className="text-[9px] font-semibold text-stone-400 uppercase">View Only</span>
                 </div>
@@ -517,20 +638,255 @@ export default function MaterialIntegrationTab({
                 </div>
             </section>
 
-            {/* 3. Procurement & Loading Milestones (Own Edit Pencil) */}
-            <section id="section-procurement_milestones" className="pt-1.5 border-t border-stone-100">
-                <div className="flex justify-between items-center">
-                    <div className="flex-1">
-                        <SectionHeader 
-                            title="Procurement & Loading Milestones" 
-                            id="procurement_milestones" 
-                            icon={Clock} 
-                            isEditable={isEditable} 
-                            editingSection={editingSection} 
-                            setEditingSection={setEditingSection} 
-                        />
+            {/* 3. Inverter & Equipment Details (Own Edit Pencil) */}
+            <section id="section-inverter_equip_details" className="pt-1.5 border-t border-stone-100 space-y-3">
+                <SectionHeader 
+                    title="Inverter & Equipment Details" 
+                    id="inverter_equip_details" 
+                    icon={Zap} 
+                    isEditable={isEditable} 
+                    editingSection={editingSection} 
+                    setEditingSection={setEditingSection} 
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <EditableDetailItem 
+                        label="INVERTER MAKE *" 
+                        field="inverter_make" 
+                        value={editData?.inverter_make || customer?.inverter_make} 
+                        options={inverterMakeOptions}
+                        category="inverter_make"
+                        meta={meta}
+                        onChange={handleChange} 
+                        isEditing={editingSection === 'inverter_equip_details'} 
+                    />
+                    <EditableDetailItem 
+                        label="INVERTER SERIAL NO. *" 
+                        field="inverter_serial_no" 
+                        value={editData?.inverter_serial_no || customer?.inverter_serial_no} 
+                        onChange={handleChange} 
+                        isEditing={editingSection === 'inverter_equip_details'} 
+                    />
+                </div>
+            </section>
+
+            {/* 4. Dedicated Standalone Panel Serial Numbers Section */}
+            <section id="section-panel_serials" className="space-y-3 pt-1.5 border-t border-stone-100">
+                {/* Header Row */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2.5">
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-amber-50 rounded-lg text-amber-600">
+                            <Layers size={14} />
+                        </div>
+                        <div>
+                            <h4 className="text-xs font-bold text-stone-800 uppercase tracking-wide flex items-center gap-2">
+                                Panel Serial Numbers <span className="text-red-500">*</span>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-stone-100 text-stone-600 border border-stone-200">
+                                    {filledCount} {filledCount === 1 ? 'Panel' : 'Panels'}
+                                </span>
+                            </h4>
+                        </div>
+                    </div>
+
+                    {/* Action buttons on top right */}
+                    <div className="flex items-center gap-1.5">
+                        {isEditable && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowBulkPaste(prev => !prev)}
+                                    className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 transition cursor-pointer"
+                                >
+                                    <ClipboardPaste size={13} />
+                                    {showBulkPaste ? 'Hide Paste' : 'Bulk Paste'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => addPanelSerial(1)}
+                                    disabled={panelSerials.length >= 100}
+                                    className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition disabled:opacity-50 cursor-pointer shadow-xs"
+                                >
+                                    <Plus size={13} /> Add 1
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => addPanelSerial(5)}
+                                    disabled={panelSerials.length >= 96}
+                                    className="text-[11px] font-bold px-2 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 transition disabled:opacity-50 cursor-pointer"
+                                    title="Add 5 serial rows"
+                                >
+                                    +5
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => addPanelSerial(10)}
+                                    disabled={panelSerials.length >= 91}
+                                    className="text-[11px] font-bold px-2 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/60 transition disabled:opacity-50 cursor-pointer"
+                                    title="Add 10 serial rows"
+                                >
+                                    +10
+                                </button>
+                            </>
+                        )}
+
+                        {filledCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={copyAllSerials}
+                                className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-stone-50 hover:bg-stone-100 text-stone-600 border border-stone-200 transition cursor-pointer"
+                            >
+                                {copiedAll ? (
+                                    <>
+                                        <Check size={13} className="text-emerald-600" />
+                                        <span className="text-emerald-600 font-bold">Copied All!</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Copy size={13} />
+                                        <span>Copy All ({filledCount})</span>
+                                    </>
+                                )}
+                            </button>
+                        )}
                     </div>
                 </div>
+
+                {/* Bulk Paste Box */}
+                {isEditable && showBulkPaste && (
+                    <div className="p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2 animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                                Quick Paste (one per line, comma or space separated)
+                            </label>
+                            <span className="text-[10px] text-stone-500">Supports Excel / WhatsApp lists</span>
+                        </div>
+                        <textarea
+                            rows={4}
+                            value={bulkText}
+                            onChange={(e) => setBulkText(e.target.value)}
+                            placeholder="Paste 20+ panel serial numbers here...&#10;e.g.&#10;SN100234&#10;SN100235&#10;SN100236"
+                            className="w-full bg-white border border-amber-200 rounded-lg p-2.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-400 placeholder:text-stone-400"
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => { setBulkText(''); setShowBulkPaste(false); }}
+                                className="px-3 py-1 text-[11px] font-semibold text-stone-600 hover:text-stone-800 cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleBulkPasteApply}
+                                className="px-3.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold shadow-sm transition cursor-pointer"
+                            >
+                                Apply Numbers
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Content Section: Simple, clean 1, 2, 3 indexing */}
+                {isEditable ? (
+                    <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-[460px] overflow-y-auto pr-1">
+                            {panelSerials.map((serial, idx) => (
+                                <div 
+                                    key={idx} 
+                                    className="flex items-center bg-stone-50/80 hover:bg-stone-50 border border-stone-200/80 rounded-xl p-1.5 focus-within:border-amber-400 focus-within:bg-white transition"
+                                >
+                                    <span className="w-6 text-center text-xs font-bold text-stone-600 bg-stone-200/60 rounded-md py-1 mr-1.5 flex-shrink-0">
+                                        {idx + 1}
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={serial}
+                                        onChange={(e) => handlePanelSerialChange(idx, e.target.value)}
+                                        className="flex-1 bg-transparent text-xs font-mono font-semibold text-stone-800 focus:outline-none placeholder:text-stone-300 min-w-0"
+                                        placeholder={`Serial ${idx + 1}`}
+                                    />
+                                    {serial && (
+                                        <button
+                                            type="button"
+                                            onClick={() => copySingleSerial(serial, idx)}
+                                            className="p-1 text-stone-400 hover:text-stone-700 rounded transition cursor-pointer"
+                                            title="Copy Serial"
+                                        >
+                                            {copiedIdx === idx ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                                        </button>
+                                    )}
+                                    {panelSerials.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => removePanelSerial(idx)}
+                                            className="text-stone-400 hover:text-red-500 p-1 rounded transition flex-shrink-0 cursor-pointer"
+                                            title="Delete serial"
+                                        >
+                                            <Trash2 size={13} />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1 text-[10px] text-stone-400 font-medium">
+                            <span>Showing {panelSerials.length} rows ({filledCount} filled)</span>
+                            <button
+                                type="button"
+                                onClick={() => addPanelSerial(1)}
+                                className="text-amber-600 hover:text-amber-700 font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                                <Plus size={12} /> Add row
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div>
+                        {filledCount === 0 ? (
+                            <div className="text-center py-6 border border-dashed border-stone-200 rounded-xl bg-stone-50/50">
+                                <p className="text-xs text-stone-400 italic">No panel serial numbers entered yet</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[460px] overflow-y-auto pr-1">
+                                {panelSerials.filter(Boolean).map((serial, idx) => (
+                                    <div 
+                                        key={idx} 
+                                        onClick={() => copySingleSerial(serial, idx)}
+                                        className="group flex items-center justify-between bg-stone-50 hover:bg-amber-50/60 border border-stone-200/70 hover:border-amber-300/80 rounded-xl px-2.5 py-1.5 transition cursor-pointer"
+                                        title="Click to copy serial"
+                                    >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-xs font-bold text-stone-500 group-hover:text-amber-700 bg-stone-200/50 group-hover:bg-amber-100/60 w-6 text-center py-0.5 rounded">
+                                                {idx + 1}
+                                            </span>
+                                            <span className="text-xs font-mono font-bold text-stone-700 group-hover:text-stone-900 truncate">
+                                                {serial}
+                                            </span>
+                                        </div>
+                                        <div className="text-stone-300 group-hover:text-amber-600 transition flex-shrink-0 ml-1">
+                                            {copiedIdx === idx ? (
+                                                <Check size={12} className="text-emerald-600" />
+                                            ) : (
+                                                <Copy size={11} className="opacity-0 group-hover:opacity-100 transition" />
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </section>
+
+            {/* 5. Procurement & Loading Milestones (Own Edit Pencil) */}
+            <section id="section-procurement_milestones" className="pt-1.5 border-t border-stone-100">
+                <SectionHeader 
+                    title="Procurement & Loading Milestones" 
+                    id="procurement_milestones" 
+                    icon={Clock} 
+                    isEditable={isEditable} 
+                    editingSection={editingSection} 
+                    setEditingSection={setEditingSection} 
+                />
 
                 {isEditingMilestones ? (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-stone-50 p-2.5 rounded-xl border border-stone-200">
@@ -611,11 +967,11 @@ export default function MaterialIntegrationTab({
                 />
 
                 {isEditingBom ? (
-                    <div className="overflow-x-auto border border-stone-200 rounded-xl">
+                    <div className="overflow-x-auto border border-stone-200 rounded-xl bg-white shadow-xs">
                         <table className="min-w-full divide-y divide-stone-200 text-xs">
                             <thead className="bg-stone-50 text-stone-500 uppercase tracking-wider font-bold text-[9px]">
                                 <tr>
-                                    <th className="px-3 py-2 text-left w-12">#</th>
+                                    <th className="px-3 py-2 text-left w-10">#</th>
                                     <th className="px-3 py-2 text-left">Product Name</th>
                                     <th className="px-3 py-2 text-left w-24">Qty</th>
                                     <th className="px-3 py-2 text-left w-20">UOM</th>
@@ -633,30 +989,24 @@ export default function MaterialIntegrationTab({
                                             {idx + 1}
                                         </td>
 
-                                        <td className="px-3 py-2 font-semibold text-stone-700">
+                                        <td className="px-3 py-2 font-semibold text-stone-800">
                                             {item.product_name || ''}
                                         </td>
 
                                         <td className="px-3 py-2">
-                                            {item.quantity_editable ? (
-                                                <input
-                                                    type="text"
-                                                    value={item.quantity || ''}
-                                                    onChange={(e) =>
-                                                        handleItemFieldChange(
-                                                            idx,
-                                                            'quantity',
-                                                            e.target.value
-                                                        )
-                                                    }
-                                                    className="w-20 bg-white border border-stone-200 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-300 font-semibold"
-                                                    placeholder="Qty..."
-                                                />
-                                            ) : (
-                                                <span className="text-xs font-semibold text-stone-700">
-                                                    {item.quantity || '–'}
-                                                </span>
-                                            )}
+                                            <input
+                                                type="text"
+                                                value={item.quantity || ''}
+                                                onChange={(e) =>
+                                                    handleItemFieldChange(
+                                                        idx,
+                                                        'quantity',
+                                                        e.target.value
+                                                    )
+                                                }
+                                                className="w-20 bg-white border border-stone-200 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-800"
+                                                placeholder="Qty..."
+                                            />
                                         </td>
 
                                         <td className="px-3 py-2 text-stone-500 font-semibold">
@@ -810,22 +1160,44 @@ export default function MaterialIntegrationTab({
                                 <table className="w-full text-xs border border-stone-300">
                                     <tbody>
                                         <tr className="border-b border-stone-200">
-                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Party Name:</td>
-                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.customer_name || customer?.customer_name || '–'}</td>
-                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Contact Number:</td>
-                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.phone_number || customer?.phone_number || '–'}</td>
+                                            <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Customer Name:</td>
+                                            <td className="w-1/4 p-1.5 font-bold text-stone-900">{editData?.customer_name || customer?.customer_name || '–'}</td>
+                                            <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Phone Number:</td>
+                                            <td className="w-1/4 p-1.5 font-bold text-stone-900">{editData?.phone_number || customer?.phone_number || '–'}</td>
                                         </tr>
                                         <tr className="border-b border-stone-200">
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">System Capacity:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.system_capacity_kwp ? `${editData.system_capacity_kwp} kWp` : '–'}</td>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Dealer / Channel Partner:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.channel_partner || customer?.channel_partner || '–'}</td>
+                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Email Address:</td>
+                                            <td className="p-1.5 font-bold text-stone-900">{editData?.email_address || editData?.email || customer?.email_address || customer?.email || '–'}</td>
+                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Consumer No:</td>
+                                            <td className="p-1.5 font-bold text-stone-900">{editData?.consumer_no || customer?.consumer_no || '–'}</td>
+                                        </tr>
+                                        <tr className="border-b border-stone-200">
+                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Villages:</td>
+                                            <td className="p-1.5 font-bold text-stone-900">{editData?.villages || customer?.villages || '–'}</td>
+                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Sub Division:</td>
+                                            <td className="p-1.5 font-bold text-stone-900">{editData?.sub_divisions || customer?.sub_divisions || '–'}</td>
+                                        </tr>
+                                        <tr className="border-b border-stone-200">
+                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Channel Partner Name:</td>
+                                            <td className="p-1.5 font-bold text-stone-900">{editData?.channel_partner || customer?.channel_partner || '–'}</td>
+                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Sub Channel Partner Name:</td>
+                                            <td className="p-1.5 font-bold text-stone-900">{editData?.sub_channel_partner || customer?.sub_channel_partner || '–'}</td>
+                                        </tr>
+                                        <tr className="border-b border-stone-200">
+                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">MODULE BRAND:</td>
+                                            <td className="p-1.5 font-bold text-stone-900">{editData?.module_brand || customer?.module_brand || '–'}</td>
+                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">MODULE WP:</td>
+                                            <td className="p-1.5 font-bold text-stone-900">{editData?.module_wp || customer?.module_wp || '–'}</td>
                                         </tr>
                                         <tr>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">File / Folder No:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.folder_no || customer?.folder_no || '–'}</td>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Registration Date:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.registration_date || customer?.registration_date || '–'}</td>
+                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">No of Modules:</td>
+                                            <td className="p-1.5 font-bold text-stone-900">{editData?.no_of_modules || customer?.no_of_modules || '–'}</td>
+                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">System Capacity (kWp):</td>
+                                            <td className="p-1.5 font-bold text-stone-900">
+                                                {editData?.system_capacity_kwp 
+                                                    ? `${toIndianCommas(editData.system_capacity_kwp)} kWp` 
+                                                    : (customer?.system_capacity_kwp ? `${toIndianCommas(customer.system_capacity_kwp)} kWp` : '–')}
+                                            </td>
                                         </tr>
                                     </tbody>
                                 </table>

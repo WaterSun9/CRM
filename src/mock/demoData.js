@@ -140,7 +140,7 @@ export const DEMO_CUSTOMERS_ARCHIVE = [
         module_wp: 550,
         registration_date: '2026-02-14',
         payment_type: 'Loan',
-        stage: 'HOLD PROCUREMENT',
+        stage: 'LOST PROJECT',
         hold_status: 'Waiting for Material',
         hold_reason: 'Awaiting 550W DCR Modules dispatch from factory.',
         loan_tag: 'In Progress',

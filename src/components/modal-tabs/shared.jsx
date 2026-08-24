@@ -400,7 +400,7 @@ function DocRemarkRow({ doc, onUpdateRemark, isEditing }) {
     return null;
 }
 
-export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onUpdateRemark, note }) {
+export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onDownload, onUpdateRemark, note }) {
     const fieldDocs = documents.filter(d => d.doc_type === field);
     const fileInputRef = React.useRef(null);
     const [replacingDocId, setReplacingDocId] = React.useState(null);
@@ -444,6 +444,28 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
         const remaining = fieldDocs.filter(d => d.id !== doc.id);
         if (remaining.length === 0 && onChange) {
             onChange(field, false);
+        }
+    };
+
+    const handleDirectDownload = async (doc) => {
+        if (onDownload) {
+            onDownload(doc);
+            return;
+        }
+        try {
+            const { getDownloadUrl } = await import('../../utils');
+            const url = await getDownloadUrl(doc.storage_path, doc.file_name);
+            if (url) {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = doc.file_name;
+                a.target = '_blank';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        } catch (err) {
+            console.error('Download error:', err);
         }
     };
 
@@ -502,18 +524,18 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
                             <span className="text-[10px] text-stone-600 font-medium truncate flex-1">{doc.file_name}</span>
                             <div className="flex items-center gap-1 flex-shrink-0">
                                 {onPreview && (
-                                    <button onClick={() => onPreview(doc)} className="text-[9px] font-bold text-amber-600 hover:text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-50 transition-colors flex items-center gap-0.5 cursor-pointer">
+                                    <button onClick={() => onPreview(doc)} className="text-[9px] font-bold text-amber-600 hover:text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-50 transition-colors flex items-center gap-0.5 cursor-pointer" title="View Document (opens preview & download)">
                                         <Eye size={10} /> View
                                     </button>
                                 )}
                                 {isEditing && (
-                                    <button onClick={() => handleUploadClick(doc.id)} className="text-[9px] font-bold text-blue-600 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors flex items-center gap-0.5 cursor-pointer">
+                                    <button onClick={() => handleUploadClick(doc.id)} className="text-[9px] font-bold text-blue-600 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors flex items-center gap-0.5 cursor-pointer" title="Change / Replace File">
                                         <Upload size={10} /> Change
                                     </button>
                                 )}
                                 {isEditing && onDelete && (
-                                    <button onClick={() => handleDeleteClick(doc)} className="text-[9px] font-bold text-red-500 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50 transition-colors flex items-center gap-0.5 cursor-pointer">
-                                        <Trash2 size={10} /> Remove
+                                    <button onClick={() => handleDeleteClick(doc)} className="text-[9px] font-bold text-red-500 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50 transition-colors flex items-center gap-0.5 cursor-pointer" title="Delete Document">
+                                        <Trash2 size={10} /> Delete
                                     </button>
                                 )}
                             </div>

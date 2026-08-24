@@ -1007,7 +1007,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                                 </div>
                                             </div>
                                             <div className="border-t border-amber-200/70 pt-3">
-                                                <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-stone-400">Customer Lead Details <span className="ml-1 font-semibold normal-case tracking-normal">(View Only)</span></p>
+                                                <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-stone-400">Customer & Site Reference <span className="ml-1 font-semibold normal-case tracking-normal">(View Only)</span></p>
                                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                                                     {[
                                                         ['Customer Name', selectedCust.customer_name], ['Phone Number', selectedCust.phone_number], ['Email Address', selectedCust.email], ['Consumer No', selectedCust.consumer_no], ['Villages', selectedCust.villages], ['Sub Division', selectedCust.sub_divisions], ['Channel Partner Name', selectedCust.channel_partner], ['Sub Channel Partner Name', selectedCust.sub_channel_partner], ['Module Brand', selectedCust.module_brand], ['Module WP', selectedCust.module_wp], ['No of Modules', selectedCust.no_of_modules], ['System Capacity (kWp)', selectedCust.system_capacity_kwp ? toIndianCommas(selectedCust.system_capacity_kwp) : '–'],
@@ -1721,26 +1721,46 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
 
                                     {/* Customer Reference */}
                                     <div className="mb-4">
-                                        <h3 className="text-[11px] font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">1. Customer & Site Details</h3>
+                                        <h3 className="text-[11px] font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">1. Customer & Site Reference</h3>
                                         <table className="w-full text-[11px] border border-stone-300">
                                             <tbody>
                                                 <tr className="border-b border-stone-200">
-                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Party Name:</td>
+                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Customer Name:</td>
                                                     <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.customer_name || '–'}</td>
-                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Contact Number:</td>
+                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Phone Number:</td>
                                                     <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.phone_number || '–'}</td>
                                                 </tr>
                                                 <tr className="border-b border-stone-200">
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">System Capacity:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.system_capacity_kwp ? `${targetBomCust.system_capacity_kwp} kWp` : '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Dealer / Channel Partner:</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Email Address:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.email_address || targetBomCust.email || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Consumer No:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.consumer_no || '–'}</td>
+                                                </tr>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Villages:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.villages || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Sub Division:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.sub_divisions || '–'}</td>
+                                                </tr>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Channel Partner Name:</td>
                                                     <td className="p-1.5 font-bold text-stone-900">{targetBomCust.channel_partner || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Sub Channel Partner Name:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.sub_channel_partner || '–'}</td>
+                                                </tr>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">MODULE BRAND:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.module_brand || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">MODULE WP:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.module_wp || '–'}</td>
                                                 </tr>
                                                 <tr>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">File / Folder No:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.folder_no || '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Registration Date:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.registration_date || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">No of Modules:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.no_of_modules || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">System Capacity (kWp):</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">
+                                                        {targetBomCust.system_capacity_kwp ? `${toIndianCommas(targetBomCust.system_capacity_kwp)} kWp` : '–'}
+                                                    </td>
                                                 </tr>
                                             </tbody>
                                         </table>

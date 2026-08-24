@@ -227,11 +227,11 @@ export default function MaterialOrderTab({
                 </div>
             </section>
 
-            {/* 2. Non-Editable Customer Lead Details (Reference below specifications) */}
+            {/* 2. Non-Editable Customer & Site Reference (Reference below specifications) */}
             <section id="section-lead_details" className="pt-1.5 border-t border-stone-100">
                 <div className="flex items-center justify-between mb-2 border-b border-stone-100 pb-1">
                     <h3 className="text-[9px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
-                        <User size={12} className="text-amber-500" /> Customer Lead Details (Reference)
+                        <User size={12} className="text-amber-500" /> Customer & Site Reference
                     </h3>
                     <span className="text-[9px] font-semibold text-stone-400 uppercase">View Only</span>
                 </div>

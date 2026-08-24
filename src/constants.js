@@ -13,7 +13,6 @@ export const PRIMARY_STAGES = [
     { id: 'REGISTRATION', label: 'Registration', icon: ClipboardList },
     { id: 'LOAN', label: 'Loan', icon: IndianRupee },
     { id: 'CASH', label: 'Cash', icon: Banknote },
-    { id: 'HOLD PROCUREMENT', label: 'Hold Procurement', icon: PauseCircle },
     { id: 'MATERIAL ORDER', label: 'Material Order', icon: ShoppingBag },
     { id: 'MATERIAL INTEGRATION', label: 'Material Integration', icon: Package },
     { id: 'MATERIAL DELIVERY', label: 'Material Delivery', icon: Truck },
@@ -25,6 +24,7 @@ export const PRIMARY_STAGES = [
     { id: 'SUBSIDY STATUS', label: 'Subsidy Status', icon: Tag },
     { id: 'FINAL REVIEW', label: 'Final Review', icon: ClipboardCheck },
     { id: 'COMPLETED', label: 'Completed', icon: CheckCircle2 },
+    { id: 'LOST PROJECT', label: 'Lost Project', icon: PauseCircle },
 ];
 
 export const SUBSIDY_TAGS = [

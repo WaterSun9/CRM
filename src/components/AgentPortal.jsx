@@ -91,22 +91,42 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
     // Metadata
     const [meta, setMeta] = useState({});
 
+    const isAgent2 = user?.userType === 'agent2' || user?.role === 'Channel Partner (Agent 2)' || user?.role === 'Sub Agent' || !!(user?.channel_partner && user?.channel_partner !== user?.name && user?.userType !== 'channel_partner_office' && user?.userType !== 'office2');
+
     // Load agent's customers & metadata
     const fetchCustomers = async () => {
         setLoading(true);
         if (isDemoMode) {
-            setCustomers(getStoredDemoCustomers().filter(c => !c.deleted_at));
+            if (isAgent2) {
+                const myName = (user.name || '').trim().toLowerCase();
+                const matched = getStoredDemoCustomers().filter(c => !c.deleted_at && (
+                    (c.sub_channel_partner || '').trim().toLowerCase() === myName ||
+                    c.sub_channel_partner === 'Direct Sub Partner' ||
+                    c.sub_channel_partner === 'Agent 2' ||
+                    c.sub_channel_partner === 'Siddhpur Field Team' ||
+                    c.sub_channel_partner === user.name
+                ));
+                setCustomers(matched.length > 0 ? matched : getStoredDemoCustomers().filter(c => !c.deleted_at));
+            } else {
+                setCustomers(getStoredDemoCustomers().filter(c => !c.deleted_at));
+            }
             setLoading(false);
             return;
         }
         try {
-            const cpFilter = user.channel_partner || user.name;
-            const { data, error } = await supabase
-                .from('admin')
-                .select('*')
-                .eq('channel_partner', cpFilter)
-                .is('deleted_at', null)
-                .order('created_at', { ascending: false });
+            let query = supabase.from('admin').select('*').is('deleted_at', null).order('created_at', { ascending: false });
+
+            if (isAgent2) {
+                // Agent 2 (Sub-Agent) filters strictly by sub_channel_partner
+                const subFilter = user.name;
+                query = query.eq('sub_channel_partner', subFilter);
+            } else {
+                // Main Channel Partner / Agent
+                const cpFilter = user.channel_partner || user.name;
+                query = query.eq('channel_partner', cpFilter);
+            }
+
+            const { data, error } = await query;
 
             if (!error && data) {
                 setCustomers(data);
@@ -124,12 +144,16 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
         fetchCustomers();
         if (isDemoMode) return;
 
+        const myName = (user.name || '').trim().toLowerCase();
         const partnerName = (user.channel_partner || user.name).trim().toLowerCase();
         const channel = supabase.channel(`agent_customers_${user.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
                 const record = payload.new;
-                const belongsToAgent = record && !record.deleted_at &&
-                    (record.channel_partner || '').trim().toLowerCase() === partnerName;
+                const belongsToAgent = record && !record.deleted_at && (
+                    isAgent2
+                        ? (record.sub_channel_partner || '').trim().toLowerCase() === myName
+                        : (record.channel_partner || '').trim().toLowerCase() === partnerName
+                );
 
                 setCustomers(previous => {
                     if (payload.eventType === 'DELETE' || !belongsToAgent) {
@@ -143,7 +167,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
             .subscribe();
 
         return () => supabase.removeChannel(channel);
-    }, [user]);
+    }, [user, isAgent2]);
 
     useEffect(() => {
         const fetchMetadata = async () => {
@@ -270,11 +294,13 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
 
     // Submit new lead from AddLeadModal
     const handleSubmitLead = async (formData, attachedFiles = []) => {
-        const isSubAgent = !!user.channel_partner;
+        const parentCp = user.channel_partner || user.name;
+        const subCp = isAgent2 ? user.name : (formData.sub_channel_partner || null);
+
         const leadData = {
             ...formData,
-            channel_partner: isSubAgent ? user.channel_partner : user.name,
-            sub_channel_partner: isSubAgent ? user.name : null,
+            channel_partner: parentCp,
+            sub_channel_partner: subCp,
             application_done_by: user.name,
             created_at: new Date().toISOString()
         };
@@ -670,7 +696,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                     </div>
                     <div>
                         <h1 className="text-xs font-black tracking-widest text-stone-900 uppercase">Watersun</h1>
-                        <p className="text-[8px] font-bold text-amber-600 uppercase tracking-widest -mt-0.5">Channel Partner Portal</p>
+                        <p className="text-[8px] font-bold text-amber-600 uppercase tracking-widest -mt-0.5">{isAgent2 ? 'Sub-Agent Portal' : 'Channel Partner Portal'}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -693,9 +719,16 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                         <div className="absolute -bottom-16 right-24 h-40 w-40 rounded-full border-[18px] border-amber-400/10" />
                         <div className="relative space-y-5">
                             <div className="max-w-xl">
-                                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Channel Partner workspace</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">
+                                    {isAgent2 ? `Field Sub-Agent Workspace · ${user.channel_partner || 'Direct'}` : 'Channel Partner workspace'}
+                                </p>
                                 <h2 className="mt-2 text-2xl font-black tracking-tight">Good to see you, {user.name}.</h2>
-                                <p className="mt-2 max-w-lg text-sm font-medium leading-relaxed text-stone-300">A focused view of your pipeline, pending hand-offs, and the customer work that needs attention today.</p>
+                                <p className="mt-2 max-w-lg text-sm font-medium leading-relaxed text-stone-300">
+                                    {isAgent2 
+                                        ? 'A focused view of your field leads, sub-agent pipeline, and customer work that needs attention today.'
+                                        : 'A focused view of your pipeline, pending hand-offs, and the customer work that needs attention today.'
+                                    }
+                                </p>
                             </div>
                             <button
                                 type="button"
@@ -1046,7 +1079,12 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                         <div className="flex items-center justify-between">
                             <div>
                                 <h2 className="text-sm font-black text-stone-900 uppercase tracking-widest">Track All Leads</h2>
-                                <p className="text-[10px] text-stone-400 font-semibold mt-0.5">Directory of all leads registered under {user.channel_partner || user.name}.</p>
+                                <p className="text-[10px] text-stone-400 font-semibold mt-0.5">
+                                    {isAgent2 
+                                        ? `Directory of all leads registered under sub-agent ${user.name} (${user.channel_partner || 'Direct'}).`
+                                        : `Directory of all leads registered under ${user.channel_partner || user.name}.`
+                                    }
+                                </p>
                             </div>
                             <button
                                 onClick={() => setShowAddLead(true)}
@@ -1633,7 +1671,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                                     {/* Non-Editable Leads Details Card */}
                                     <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                         <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
-                                            <User size={11} /> Customer Lead Details
+                                            <User size={11} /> Customer & Site Reference
                                         </h5>
                                         <div className="divide-y divide-stone-200/50 text-xs">
                                             <div className="flex items-center justify-between py-2">
@@ -1841,14 +1879,14 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                                 </div>
                             )}
 
-                            {displayedStage === 'HOLD PROCUREMENT' && (
+                            {(displayedStage === 'LOST PROJECT' || displayedStage === 'HOLD PROCUREMENT') && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
-                                        <PauseCircle size={11} /> Hold Procurement Details
+                                        <PauseCircle size={11} /> Lost Project Details
                                     </h5>
                                     <div className="divide-y divide-stone-200/50 text-xs">
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Hold Procurement</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Lost Project Status</span>
                                             {renderStatusBadge(selectedCust.hold_procurement, 'Pending')}
                                         </div>
                                     </div>

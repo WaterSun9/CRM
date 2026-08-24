@@ -19,7 +19,7 @@ export default function HoldProcurementTab({
     // Normalize hold_procurement object safely from editData or customer
     const getHoldState = () => {
         const raw = editData.hold_procurement ?? customer.hold_procurement;
-        let defaultOrigin = customer.stage !== 'HOLD PROCUREMENT' ? customer.stage : 'LEADS';
+        let defaultOrigin = (customer.stage !== 'LOST PROJECT' && customer.stage !== 'HOLD PROCUREMENT') ? customer.stage : 'LEADS';
         
         if (!raw) {
             return {
@@ -60,7 +60,7 @@ export default function HoldProcurementTab({
 
     const getSavedHoldState = () => {
         const raw = customer.hold_procurement;
-        let defaultOrigin = customer.stage !== 'HOLD PROCUREMENT' ? customer.stage : 'LEADS';
+        let defaultOrigin = (customer.stage !== 'LOST PROJECT' && customer.stage !== 'HOLD PROCUREMENT') ? customer.stage : 'LEADS';
         if (!raw) {
             return {
                 previous_stage: defaultOrigin,
@@ -135,7 +135,7 @@ export default function HoldProcurementTab({
             await logActivity(
                 user.id,
                 'update',
-                `${customer.customer_name}: Saved Hold Procurement details (Status: ${payload.hold_status || 'None'}, Origin: ${payload.previous_stage}, Comment: ${payload.comment || 'None'})`,
+                `${customer.customer_name}: Saved Lost Project details (Status: ${payload.hold_status || 'None'}, Origin: ${payload.previous_stage}, Comment: ${payload.comment || 'None'})`,
                 '',
                 customer.id
             );
@@ -162,7 +162,7 @@ export default function HoldProcurementTab({
             await logActivity(
                 user.id,
                 'stage_change',
-                `${customer.customer_name}: Resumed from Hold Procurement → ${destStage}`,
+                `${customer.customer_name}: Resumed from Lost Project → ${destStage}`,
                 '',
                 customer.id
             );
@@ -184,10 +184,10 @@ export default function HoldProcurementTab({
                 <div className="flex-1">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider">
-                            Customer On Hold
+                            Lost Project / On Hold
                         </h4>
                         <span className="text-[10px] bg-amber-200/60 text-amber-900 font-bold px-2.5 py-0.5 rounded-full">
-                            Hold Date: {holdData.hold_date || today}
+                            Date: {holdData.hold_date || today}
                         </span>
                     </div>
                     <p className="text-[11px] text-amber-800 font-medium mt-1">
@@ -200,7 +200,7 @@ export default function HoldProcurementTab({
             <div className="bg-white p-5 rounded-2xl border border-stone-200/70 shadow-xs space-y-4">
                 <div className="border-b border-stone-100 pb-2">
                     <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
-                        <AlertTriangle size={12} className="text-amber-500" /> Hold Classification & Origin
+                        <AlertTriangle size={12} className="text-amber-500" /> Lost Project Classification & Origin
                     </h4>
                 </div>
 
@@ -216,7 +216,7 @@ export default function HoldProcurementTab({
                                 onChange={e => updateHoldField('previous_stage', e.target.value)}
                                 className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-800 outline-none focus:border-amber-400"
                             >
-                                {PRIMARY_STAGES.filter(s => s.id !== 'HOLD PROCUREMENT' && s.id !== 'COMPLETED').map(stg => (
+                                {PRIMARY_STAGES.filter(s => s.id !== 'LOST PROJECT' && s.id !== 'HOLD PROCUREMENT' && s.id !== 'COMPLETED').map(stg => (
                                     <option key={stg.id} value={stg.id}>{stg.label}</option>
                                 ))}
                             </select>

@@ -26,7 +26,7 @@ export default function CustomerModalTabsRouter(props) {
             {activeTab === 'CASH' && <CashTab {...props} />}
             {activeTab === 'MATERIAL ORDER' && <MaterialOrderTab {...props} />}
             {activeTab === 'MATERIAL INTEGRATION' && <MaterialIntegrationTab {...props} />}
-            {activeTab === 'HOLD PROCUREMENT' && <HoldProcurementTab {...props} />}
+            {(activeTab === 'LOST PROJECT' || activeTab === 'HOLD PROCUREMENT') && <HoldProcurementTab {...props} />}
             {activeTab === 'MATERIAL DELIVERY' && <MaterialDeliveryTab {...props} />}
             {activeTab === 'INSTALLATION STATUS' && <InstallationStatusTab {...props} />}
             {activeTab === 'GEO TAG PHOTO' && <GeoTagPhotoTab {...props} />}
