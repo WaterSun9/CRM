@@ -112,11 +112,21 @@ const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', 
 export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab, isDemoMode = false }) {
     const [activeTab, setActiveTab] = useState(() => {
         if (defaultTab) return defaultTab;
+        if (typeof window !== 'undefined') {
+            const saved = window.sessionStorage.getItem('watersun_modal_active_tab');
+            if (saved) return saved;
+        }
         return customer?.stage || 'LEADS';
     });
     const [editingSection, setEditingSection] = useState(null);
     const [isFormDirty, setIsFormDirty] = useState(false);
     const [editData, setEditData] = useState({ ...customer });
+
+    useEffect(() => {
+        if (typeof window !== 'undefined' && activeTab) {
+            window.sessionStorage.setItem('watersun_modal_active_tab', activeTab);
+        }
+    }, [activeTab]);
 
     const handleEditDataChange = (updater) => {
         setIsFormDirty(true);

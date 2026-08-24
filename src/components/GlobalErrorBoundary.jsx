@@ -23,6 +23,21 @@ export default class GlobalErrorBoundary extends React.Component {
         console.error('GLOBAL REACT ERROR:', error);
         console.error('COMPONENT STACK:', errorInfo?.componentStack);
 
+        // Auto-recover if browser tries to load an old chunk after a deployment
+        const errorMsg = String(error?.message || '');
+        if (
+            errorMsg.includes('Failed to fetch dynamically imported module') ||
+            errorMsg.includes('Importing a module script failed') ||
+            errorMsg.includes('error loading dynamically imported module')
+        ) {
+            const hasAutoReloaded = sessionStorage.getItem('chunk_auto_reload_done') === 'true';
+            if (!hasAutoReloaded) {
+                sessionStorage.setItem('chunk_auto_reload_done', 'true');
+                window.location.reload();
+                return;
+            }
+        }
+
         this.setState({
             error,
             errorInfo,

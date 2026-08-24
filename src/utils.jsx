@@ -558,3 +558,25 @@ export const normalizeInstallationStatus = (status) => {
     if (s === 'pending' || s === 'no' || s === 'waiting' || s === 'not started') return 'Pending';
     return 'Pending';
 };
+
+// ─── Dynamic Import with Auto-Reload on Stale Chunks ─────────────────────────
+import { lazy } from 'react';
+
+export function lazyWithRetry(componentImport) {
+    return lazy(async () => {
+        const pageHasBeenForceRefreshed = window.sessionStorage.getItem('retry-lazy-refreshed') === 'true';
+        try {
+            const component = await componentImport();
+            window.sessionStorage.setItem('retry-lazy-refreshed', 'false');
+            return component;
+        } catch (error) {
+            console.warn('Dynamic import failed (likely stale build chunk after new deploy), reloading latest bundle...', error);
+            if (!pageHasBeenForceRefreshed) {
+                window.sessionStorage.setItem('retry-lazy-refreshed', 'true');
+                window.location.reload();
+                return { default: () => null };
+            }
+            throw error;
+        }
+    });
+}

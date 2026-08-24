@@ -8,51 +8,24 @@
 //     for the "stages" view and lose Activity Log / User Management / Trash
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, normalizeInstallationStatus } from '../utils';
+import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, normalizeInstallationStatus, lazyWithRetry } from '../utils';
 import { PRIMARY_STAGES } from '../constants';
-
-
-// ── NavBtn ────────────────────────────────────────────────────────────────────
-const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, selectedStage, setCurrentView, setSelectedStage, setSidebarOpen }) => {
-    const isActive = view === 'stages'
-        ? (currentView === 'stages' && selectedStage === stage)
-        : currentView === view;
-    return (
-        <button
-            onClick={() => {
-                if (view === 'stages') { setCurrentView('stages'); setSelectedStage(stage); }
-                else setCurrentView(view);
-                // intentionally not closing sidebar to preserve scroll position
-            }}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold mb-0.5 transition-colors ${isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
-            <Icon className="w-4 h-4 flex-shrink-0" />
-            <span className="flex-1 text-left truncate">{label}</span>
-            {count > 0 && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-bold ${isActive ? 'bg-white/20 text-white' : redBadge ? 'bg-red-100 text-red-500' : 'bg-stone-100 text-stone-500'}`}>
-                    {count}
-                </span>
-            )}
-        </button>
-    );
-};
-
 import DashboardView from './DashboardView';
 import CustomerCard from './CustomerCard';
 
-// Secondary views and modals are large, especially the document and agreement
-// tools. Deferring them makes the main customer list render much sooner.
-const SubsidyView = lazy(() => import('./SubsidyView'));
-const LoanView = lazy(() => import('./LoanView'));
-const InstallationView = lazy(() => import('./InstallationView'));
-const CustomerDetailModal = lazy(() => import('./CustomerDetailModal'));
-const AddLeadModal = lazy(() => import('./AddLeadModal'));
-const ActivityLogView = lazy(() => import('./ActivityLogView'));
-const UserManagementView = lazy(() => import('./UserManagementView'));
-const TrashView = lazy(() => import('./TrashView'));
-const ChannelPartnerManagementView = lazy(() => import('./ChannelPartnerManagementView'));
-const InstallationPaymentsView = lazy(() => import('./InstallationPaymentsView'));
+// Secondary views and modals with auto-retry on new deployments
+const SubsidyView = lazyWithRetry(() => import('./SubsidyView'));
+const LoanView = lazyWithRetry(() => import('./LoanView'));
+const InstallationView = lazyWithRetry(() => import('./InstallationView'));
+const CustomerDetailModal = lazyWithRetry(() => import('./CustomerDetailModal'));
+const AddLeadModal = lazyWithRetry(() => import('./AddLeadModal'));
+const ActivityLogView = lazyWithRetry(() => import('./ActivityLogView'));
+const UserManagementView = lazyWithRetry(() => import('./UserManagementView'));
+const TrashView = lazyWithRetry(() => import('./TrashView'));
+const ChannelPartnerManagementView = lazyWithRetry(() => import('./ChannelPartnerManagementView'));
+const InstallationPaymentsView = lazyWithRetry(() => import('./InstallationPaymentsView'));
 import { 
     DEMO_CUSTOMERS, getStoredDemoCustomers, updateStoredDemoCustomer, 
     createStoredDemoCustomer, moveStoredDemoCustomerStage, softDeleteStoredDemoCustomer, 
@@ -66,11 +39,52 @@ import {
     Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal
 } from 'lucide-react';
 
+// ── NavBtn ────────────────────────────────────────────────────────────────────
+const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, selectedStage, setCurrentView, setSelectedStage }) => {
+    const isActive = view === 'stages'
+        ? (currentView === 'stages' && selectedStage === stage)
+        : currentView === view;
+    return (
+        <button
+            onClick={() => {
+                if (view === 'stages') { setCurrentView('stages'); setSelectedStage(stage); }
+                else setCurrentView(view);
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold mb-0.5 transition-colors cursor-pointer ${isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}
+        >
+            <Icon className="w-4 h-4 flex-shrink-0" />
+            <span className="flex-1 text-left truncate">{label}</span>
+            {count > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-bold ${isActive ? 'bg-white/20 text-white' : redBadge ? 'bg-red-100 text-red-500' : 'bg-stone-100 text-stone-500'}`}>
+                    {count}
+                </span>
+            )}
+        </button>
+    );
+};
+
 export default function Dashboard({ user, onLogout, isDemoMode = false, onToggleDemoMode, onOpenDevSwitcher }) {
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [currentView, setCurrentView] = useState('dashboard');
-    const [selectedStage, setSelectedStage] = useState('LEADS');
+    
+    // Remember current view across page reloads
+    const [currentView, setCurrentView] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = window.sessionStorage.getItem('watersun_current_view');
+            if (saved) return saved;
+        }
+        return 'dashboard';
+    });
+
+    // Remember selected stage across page reloads
+    const [selectedStage, setSelectedStage] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = window.sessionStorage.getItem('watersun_selected_stage');
+            if (saved) return saved;
+        }
+        return 'LEADS';
+    });
+
     const [stageSearch, setStageSearch] = useState('');    // per-stage search
     const [channelPartnerFilterInput, setChannelPartnerFilterInput] = useState('');  // typed channel partner name (not yet applied)
     const [channelPartnerFilter, setChannelPartnerFilter] = useState('');    // applied channel partner filter
@@ -85,6 +99,51 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     const [showAddLead, setShowAddLead] = useState(false);
     const globalSearchRef = useRef(null);
     const [meta, setMeta] = useState({});
+
+    // Synchronize navigation state to sessionStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem('watersun_current_view', currentView);
+        }
+    }, [currentView]);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem('watersun_selected_stage', selectedStage);
+        }
+    }, [selectedStage]);
+
+    // Restore selected customer modal if page is reloaded
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            if (selectedCustomer?.id) {
+                window.sessionStorage.setItem('watersun_selected_customer_id', selectedCustomer.id);
+            } else {
+                window.sessionStorage.removeItem('watersun_selected_customer_id');
+            }
+        }
+    }, [selectedCustomer]);
+
+    // On initial mount, restore previously opened customer modal if any
+    useEffect(() => {
+        const restoreOpenedCustomer = async () => {
+            if (typeof window === 'undefined') return;
+            const savedCustId = window.sessionStorage.getItem('watersun_selected_customer_id');
+            if (!savedCustId) return;
+
+            try {
+                const { data } = await supabase
+                    .from('admin')
+                    .select('*')
+                    .eq('id', savedCustId)
+                    .single();
+                if (data) {
+                    setSelectedCustomer(data);
+                }
+            } catch (_) {}
+        };
+        restoreOpenedCustomer();
+    }, []);
 
     const PAGE_SIZE = 50;
     const [page, setPage] = useState(0);
@@ -405,13 +464,32 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     const handleUpdateCustomer = async (id, updates) => {
         const cleanUpdates = { ...updates };
         
+        // Remove read-only or non-existent schema columns
+        delete cleanUpdates.id;
+        delete cleanUpdates.crn;
+        delete cleanUpdates.created_at;
+        delete cleanUpdates.updated_at;
+        delete cleanUpdates.material_order_date;
+        
         // Clean numeric fields
-        const numericFields = ['system_capacity_kwp', 'module_wp', 'no_of_modules', 'invoice_value', 'dc_cable', 'ac_cable', 'vendor_quote'];
+        const numericFields = ['system_capacity_kwp', 'module_wp', 'no_of_modules', 'invoice_value', 'dc_cable', 'ac_cable', 'vendor_quote', 'loan_sanction_amount', 'loan_disbursed_amount', 'subsidy_amount'];
         for (const field of numericFields) {
             if (cleanUpdates[field] !== undefined) {
-                if (cleanUpdates[field] === '') cleanUpdates[field] = null;
-                else if (cleanUpdates[field] !== null) cleanUpdates[field] = parseIndianNumber(cleanUpdates[field]);
+                if (cleanUpdates[field] === '' || cleanUpdates[field] === null) {
+                    cleanUpdates[field] = null;
+                } else {
+                    const parsed = parseIndianNumber(cleanUpdates[field]);
+                    cleanUpdates[field] = isNaN(parsed) ? null : parsed;
+                }
             }
+        }
+
+        // Clean history arrays if present
+        if (Array.isArray(cleanUpdates.loan_history)) {
+            cleanUpdates.loan_history = cleanUpdates.loan_history.map(({ isNew, ...item }) => item);
+        }
+        if (Array.isArray(cleanUpdates.subsidy_history)) {
+            cleanUpdates.subsidy_history = cleanUpdates.subsidy_history.map(({ isNew, ...item }) => item);
         }
 
         // 1. Optimistic UI Update (instant feedback)
@@ -427,20 +505,25 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
         }
 
         // 2. Background Database Save
-        const { error } = await supabase.from('admin').update(cleanUpdates).eq('id', id);
-        
-        if (!error) {
-            syncMetadata(cleanUpdates);
-        } else {
-            console.error('Error updating customer:', error);
-            alert('Database Save Error: ' + error.message + '\nDetails: ' + error.details);
+        try {
+            const { error } = await supabase.from('admin').update(cleanUpdates).eq('id', id);
             
-            // 3. Rollback on failure
-            const previousCustomer = customers.find(c => c.id === id);
-            if (previousCustomer) {
-                setCustomers(prev => prev.map(c => c.id === id ? previousCustomer : c));
-                if (selectedCustomer?.id === id) setSelectedCustomer(previousCustomer);
+            if (!error) {
+                syncMetadata(cleanUpdates);
+            } else {
+                console.error('Error updating customer in DB:', error);
+                alert('Database Save Error: ' + (error.message || 'Unknown database error'));
+                
+                // Rollback on failure
+                const previousCustomer = customers.find(c => c.id === id);
+                if (previousCustomer) {
+                    setCustomers(prev => prev.map(c => c.id === id ? previousCustomer : c));
+                    if (selectedCustomer?.id === id) setSelectedCustomer(previousCustomer);
+                }
             }
+        } catch (err) {
+            console.error('Exception updating customer:', err);
+            alert('Database Connection Error: ' + err.message);
         }
     };
 
@@ -893,7 +976,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                     {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} isDemoMode={isDemoMode} />}
 
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView currentUser={user} />}
-                    {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} />}
+                    {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} isDemoMode={isDemoMode} />}
                     {currentView === 'activity' && user.userType === 'admin' && <ActivityLogView />}
                     {currentView === 'users' && (user.userType === 'admin' || user.userType === 'channel_partner_office') && <UserManagementView currentUser={user} />}
 

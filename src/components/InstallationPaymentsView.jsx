@@ -1,14 +1,13 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, toIndianCommas } from '../utils';
+import { logActivity, toIndianCommas, normalizeInstallationStatus } from '../utils';
+import { getStoredDemoCustomers } from '../mock/demoData';
 import { 
     Search, CreditCard, CheckCircle2, AlertCircle, Calendar, 
     Building2, Users, Check, Loader2, RefreshCw 
 } from 'lucide-react';
 
-const ESSENTIAL_FIELDS = 'id, customer_name, phone_number, consumer_no, crn, location, villages, system_capacity_kwp, stage, installation_status, material_delivery_date, installation_date, vendor, installed_by, vendor_payment_status, vendor_paid_date, vendor_paid_by, vendor_quote, created_at';
-
-export default function InstallationPaymentsView({ onSelectCustomer, currentUser }) {
+export default function InstallationPaymentsView({ onSelectCustomer, currentUser, isDemoMode = false }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('All'); // 'All', 'Pending', 'Paid'
     const [selectedMonthKey, setSelectedMonthKey] = useState('All');
@@ -46,19 +45,44 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
     // Fast lightweight fetch strictly for completed installation status ("Yes")
     const fetchInstallations = useCallback(async () => {
         setLoading(true);
+        const isDemo = isDemoMode || (typeof window !== 'undefined' && window.sessionStorage.getItem('watersun_demo_mode') === 'true');
+        if (isDemo) {
+            const list = getStoredDemoCustomers().filter(c => 
+                !c.deleted_at && 
+                (normalizeInstallationStatus(c.installation_status) === 'yes' || String(c.installation_status || '').toLowerCase().includes('yes'))
+            );
+            setInstallations(list);
+            setLoading(false);
+            return;
+        }
+
         try {
             const { data, error } = await supabase
                 .from('admin')
-                .select(ESSENTIAL_FIELDS)
+                .select('*')
                 .is('deleted_at', null)
-                .eq('installation_status', 'Yes')
+                .ilike('installation_status', '%yes%')
                 .order('created_at', { ascending: false });
 
             if (!error && data) {
                 setInstallations(data);
             } else {
                 console.error("Error fetching completed installations for ledger:", error);
-                setInstallations([]);
+                // Fallback: try fetching where installation_status is not null and filter in memory
+                const { data: allData } = await supabase
+                    .from('admin')
+                    .select('*')
+                    .is('deleted_at', null)
+                    .not('installation_status', 'is', null);
+                if (allData) {
+                    const matched = allData.filter(c => 
+                        normalizeInstallationStatus(c.installation_status) === 'yes' || 
+                        String(c.installation_status || '').trim().toLowerCase() === 'yes'
+                    );
+                    setInstallations(matched);
+                } else {
+                    setInstallations([]);
+                }
             }
         } catch (err) {
             console.error("Error in fetchInstallations:", err);
@@ -66,7 +90,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [isDemoMode]);
 
     useEffect(() => {
         fetchInstallations();
