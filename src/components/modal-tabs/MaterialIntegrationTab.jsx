@@ -501,17 +501,27 @@ export default function MaterialIntegrationTab({
         const printFrame = document.createElement('iframe');
         printFrame.setAttribute('aria-hidden', 'true');
         printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
-        const removeFrame = () => setTimeout(() => printFrame.remove(), 250);
+        const cleanName = (customer?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanRef = (customer?.folder_no || customer?.consumer_no || customer?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const docTitle = `BOM_Material_Integration_${cleanName}_${cleanRef}`;
+        const prevDocTitle = document.title;
+
+        const removeFrame = () => {
+            document.title = prevDocTitle;
+            setTimeout(() => printFrame.remove(), 250);
+        };
+
         printFrame.onload = () => {
             const printWindow = printFrame.contentWindow;
             if (!printWindow) return removeFrame();
             printWindow.onafterprint = removeFrame;
             setTimeout(() => {
+                document.title = docTitle;
                 printWindow.focus();
                 printWindow.print();
             }, 100);
         };
-        printFrame.srcdoc = `<!doctype html><html><head><title>BOM — ${customer?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-bom { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-bom">${documentBody.innerHTML}</main></body></html>`;
+        printFrame.srcdoc = `<!doctype html><html><head><title>${docTitle}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-bom { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-bom">${documentBody.innerHTML}</main></body></html>`;
         document.body.appendChild(printFrame);
     };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { Zap, MapPin, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3 } from 'lucide-react';
+import { Zap, MapPin, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 
 const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStage, currentUser }) {
@@ -84,6 +84,12 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                         <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium col-span-2">
                             <Package size={11} className="text-stone-300 flex-shrink-0" />
                             <span>Vendor: {customer.vendor}</span>
+                        </div>
+                    )}
+                    {customer.delivery_batch_id && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-amber-800 bg-amber-50 border border-amber-200/80 rounded-lg px-2 py-0.5 col-span-2 font-bold">
+                            <Truck size={11} className="text-amber-600 flex-shrink-0" />
+                            <span className="truncate">Batch: {customer.delivery_batch_id}</span>
                         </div>
                     )}
                 </div>

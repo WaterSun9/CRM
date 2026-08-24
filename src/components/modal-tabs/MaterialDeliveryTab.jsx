@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
@@ -49,6 +49,12 @@ export default function MaterialDeliveryTab({
     const [pendingVendor, setPendingVendor] = useState(null);
     const printableDeliveryRef = useRef(null);
 
+    const panelSerials = useMemo(() => {
+        return parsePanelSerials(editData?.panel_serial_no || customer?.panel_serial_no);
+    }, [editData?.panel_serial_no, customer?.panel_serial_no]);
+
+    const filledCount = panelSerials.filter(Boolean).length;
+
     const handleFillTestData = () => {
         const randId = Math.floor(10000 + Math.random() * 90000);
         const today = new Date().toISOString().split('T')[0];
@@ -60,6 +66,7 @@ export default function MaterialDeliveryTab({
             vendor: prev.vendor || demoVendor,
             invoice_no: prev.invoice_no || `INV-${randId}`,
             material_delivery_date: prev.material_delivery_date || today,
+            vehicle_number: prev.vehicle_number || 'GJ-01-AB-1234',
             driver_name: prev.driver_name || 'Ramesh Kumar',
             driver_phone_number: prev.driver_phone_number || '9876543210'
         }));
@@ -88,22 +95,29 @@ export default function MaterialDeliveryTab({
         printFrame.setAttribute('aria-hidden', 'true');
         printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
 
-        const removeFrame = () => setTimeout(() => printFrame.remove(), 250);
+        const cleanName = (customer?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanInv = (editData?.invoice_no || customer?.folder_no || customer?.consumer_no || 'Challan').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const docTitle = `Material_Delivery_Note_${cleanName}_${cleanInv}`;
+        const prevDocTitle = document.title;
+
+        const removeFrame = () => {
+            document.title = prevDocTitle;
+            setTimeout(() => printFrame.remove(), 250);
+        };
+
         printFrame.onload = () => {
             const printWindow = printFrame.contentWindow;
             if (!printWindow) return removeFrame();
             printWindow.onafterprint = removeFrame;
             setTimeout(() => {
+                document.title = docTitle;
                 printWindow.focus();
                 printWindow.print();
             }, 100);
         };
-        printFrame.srcdoc = `<!doctype html><html><head><title>Delivery Note — ${customer?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-delivery { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-delivery">${documentBody.innerHTML}</main></body></html>`;
+        printFrame.srcdoc = `<!doctype html><html><head><title>${docTitle}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-delivery { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-delivery">${documentBody.innerHTML}</main></body></html>`;
         document.body.appendChild(printFrame);
     };
-
-    const printablePanelSerials = parsePanelSerials(editData?.panel_serial_no || customer?.panel_serial_no).filter(Boolean);
-    const filledCount = printablePanelSerials.length;
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -298,8 +312,8 @@ export default function MaterialDeliveryTab({
                     setEditingSection={setEditingSection} 
                 />
                 
-                {/* 4 Delivery Metadata Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* 5 Delivery Metadata Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                     <EditableDetailItem 
                         label="INVOICE NO *" 
                         field="invoice_no" 
@@ -312,6 +326,13 @@ export default function MaterialDeliveryTab({
                         field="material_delivery_date" 
                         type="date"
                         value={editData.material_delivery_date} 
+                        onChange={handleChange} 
+                        isEditing={editingSection === 'equip_details'} 
+                    />
+                    <EditableDetailItem 
+                        label="VEHICLE / TRUCK NO" 
+                        field="vehicle_number" 
+                        value={editData.vehicle_number} 
                         onChange={handleChange} 
                         isEditing={editingSection === 'equip_details'} 
                     />
@@ -418,12 +439,14 @@ export default function MaterialDeliveryTab({
                                         <tr className="border-b border-stone-200">
                                             <td className="p-2 bg-stone-50 font-bold text-stone-600">Material Delivery Date:</td>
                                             <td className="p-2 font-bold text-stone-900">{editData?.material_delivery_date || '–'}</td>
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Vehicle / Truck No:</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.vehicle_number || '–'}</td>
+                                        </tr>
+                                        <tr className="border-b border-stone-200">
                                             <td className="p-2 bg-stone-50 font-bold text-stone-600">Driver Name:</td>
                                             <td className="p-2 font-bold text-stone-900">{editData?.driver_name || '–'}</td>
-                                        </tr>
-                                        <tr>
                                             <td className="p-2 bg-stone-50 font-bold text-stone-600">Driver Phone Number:</td>
-                                            <td colSpan={3} className="p-2 font-bold text-stone-900">{editData?.driver_phone_number || '–'}</td>
+                                            <td className="p-2 font-bold text-stone-900">{editData?.driver_phone_number || '–'}</td>
                                         </tr>
                                     </tbody>
                                 </table>

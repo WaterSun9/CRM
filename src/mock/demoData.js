@@ -687,7 +687,8 @@ export const getDemoMetrics = (partnerName = null, channelPartnerFilter = null) 
 
     const stageCounts = {};
     list.forEach(c => {
-        const s = (c.stage || 'LEADS').toUpperCase();
+        let s = (c.stage || 'LEADS').toUpperCase();
+        if (s === 'HOLD PROCUREMENT' || s === 'HOLD_PROCUREMENT') s = 'LOST PROJECT';
         stageCounts[s] = (stageCounts[s] || 0) + 1;
     });
 

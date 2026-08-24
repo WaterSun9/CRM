@@ -30,13 +30,18 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
     iframe.style.opacity = '0';
     document.body.appendChild(iframe);
 
+    const cleanName = (data?.consumerName || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanConsumerNo = (data?.consumerNo || 'Agreement').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const docTitle = `Discom_Agreement_${cleanName}_${cleanConsumerNo}`;
+    const prevDocTitle = document.title;
+
     const iframeDoc = iframe.contentWindow.document;
     iframeDoc.open();
     iframeDoc.write(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>${(data.consumerName || 'Client').replace(/\s+/g, '_')}_model draft agreement</title>
+          <title>${docTitle}</title>
           <meta charset="utf-8">
           ${parentStyles}
           <style>
@@ -91,9 +96,11 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
     const doPrint = () => {
       if (hasPrinted) return;
       hasPrinted = true;
+      document.title = docTitle;
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
       setTimeout(() => {
+        document.title = prevDocTitle;
         if (document.body.contains(iframe)) document.body.removeChild(iframe);
       }, 1000);
     };

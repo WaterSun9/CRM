@@ -26,6 +26,7 @@ const UserManagementView = lazyWithRetry(() => import('./UserManagementView'));
 const TrashView = lazyWithRetry(() => import('./TrashView'));
 const ChannelPartnerManagementView = lazyWithRetry(() => import('./ChannelPartnerManagementView'));
 const InstallationPaymentsView = lazyWithRetry(() => import('./InstallationPaymentsView'));
+const DeliveryBatchesView = lazyWithRetry(() => import('./DeliveryBatchesView'));
 import { 
     DEMO_CUSTOMERS, getStoredDemoCustomers, updateStoredDemoCustomer, 
     createStoredDemoCustomer, moveStoredDemoCustomerStage, softDeleteStoredDemoCustomer, 
@@ -36,7 +37,7 @@ const ViewLoader = () => <div className="flex items-center justify-center h-64">
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal
+    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck
 } from 'lucide-react';
 
 // ── NavBtn ────────────────────────────────────────────────────────────────────
@@ -731,7 +732,14 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     const subsidyTagCount = metrics?.subsidyTagCount || 0;
     const loanTagCount = metrics?.loanTagCount || 0;
     const installationTagCount = metrics?.installationTagCount || 0;
-    const stageCounts = metrics?.stageCounts || {};
+    const stageCounts = useMemo(() => {
+        const raw = metrics?.stageCounts || {};
+        const normalized = { ...raw };
+        if (!normalized['LOST PROJECT']) {
+            normalized['LOST PROJECT'] = normalized['HOLD PROCUREMENT'] || normalized['HOLD_PROCUREMENT'] || normalized['Lost Project'] || 0;
+        }
+        return normalized;
+    }, [metrics?.stageCounts]);
     const trashCount = trashed.length; // Still local for now, could be moved to RPC later
 
     // Per-stage filtered cards (server already filtered by stage and channel partner)
@@ -751,6 +759,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
 
     const headerTitle =
         currentView === 'dashboard' ? 'Business Dashboard'
+            : currentView === 'delivery_batches' ? 'Material Delivery Batches'
             : currentView === 'subsidy' ? 'Subsidy Tag Tracking'
                 : currentView === 'loan_tags' ? 'Loan Tag Tracking'
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
@@ -786,6 +795,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                     style={{ minHeight: 0, maxHeight: 'calc(100vh - 150px)', WebkitOverflowScrolling: 'touch' }}
                 >
                     <NavBtn view="dashboard" icon={LayoutDashboard} label="Dashboard" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                    <NavBtn view="delivery_batches" icon={Truck} label="Delivery Batches" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     <NavBtn view="subsidy" icon={Tag} label="Subsidy Tags" count={subsidyTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     <NavBtn view="loan_tags" icon={IndianRupee} label="Loan Tags" count={loanTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     <NavBtn view="installation_tags" icon={Wrench} label="Installation Tags" count={installationTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
@@ -971,6 +981,14 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                 <div className="flex-1 p-4 lg:p-6">
                     <Suspense fallback={<ViewLoader />}>
                     {currentView === 'dashboard' && <DashboardView metrics={metrics} loading={loading} />}
+                    {currentView === 'delivery_batches' && (
+                        <DeliveryBatchesView 
+                            currentUser={user} 
+                            onRefreshCustomers={fetchMetricsAndMeta} 
+                            onOpenCustomerModal={setSelectedCustomer} 
+                            isDemoMode={isDemoMode} 
+                        />
+                    )}
                     {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} isDemoMode={isDemoMode} />}
                     {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} isDemoMode={isDemoMode} />}
                     {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} isDemoMode={isDemoMode} />}

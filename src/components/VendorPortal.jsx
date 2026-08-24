@@ -147,18 +147,27 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             .join('');
         const printFrame = document.createElement('iframe');
         printFrame.setAttribute('aria-hidden', 'true');
-        printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
-        const removeFrame = () => setTimeout(() => printFrame.remove(), 250);
+        const cleanName = (targetBomCust?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanRef = (targetBomCust?.folder_no || targetBomCust?.consumer_no || targetBomCust?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const docTitle = `BOM_Vendor_Dispatch_${cleanName}_${cleanRef}`;
+        const prevDocTitle = document.title;
+
+        const removeFrame = () => {
+            document.title = prevDocTitle;
+            setTimeout(() => printFrame.remove(), 250);
+        };
+
         printFrame.onload = () => {
             const printWindow = printFrame.contentWindow;
             if (!printWindow) return removeFrame();
             printWindow.onafterprint = removeFrame;
             setTimeout(() => {
+                document.title = docTitle;
                 printWindow.focus();
                 printWindow.print();
             }, 100);
         };
-        printFrame.srcdoc = `<!doctype html><html><head><title>BOM — ${targetBomCust?.customer_name || 'Customer'}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-vendor-bom { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-vendor-bom">${documentBody.innerHTML}</main></body></html>`;
+        printFrame.srcdoc = `<!doctype html><html><head><title>${docTitle}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-vendor-bom { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-vendor-bom">${documentBody.innerHTML}</main></body></html>`;
         document.body.appendChild(printFrame);
     };
 
