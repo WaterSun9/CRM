@@ -5,6 +5,14 @@ const emptyToUndefined = (schema) => z.preprocess((val) => {
     return val;
 }, schema);
 
+const cleanPhone = (val) => {
+    if (!val) return val;
+    let s = String(val).replace(/[^0-9]/g, '');
+    if (s.length === 11 && s.startsWith('0')) s = s.slice(1);
+    if (s.length === 12 && s.startsWith('91')) s = s.slice(2);
+    return s;
+};
+
 export const leadSchema = z.object({
     customer_name: z.string({
         required_error: "Customer Name is required",
@@ -13,10 +21,13 @@ export const leadSchema = z.object({
     .max(100, "Customer Name cannot exceed 100 characters")
     .trim(),
     
-    phone_number: z.string({
-        required_error: "Phone Number is required",
-    })
-    .regex(/^[0-9]{10}$/, "Phone Number must be exactly 10 digits"),
+    phone_number: z.preprocess(
+        cleanPhone,
+        z.string({
+            required_error: "Phone Number is required",
+        })
+        .regex(/^[0-9]{10}$/, "Phone Number must be exactly 10 digits")
+    ),
     
     email_address: emptyToUndefined(z.string().email("Invalid email format").trim().optional()),
     
@@ -30,7 +41,7 @@ export const leadSchema = z.object({
     villages: z.string({
         required_error: "Villages / Address is required",
     })
-    .min(3, "Address must be at least 3 characters")
+    .min(2, "Address must be at least 2 characters")
     .trim(),
 
     channel_partner: z.string({
@@ -66,9 +77,16 @@ export const leadSchema = z.object({
     .min(1, "Sub Division is required")
     .trim(),
 
-    payment_type: z.enum(['CASH', 'LOAN'], {
-        errorMap: () => ({ message: "Payment Type must be either CASH or LOAN" })
-    }),
+    payment_type: z.preprocess(
+        (val) => {
+            if (!val) return 'Cash';
+            const s = String(val).trim().toUpperCase();
+            return s === 'LOAN' ? 'Loan' : 'Cash';
+        },
+        z.enum(['Cash', 'Loan', 'CASH', 'LOAN'], {
+            errorMap: () => ({ message: "Payment Type must be either Cash or Loan" })
+        })
+    ),
 });
 
 export const customerSchema = leadSchema.partial();

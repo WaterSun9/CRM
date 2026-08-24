@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ClipboardList, Save, Printer, ShoppingBag, User, Clock } from 'lucide-react';
+import { ClipboardList, Save, Printer, ShoppingBag, User, Clock, AlertCircle, X } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, COMMON_BOM_ITEMS } from '../../constants';

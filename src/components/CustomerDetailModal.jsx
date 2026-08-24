@@ -109,7 +109,7 @@ const SUBSIDY_STATUS_OPTIONS = ['Approved', 'Returned', 'Rejected', 'Redeemed', 
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
 
 // ─── CustomerDetailModal ──────────────────────────────────────────────────────
-export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab }) {
+export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab, isDemoMode = false }) {
     const [activeTab, setActiveTab] = useState(() => {
         if (defaultTab) return defaultTab;
         return customer?.stage || 'LEADS';
@@ -584,6 +584,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
 
     const handleToggleSubsidyTag = (tagId) => {
+        if (customer.subsidy_tag === 'Received') return;
         const newTag = editData.subsidy_tag === tagId ? null : tagId;
         setEditData(prev => ({ ...prev, subsidy_tag: newTag }));
         if (newTag) {
@@ -592,6 +593,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleSaveSubsidyTag = async () => {
+        if (customer.subsidy_tag === 'Received' && editData.subsidy_tag !== 'Received') return;
         const newTag = editData.subsidy_tag;
         const entryDate = new Date().toISOString().split('T')[0];
         let updatedHistory = editData.subsidy_history || [];
@@ -630,6 +632,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleToggleLoanTag = (tagId) => {
+        if (customer.loan_tag === 'All Clear') return;
         const newTag = editData.loan_tag === tagId ? null : tagId;
         setEditData(prev => ({ ...prev, loan_tag: newTag }));
         if (newTag) {
@@ -638,6 +641,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleSaveLoanTag = async () => {
+        if (customer.loan_tag === 'All Clear' && editData.loan_tag !== 'All Clear') return;
         const newTag = editData.loan_tag;
         const entryDate = new Date().toISOString().split('T')[0];
         let updatedHistory = editData.loan_history || [];
@@ -676,6 +680,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleToggleInstallationTag = (tagId) => {
+        if (customer.installation_status === 'Yes') return;
         const newTag = editData.installation_status === tagId ? null : tagId;
         const todayStr = new Date().toISOString().split('T')[0];
         setEditData(prev => ({
@@ -778,7 +783,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const handleChange = (field, val) => {
         setIsFormDirty(true);
         if (field === 'driver_phone_number' || field === 'phone_number') {
-            val = String(val).replace(/[^0-9]/g, '');
+            const clean = String(val).replace(/[^0-9]/g, '');
+            val = clean.length === 11 && clean.startsWith('0') ? clean.slice(1) : clean.slice(0, 10);
         }
         setEditData(prev => {
             const next = { ...prev, [field]: val };
@@ -884,7 +890,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             case 'LEADS':
                 requireField(editData.customer_name?.trim(), 'Customer Name');
                 requireField(editData.phone_number?.toString().trim(), 'Phone Number');
-                requireField(editData.email_address?.trim(), 'Email Address');
                 requireField(editData.consumer_no?.toString().trim(), 'Consumer Number');
                 requireField(editData.villages?.trim(), 'Village / Address');
                 requireField(editData.channel_partner?.trim(), 'Channel Partner Name');
@@ -1017,7 +1022,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
         }
 
-        if (editData.stage === 'MATERIAL INTEGRATION') {
+        if (editData.stage === 'MATERIAL INTEGRATION' && !isDemoMode && !String(customer.id).startsWith('demo-')) {
             const { data: bomData } = await supabase
                 .from('bom')
                 .select('paper_prepared_by, paper_prepared_date, material_loaded_by, material_loaded_date')
@@ -1098,26 +1103,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             if (!updates.discom_inspection) {
                 updates.discom_inspection = 'No';
             }
-        }
-
-        // Ensure string fields are strings to pass Zod schema
-        ['customer_name', 'phone_number', 'email_address', 'consumer_no', 'villages', 'channel_partner', 'module_brand', 'module_wp', 'no_of_modules', 'system_capacity_kwp', 'sub_divisions'].forEach(key => {
-            if (updates[key] !== undefined && updates[key] !== null) {
-                updates[key] = String(updates[key]);
-            }
-        });
-
-        // Validate updates with customerSchema
-        const result = customerSchema.safeParse(updates);
-        if (!result.success) {
-            const issues = result.error.issues.map(err => ({
-                label: err.path.join(' › ') || 'Field',
-                text: err.message
-            }));
-            setValidationIssues(issues);
-            setShowValidationModal(true);
-            setSaving(false);
-            return;
         }
 
         if (updates.subsidy_history) {
@@ -1795,12 +1780,17 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <div className="px-6 py-5">
                             <p className="text-sm font-medium leading-relaxed text-stone-600">Complete the required items below before moving this customer to <span className="font-bold text-stone-800">{nextStageLabel}</span>.</p>
                             <ul className="mt-4 space-y-2.5">
-                                {validationIssues.map(issue => (
-                                    <li key={issue} className="flex items-center gap-3 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-800">
-                                        <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-rose-500 text-xs font-black text-white">!</span>
-                                        {issue}
-                                    </li>
-                                ))}
+                                {validationIssues.map((issue, idx) => {
+                                    const displayMsg = typeof issue === 'string'
+                                        ? issue
+                                        : (issue?.text ? (issue?.label ? `${issue.label}: ${issue.text}` : issue.text) : JSON.stringify(issue));
+                                    return (
+                                        <li key={idx} className="flex items-center gap-3 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-800">
+                                            <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-rose-500 text-xs font-black text-white">!</span>
+                                            <span>{displayMsg}</span>
+                                        </li>
+                                    );
+                                })}
                             </ul>
                             <div className="mt-5 flex gap-2">
                                 <button 

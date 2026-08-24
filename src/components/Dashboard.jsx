@@ -53,16 +53,20 @@ const UserManagementView = lazy(() => import('./UserManagementView'));
 const TrashView = lazy(() => import('./TrashView'));
 const ChannelPartnerManagementView = lazy(() => import('./ChannelPartnerManagementView'));
 const InstallationPaymentsView = lazy(() => import('./InstallationPaymentsView'));
-import { DEMO_CUSTOMERS, getDemoMetrics } from '../mock/demoData';
+import { 
+    DEMO_CUSTOMERS, getStoredDemoCustomers, updateStoredDemoCustomer, 
+    createStoredDemoCustomer, moveStoredDemoCustomerStage, softDeleteStoredDemoCustomer, 
+    recoverStoredDemoCustomer, hardDeleteStoredDemoCustomer, getDemoMetadata, getDemoMetrics 
+} from '../mock/demoData';
 
 const ViewLoader = () => <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" /></div>;
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard
+    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal
 } from 'lucide-react';
 
-export default function Dashboard({ user, onLogout, isDemoMode = false, onToggleDemoMode }) {
+export default function Dashboard({ user, onLogout, isDemoMode = false, onToggleDemoMode, onOpenDevSwitcher }) {
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentView, setCurrentView] = useState('dashboard');
@@ -86,14 +90,75 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [metrics, setMetrics] = useState(null);
+    const [exporting, setExporting] = useState(false);
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office' || user?.userType === 'office2' || user?.role === 'Channel Partner Manager';
     const partnerName = (user?.channel_partner || user?.name || ' ').trim();
 
+    const handleFullExport = async () => {
+        setExporting(true);
+        try {
+            if (isDemoMode) {
+                let list = getStoredDemoCustomers().filter(c => !c.deleted_at);
+                if (isChannelPartnerOffice) {
+                    list = list.filter(c => (c.channel_partner || '').toLowerCase() === partnerName.toLowerCase());
+                } else if (channelPartnerFilter && channelPartnerFilter.trim()) {
+                    list = list.filter(c => (c.channel_partner || '').toLowerCase() === channelPartnerFilter.trim().toLowerCase());
+                }
+                exportAllToCSV(list);
+                return;
+            }
+
+            // Fetch all records with chunking to ensure 100% of rows beyond 1000 limit are retrieved
+            let allRows = [];
+            let from = 0;
+            const CHUNK_SIZE = 1000;
+            let keepGoing = true;
+
+            while (keepGoing) {
+                let query = supabase
+                    .from('admin')
+                    .select('*')
+                    .is('deleted_at', null)
+                    .order('created_at', { ascending: false })
+                    .range(from, from + CHUNK_SIZE - 1);
+
+                if (isChannelPartnerOffice) {
+                    query = query.ilike('channel_partner', partnerName);
+                } else if (channelPartnerFilter && channelPartnerFilter.trim()) {
+                    query = query.ilike('channel_partner', channelPartnerFilter.trim());
+                }
+
+                const { data, error } = await query;
+                if (error || !data || data.length === 0) {
+                    keepGoing = false;
+                } else {
+                    allRows = allRows.concat(data);
+                    if (data.length < CHUNK_SIZE) {
+                        keepGoing = false;
+                    } else {
+                        from += CHUNK_SIZE;
+                    }
+                }
+            }
+
+            if (allRows.length > 0) {
+                exportAllToCSV(allRows);
+            } else {
+                alert('No customer records found to export.');
+            }
+        } catch (err) {
+            console.error('Export error:', err);
+            alert('Failed to export data. Please try again.');
+        } finally {
+            setExporting(false);
+        }
+    };
 
     // ── Data fetching ──────────────────────────────────────────────────────────
     const fetchMetricsAndMeta = async () => {
         if (isDemoMode) {
-            setMetrics(getDemoMetrics());
+            setMetrics(getDemoMetrics(isChannelPartnerOffice ? partnerName : channelPartnerFilter));
+            setMeta(getDemoMetadata());
             return;
         }
         const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
@@ -128,7 +193,13 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
         setLoading(true);
         const normalizedStage = (stage || 'LEADS').toUpperCase();
         if (isDemoMode) {
-            const demoStageList = DEMO_CUSTOMERS.filter(c => (c.stage || '').toUpperCase() === normalizedStage);
+            let list = getStoredDemoCustomers().filter(c => !c.deleted_at);
+            if (isChannelPartnerOffice) {
+                list = list.filter(c => (c.channel_partner || '').toLowerCase() === partnerName.toLowerCase());
+            } else if (channelPartnerFilter && channelPartnerFilter.trim()) {
+                list = list.filter(c => (c.channel_partner || '').toLowerCase() === channelPartnerFilter.trim().toLowerCase());
+            }
+            const demoStageList = list.filter(c => (c.stage || '').toUpperCase() === normalizedStage);
             setCustomers(demoStageList);
             setHasMore(false);
             setLoading(false);
@@ -350,6 +421,8 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
         }
 
         if (isDemoMode || String(id).startsWith('demo-')) {
+            updateStoredDemoCustomer(id, cleanUpdates);
+            fetchMetricsAndMeta();
             return;
         }
 
@@ -378,6 +451,8 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
         setSelectedCustomer(null);
 
         if (isDemoMode || String(id).startsWith('demo-')) {
+            softDeleteStoredDemoCustomer(id);
+            fetchMetricsAndMeta();
             return;
         }
         await supabase.from('admin').update({ deleted_at: ts }).eq('id', id);
@@ -385,6 +460,12 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
 
     // Recover from trash
     const handleRecover = async (id) => {
+        if (isDemoMode || String(id).startsWith('demo-')) {
+            recoverStoredDemoCustomer(id);
+            setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: null } : c));
+            fetchMetricsAndMeta();
+            return;
+        }
         await supabase.from('admin').update({ deleted_at: null }).eq('id', id);
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: null } : c));
         logActivity(
@@ -399,6 +480,12 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     // Hard-delete: permanent, admin only
     const handleHardDelete = async (id) => {
         const c = customers.find(x => x.id === id);
+        if (isDemoMode || String(id).startsWith('demo-')) {
+            hardDeleteStoredDemoCustomer(id);
+            setCustomers(prev => prev.filter(c => c.id !== id));
+            fetchMetricsAndMeta();
+            return;
+        }
         await logActivity(
             user.id,
             'delete',
@@ -429,6 +516,8 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
         if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...optimisticUpdates }));
 
         if (isDemoMode || String(id).startsWith('demo-')) {
+            moveStoredDemoCustomerStage(id, newStage, oldRemark);
+            fetchMetricsAndMeta();
             return;
         }
 
@@ -487,6 +576,14 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                 insertData[key] = leadData[key];
             }
         });
+
+        if (isDemoMode) {
+            const created = createStoredDemoCustomer(insertData);
+            setCustomers(prev => [created, ...prev]);
+            setShowAddLead(false);
+            fetchMetricsAndMeta();
+            return created;
+        }
 
         const { data: newCustomer, error } = await supabase.from('admin').insert(insertData).select().single();
         if (error) {
@@ -650,8 +747,14 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                             <p className="text-[9px] text-stone-400">{user.role}</p>
                         </div>
                     </div>
+                    {onOpenDevSwitcher && (user.userType === 'admin' || isDemoMode) && (
+                        <button onClick={onOpenDevSwitcher}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-xl text-xs font-bold transition-colors mb-1.5 cursor-pointer border border-amber-200">
+                            <Terminal className="w-4 h-4 text-amber-600" /> Backdoor Terminal & Roles
+                        </button>
+                    )}
                     <button onClick={onLogout}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-red-500 hover:bg-red-50 rounded-xl text-xs font-semibold transition-colors">
+                        className="w-full flex items-center gap-2 px-3 py-2 text-red-500 hover:bg-red-50 rounded-xl text-xs font-semibold transition-colors cursor-pointer">
                         <LogOut className="w-4 h-4" /> Logout
                     </button>
                 </div>
@@ -761,10 +864,14 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                         )}
 
                         {user?.userType === 'admin' && (
-                            <button onClick={() => exportAllToCSV(active)}
-                                className="flex items-center gap-1.5 border border-stone-200 text-stone-600 px-3 py-2 rounded-xl text-sm font-medium hover:bg-stone-50 transition-colors">
-                                <Download className="w-4 h-4" />
-                                <span className="hidden sm:inline text-xs">Export</span>
+                            <button 
+                                onClick={handleFullExport}
+                                disabled={exporting}
+                                className="flex items-center gap-1.5 border border-stone-200 text-stone-600 px-3 py-2 rounded-xl text-sm font-medium hover:bg-stone-50 transition-colors disabled:opacity-50 cursor-pointer"
+                                title="Export complete database to CSV"
+                            >
+                                <Download className={`w-4 h-4 ${exporting ? 'animate-bounce text-amber-600' : ''}`} />
+                                <span className="hidden sm:inline text-xs">{exporting ? 'Exporting...' : 'Export'}</span>
                             </button>
                         )}
                         {(user?.userType === 'admin' || user?.userType === 'sales' || user?.userType === 'agent' || isChannelPartnerOffice) && (
@@ -849,6 +956,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                     meta={meta}
                     channel_partners={uniqueChannelPartners}
                     defaultTab={currentView === 'subsidy' ? 'SUBSIDY STATUS' : currentView === 'loan_tags' ? 'LOAN' : currentView === 'installation_tags' ? 'INSTALLATION STATUS' : currentView === 'stages' ? selectedStage : undefined}
+                    isDemoMode={isDemoMode}
                 />
                 </Suspense>
             )}

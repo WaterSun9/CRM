@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { logActivity } from '../utils';
 import { APP_ROLES } from '../constants';
+import { MOCK_DEV_ROLES } from '../mock/demoData';
 import { ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, UserCog, X, KeyRound, Ban, Search, Edit2, Check, Loader2 } from 'lucide-react';
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
@@ -312,7 +313,7 @@ export default function UserManagementView({ currentUser }) {
             }
         }
         const { data, error } = await query;
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
             if (isCP) {
                 // For Channel Partner Office, show ONLY sub-agents under this partner / created by this CPO.
                 // Filter out Admins, Super Admins, and other CPOs.
@@ -332,7 +333,17 @@ export default function UserManagementView({ currentUser }) {
                 setProfiles(data);
             }
         } else {
-            setProfiles(data || []);
+            const fallbackProfiles = MOCK_DEV_ROLES.map(r => ({
+                id: `dev-${r.id}`,
+                name: r.name,
+                email: r.email,
+                role: r.role,
+                user_type: r.userType,
+                channel_partner: r.channel_partner,
+                status: 'active',
+                created_at: new Date().toISOString()
+            }));
+            setProfiles(fallbackProfiles);
         }
         setLoading(false);
     };

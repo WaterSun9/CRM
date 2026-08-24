@@ -1,18 +1,22 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, toIndianCommas } from '../utils';
 import { 
     Search, CreditCard, CheckCircle2, AlertCircle, Calendar, 
-    Building2, IndianRupee, Users, Check, X, Loader2
+    Building2, Users, Check, Loader2, RefreshCw 
 } from 'lucide-react';
 
-export default function InstallationPaymentsView({ customers, onSelectCustomer, currentUser }) {
+const ESSENTIAL_FIELDS = 'id, customer_name, phone_number, consumer_no, crn, location, villages, system_capacity_kwp, stage, installation_status, material_delivery_date, installation_date, vendor, installed_by, vendor_payment_status, vendor_paid_date, vendor_paid_by, vendor_quote, created_at';
+
+export default function InstallationPaymentsView({ onSelectCustomer, currentUser }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('All'); // 'All', 'Pending', 'Paid'
     const [selectedMonthKey, setSelectedMonthKey] = useState('All');
     const [selectedVendor, setSelectedVendor] = useState('All');
     const [updatingId, setUpdatingId] = useState(null);
     const [payingAll, setPayingAll] = useState(false);
+    const [installations, setInstallations] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     // Helper to compute payout details (1st of month M+1)
     const getPayoutDetails = (dateStr, fallbackDateStr) => {
@@ -39,23 +43,34 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
         };
     };
 
-    // Fetch installations directly from the database instead of relying on parent state
-    const [installations, setInstallations] = useState([]);
-    const [loading, setLoading] = useState(true);
+    // Fast lightweight fetch strictly for completed installation status ("Yes")
+    const fetchInstallations = useCallback(async () => {
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('admin')
+                .select(ESSENTIAL_FIELDS)
+                .is('deleted_at', null)
+                .eq('installation_status', 'Yes')
+                .order('created_at', { ascending: false });
+
+            if (!error && data) {
+                setInstallations(data);
+            } else {
+                console.error("Error fetching completed installations for ledger:", error);
+                setInstallations([]);
+            }
+        } catch (err) {
+            console.error("Error in fetchInstallations:", err);
+            setInstallations([]);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
-        const fetchInstallations = async () => {
-            setLoading(true);
-            const { data } = await supabase
-                .from('admin')
-                .select('*')
-                .is('deleted_at', null)
-                .in('installation_status', ['Process', 'Yes']);
-            setInstallations(data || []);
-            setLoading(false);
-        };
         fetchInstallations();
-    }, []);
+    }, [fetchInstallations]);
 
     // Map payout details to records using material_delivery_date from delivery stage
     const records = useMemo(() => {
@@ -84,7 +99,7 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
         return Array.from(set).sort((a, b) => a.localeCompare(b));
     }, [records]);
 
-    // Filter by search query, payment status, month, and vendor safely (without crash on null/undefined)
+    // Filter by search query, payment status, month, and vendor
     const filteredRecords = useMemo(() => {
         const q = (searchQuery || '').trim().toLowerCase();
         return records.filter(r => {
@@ -93,14 +108,13 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
                 String(r.vendor || '').toLowerCase().includes(q) ||
                 String(r.installed_by || '').toLowerCase().includes(q) ||
                 String(r.phone_number || '').includes(q) ||
+                String(r.crn || '').toLowerCase().includes(q) ||
                 String(r.consumer_no || '').toLowerCase().includes(q)
             );
 
             const currentStatus = r.vendor_payment_status || 'Pending';
             const matchesStatus = statusFilter === 'All' || currentStatus === statusFilter;
-
             const matchesMonth = selectedMonthKey === 'All' || r.payoutMonthKey === selectedMonthKey;
-
             const matchesVendor = selectedVendor === 'All' || String(r.vendor || '').trim().toLowerCase() === selectedVendor.trim().toLowerCase();
 
             return matchesSearch && matchesStatus && matchesMonth && matchesVendor;
@@ -144,10 +158,19 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
                 .eq('id', customerRecord.id);
 
             if (!error) {
-                // Mutate local record values
-                customerRecord.vendor_payment_status = nextStatus;
-                customerRecord.vendor_paid_date = paidDate;
-                customerRecord.vendor_paid_by = paidBy;
+                // Mutate local state
+                setInstallations(prev => prev.map(item => {
+                    if (item.id === customerRecord.id) {
+                        return {
+                            ...item,
+                            vendor_payment_status: nextStatus,
+                            vendor_paid_date: paidDate,
+                            vendor_paid_by: paidBy
+                        };
+                    }
+                    return item;
+                }));
+
                 await logActivity(
                     currentUser.id,
                     'update',
@@ -165,7 +188,7 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
         }
     };
 
-    // Calculate Summary Stats (Count & Rupee Amounts) for current selection/filters
+    // Calculate Summary Stats
     const totalPayouts = filteredRecords.length;
     const paidRecords = filteredRecords.filter(r => (r.vendor_payment_status || 'Pending') === 'Paid');
     const pendingRecords = filteredRecords.filter(r => (r.vendor_payment_status || 'Pending') !== 'Paid');
@@ -207,11 +230,19 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
                 .in('id', unpaidIds);
 
             if (!error) {
-                unpaidRecords.forEach(r => {
-                    r.vendor_payment_status = 'Paid';
-                    r.vendor_paid_date = today;
-                    r.vendor_paid_by = paidBy;
-                });
+                const unpaidSet = new Set(unpaidIds);
+                setInstallations(prev => prev.map(item => {
+                    if (unpaidSet.has(item.id)) {
+                        return {
+                            ...item,
+                            vendor_payment_status: 'Paid',
+                            vendor_paid_date: today,
+                            vendor_paid_by: paidBy
+                        };
+                    }
+                    return item;
+                }));
+
                 await logActivity(
                     currentUser.id,
                     'update',
@@ -232,13 +263,22 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
     };
 
     return (
-        <div className="p-4 lg:p-6 space-y-6 max-w-7xl mx-auto">
+        <div className="p-4 lg:p-6 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-300">
             {/* Header section */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">Installation Payout Ledger</p>
-                    <p className="text-xs text-stone-500 font-medium mt-1 max-w-xl">
-                        Track installations, manage vendor commissions, and process payouts.
+                    <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">Installation Payout Ledger</p>
+                        <button 
+                            onClick={fetchInstallations}
+                            className="p-1.5 hover:bg-stone-100 rounded-lg text-stone-400 hover:text-stone-700 transition-colors"
+                            title="Refresh Ledger"
+                        >
+                            <RefreshCw size={13} className={loading ? "animate-spin text-amber-500" : ""} />
+                        </button>
+                    </div>
+                    <p className="text-xs text-stone-500 font-medium mt-0.5 max-w-xl">
+                        Track installations completed with tag <b>"Yes"</b>, manage vendor commissions, and process payouts.
                     </p>
                 </div>
             </div>
@@ -330,14 +370,14 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
             )}
 
             {/* Main Table Card */}
-            <div className="bg-white rounded-[24px] border border-stone-100 shadow-sm overflow-hidden space-y-0">
+            <div className="bg-white rounded-[24px] border border-stone-150 shadow-sm overflow-hidden space-y-0">
                 {/* Filters Toolbar */}
                 <div className="p-4 border-b border-stone-100 flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center bg-stone-50/50">
                     <div className="relative flex-1 max-w-md">
                         <Search className="absolute left-3 top-2.5 text-stone-400 w-4 h-4 pointer-events-none" />
                         <input
                             type="text"
-                            placeholder="Search by customer, vendor, phone or consumer no..."
+                            placeholder="Search by customer, vendor, CRN, phone or consumer no..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             className="pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 w-full font-medium"
@@ -380,7 +420,7 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
                                 <button
                                     key={status}
                                     onClick={() => setStatusFilter(status)}
-                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${statusFilter === status ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-800'}`}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${statusFilter === status ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-800'}`}
                                 >
                                     {status === 'Pending' ? 'Unpaid' : status}
                                 </button>
@@ -391,7 +431,12 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
 
                 {/* Ledger Table */}
                 <div className="overflow-x-auto">
-                    {filteredRecords.length > 0 ? (
+                    {loading ? (
+                        <div className="flex flex-col items-center justify-center p-16 text-stone-400 space-y-3">
+                            <RefreshCw className="w-8 h-8 animate-spin text-amber-500" />
+                            <p className="text-xs font-bold text-stone-600">Loading payout records...</p>
+                        </div>
+                    ) : filteredRecords.length > 0 ? (
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-stone-100 bg-stone-50/40">
@@ -448,83 +493,80 @@ export default function InstallationPaymentsView({ customers, onSelectCustomer, 
 
                                             {/* Material Delivery Date */}
                                             <td className="px-5 py-3.5">
-                                                <span className="text-xs font-medium text-stone-700">
-                                                    {r.material_delivery_date ? new Date(r.material_delivery_date).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' }) : <span className="text-stone-400 italic">Not set</span>}
-                                                </span>
+                                                <p className="text-xs font-semibold text-stone-800">
+                                                    {r.material_delivery_date || <span className="text-stone-400 font-normal">Pending</span>}
+                                                </p>
                                             </td>
 
                                             {/* Installation Date */}
                                             <td className="px-5 py-3.5">
-                                                <span className="text-xs font-medium text-stone-700">
-                                                    {r.installation_date ? new Date(r.installation_date).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' }) : <span className="text-stone-400 italic">Not set</span>}
-                                                </span>
+                                                <p className="text-xs font-semibold text-stone-800">
+                                                    {r.installation_date || <span className="text-stone-400 font-normal">Pending</span>}
+                                                </p>
                                             </td>
 
-                                            {/* Payout Due Date — Clean text without solid background */}
+                                            {/* Payout Due Date */}
                                             <td className="px-5 py-3.5">
-                                                <span className="text-xs font-semibold text-stone-800">
-                                                    {r.payoutDueDate}
-                                                </span>
-                                            </td>
-
-                                            {/* Payment Status Dropdown (Smaller, Compact) */}
-                                            <td className="px-5 py-3.5">
-                                                <div className="space-y-0.5">
-                                                    <select
-                                                        disabled={currentUser?.userType !== 'admin' || isUpdating}
-                                                        value={isPaid ? 'Paid' : 'Pending'}
-                                                        onChange={(e) => handleStatusChange(r, e.target.value)}
-                                                        className={`px-2 py-1 rounded-lg text-[11px] font-bold border focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer appearance-none ${
-                                                            isPaid
-                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                                : 'bg-amber-50 text-amber-800 border-amber-200'
-                                                        } disabled:opacity-50`}
-                                                    >
-                                                        <option value="Pending">Unpaid</option>
-                                                        <option value="Paid">Paid</option>
-                                                    </select>
-                                                    {isPaid && (r.vendor_paid_date || r.vendor_paid_by) && (
-                                                        <div className="text-[9px] text-stone-400 font-semibold leading-tight pt-0.5">
-                                                            {r.vendor_paid_date && (
-                                                                <p>Paid: {new Date(r.vendor_paid_date).toLocaleDateString('default', { month: 'short', day: 'numeric' })}</p>
-                                                            )}
-                                                        </div>
-                                                    )}
+                                                <div className="flex items-center gap-1.5">
+                                                    <Calendar size={12} className="text-amber-600 flex-shrink-0" />
+                                                    <div>
+                                                        <p className="text-xs font-bold text-stone-800">{r.payoutDueDate}</p>
+                                                        <p className="text-[9px] font-semibold text-stone-400 uppercase tracking-wider">{r.payoutMonthLabel}</p>
+                                                    </div>
                                                 </div>
+                                            </td>
+
+                                            {/* Payment Action / Status */}
+                                            <td className="px-5 py-3.5">
+                                                {currentUser?.userType === 'admin' ? (
+                                                    <button
+                                                        type="button"
+                                                        disabled={isUpdating}
+                                                        onClick={() => handleStatusChange(r, isPaid ? 'Pending' : 'Paid')}
+                                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                                                            isPaid 
+                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200' 
+                                                                : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200'
+                                                        }`}
+                                                        title={isPaid ? 'Click to mark as Unpaid' : 'Click to mark as Paid'}
+                                                    >
+                                                        {isUpdating ? (
+                                                            <Loader2 size={12} className="animate-spin" />
+                                                        ) : isPaid ? (
+                                                            <>
+                                                                <Check size={12} className="stroke-[3] text-emerald-600" />
+                                                                <span>Paid {r.vendor_paid_date ? `(${r.vendor_paid_date})` : ''}</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                                                <span>Mark as Paid</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                ) : (
+                                                    <span className={`px-2.5 py-1 rounded-xl text-xs font-bold border inline-flex items-center gap-1.5 ${
+                                                        isPaid 
+                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                                            : 'bg-amber-50 text-amber-800 border-amber-200'
+                                                    }`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${isPaid ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                        {isPaid ? 'Paid' : 'Unpaid'}
+                                                    </span>
+                                                )}
                                             </td>
                                         </tr>
                                     );
                                 })}
                             </tbody>
-
-                            {/* Sticky / Dedicated Footer Always Showing Total Amount */}
-                            <tfoot>
-                                <tr className="bg-stone-100/80 border-t-2 border-stone-200 font-bold text-stone-900 text-xs">
-                                    <td className="px-5 py-3.5 uppercase tracking-wide text-[10px] text-stone-600">
-                                        Total ({totalPayouts} {totalPayouts === 1 ? 'Client' : 'Clients'})
-                                    </td>
-                                    <td className="px-5 py-3.5 text-stone-500 text-[11px]">
-                                        {selectedVendor !== 'All' ? selectedVendor : 'All Vendors'}
-                                    </td>
-                                    <td className="px-5 py-3.5 text-stone-900 font-black text-sm">
-                                        ₹{toIndianCommas(totalAmount)}
-                                    </td>
-                                    <td colSpan={3} className="px-5 py-3.5 text-[11px] text-stone-500">
-                                        Paid: <span className="text-emerald-700 font-bold">₹{toIndianCommas(paidAmount)}</span> • Unpaid: <span className="text-rose-700 font-bold">₹{toIndianCommas(pendingAmount)}</span>
-                                    </td>
-                                    <td className="px-5 py-3.5 text-right">
-                                        <span className={`text-[10px] uppercase font-black px-2 py-0.5 rounded ${pendingAmount === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                                            {pendingAmount === 0 ? 'All Settled' : `₹${toIndianCommas(pendingAmount)} Due`}
-                                        </span>
-                                    </td>
-                                </tr>
-                            </tfoot>
                         </table>
                     ) : (
-                        <div className="p-10 text-center space-y-2">
-                            <AlertCircle className="w-8 h-8 text-stone-300 mx-auto" />
-                            <p className="text-xs text-stone-500 font-bold">No payout records found matching your filters.</p>
-                            <p className="text-[11px] text-stone-400">Ensure installations are marked with "Yes" status in customer details.</p>
+                        <div className="flex flex-col items-center justify-center p-12 text-stone-400 space-y-2">
+                            <CheckCircle2 size={32} className="text-stone-300" />
+                            <p className="text-sm font-bold text-stone-600">No matching completed installations found</p>
+                            <p className="text-xs text-stone-400 max-w-sm text-center">
+                                {searchQuery ? `No installations matched "${searchQuery}".` : 'Clients will appear here once their installation status is marked as "Yes".'}
+                            </p>
                         </div>
                     )}
                 </div>

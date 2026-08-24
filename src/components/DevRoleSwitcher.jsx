@@ -1,115 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { 
     Shield, Briefcase, Building2, Users, UserCheck, Wrench, 
-    FileText, Calculator, X, Sparkles, Check, ArrowRight
+    FileText, X, Check, ArrowRight, Terminal, Key, Database
 } from 'lucide-react';
+import { MOCK_DEV_ROLES } from '../mock/demoData';
 
-export const MOCK_DEV_ROLES = [
-    {
-        id: 'admin_master',
-        name: 'Master Admin',
-        title: 'Admin Master',
-        email: 'admin@watersun.com',
-        userType: 'admin',
-        role: 'Admin',
-        channel_partner: '',
-        icon: Shield,
-        color: 'from-amber-500 to-amber-600',
-        badge: 'Full Access',
-        description: 'Complete CRM access: all stages, full customer modals, user & partner management, audit logs.'
-    },
-    {
-        id: 'office_staff',
-        name: 'Office Staff',
-        title: 'Office User',
-        email: 'office@watersun.com',
-        userType: 'sales',
-        role: 'Office',
-        channel_partner: '',
-        icon: Briefcase,
-        color: 'from-blue-500 to-blue-600',
-        badge: 'Sales & Operations',
-        description: 'Main pipeline workflow, customer management, Discom submissions, and agreement generator.'
-    },
-    {
-        id: 'cpo_manager',
-        name: 'Channel Partner Office',
-        title: 'CPO Head Office',
-        email: 'cpo@watersun.com',
-        userType: 'channel_partner_office',
-        role: 'Channel Partner Office',
-        channel_partner: 'Apex Solar Gujarat',
-        icon: Building2,
-        color: 'from-indigo-500 to-indigo-600',
-        badge: 'Partner Office',
-        description: 'CPO Team Dashboard, manage branch managers & field agents, and track branch pipeline.'
-    },
-    {
-        id: 'cp_manager_office2',
-        name: 'CP Manager (Office 2)',
-        title: 'Vikram Patel (CP Manager)',
-        email: 'manager.cpo@watersun.com',
-        userType: 'office2',
-        role: 'Channel Partner Manager',
-        channel_partner: 'Apex Solar Gujarat',
-        icon: Briefcase,
-        color: 'from-cyan-500 to-cyan-600',
-        badge: 'CP Manager (office2)',
-        description: 'Branch management view: oversees branch operations and assigned partner clients.'
-    },
-    {
-        id: 'direct_cp_agent',
-        name: 'Direct Channel Partner (Agent)',
-        title: 'Om Solar (Direct CP)',
-        email: 'direct.agent@watersun.com',
-        userType: 'agent',
-        role: 'Channel Partners',
-        channel_partner: 'Om Solar Direct',
-        icon: Users,
-        color: 'from-emerald-500 to-emerald-600',
-        badge: 'Direct CP (agent)',
-        description: 'Independent Channel Partner Portal: manages direct customer leads & document workdesk.'
-    },
-    {
-        id: 'agent_partner_agent2',
-        name: 'Channel Partner under CP Office (Agent 2)',
-        title: 'Rahul Sharma (Field Agent)',
-        email: 'agent2@watersun.com',
-        userType: 'agent2',
-        role: 'Channel Partner',
-        channel_partner: 'Apex Solar Gujarat',
-        icon: UserCheck,
-        color: 'from-teal-500 to-teal-600',
-        badge: 'Branch CP (agent2)',
-        description: 'Sub-agent under CP Office: leads are auto-linked to the parent branch (Apex Solar Gujarat).'
-    },
-    {
-        id: 'vendor_tech',
-        name: 'Vendor / Technician',
-        title: 'Shreeji Solar Installations',
-        email: 'vendor@watersun.com',
-        userType: 'vendor',
-        role: 'Vendors',
-        channel_partner: '',
-        icon: Wrench,
-        color: 'from-amber-600 to-amber-700',
-        badge: 'Vendor Portal',
-        description: 'Mobile Vendor Portal for installation status, delivery details, and Geo Tag photos.'
-    },
-    {
-        id: 'stamp_maker',
-        name: 'Stamp Maker',
-        title: 'PM Surya Ghar Stamp Maker',
-        email: 'stamp@watersun.com',
-        userType: 'stamp',
-        role: 'Stamp',
-        channel_partner: '',
-        icon: FileText,
-        color: 'from-sky-500 to-sky-600',
-        badge: 'Stamp Portal',
-        description: 'Mobile Stamp Portal: view requested customer party details, upload stamps & complete tasks.'
-    }
-];
+const ROLE_ICONS = {
+    admin_master: Shield,
+    office_staff: Briefcase,
+    cpo_manager: Building2,
+    cp_manager_office2: Briefcase,
+    direct_cp_agent: Users,
+    agent_partner_agent2: UserCheck,
+    vendor_tech: Wrench,
+    stamp_maker: FileText,
+};
+
+const ROLE_COLORS = {
+    admin_master: 'from-amber-500 to-amber-600',
+    office_staff: 'from-blue-500 to-blue-600',
+    cpo_manager: 'from-indigo-500 to-indigo-600',
+    cp_manager_office2: 'from-cyan-500 to-cyan-600',
+    direct_cp_agent: 'from-emerald-500 to-emerald-600',
+    agent_partner_agent2: 'from-teal-500 to-teal-600',
+    vendor_tech: 'from-amber-600 to-amber-700',
+    stamp_maker: 'from-sky-500 to-sky-600',
+};
 
 export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onToggle, isDemoMode = false, onToggleDemoMode }) {
     // Keyboard shortcut: Ctrl + Shift + S or Cmd + Shift + S
@@ -127,38 +43,56 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
     }, [onToggle]);
 
     const handleSelectRole = (mockRole) => {
+        // Explicitly operate on the REAL Supabase website & database (disable sandbox demo)
+        if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem('watersun_demo_mode', 'false');
+        }
+
         onSwitchUser({
             id: `dev-${mockRole.id}`,
             email: mockRole.email,
             name: mockRole.title,
             role: mockRole.role,
             userType: mockRole.userType,
-            channel_partner: mockRole.channel_partner || mockRole.title || '',
+            channel_partner: mockRole.channel_partner || '',
             isDevBackdoor: true
         });
+
         if (typeof onToggle === 'function') {
             onToggle(false);
         }
     };
 
-    const isAdminUser = currentUser && (currentUser.userType === 'admin' || currentUser.role === 'Admin' || currentUser.isDevBackdoor);
+    /*
+    // ════════════════════════════════════════════════════════════════════════════
+    // [COMMENTED OUT FOR NOW AS REQUESTED] FAKE BACKEND SANDBOX DEMO TABLE RESET
+    // ════════════════════════════════════════════════════════════════════════════
+    const [resetMsg, setResetMsg] = useState(false);
+    const handleResetTable = () => {
+        resetStoredDemoCustomers();
+        setResetMsg(true);
+        setTimeout(() => setResetMsg(false), 2500);
+    };
+    */
+
+    const isAdminUser = Boolean(currentUser && (currentUser.userType === 'admin' || currentUser.role === 'Admin' || currentUser.isDevBackdoor));
 
     return (
         <>
-            {/* Floating Trigger Button ONLY visible to Admin users */}
+            {/* Floating Trigger Button for Admin/Dev */}
             {isAdminUser && (
                 <button
                     type="button"
                     onClick={() => onToggle(true)}
                     className="fixed bottom-3 right-3 z-[9999] flex items-center gap-1.5 bg-stone-900/90 hover:bg-stone-900 text-amber-400 hover:text-amber-300 border border-stone-700/80 px-3 py-1.5 rounded-full text-[10px] font-bold shadow-xl backdrop-blur-md transition-all cursor-pointer hover:scale-105 active:scale-95 group"
-                    title="Technician Control (Shortcut: Ctrl + Shift + S)"
+                    title="Backdoor Terminal (Shortcut: Ctrl + Shift + S)"
                 >
-                    <Wrench size={12} className="text-amber-400 animate-pulse" />
+                    <Terminal size={12} className="text-amber-400 animate-pulse" />
                     <span className="text-stone-300 group-hover:text-white font-mono">
-                        Technician Control
+                        Backdoor Terminal
                     </span>
                     <span className="bg-amber-400/20 text-amber-300 text-[8px] px-1.5 py-0.5 rounded-full font-mono uppercase">
-                        {isDemoMode ? 'SANDBOX ON' : '8 Views'}
+                        8 Roles (Live DB)
                     </span>
                 </button>
             )}
@@ -177,17 +111,17 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                         <div className="flex items-center justify-between pb-4 border-b border-stone-100 flex-shrink-0">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-2xl bg-stone-900 text-amber-400 flex items-center justify-center shadow-md">
-                                    <Wrench size={20} />
+                                    <Terminal size={20} />
                                 </div>
                                 <div>
                                     <h3 className="text-base font-extrabold text-stone-900 flex items-center gap-2">
-                                        Technician Control
+                                        Backdoor Terminal & Role Switcher
                                         <span className="text-[9px] bg-stone-100 text-stone-600 font-bold px-2 py-0.5 rounded-full font-mono">
                                             Ctrl+Shift+S
                                         </span>
                                     </h3>
                                     <p className="text-xs text-stone-500 font-medium mt-0.5">
-                                        Developer backdoor: jump into any of the 7 portal views without logging out.
+                                        1-click test access to all 8 system screens connected directly to the <b>Real Database</b>.
                                     </p>
                                 </div>
                             </div>
@@ -200,41 +134,30 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                             </button>
                         </div>
 
-                        {/* Demo Sandbox Mode Card */}
-                        <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/80 rounded-2xl flex items-center justify-between gap-3 mt-3 flex-shrink-0">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-amber-500 text-stone-950 rounded-xl font-bold shadow-xs">
-                                    <Sparkles size={18} />
+                        {/* Real Database Connection Banner */}
+                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 mt-3 flex-shrink-0">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-emerald-600 text-white rounded-xl font-bold shadow-xs">
+                                    <Database size={16} />
                                 </div>
                                 <div>
-                                    <div className="flex items-center gap-2">
-                                        <h4 className="text-xs font-extrabold text-stone-900">Demo Sandbox Data</h4>
-                                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase font-mono ${isDemoMode ? 'bg-emerald-600 text-white' : 'bg-stone-200 text-stone-600'}`}>
-                                            {isDemoMode ? 'Active (16 Stage Leads)' : 'Off (Live Supabase)'}
+                                    <h4 className="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5">
+                                        Connected to Real Supabase Backend
+                                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase font-mono bg-emerald-200 text-emerald-900">
+                                            Live
                                         </span>
-                                    </div>
-                                    <p className="text-[11px] text-stone-500 mt-0.5">
-                                        Populate 16 complete leads across all stages with 100% filled feature fields without touching live data.
+                                    </h4>
+                                    <p className="text-[11px] text-emerald-800/80 mt-0.5 font-medium">
+                                        Switching roles loads real database leads, assigned vendors, and partner records.
                                     </p>
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                onClick={onToggleDemoMode}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer ${
-                                    isDemoMode
-                                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                        : 'bg-stone-900 text-amber-400 hover:bg-stone-800'
-                                }`}
-                            >
-                                {isDemoMode ? 'Turn OFF Sandbox' : 'Enable Sandbox'}
-                            </button>
                         </div>
 
-                        {/* 7 Roles Grid */}
+                        {/* 8 Roles Grid */}
                         <div className="flex-1 overflow-y-auto py-4 grid grid-cols-1 sm:grid-cols-2 gap-3 pr-1">
                             {MOCK_DEV_ROLES.map(role => {
-                                const Icon = role.icon;
+                                const Icon = ROLE_ICONS[role.id] || Shield;
                                 const isCurrent = currentUser && (
                                     (currentUser.role === role.role && currentUser.userType === role.userType) ||
                                     (currentUser.name === role.title)
@@ -247,13 +170,13 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                                         onClick={() => handleSelectRole(role)}
                                         className={`text-left p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 group relative overflow-hidden ${
                                             isCurrent
-                                                ? 'bg-amber-50/60 border-amber-300 ring-2 ring-amber-400/30'
+                                                ? 'bg-amber-50/60 border-amber-300 ring-2 ring-amber-400/30 shadow-sm'
                                                 : 'bg-white border-stone-200 hover:border-stone-400 hover:shadow-md'
                                         }`}
                                     >
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="flex items-center gap-2.5">
-                                                <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${role.color} text-white flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                                                <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${role.color || 'from-amber-500 to-amber-600'} text-white flex items-center justify-center flex-shrink-0 shadow-sm`}>
                                                     <Icon size={16} />
                                                 </div>
                                                 <div className="min-w-0">
@@ -278,9 +201,20 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                                             {role.description}
                                         </p>
 
+                                        {/* Fake Credentials Box */}
+                                        <div className="bg-stone-50 p-2 rounded-xl border border-stone-200/80 flex items-center justify-between text-[10px] font-mono text-stone-600">
+                                            <div className="flex items-center gap-1.5 truncate">
+                                                <Key size={10} className="text-amber-600 flex-shrink-0" />
+                                                <span className="truncate">{role.email}</span>
+                                            </div>
+                                            <span className="font-bold text-stone-800 bg-stone-200/70 px-1.5 py-0.5 rounded flex-shrink-0">
+                                                {role.password}
+                                            </span>
+                                        </div>
+
                                         <div className="flex items-center justify-between pt-1 border-t border-stone-100 text-[10px] font-bold">
                                             <span className="text-stone-400 group-hover:text-amber-600 transition-colors flex items-center gap-1">
-                                                Switch View <ArrowRight size={10} className="group-hover:translate-x-0.5 transition-transform" />
+                                                Open Live Screen <ArrowRight size={10} className="group-hover:translate-x-0.5 transition-transform" />
                                             </span>
                                             {isCurrent && (
                                                 <span className="text-emerald-600 flex items-center gap-1">
@@ -296,7 +230,7 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                         {/* Footer */}
                         <div className="pt-3 border-t border-stone-100 flex items-center justify-between text-xs text-stone-400 flex-shrink-0">
                             <span className="text-[11px]">
-                                💡 Tip: Press <kbd className="px-1.5 py-0.5 bg-stone-100 border border-stone-200 rounded font-mono text-[10px] text-stone-700 font-bold">Ctrl+Shift+S</kbd> anywhere to toggle.
+                                💡 Tip: Press <kbd className="px-1.5 py-0.5 bg-stone-100 border border-stone-200 rounded font-mono text-[10px] text-stone-700 font-bold">Ctrl+Shift+S</kbd> anywhere to toggle backdoor.
                             </span>
                             <button
                                 type="button"

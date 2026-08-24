@@ -1,8 +1,13 @@
 // ─── src/mock/demoData.js ──────────────────────────────────────────────────
-// 16 Full Demo Records (1 for each CRM Stage) with 100% filled feature fields
+// Fake Login Credentials & Mock Dev Roles ONLY
+// (Full mock customer table data has been completely commented out as requested)
 // ──────────────────────────────────────────────────────────────────────────
 
-export const DEMO_CUSTOMERS = [
+/*
+// ════════════════════════════════════════════════════════════════════════════
+// [COMMENTED OUT] 16 FULL DEMO RECORDS
+// ════════════════════════════════════════════════════════════════════════════
+export const DEMO_CUSTOMERS_ARCHIVE = [
     {
         id: 'demo-lead-1',
         crn: 'CRN-2026-0001',
@@ -165,7 +170,6 @@ export const DEMO_CUSTOMERS = [
         subsidy_tag: 'In Process',
         installation_status: 'Pending',
         channel_partner: 'Apex Solar Gujarat',
-        material_order_date: '2026-02-16',
         po_number: 'PO-2026-089',
         vendor: 'Shreeji Solar Installations',
         vendor_quote: 6500,
@@ -194,7 +198,7 @@ export const DEMO_CUSTOMERS = [
         channel_partner: 'Apex Solar Gujarat',
         inverter_brand: 'Havells 3.3kW On-Grid',
         inverter_serial_no: 'HAV-2026-98124',
-        panel_serial_no: 'WAA540-001\\nWAA540-002\\nWAA540-003\\nWAA540-004\\nWAA540-005\\nWAA540-006',
+        panel_serial_no: 'WAA540-001\nWAA540-002\nWAA540-003\nWAA540-004\nWAA540-005\nWAA540-006',
         dcr_certificate: 'DCR-WAA-2026-0492',
         created_at: '2026-02-16T11:20:00Z'
     },
@@ -220,7 +224,8 @@ export const DEMO_CUSTOMERS = [
         installation_status: 'Process',
         channel_partner: 'Apex Solar Gujarat',
         material_delivery_date: '2026-02-20',
-        delivery_driver_name: 'Mahesh Rajput',
+        driver_name: 'Mahesh Rajput',
+        driver_phone_number: '9876543210',
         delivery_vehicle_no: 'GJ-02-XX-4819',
         vendor: 'Patel Solar Technicians',
         vendor_quote: 6000,
@@ -431,223 +436,287 @@ export const DEMO_CUSTOMERS = [
         loan_tag: 'All Clear',
         subsidy_tag: 'Received',
         installation_status: 'Yes',
-        commissioning_date: '2026-02-20',
+    }
+];
+*/
+
+// Active customer array stub (empty)
+export const DEMO_CUSTOMERS = [];
+
+// ─── Fake Credentials & Mock Roles (for all screens) ────────────────────────
+export const MOCK_DEV_ROLES = [
+    {
+        id: 'admin_master',
+        name: 'Master Admin',
+        title: 'Admin Master',
+        email: 'admin@watersun.com',
+        password: 'admin',
+        userType: 'admin',
+        role: 'Admin',
+        channel_partner: '',
+        badge: 'Admin Screen',
+        description: 'Complete CRM access: all stages, full customer modals, operations & user management.'
+    },
+    {
+        id: 'office_staff',
+        name: 'Office Staff',
+        title: 'Office User',
+        email: 'office@watersun.com',
+        password: 'office',
+        userType: 'sales',
+        role: 'Office',
+        channel_partner: '',
+        badge: 'Office Screen',
+        description: 'Sales & pipeline workflow, lead creation, Discom submissions, and agreement generator.'
+    },
+    {
+        id: 'cpo_manager',
+        name: 'Channel Partner Office (CPO)',
+        title: 'CPO Head Office',
+        email: 'cpo@watersun.com',
+        password: 'cpo',
+        userType: 'channel_partner_office',
+        role: 'Channel Partner Office',
         channel_partner: 'Apex Solar Gujarat',
-        created_at: '2026-01-15T09:00:00Z'
+        badge: 'CPO Screen',
+        description: 'CPO Team Dashboard, manage branch managers & field agents, and track branch pipeline.'
+    },
+    {
+        id: 'cp_manager_office2',
+        name: 'CP Manager (Office 2)',
+        title: 'Vikram Patel (CP Manager)',
+        email: 'manager.cpo@watersun.com',
+        password: 'manager',
+        userType: 'office2',
+        role: 'Channel Partner Manager',
+        channel_partner: 'Apex Solar Gujarat',
+        badge: 'CP Manager Screen',
+        description: 'Branch management view: oversees branch operations and assigned partner clients.'
+    },
+    {
+        id: 'direct_cp_agent',
+        name: 'Channel Partner (Agent)',
+        title: 'Om Solar (Direct CP)',
+        email: 'direct.agent@watersun.com',
+        password: 'agent',
+        userType: 'agent',
+        role: 'Channel Partners',
+        channel_partner: 'Om Solar Direct',
+        badge: 'Agent Portal',
+        description: 'Independent Channel Partner Portal: manages customer leads & document workdesk.'
+    },
+    {
+        id: 'agent_partner_agent2',
+        name: 'Sub-Agent (Agent 2)',
+        title: 'Rahul Sharma (Field Agent)',
+        email: 'agent2@watersun.com',
+        password: 'agent',
+        userType: 'agent2',
+        role: 'Channel Partner',
+        channel_partner: 'Apex Solar Gujarat',
+        badge: 'Sub-Agent Portal',
+        description: 'Field agent under CP Office: leads are linked to parent branch.'
+    },
+    {
+        id: 'vendor_tech',
+        name: 'Vendor / Technician',
+        title: 'Shreeji Solar Installations',
+        email: 'vendor@watersun.com',
+        password: 'vendor',
+        userType: 'vendor',
+        role: 'Vendors',
+        channel_partner: '',
+        badge: 'Vendor Portal',
+        description: 'Mobile Vendor Portal for installation status, delivery details, and Geo Tag photos.'
+    },
+    {
+        id: 'stamp_maker',
+        name: 'Stamp Guy / Stamp Maker',
+        title: 'PM Surya Ghar Stamp Maker',
+        email: 'stamp@watersun.com',
+        password: 'stamp',
+        userType: 'stamp',
+        role: 'Stamp',
+        channel_partner: '',
+        badge: 'Stamp Portal',
+        description: 'Mobile Stamp Portal: view requested customer party details, upload stamps & complete tasks.'
     }
 ];
 
-export const getDemoMetrics = () => {
+// ─── Verify Fake Credentials Helper ─────────────────────────────────────────
+export const verifyDemoCredentials = (email, password) => {
+    if (!email) return null;
+    const cleanEmail = email.trim().toLowerCase();
+    
+    // Check against mock roles
+    const matchedRole = MOCK_DEV_ROLES.find(r => r.email.toLowerCase() === cleanEmail);
+    if (matchedRole) {
+        return {
+            id: `dev-${matchedRole.id}`,
+            email: matchedRole.email,
+            name: matchedRole.title,
+            role: matchedRole.role,
+            userType: matchedRole.userType,
+            channel_partner: matchedRole.channel_partner || matchedRole.title || '',
+            isDevBackdoor: true
+        };
+    }
+    
+    // If it's a test/demo login with @watersun or admin/demo keyword
+    if (cleanEmail.includes('admin') || cleanEmail.includes('demo') || cleanEmail.endsWith('@watersun.com')) {
+        const adminRole = MOCK_DEV_ROLES[0];
+        return {
+            id: `dev-${adminRole.id}`,
+            email: email,
+            name: 'Admin Master',
+            role: 'Admin',
+            userType: 'admin',
+            channel_partner: '',
+            isDevBackdoor: true
+        };
+    }
+    
+    return null;
+};
+
+// ─── Safe Fallback Stubs ───────────────────────────────────────────────────
+const DEMO_STORAGE_KEY = 'watersun_demo_table_admin';
+
+export const getStoredDemoCustomers = () => {
+    if (typeof window === 'undefined') return [];
+    try {
+        const raw = window.sessionStorage.getItem(DEMO_STORAGE_KEY);
+        if (!raw) return [];
+        return JSON.parse(raw);
+    } catch (e) {
+        return [];
+    }
+};
+
+export const saveStoredDemoCustomers = (list) => {
+    if (typeof window !== 'undefined') {
+        try {
+            window.sessionStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(list));
+            window.dispatchEvent(new CustomEvent('watersun_demo_update', { detail: list }));
+        } catch (e) {
+            // no-op
+        }
+    }
+};
+
+export const resetStoredDemoCustomers = () => {
+    if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem(DEMO_STORAGE_KEY);
+        window.dispatchEvent(new CustomEvent('watersun_demo_update', { detail: [] }));
+    }
+    return [];
+};
+
+export const updateStoredDemoCustomer = (id, updates) => {
+    const list = getStoredDemoCustomers();
+    const idx = list.findIndex(c => c.id === id);
+    if (idx !== -1) {
+        list[idx] = { ...list[idx], ...updates, updated_at: new Date().toISOString() };
+        saveStoredDemoCustomers(list);
+        return list[idx];
+    }
+    return null;
+};
+
+export const createStoredDemoCustomer = (newCust) => {
+    const list = getStoredDemoCustomers();
+    const id = `demo-lead-${Date.now()}`;
+    const randCRN = `CRN-2026-${String(list.length + 1).padStart(4, '0')}`;
+    const created = {
+        id,
+        crn: randCRN,
+        created_at: new Date().toISOString(),
+        stage: 'LEADS',
+        ...newCust
+    };
+    list.unshift(created);
+    saveStoredDemoCustomers(list);
+    return created;
+};
+
+export const moveStoredDemoCustomerStage = (id, newStage, oldRemark = '') => {
+    const list = getStoredDemoCustomers();
+    const idx = list.findIndex(c => c.id === id);
+    if (idx !== -1) {
+        const c = list[idx];
+        const oldStage = c.stage;
+        const prevRemarks = typeof c.stages_remarks === 'object' && c.stages_remarks ? c.stages_remarks : {};
+        const updated = {
+            ...c,
+            stage: newStage,
+            stages_remarks: {
+                ...prevRemarks,
+                [oldStage]: oldRemark || prevRemarks[oldStage] || ''
+            },
+            updated_at: new Date().toISOString()
+        };
+        list[idx] = updated;
+        saveStoredDemoCustomers(list);
+        return updated;
+    }
+    return null;
+};
+
+export const softDeleteStoredDemoCustomer = (id) => {
+    return updateStoredDemoCustomer(id, { deleted_at: new Date().toISOString() });
+};
+
+export const recoverStoredDemoCustomer = (id) => {
+    return updateStoredDemoCustomer(id, { deleted_at: null });
+};
+
+export const hardDeleteStoredDemoCustomer = (id) => {
+    const list = getStoredDemoCustomers();
+    const filtered = list.filter(c => c.id !== id);
+    saveStoredDemoCustomers(filtered);
+    return true;
+};
+
+export const getDemoMetrics = (partnerName = null, channelPartnerFilter = null) => {
+    let list = getStoredDemoCustomers().filter(c => !c.deleted_at);
+    if (partnerName && partnerName.trim()) {
+        list = list.filter(c => (c.channel_partner || '').toLowerCase() === partnerName.trim().toLowerCase());
+    } else if (channelPartnerFilter && channelPartnerFilter.trim()) {
+        list = list.filter(c => (c.channel_partner || '').toLowerCase() === channelPartnerFilter.trim().toLowerCase());
+    }
+
     const stageCounts = {};
-    DEMO_CUSTOMERS.forEach(c => {
+    list.forEach(c => {
         const s = (c.stage || 'LEADS').toUpperCase();
         stageCounts[s] = (stageCounts[s] || 0) + 1;
     });
 
     return {
-        totalProjects: DEMO_CUSTOMERS.length,
-        completedCount: 1,
-        liveProjects: DEMO_CUSTOMERS.length - 1,
-        loanCount: DEMO_CUSTOMERS.filter(c => c.payment_type === 'Loan').length,
-        cashCount: DEMO_CUSTOMERS.filter(c => c.payment_type === 'Cash').length,
-        loanTagCount: DEMO_CUSTOMERS.filter(c => c.loan_tag && c.loan_tag !== 'All Clear').length,
-        subsidyTagCount: DEMO_CUSTOMERS.filter(c => c.subsidy_tag).length,
-        installationTagCount: DEMO_CUSTOMERS.filter(c => c.installation_status && c.installation_status !== 'Pending').length,
+        totalProjects: list.length,
+        completedCount: list.filter(c => (c.stage || '').toUpperCase() === 'COMPLETED').length,
+        liveProjects: list.filter(c => (c.stage || '').toUpperCase() !== 'COMPLETED').length,
+        loanCount: list.filter(c => c.payment_type === 'Loan').length,
+        cashCount: list.filter(c => c.payment_type === 'Cash').length,
+        loanTagCount: list.filter(c => c.loan_tag && c.loan_tag !== 'All Clear').length,
+        subsidyTagCount: list.filter(c => c.subsidy_tag).length,
+        installationTagCount: list.filter(c => c.installation_status && c.installation_status !== 'Pending').length,
         stageCounts
     };
 };
 
-// ─── Autofill Generator for Customer Detail Tabs ───────────────────────────
-export const generateSampleTabData = (stageName, currentData = {}) => {
-    const today = new Date().toISOString().split('T')[0];
-    const rand = Math.floor(1000 + Math.random() * 9000);
-    const normalizedStage = String(stageName || '').toUpperCase().trim();
+export const DEMO_METADATA = {
+    channel_partner: [],
+    module_brand: [],
+    registration_by: [],
+    integration_by: [],
+    inverter_make: [],
+    company_branch: []
+};
 
-    switch (normalizedStage) {
-        case 'LEADS':
-            return {
-                customer_name: currentData.customer_name || `Rameshbhai Patel ${rand}`,
-                phone_number: currentData.phone_number || `98250${rand}`,
-                email_address: currentData.email_address || `ramesh${rand}@gmail.com`,
-                consumer_no: currentData.consumer_no || `84019${rand}`,
-                villages: currentData.villages || 'Kadi',
-                sub_divisions: currentData.sub_divisions || 'Mehsana City',
-                module_brand: currentData.module_brand || 'Adani Solar (Mono PERC)',
-                module_wp: String(currentData.module_wp || '550'),
-                no_of_modules: String(currentData.no_of_modules || '6'),
-                system_capacity_kwp: currentData.system_capacity_kwp || '3,300',
-                payment_type: currentData.payment_type || 'Cash',
-                channel_partner: currentData.channel_partner || 'Apex Solar Gujarat',
-                adhaar_card_front: true,
-                adhaar_card_back: true,
-                pan_card: true,
-                light_bill: true,
-                bank_details: true,
-                house_geo_tag_photo: true,
-            };
+export const getDemoMetadata = () => {
+    return { ...DEMO_METADATA };
+};
 
-        case 'REGISTRATION':
-            return {
-                adhaar_card_front: true,
-                adhaar_card_back: true,
-                pan_card: true,
-                light_bill: true,
-                index_2: true,
-                bank_details: true,
-                house_geo_tag_photo: true,
-                stamp: true,
-                file_status: true,
-                registration_date: currentData.registration_date || today,
-                registration_by: currentData.registration_by || 'Office Operations Team',
-            };
-
-        case 'LOAN':
-            return {
-                payment_type: 'Loan',
-                loan_tag: 'Sanctioned',
-                digital_certificate: true,
-                bank_name: currentData.bank_name || 'State Bank of India',
-                loan_account_no: currentData.loan_account_no || `SBI-SOLAR-${rand}`,
-                loan_sanction_amount: currentData.loan_sanction_amount || 180000,
-                loan_disbursed_amount: currentData.loan_disbursed_amount || 180000,
-                loan_sanction_date: currentData.loan_sanction_date || today,
-                loan_disbursed_date: currentData.loan_disbursed_date || today,
-                loan_history: Array.isArray(currentData.loan_history) && currentData.loan_history.length > 0
-                    ? currentData.loan_history
-                    : [
-                        { status: 'Processed', date: today, remark: 'Loan file submitted to bank', created_at: new Date().toISOString() },
-                        { status: 'Sanctioned', date: today, remark: 'Loan sanctioned by bank manager', created_at: new Date().toISOString() }
-                    ]
-            };
-
-        case 'CASH':
-            return {
-                payment_type: 'Cash',
-                cash_advance_amount: currentData.cash_advance_amount || 50000,
-                cash_advance_date: currentData.cash_advance_date || today,
-                cash_remaining_amount: currentData.cash_remaining_amount || 120000,
-                cash_payment_mode: currentData.cash_payment_mode || 'NEFT/RTGS Transfer',
-                cash_history: Array.isArray(currentData.cash_history) && currentData.cash_history.length > 0
-                    ? currentData.cash_history
-                    : [
-                        { amount: 50000, date: today, mode: 'NEFT/RTGS Transfer', remark: 'Advance received', created_at: new Date().toISOString() }
-                    ]
-            };
-
-        case 'HOLD PROCUREMENT':
-            return {
-                hold_status: 'Waiting for Material',
-                hold_reason: 'Modules awaiting factory batch dispatch. Estimated delivery next Monday.',
-                hold_procurement: {
-                    status: 'Waiting for Material',
-                    hold_reason: 'Modules awaiting factory batch dispatch. Estimated delivery next Monday.',
-                    previous_stage: 'LEADS',
-                    hold_date: today
-                }
-            };
-
-        case 'MATERIAL ORDER':
-            return {
-                roof_shed: currentData.roof_shed || 'Roof',
-                dc_cable: String(currentData.dc_cable || '35'),
-                ac_cable: String(currentData.ac_cable || '25'),
-                structure_front_leg_height: String(currentData.structure_front_leg_height || '5'),
-                structure_rear_leg_height: String(currentData.structure_rear_leg_height || '8'),
-                invoice_value: currentData.invoice_value ? String(currentData.invoice_value) : '1,25,000',
-                material_order_date: currentData.material_order_date || today,
-                po_number: currentData.po_number || `PO-WS-2026-${rand}`,
-                supplier_name: currentData.supplier_name || 'Goldi Solar Distribution Hub',
-                vendor: currentData.vendor || 'Shreeji Solar Installations',
-                vendor_quote: currentData.vendor_quote ? String(currentData.vendor_quote) : '6,500',
-            };
-
-        case 'MATERIAL INTEGRATION':
-            return {
-                inverter_brand: currentData.inverter_brand || 'Havells 3.3kW On-Grid',
-                inverter_serial_no: currentData.inverter_serial_no || `HAV-2026-${rand}`,
-                dcr_certificate: currentData.dcr_certificate || `DCR-CERT-2026-${rand}`,
-                panel_serial_no: currentData.panel_serial_no || `ADANI550-001\nADANI550-002\nADANI550-003\nADANI550-004\nADANI550-005\nADANI550-006`,
-            };
-
-        case 'MATERIAL DELIVERY':
-            return {
-                material_delivery_date: currentData.material_delivery_date || today,
-                delivery_driver_name: currentData.delivery_driver_name || 'Ramesh Bhai (Tempo)',
-                delivery_vehicle_no: currentData.delivery_vehicle_no || `GJ-02-WS-${rand}`,
-                delivery_status: 'Delivered',
-                invoice_no: currentData.invoice_no || `INV-WS-2026-${rand}`,
-            };
-
-        case 'INSTALLATION STATUS':
-            return {
-                installation_status: 'Yes',
-                installation_date: currentData.installation_date || today,
-                material_delivery_date: currentData.material_delivery_date || today,
-                vendor: currentData.vendor || 'Shreeji Solar Installations',
-                vendor_quote: currentData.vendor_quote ? String(currentData.vendor_quote) : '6,500',
-                installed_by: currentData.installed_by || 'Shreeji Solar Team (Jayesh Patel)',
-            };
-
-        case 'GEO TAG PHOTO':
-            return {
-                geo_tag_image: true,
-                house_geo_tag_photo: true,
-            };
-
-        case 'DISCOM SUBMISSION':
-            return {
-                discom_application_no: currentData.discom_application_no || `DIS-UGVCL-2026-${rand}`,
-                discom_submission_date: currentData.discom_submission_date || today,
-                discom_sub_division: currentData.discom_sub_division || 'Mehsana City Division',
-                discom_submission: {
-                    application_no: currentData.discom_application_no || `DIS-UGVCL-2026-${rand}`,
-                    submission_date: today,
-                    feasibility_report: true,
-                    feasibilty_document: true,
-                    sent_to_stamp_maker: true,
-                    stamp_sent: true,
-                    stamp_completed_by: 'PM Surya Ghar Stamp Maker',
-                    stamp_completed_at: new Date().toISOString()
-                }
-            };
-
-        case 'METER INSTALLATION':
-            return {
-                meter_number: currentData.meter_number || `MTR-L&T-${rand}`,
-                meter_installation: 'Yes',
-                installation_date: currentData.installation_date || today,
-                meter_installation_date: currentData.meter_installation_date || today,
-                meter_installation_photo: true,
-            };
-
-        case 'DISCOM INSPECTION':
-            return {
-                discom_inspection: 'Yes',
-                inspection_officer_name: currentData.inspection_officer_name || 'R. K. Dave (AE UGVCL)',
-                inspection_date: currentData.inspection_date || today,
-                inspection_status: 'Approved',
-            };
-
-        case 'SUBSIDY STATUS':
-            return {
-                subsidy_tag: 'Received',
-                subsidy_token_no: currentData.subsidy_token_no || `MNRE-TOKEN-2026-${rand}`,
-                subsidy_amount: currentData.subsidy_amount ? String(currentData.subsidy_amount) : '78,000',
-                subsidy_credited_date: currentData.subsidy_credited_date || today,
-            };
-
-        case 'FINAL REVIEW':
-        case 'COMPLETED':
-            return {
-                commissioning_date: currentData.commissioning_date || today,
-                final_audit_by: 'Master Admin',
-                final_audit_date: today,
-            };
-
-        default:
-            return {
-                customer_name: currentData.customer_name || `Test Lead ${rand}`,
-                system_capacity_kwp: currentData.system_capacity_kwp || '3,300',
-            };
-    }
+export const generateSampleTabData = () => {
+    return {};
 };

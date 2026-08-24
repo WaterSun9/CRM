@@ -100,49 +100,72 @@ export default function App() {
         }
 
         // Restore session on page load
-        supabase.auth.getSession().then(async ({ data: { session } }) => {
+        const restoreSession = async () => {
             // Skip normal login flow if we're in password recovery
             if (isPasswordRecovery) { setLoading(false); return; }
 
-            if (session?.user) {
-                const { data: profile, error: profileError } = await supabase
-  .from('profiles')
-  .select('*,created_by')
-  .eq('id', session.user.id)
-  .single();
-if (profileError && profileError.code !== 'PGRST100') {
-  // Real error – sign out user
-  await supabase.auth.signOut();
-  setLoading(false);
-  return;
-}
-                if (profile && profile.status !== 'inactive') {
-                    setUser({
-                        id: session.user.id,
-                        email: session.user.email,
-                        name: profile.name,
-                        role: profile.role,
-                        userType: profile.user_type,
-                        channel_partner: profile.channel_partner || profile.name || '',
-                    });
+            try {
+                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+                if (sessionError) throw sessionError;
+
+                if (session?.user) {
+                    try {
+                        const { data: profile, error: profileError } = await supabase
+                            .from('profiles')
+                            .select('*')
+                            .eq('id', session.user.id)
+                            .maybeSingle();
+
+                        if (profileError) {
+                            console.warn('Profile fetch warning:', profileError);
+                        }
+
+                        if (profile && profile.status !== 'inactive') {
+                            setUser({
+                                id: session.user.id,
+                                email: session.user.email,
+                                name: profile.name || session.user.email?.split('@')[0] || 'User',
+                                role: profile.role || 'User',
+                                userType: profile.user_type || 'sales',
+                                channel_partner: profile.channel_partner || profile.name || '',
+                            });
+                        } else if (profile && profile.status === 'inactive') {
+                            await supabase.auth.signOut();
+                            setUser(null);
+                        } else {
+                            // Fallback if profile row is pending creation
+                            setUser({
+                                id: session.user.id,
+                                email: session.user.email,
+                                name: session.user.email?.split('@')[0] || 'User',
+                                role: 'User',
+                                userType: 'sales',
+                                channel_partner: '',
+                            });
+                        }
+                    } catch (fetchErr) {
+                        console.warn('Failed to fetch profile row on startup, using session user:', fetchErr);
+                        setUser({
+                            id: session.user.id,
+                            email: session.user.email,
+                            name: session.user.email?.split('@')[0] || 'User',
+                            role: 'User',
+                            userType: 'sales',
+                            channel_partner: '',
+                        });
+                    }
                 } else {
-                    // Profile missing or deactivated — force sign out
-                    await supabase.auth.signOut();
+                    setUser(null);
                 }
-            } else if (isDemoMode) {
-                // If demo mode is active and no session, provide default Master Admin demo session
-                setUser({
-                    id: 'dev-admin_master',
-                    email: 'admin@watersun.com',
-                    name: 'Admin Master',
-                    role: 'Admin',
-                    userType: 'admin',
-                    channel_partner: '',
-                    isDevBackdoor: true
-                });
+            } catch (err) {
+                console.warn('Session restore error or connection interrupted:', err);
+                setUser(null);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
-        });
+        };
+
+        restoreSession();
 
         // Listen for auth events
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
@@ -202,13 +225,13 @@ if (profileError && profileError.code !== 'PGRST100') {
                 {!user ? (
                     <LoginScreen onLogin={setUser} />
                 ) : isAgent ? (
-                    <AgentPortal user={user} onLogout={handleLogout} isDemoMode={isDemoMode} />
+                    <AgentPortal user={user} onLogout={handleLogout} isDemoMode={isDemoMode} onOpenDevSwitcher={() => setDevSwitcherOpen(true)} />
                 ) : isVendor ? (
-                    <VendorPortal user={user} onLogout={handleLogout} isDemoMode={isDemoMode} />
+                    <VendorPortal user={user} onLogout={handleLogout} isDemoMode={isDemoMode} onOpenDevSwitcher={() => setDevSwitcherOpen(true)} />
                 ) : isStamp ? (
-                    <StampPortal user={user} onLogout={handleLogout} isDemoMode={isDemoMode} />
+                    <StampPortal user={user} onLogout={handleLogout} isDemoMode={isDemoMode} onOpenDevSwitcher={() => setDevSwitcherOpen(true)} />
                 ) : (
-                    <Dashboard user={user} onLogout={handleLogout} isDemoMode={isDemoMode} onToggleDemoMode={handleToggleDemoMode} />
+                    <Dashboard user={user} onLogout={handleLogout} isDemoMode={isDemoMode} onToggleDemoMode={handleToggleDemoMode} onOpenDevSwitcher={() => setDevSwitcherOpen(true)} />
                 )}
             </Suspense>
 

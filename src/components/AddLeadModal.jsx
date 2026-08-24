@@ -237,11 +237,16 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
 
     const handleChange = (field, value) => {
         setValidationErrors([]);
+        let processedValue = value;
+        if (field === 'phone_number') {
+            const clean = String(value).replace(/[^0-9]/g, '');
+            processedValue = clean.length === 11 && clean.startsWith('0') ? clean.slice(1) : clean.slice(0, 10);
+        }
         setFormData(prev => {
-            const next = { ...prev, [field]: value };
+            const next = { ...prev, [field]: processedValue };
             if (field === 'module_wp' || field === 'no_of_modules') {
-                const wp = parseFloat(String(field === 'module_wp' ? value : next.module_wp).replace(/,/g, ''));
-                const count = parseFloat(String(field === 'no_of_modules' ? value : next.no_of_modules).replace(/,/g, ''));
+                const wp = parseFloat(String(field === 'module_wp' ? processedValue : next.module_wp).replace(/,/g, ''));
+                const count = parseFloat(String(field === 'no_of_modules' ? processedValue : next.no_of_modules).replace(/,/g, ''));
                 if (!isNaN(wp) && !isNaN(count) && wp > 0 && count > 0) {
                     const totalVal = Math.round(wp * count);
                     next.system_capacity_kwp = toIndianCommas(totalVal);
@@ -434,9 +439,12 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 Please fix the following errors
                             </div>
                             <ul className="list-disc pl-5 text-xs text-red-750 font-medium space-y-1">
-                                {validationErrors.map((err, idx) => (
-                                    <li key={idx}>{err}</li>
-                                ))}
+                                {validationErrors.map((err, idx) => {
+                                    const msg = typeof err === 'string'
+                                        ? err
+                                        : (err?.message || (err?.text ? (err?.label ? `${err.label}: ${err.text}` : err.text) : JSON.stringify(err)));
+                                    return <li key={idx}>{msg}</li>;
+                                })}
                             </ul>
                         </div>
                     )}
@@ -471,11 +479,12 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     Phone Number <span className="text-red-500 font-bold">*</span>
                                 </label>
                                 <input
-                                    type="number"
+                                    type="tel"
+                                    maxLength={10}
                                     value={formData.phone_number || ''}
                                     onChange={e => handleChange('phone_number', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                                    placeholder="e.g. 9876543210"
+                                    placeholder="e.g. 9876543210 (10 digits)"
                                     required
                                 />
                             </div>

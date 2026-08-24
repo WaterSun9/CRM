@@ -57,8 +57,17 @@ export function useMetadata() {
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────
 export function exportAllToCSV(customers) {
+    if (!customers || customers.length === 0) {
+        alert('No customer records available to export.');
+        return;
+    }
+
+    const currentDateStr = new Date().toISOString().split('T')[0];
+    const currentTimestampStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
     const escapeCSV = (val) => {
-        let str = String(val ?? '');
+        if (val === null || val === undefined) return '""';
+        let str = typeof val === 'object' ? JSON.stringify(val) : String(val);
         // Prevent CSV Formula Injection
         if (/^[=+\-@]/.test(str)) {
             str = "'" + str;
@@ -68,38 +77,157 @@ export function exportAllToCSV(customers) {
     };
 
     const headers = [
-        'CRN', 'Customer Name', 'Phone', 'Email', 'Location', 'Branch',
-        'Capacity (kWp)', 'Project Type', 'Channel Partner', 'Stage',
-        'Payment Type', 'Bank Name', 'Account #', 'IFSC', 'Loan Application #',
-        'Meter Category', 'EB Number', 'DTR Code', 'Sanctioned Load',
-        'DISCOM Division', 'Net Metering', 'Vendor', 'Aadhar',
-        'Application #', 'Application Date', 'Google Docs', 'Registration No', 'Subsidy Status', 'Created At',
+        'Export Date',
+        'CRN',
+        'Customer Name',
+        'Phone Number',
+        'Email Address',
+        'Consumer / EB Number',
+        'Application Number',
+        'Registration Number',
+        'Registration By',
+        'Application Date',
+        'Company Branch',
+        'Location',
+        'Villages / Address',
+        'Sub Division / Discom Division',
+        'Channel Partner',
+        'Current Stage',
+        'Project Type',
+        'System Capacity (kWp)',
+        'Module Brand',
+        'Module Wp',
+        'Number of Modules',
+        'Inverter Brand',
+        'Inverter Capacity',
+        'Inverter Serial No',
+        'Meter Category',
+        'Sanctioned Load',
+        'DTR Code',
+        'Net Metering',
+        'Aadhar Number',
+        'Payment Type',
+        'Total Deal Amount (₹)',
+        'Customer Contribution (₹)',
+        'Subsidy Amount (₹)',
+        'Bank Name',
+        'Bank Account Number',
+        'IFSC Code',
+        'Loan Application Number',
+        'Loan Tag',
+        'Loan Date',
+        'Loan Sanction Amount (₹)',
+        'Loan Disbursed Amount (₹)',
+        'Loan Disbursement Date',
+        'Hold Procurement Status',
+        'Hold Reason',
+        'Material Status',
+        'Material Delivery Date',
+        'Driver Name',
+        'Driver Phone Number',
+        'Vehicle Number',
+        'Delivery Challan No',
+        'Installation Status',
+        'Installation Date',
+        'Vendor',
+        'Installed By / Technician',
+        'Meter Install Date',
+        'Meter Number',
+        'Discom Submission Date',
+        'Discom Inspection Date',
+        'Discom Inspector Name',
+        'Subsidy Tag',
+        'Subsidy Credited Date',
+        'Subsidy Reference / Claim No',
+        'Google Docs / Drive Link',
+        'Remarks / Notes',
+        'Created At',
+        'Updated At'
     ];
+
     const rows = customers.map(c => {
+        const stageLabel = PRIMARY_STAGES.find(s => s.id === c.stage)?.label || c.stage || '';
         const subsidyLabel = SUBSIDY_TAGS.find(f => f.id === c.subsidy_tag)?.label || c.subsidy_tag || '';
+
         return [
-            c.crn || '', c.customer_name || '', c.phone_number || '', c.email_address || '',
-            c.location || '', c.company_branch || '', c.system_capacity_kwp || '',
-            c.project_type || '', c.channel_partner || '',
-            PRIMARY_STAGES.find(s => s.id === c.stage)?.label || c.stage || '',
-            c.payment_type || '', c.bank_name || '', c.bank_account_number || '',
-            c.ifsc_code || '', c.loan_application_number || '', c.meter_category || '',
-            c.eb_number || '', c.dtr_code || '', c.sanctioned_load || '',
-            c.discom_division || '', c.net_metering || '', c.vendor || '',
-            c.aadhar || '', c.application_number || '', c.application_date || '',
-            c.google_docs || '',
+            currentTimestampStr,
+            c.crn || '',
+            c.customer_name || '',
+            c.phone_number || '',
+            c.email_address || '',
+            c.consumer_no || c.eb_number || '',
+            c.application_number || c.application_no || '',
             c.registration_no || '',
+            c.registration_by || '',
+            c.application_date || '',
+            c.company_branch || c.branch || '',
+            c.location || '',
+            c.villages || '',
+            c.sub_divisions || c.discom_division || '',
+            c.channel_partner || '',
+            stageLabel,
+            c.project_type || '',
+            c.system_capacity_kwp || '',
+            c.module_brand || '',
+            c.module_wp || '',
+            c.no_of_modules || '',
+            c.inverter_brand || '',
+            c.inverter_capacity || '',
+            c.inverter_serial_no || '',
+            c.meter_category || '',
+            c.sanctioned_load || '',
+            c.dtr_code || '',
+            c.net_metering || '',
+            c.aadhar || '',
+            c.payment_type || '',
+            c.total_deal_amount || '',
+            c.customer_contribution || '',
+            c.subsidy_amount || '',
+            c.bank_name || '',
+            c.bank_account_number || '',
+            c.ifsc_code || '',
+            c.loan_application_number || '',
+            c.loan_tag || '',
+            c.loan_date || '',
+            c.loan_sanction_amount || '',
+            c.loan_disbursed_amount || '',
+            c.loan_disbursement_date || '',
+            c.hold_procurement || '',
+            c.hold_reason || '',
+            c.material_status || '',
+            c.material_delivery_date || '',
+            c.driver_name || '',
+            c.driver_phone_number || '',
+            c.vehicle_number || '',
+            c.delivery_challan_no || '',
+            c.installation_status || '',
+            c.installation_date || '',
+            c.vendor || '',
+            c.installed_by || '',
+            c.meter_install_date || '',
+            c.meter_number || '',
+            c.discom_submission_date || '',
+            c.discom_inspection_date || '',
+            c.discom_inspector_name || '',
             subsidyLabel,
+            c.subsidy_credited_date || '',
+            c.subsidy_reference_no || '',
+            c.google_docs || '',
+            c.remarks || '',
             c.created_at ? new Date(c.created_at).toLocaleDateString('en-IN') : '',
+            c.updated_at ? new Date(c.updated_at).toLocaleDateString('en-IN') : ''
         ].map(escapeCSV).join(',');
     });
-    const csv = [headers.map(escapeCSV).join(','), ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+
+    const csvContent = '\uFEFF' + [headers.map(escapeCSV).join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `watersun_customers_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `watersun_crm_export_${currentDateStr}.csv`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
 

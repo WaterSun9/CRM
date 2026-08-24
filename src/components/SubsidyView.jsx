@@ -1,144 +1,362 @@
-import { useState, useEffect } from 'react';
-import { Tag, CheckCircle2, Clock, AlertTriangle, Banknote } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Tag, Search, RefreshCw, ChevronDown } from 'lucide-react';
 import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 import { normalizeSubsidyTag } from '../utils';
-import { DEMO_CUSTOMERS } from '../mock/demoData';
+import { getStoredDemoCustomers } from '../mock/demoData';
 import { supabase } from '../supabase';
+
+const PAGE_SIZE = 50;
 
 export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode = false }) {
     const [activeFilter, setActiveFilter] = useState(null);
-    const [tagged, setTagged] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [customers, setCustomers] = useState([]);
+    const [tagCounts, setTagCounts] = useState({});
+    const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [page, setPage] = useState(0);
+    const [hasMore, setHasMore] = useState(false);
 
+    // Debounce search input
     useEffect(() => {
-        const fetchTags = async () => {
-            setLoading(true);
-            if (isDemoMode) {
-                const demoSubsidy = DEMO_CUSTOMERS.filter(c => c.subsidy_tag);
-                setTagged(demoSubsidy);
-                setLoading(false);
-                return;
-            }
-            let allRows = [];
-            let from = 0;
-            const step = 1000;
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchTerm.trim());
+            setPage(0);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
 
-            while (true) {
-                let query = supabase
+    // Fetch True Exact Counts via Supabase HEAD queries (bypasses 1,000 PostgREST row limits)
+    const fetchCounts = useCallback(async () => {
+        const isDemo = isDemoMode || (typeof window !== 'undefined' && window.sessionStorage.getItem('watersun_demo_mode') === 'true');
+        if (isDemo) {
+            let list = getStoredDemoCustomers().filter(c => !c.deleted_at && c.subsidy_tag);
+            const counts = {};
+            let total = 0;
+            SUBSIDY_TAGS.forEach(tag => {
+                const count = list.filter(c => normalizeSubsidyTag(c.subsidy_tag) === tag.id).length;
+                counts[tag.id] = count;
+                total += count;
+            });
+            setTagCounts(counts);
+            setTotalCount(total || list.length);
+            return;
+        }
+
+        try {
+            const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
+
+            // 1. Total Count Query (HEAD exact count)
+            let totalQuery = supabase
+                .from('admin')
+                .select('*', { count: 'exact', head: true })
+                .is('deleted_at', null)
+                .not('subsidy_tag', 'is', null)
+                .neq('subsidy_tag', '');
+
+            if (targetPartner) {
+                totalQuery = totalQuery.ilike('channel_partner', targetPartner);
+            }
+
+            // 2. Parallel Head queries for every tag in SUBSIDY_TAGS
+            const countPromises = SUBSIDY_TAGS.map(async (tag) => {
+                let tagQuery = supabase
                     .from('admin')
-                    .select('id, customer_name, crn, location, system_capacity_kwp, stage, subsidy_tag, channel_partner')
+                    .select('*', { count: 'exact', head: true })
                     .is('deleted_at', null)
-                    .neq('subsidy_tag', null)
-                    .neq('subsidy_tag', '')
-                    .range(from, from + step - 1);
-                
-                if (isChannelPartnerOffice) {
-                    query = query.ilike('channel_partner', partnerName);
-                } else if (channelPartnerFilter) {
-                    query = query.ilike('channel_partner', channelPartnerFilter);
+                    .ilike('subsidy_tag', `%${tag.id}%`);
+
+                if (targetPartner) {
+                    tagQuery = tagQuery.ilike('channel_partner', targetPartner);
                 }
 
-                const { data, error } = await query;
-                if (error || !data || data.length === 0) break;
-                allRows.push(...data);
-                if (data.length < step) break;
-                from += step;
-            }
+                const { count, error } = await tagQuery;
+                return { tagId: tag.id, count: (!error && count !== null) ? count : 0 };
+            });
 
-            setTagged(allRows);
-            setLoading(false);
-        };
-        fetchTags();
+            const [totalRes, ...tagResults] = await Promise.all([totalQuery, ...countPromises]);
+
+            const countsMap = {};
+            tagResults.forEach(({ tagId, count }) => {
+                countsMap[tagId] = count;
+            });
+            setTagCounts(countsMap);
+
+            if (!totalRes.error && totalRes.count !== null) {
+                setTotalCount(totalRes.count);
+            } else {
+                const sum = Object.values(countsMap).reduce((a, b) => a + b, 0);
+                setTotalCount(sum);
+            }
+        } catch (err) {
+            console.error('Error fetching subsidy counts:', err);
+        }
     }, [isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode]);
 
-    if (loading) return <div className="p-10 text-center animate-pulse text-stone-400">Loading subsidy tags...</div>;
+    // Fetch Paginated Customer Records with Backend Search
+    const fetchCustomers = useCallback(async (pageNum = 0, isAppend = false) => {
+        if (pageNum === 0) setLoading(true);
+        else setLoadingMore(true);
 
-    // Normalize customer subsidy tags for consistent grouping and accurate counts
-    const normalizedCustomers = tagged.map(c => ({
-        ...c,
-        normalized_subsidy_tag: normalizeSubsidyTag(c.subsidy_tag)
-    }));
+        const isDemo = isDemoMode || (typeof window !== 'undefined' && window.sessionStorage.getItem('watersun_demo_mode') === 'true');
+        if (isDemo) {
+            let list = getStoredDemoCustomers().filter(c => !c.deleted_at && c.subsidy_tag);
+            if (activeFilter) {
+                list = list.filter(c => normalizeSubsidyTag(c.subsidy_tag) === activeFilter);
+            }
+            if (debouncedSearch) {
+                const q = debouncedSearch.toLowerCase();
+                list = list.filter(c => 
+                    (c.customer_name || '').toLowerCase().includes(q) ||
+                    (c.phone_number || '').includes(q) ||
+                    (c.consumer_no || '').includes(q) ||
+                    (c.crn || '').toLowerCase().includes(q)
+                );
+            }
+            const paginated = list.slice(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE);
+            if (isAppend) {
+                setCustomers(prev => [...prev, ...paginated]);
+            } else {
+                setCustomers(paginated);
+            }
+            setHasMore((pageNum + 1) * PAGE_SIZE < list.length);
+            setLoading(false);
+            setLoadingMore(false);
+            return;
+        }
 
-    const grouped = SUBSIDY_TAGS.reduce((acc, tag) => {
-        const group = normalizedCustomers.filter(c => c.normalized_subsidy_tag === tag.id);
-        if (group.length > 0) acc[tag.id] = group;
-        return acc;
-    }, {});
+        try {
+            const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
 
-    if (tagged.length === 0) return (
-        <div className="flex flex-col items-center justify-center h-64 text-stone-400">
-            <Tag className="w-10 h-10 mb-3 text-stone-300 animate-pulse" />
-            <p className="font-semibold text-stone-500 text-sm">No subsidy tags active</p>
-            <p className="text-xs text-stone-400 mt-1">Assign subsidy status tags inside customer detail cards.</p>
-        </div>
-    );
+            let query = supabase
+                .from('admin')
+                .select('*')
+                .is('deleted_at', null)
+                .order('created_at', { ascending: false })
+                .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
+
+            if (targetPartner) {
+                query = query.ilike('channel_partner', targetPartner);
+            }
+
+            if (activeFilter) {
+                query = query.ilike('subsidy_tag', `%${activeFilter}%`);
+            } else {
+                query = query.not('subsidy_tag', 'is', null).neq('subsidy_tag', '');
+            }
+
+            // Direct Backend Search across name, phone, consumer_no, crn
+            if (debouncedSearch) {
+                query = query.or(`customer_name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%,consumer_no.ilike.%${debouncedSearch}%,crn.ilike.%${debouncedSearch}%`);
+            }
+
+            const { data, error } = await query;
+            if (!error && data) {
+                if (isAppend) {
+                    setCustomers(prev => {
+                        const existingIds = new Set(prev.map(c => c.id));
+                        const fresh = data.filter(c => !existingIds.has(c.id));
+                        return [...prev, ...fresh];
+                    });
+                } else {
+                    setCustomers(data);
+                }
+                setHasMore(data.length === PAGE_SIZE);
+            } else {
+                console.error('Supabase error fetching subsidy data:', error);
+                if (!isAppend) setCustomers([]);
+                setHasMore(false);
+            }
+        } catch (err) {
+            console.error('Error fetching subsidy customers:', err);
+            if (!isAppend) setCustomers([]);
+            setHasMore(false);
+        } finally {
+            setLoading(false);
+            setLoadingMore(false);
+        }
+    }, [activeFilter, debouncedSearch, isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode]);
+
+    useEffect(() => {
+        fetchCounts();
+    }, [fetchCounts]);
+
+    useEffect(() => {
+        setPage(0);
+        fetchCustomers(0, false);
+    }, [activeFilter, debouncedSearch, fetchCustomers]);
+
+    const handleLoadMore = () => {
+        const nextPage = page + 1;
+        setPage(nextPage);
+        fetchCustomers(nextPage, true);
+    };
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            {/* Tag filter buttons */}
+        <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Header Controls: Search & Total Counts */}
+            <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                {/* Real-time Backend Search */}
+                <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3.5 top-3 w-4 h-4 text-stone-400" />
+                    <input
+                        type="text"
+                        placeholder="Search name, phone, CRN, consumer no..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-stone-200 rounded-2xl text-xs font-semibold text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-300 shadow-2xs transition-all"
+                    />
+                    {searchTerm && (
+                        <button 
+                            onClick={() => setSearchTerm('')}
+                            className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-600 text-xs font-bold cursor-pointer"
+                        >
+                            ✕
+                        </button>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-center">
+                    <button
+                        onClick={() => { fetchCounts(); fetchCustomers(0, false); }}
+                        className="p-2.5 bg-white hover:bg-stone-50 border border-stone-200 rounded-xl text-stone-600 transition-colors shadow-2xs cursor-pointer"
+                        title="Refresh counts"
+                    >
+                        <RefreshCw size={14} className={loading ? "animate-spin text-amber-500" : ""} />
+                    </button>
+                    <span className="text-xs font-bold text-stone-500 bg-stone-100 px-3 py-2 rounded-xl">
+                        Total: <span className="text-stone-900 font-extrabold">{totalCount.toLocaleString('en-IN')}</span> Subsidies
+                    </span>
+                </div>
+            </div>
+
+            {/* Tag Filter Tabs */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <button onClick={() => setActiveFilter(null)}
-                    className={`rounded-2xl p-4 border text-left transition-all ${activeFilter === null ? 'bg-stone-900 border-stone-900 text-white shadow-lg shadow-stone-900/10' : 'bg-white border-stone-100 text-stone-800 hover:border-stone-200'}`}>
+                <button 
+                    onClick={() => setActiveFilter(null)}
+                    className={`rounded-2xl p-3.5 border text-left transition-all cursor-pointer ${
+                        activeFilter === null 
+                            ? 'bg-stone-900 border-stone-900 text-white shadow-lg shadow-stone-900/10 scale-[1.02]' 
+                            : 'bg-white border-stone-200/80 text-stone-800 hover:border-stone-300'
+                    }`}
+                >
                     <p className="text-[9px] font-bold uppercase tracking-widest mb-1 opacity-60">All Subsidies</p>
-                    <p className="text-2xl font-bold">{tagged.length}</p>
+                    <p className="text-xl font-black">{totalCount.toLocaleString('en-IN')}</p>
                 </button>
+
                 {SUBSIDY_TAGS.map(tag => {
-                    const groupCount = (grouped[tag.id] || []).length;
+                    const count = tagCounts[tag.id] || 0;
                     const colors = SUBSIDY_TAG_COLORS[tag.id] || {};
                     const isSelected = activeFilter === tag.id;
                     return (
                         <button
                             key={tag.id}
                             onClick={() => setActiveFilter(isSelected ? null : tag.id)}
-                            className={`rounded-2xl p-3 border transition-all text-left ${isSelected ? 'ring-2 ring-stone-900 ring-offset-2' : ''} ${colors.bg} ${colors.border}`}
+                            className={`rounded-2xl p-3 border transition-all text-left cursor-pointer ${
+                                isSelected ? 'ring-2 ring-stone-900 ring-offset-2 shadow-md' : 'hover:shadow-xs'
+                            } ${colors.bg || 'bg-stone-50'} ${colors.border || 'border-stone-200'}`}
                         >
-                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-0.5 ${colors.text}`}>{tag.label}</p>
-                            <p className={`text-xl font-bold ${colors.text}`}>{groupCount}</p>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-0.5 truncate ${colors.text || 'text-stone-700'}`}>
+                                {tag.label}
+                            </p>
+                            <p className={`text-xl font-black ${colors.text || 'text-stone-900'}`}>
+                                {count.toLocaleString('en-IN')}
+                            </p>
                         </button>
                     );
                 })}
             </div>
 
-            {/* Grouped listing */}
-            {SUBSIDY_TAGS.filter(tag => !activeFilter || activeFilter === tag.id).map(tag => {
-                const group = grouped[tag.id];
-                if (!group) return null;
-                const colors = SUBSIDY_TAG_COLORS[tag.id] || {};
-                return (
-                    <div key={tag.id} className="animate-in slide-in-from-bottom-2 duration-300">
-                        <div className="flex items-center gap-2 mb-3">
-                            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${colors.dot}`} />
-                            <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest">{tag.label}</h3>
-                            <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold border ${colors.bg} ${colors.text} ${colors.border}`}>{group.length}</span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {group.map(c => {
-                                return (
-                                    <button key={c.id} onClick={() => onSelectCustomer(c)}
-                                        className="w-full bg-white rounded-2xl border border-stone-100 p-4 text-left hover:border-amber-200 hover:shadow-sm transition-all group">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div>
-                                                <p className="font-bold text-stone-800 text-sm group-hover:text-amber-600 transition-colors">{c.customer_name}</p>
-                                                <p className="text-[10px] text-stone-400 font-medium mt-0.5">{[c.crn, c.location].filter(Boolean).join(' · ')}</p>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-50 text-[10px]">
-                                            <div>
-                                                <p className="text-stone-400 font-bold uppercase">System Capacity</p>
-                                                <p className="text-xs font-semibold text-stone-700 mt-0.5">{c.system_capacity_kwp ? `${c.system_capacity_kwp} kWp` : '–'}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-stone-400 font-bold uppercase">Current Stage</p>
-                                                <p className="text-xs font-semibold text-amber-600 mt-0.5">{c.stage || '–'}</p>
-                                            </div>
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
+            {/* Customer List Display */}
+            {loading ? (
+                <div className="flex flex-col items-center justify-center p-16 text-stone-400 space-y-3">
+                    <RefreshCw className="w-8 h-8 animate-spin text-amber-500" />
+                    <p className="text-xs font-bold text-stone-600">Loading records from database...</p>
+                </div>
+            ) : customers.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 bg-white rounded-3xl border border-dashed border-stone-200 p-8 text-stone-400 text-center">
+                    <Tag className="w-10 h-10 mb-3 text-stone-300" />
+                    <p className="font-bold text-stone-600 text-sm">No subsidy records found</p>
+                    <p className="text-xs text-stone-400 mt-1 max-w-sm">
+                        {debouncedSearch ? `No records matched "${debouncedSearch}".` : 'No customers found under this filter.'}
+                    </p>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between text-xs text-stone-500 font-semibold px-1">
+                        <span>Showing {customers.length} loaded records {debouncedSearch ? `for "${debouncedSearch}"` : ''}</span>
+                        {activeFilter && <span className="font-bold text-amber-700">Filter: {activeFilter}</span>}
                     </div>
-                );
-            })}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {customers.map(c => {
+                            const normTag = normalizeSubsidyTag(c.subsidy_tag);
+                            const tagStyle = SUBSIDY_TAG_COLORS[normTag] || { bg: 'bg-stone-100', text: 'text-stone-700', border: 'border-stone-200' };
+                            return (
+                                <button
+                                    key={c.id}
+                                    onClick={() => onSelectCustomer(c)}
+                                    className="w-full bg-white rounded-2xl border border-stone-150 p-4 text-left hover:border-amber-400 hover:shadow-md transition-all group cursor-pointer"
+                                >
+                                    <div className="flex justify-between items-start mb-2 gap-2">
+                                        <div className="min-w-0">
+                                            <p className="font-bold text-stone-900 text-sm group-hover:text-amber-700 transition-colors truncate">
+                                                {c.customer_name || 'Unnamed Customer'}
+                                            </p>
+                                            <p className="text-[10px] text-stone-400 font-mono mt-0.5 truncate">
+                                                {[c.crn, c.villages || c.location, c.phone_number].filter(Boolean).join(' · ')}
+                                            </p>
+                                        </div>
+                                        <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex-shrink-0 border ${tagStyle.bg} ${tagStyle.text} ${tagStyle.border}`}>
+                                            {c.subsidy_tag || 'Pending'}
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-stone-100 text-[10px]">
+                                        <div>
+                                            <p className="text-stone-400 font-bold uppercase tracking-wide">Capacity</p>
+                                            <p className="text-xs font-semibold text-stone-700 mt-0.5">
+                                                {c.system_capacity_kwp ? `${c.system_capacity_kwp} kWp` : '–'}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-stone-400 font-bold uppercase tracking-wide">Current Stage</p>
+                                            <p className="text-xs font-bold text-amber-600 truncate mt-0.5">
+                                                {c.stage || 'LEADS'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Load More Button */}
+                    {hasMore && (
+                        <div className="text-center pt-4 pb-8">
+                            <button
+                                onClick={handleLoadMore}
+                                disabled={loadingMore}
+                                className="px-6 py-3 bg-stone-900 hover:bg-stone-800 text-white rounded-2xl text-xs font-extrabold shadow-md transition-all flex items-center gap-2 mx-auto cursor-pointer disabled:opacity-60"
+                            >
+                                {loadingMore ? (
+                                    <>
+                                        <RefreshCw size={14} className="animate-spin" />
+                                        <span>Loading More from Database...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <ChevronDown size={14} />
+                                        <span>Load More Records (50 more)</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

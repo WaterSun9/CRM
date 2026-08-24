@@ -1417,15 +1417,18 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                             {[
                                                 { id: 'Give Up', label: 'Give Up', activeClass: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/10', dotClass: 'bg-white' },
                                                 { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
-                                                { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' },
-                                                { id: 'No', label: 'No', activeClass: 'bg-red-600 text-white border-red-600 shadow-md shadow-red-600/10', dotClass: 'bg-white' }
+                                                { id: 'Process', label: 'Process', activeClass: 'bg-teal-600 text-white border-teal-600 shadow-md shadow-teal-600/10', dotClass: 'bg-white' },
+                                                { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
                                             ].map(tag => {
                                                 const isSelected = installationStatus === tag.id;
+                                                const isLocked = selectedCust?.installation_status === 'Yes';
                                                 return (
                                                     <button
                                                         key={tag.id}
                                                         type="button"
+                                                        disabled={isLocked}
                                                         onClick={() => {
+                                                            if (isLocked) return;
                                                             if (tag.id === 'Give Up') {
                                                                 setShowGiveUpModal(true);
                                                             } else {
@@ -1435,7 +1438,9 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                                                 }
                                                             }
                                                         }}
-                                                        className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                        className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                                                            isLocked && tag.id !== 'Yes' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                                        } ${
                                                             isSelected
                                                                 ? tag.activeClass
                                                                 : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'

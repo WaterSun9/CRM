@@ -28,7 +28,7 @@ import MeterInstallationTab from './modal-tabs/MeterInstallationTab';
 import DiscomInspectionTab from './modal-tabs/DiscomInspectionTab';
 import SubsidyStatusTab from './modal-tabs/SubsidyStatusTab';
 import FinalReviewTab from './modal-tabs/FinalReviewTab';
-import { DEMO_CUSTOMERS } from '../mock/demoData';
+import { DEMO_CUSTOMERS, getStoredDemoCustomers, updateStoredDemoCustomer, createStoredDemoCustomer } from '../mock/demoData';
 
 export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
     const [view, setView] = useState('menu'); // 'menu', 'my_customers', 'workdesk'
@@ -95,7 +95,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
     const fetchCustomers = async () => {
         setLoading(true);
         if (isDemoMode) {
-            setCustomers(DEMO_CUSTOMERS);
+            setCustomers(getStoredDemoCustomers().filter(c => !c.deleted_at));
             setLoading(false);
             return;
         }
@@ -233,6 +233,15 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
     const handleUpdateCustomer = async (id, updates) => {
         setSaving(true);
         try {
+            if (isDemoMode || String(id).startsWith('demo-')) {
+                updateStoredDemoCustomer(id, updates);
+                setSelectedCust(prev => ({ ...prev, ...updates }));
+                setEditData(prev => ({ ...prev, ...updates }));
+                setCustomers(prev => prev.map(customer => customer.id === id ? { ...customer, ...updates } : customer));
+                setSaving(false);
+                return true;
+            }
+
             const { error } = await supabase
                 .from('admin')
                 .update(updates)
@@ -270,12 +279,15 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
             created_at: new Date().toISOString()
         };
 
-        // Clean up or format numeric values
-        if (leadData.system_capacity_kwp) {
-            leadData.system_capacity_kwp = Number(leadData.system_capacity_kwp);
+        // Clean up or format numeric values safely
+        if (leadData.system_capacity_kwp !== undefined && leadData.system_capacity_kwp !== null && leadData.system_capacity_kwp !== '') {
+            leadData.system_capacity_kwp = parseIndianNumber(leadData.system_capacity_kwp);
         }
-        if (leadData.module_wp) {
-            leadData.module_wp = Number(leadData.module_wp);
+        if (leadData.module_wp !== undefined && leadData.module_wp !== null && leadData.module_wp !== '') {
+            leadData.module_wp = parseIndianNumber(leadData.module_wp);
+        }
+        if (leadData.no_of_modules !== undefined && leadData.no_of_modules !== null && leadData.no_of_modules !== '') {
+            leadData.no_of_modules = parseIndianNumber(leadData.no_of_modules);
         }
 
         // Map empty strings to null to avoid database numeric/type syntax errors
@@ -287,6 +299,13 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                 insertData[key] = leadData[key];
             }
         });
+
+        if (isDemoMode) {
+            const created = createStoredDemoCustomer(insertData);
+            setCustomers(prev => [created, ...prev]);
+            setShowAddLead(false);
+            return created;
+        }
 
         const { data: newCustomer, error } = await supabase
             .from('admin')
@@ -2370,12 +2389,17 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                         <div className="px-6 py-5">
                             <p className="text-sm font-medium leading-relaxed text-stone-600">Complete the required items below before moving this customer to <span className="font-bold text-stone-800">{validationNextStage}</span>.</p>
                             <ul className="mt-4 space-y-2.5">
-                                {validationIssues.map(issue => (
-                                    <li key={issue} className="flex items-center gap-3 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-800">
-                                        <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-rose-500 text-xs font-black text-white">!</span>
-                                        {issue}
-                                    </li>
-                                ))}
+                                {validationIssues.map((issue, idx) => {
+                                    const displayMsg = typeof issue === 'string'
+                                        ? issue
+                                        : (issue?.text ? (issue?.label ? `${issue.label}: ${issue.text}` : issue.text) : JSON.stringify(issue));
+                                    return (
+                                        <li key={idx} className="flex items-center gap-3 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-800">
+                                            <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-rose-500 text-xs font-black text-white">!</span>
+                                            <span>{displayMsg}</span>
+                                        </li>
+                                    );
+                                })}
                             </ul>
                             <div className="mt-5 flex gap-2">
                                 <button 

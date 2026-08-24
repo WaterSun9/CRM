@@ -227,16 +227,26 @@ export default function LoanTab({
                             </div>
                         </div>
 
+                        {customer.loan_tag === 'All Clear' && (
+                            <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-bold mb-2">
+                                <CheckCircle2 size={15} className="text-emerald-600" />
+                                <span>Loan Settlement Completed (Locked to "All Clear")</span>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 w-full">
                             {LOAN_TAGS.map(tag => {
                                 const isSelected = editData.loan_tag === tag.id;
                                 const colors = LOAN_TAG_COLORS[tag.id] || {};
+                                const isLocked = customer.loan_tag === 'All Clear';
                                 return (
                                     <button
                                         key={tag.id}
-                                        disabled={!isEditable}
-                                        onClick={() => handleToggleLoanTag(tag.id)}
-                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer ${
+                                        disabled={!isEditable || isLocked}
+                                        onClick={() => !isLocked && handleToggleLoanTag(tag.id)}
+                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
+                                            isLocked && tag.id !== 'All Clear' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                        } ${
                                             isSelected
                                                 ? `${colors.bg} ${colors.text} ${colors.border} shadow-2xs`
                                                 : 'bg-stone-50/60 hover:bg-stone-100 border-stone-200 text-stone-600'
@@ -247,18 +257,6 @@ export default function LoanTab({
                                     </button>
                                 );
                             })}
-                            <button
-                                disabled={!isEditable}
-                                onClick={handleClearLoanTag}
-                                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer ${
-                                    !editData.loan_tag
-                                        ? 'bg-emerald-50 text-emerald-900 border-emerald-300 ring-2 ring-emerald-600/30 font-extrabold shadow-2xs'
-                                        : 'bg-emerald-50/30 hover:bg-emerald-50 border-emerald-200 text-emerald-800'
-                                }`}
-                            >
-                                <span className={`w-2 h-2 rounded-full ${!editData.loan_tag ? 'bg-emerald-600' : 'bg-emerald-300'}`} />
-                                All Clear
-                            </button>
                         </div>
                     </section>
 

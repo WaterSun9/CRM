@@ -185,6 +185,12 @@ export default function InstallationStatusTab({
                 </div>
 
                 {/* 4 Status Buttons: Give Up, Yes, Process, Pending */}
+                {customer.installation_status === 'Yes' && (
+                    <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-bold">
+                        <CheckCircle2 size={15} className="text-emerald-600" />
+                        <span>Installation Completed (Locked to "Yes")</span>
+                    </div>
+                )}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
                     {[
                         { id: 'Give Up', label: 'Give Up', activeClass: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/10', dotClass: 'bg-white' },
@@ -193,13 +199,16 @@ export default function InstallationStatusTab({
                         { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
                     ].map(tag => {
                         const isSelected = editData.installation_status === tag.id;
+                        const isLocked = customer.installation_status === 'Yes';
                         return (
                             <button
                                 key={tag.id}
                                 type="button"
-                                disabled={!isEditable}
-                                onClick={() => handleToggleInstallationTag(tag.id)}
-                                className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer ${
+                                disabled={!isEditable || isLocked}
+                                onClick={() => !isLocked && handleToggleInstallationTag(tag.id)}
+                                className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
+                                    isLocked && tag.id !== 'Yes' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                } ${
                                     isSelected
                                         ? tag.activeClass
                                         : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
