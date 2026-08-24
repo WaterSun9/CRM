@@ -374,7 +374,9 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
                 uploaded_at: new Date().toISOString()
             };
         }
-        const processedFile = await compressImage(file);
+
+        const isImage = file.type && file.type.startsWith('image/');
+        const processedFile = isImage ? await compressImage(file) : file;
         const cleanName = processedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const filePath = `${customerId}/${Date.now()}_${cleanName}`;
 
@@ -382,7 +384,8 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
             .from('customer-documents')
             .upload(filePath, processedFile, {
                 cacheControl: '3600',
-                upsert: true
+                upsert: true,
+                contentType: processedFile.type || 'application/octet-stream'
             });
 
         if (uploadError) {
@@ -390,28 +393,49 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
             throw new Error(uploadError.message || 'Storage upload failed');
         }
 
-        let userId = passedUserId;
-        if (!userId) {
+        // Validate UUID for uploaded_by column (PostgreSQL throws error if non-UUID is passed)
+        const isUUID = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+        
+        let validUserId = isUUID(passedUserId) ? passedUserId : null;
+        if (!validUserId) {
             try {
                 const { data: sessionData } = await supabase.auth.getSession();
-                userId = sessionData?.session?.user?.id || null;
+                const sessionUserId = sessionData?.session?.user?.id;
+                if (isUUID(sessionUserId)) {
+                    validUserId = sessionUserId;
+                }
             } catch {
-                userId = null;
+                validUserId = null;
             }
         }
 
-        const { data, error } = await supabase
+        const insertPayload = {
+            customer_id: customerId,
+            file_name: processedFile.name,
+            storage_path: filePath,
+            file_type: processedFile.type || (isImage ? 'image/jpeg' : 'application/pdf'),
+            doc_type: docType,
+            uploaded_by: validUserId
+        };
+
+        let { data, error } = await supabase
             .from('documents')
-            .insert({
-                customer_id: customerId,
-                file_name: processedFile.name,
-                storage_path: filePath,
-                file_type: processedFile.type || 'image/jpeg',
-                doc_type: docType,
-                uploaded_by: userId
-            })
+            .insert(insertPayload)
             .select()
             .single();
+
+        // Fallback retry without uploaded_by if schema constraint error occurs
+        if (error && validUserId) {
+            console.warn('Retrying document insert without uploaded_by:', error);
+            delete insertPayload.uploaded_by;
+            const retryRes = await supabase
+                .from('documents')
+                .insert(insertPayload)
+                .select()
+                .single();
+            data = retryRes.data;
+            error = retryRes.error;
+        }
 
         if (error) {
             console.error('Failed to record document in DB:', error);

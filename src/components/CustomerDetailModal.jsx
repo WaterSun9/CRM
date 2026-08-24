@@ -388,46 +388,51 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (!file) return;
 
         setUploading(true);
+        try {
+            // Delete old document if replacing or if field already had a document
+            if (replacingDocId) {
+                const oldDoc = documents.find(d => d.id === replacingDocId);
+                if (oldDoc) {
+                    await deleteDocument(oldDoc.id, oldDoc.storage_path);
+                }
+            } else if (docType) {
+                const existingDocs = documents.filter(d => d.doc_type === docType);
+                for (const oldDoc of existingDocs) {
+                    await deleteDocument(oldDoc.id, oldDoc.storage_path);
+                }
+            }
 
-        // Delete old document if replacing or if field already had a document
-        if (replacingDocId) {
-            const oldDoc = documents.find(d => d.id === replacingDocId);
-            if (oldDoc) {
-                await deleteDocument(oldDoc.id, oldDoc.storage_path);
+            const newDoc = await uploadDocument(file, customer.id, docType, user?.id);
+            if (newDoc) {
+                setDocuments(prev => [
+                    newDoc,
+                    ...prev.filter(d => replacingDocId ? d.id !== replacingDocId : (docType ? d.doc_type !== docType : true))
+                ]);
+                // Pre-cache the new doc URL
+                getViewUrl(newDoc.storage_path).then(url => {
+                    if (url) urlCacheRef.current[newDoc.storage_path] = url;
+                });
+                // Automatically mark checklist field as true and persist
+                if (docType) {
+                    setEditData(prev => ({ ...prev, [docType]: true }));
+                    await onUpdate(customer.id, { [docType]: true });
+                }
+                await logActivity(
+                    user.id,
+                    'update',
+                    `${customer.customer_name}: Uploaded document (${file.name})`,
+                    '',
+                    customer.id
+                );
+                fetchLogs();
             }
-        } else if (docType) {
-            const existingDocs = documents.filter(d => d.doc_type === docType);
-            for (const oldDoc of existingDocs) {
-                await deleteDocument(oldDoc.id, oldDoc.storage_path);
-            }
+        } catch (err) {
+            console.error('Document upload failed:', err);
+            alert('Document upload failed: ' + (err.message || 'Please check your connection and try again.'));
+        } finally {
+            setUploading(false);
+            if (e.target) e.target.value = '';
         }
-
-        const newDoc = await uploadDocument(file, customer.id, docType, user?.id);
-        if (newDoc) {
-            setDocuments(prev => [
-                newDoc,
-                ...prev.filter(d => replacingDocId ? d.id !== replacingDocId : (docType ? d.doc_type !== docType : true))
-            ]);
-            // Pre-cache the new doc URL
-            getViewUrl(newDoc.storage_path).then(url => {
-                if (url) urlCacheRef.current[newDoc.storage_path] = url;
-            });
-            // Automatically mark checklist field as true and persist
-            if (docType) {
-                setEditData(prev => ({ ...prev, [docType]: true }));
-                await onUpdate(customer.id, { [docType]: true });
-            }
-            await logActivity(
-                user.id,
-                'update',
-                `${customer.customer_name}: Uploaded document (${file.name})`,
-                '',
-                customer.id
-            );
-            fetchLogs();
-        }
-        setUploading(false);
-        e.target.value = '';
     };
 
     const handleDownloadDoc = async (doc) => {
@@ -1585,6 +1590,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                                 <span>{uploading ? 'Uploading...' : 'Upload File'}</span>
                                                 <input
                                                     type="file"
+                                                    accept="image/png,image/jpeg,image/jpg,application/pdf,.png,.jpg,.jpeg,.pdf"
                                                     onChange={handleFileUpload}
                                                     disabled={uploading}
                                                     className="hidden"

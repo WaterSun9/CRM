@@ -489,7 +489,7 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
             <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,.pdf"
+                accept="image/png,image/jpeg,image/jpg,application/pdf,.png,.jpg,.jpeg,.pdf"
                 onChange={handleFileSelected}
                 className="hidden"
             />
