@@ -147,8 +147,8 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             .join('');
         const printFrame = document.createElement('iframe');
         printFrame.setAttribute('aria-hidden', 'true');
-        const cleanName = (targetBomCust?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanRef = (targetBomCust?.folder_no || targetBomCust?.consumer_no || targetBomCust?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanName = String(targetBomCust?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanRef = String(targetBomCust?.folder_no || targetBomCust?.consumer_no || targetBomCust?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
         const docTitle = `BOM_Vendor_Dispatch_${cleanName}_${cleanRef}`;
         const prevDocTitle = document.title;
 

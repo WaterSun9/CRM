@@ -336,39 +336,24 @@ export default function DeliveryBatchesView({
     }, [batches, customers]);
 
     // Print Handler
-    const handlePrintChallan = () => {
-        const documentBody = printableRef.current;
-        if (!documentBody) return;
+    const handlePrintBatch = () => {
+        if (!printingBatch) return;
 
-        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-            .map(element => element.outerHTML)
-            .join('');
-        const printFrame = document.createElement('iframe');
-        printFrame.setAttribute('aria-hidden', 'true');
-        printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
-
-        const cleanBatch = (printingBatch?.batch_no || printingBatch?.id || 'Batch').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanVehicle = (printingBatch?.vehicle_number || 'Vehicle').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanBatch = String(printingBatch?.batch_no || printingBatch?.id || 'Batch').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanVehicle = String(printingBatch?.vehicle_number || 'Vehicle').replace(/[^a-zA-Z0-9_-]/g, '_');
         const docTitle = `Master_Delivery_Gate_Pass_${cleanBatch}_${cleanVehicle}`;
         const prevDocTitle = document.title;
 
-        const removeFrame = () => {
-            document.title = prevDocTitle;
-            setTimeout(() => printFrame.remove(), 250);
-        };
-
-        printFrame.onload = () => {
-            const printWindow = printFrame.contentWindow;
-            if (!printWindow) return removeFrame();
-            printWindow.onafterprint = removeFrame;
+        try {
+            document.title = docTitle;
+            window.print();
+        } catch (err) {
+            console.error('Print execution error:', err);
+        } finally {
             setTimeout(() => {
-                document.title = docTitle;
-                printWindow.focus();
-                printWindow.print();
-            }, 100);
-        };
-        printFrame.srcdoc = `<!doctype html><html><head><title>${docTitle}</title>${styles}<style>@page { size: A4 portrait; margin: 10mm; } body { margin: 0; color: #1c1917; background: #fff; } .print-container { border: 1px solid #78716c; padding: 8mm !important; }</style></head><body><main class="print-container">${documentBody.innerHTML}</main></body></html>`;
-        document.body.appendChild(printFrame);
+                document.title = prevDocTitle;
+            }, 1000);
+        }
     };
 
     return (
@@ -1013,6 +998,38 @@ export default function DeliveryBatchesView({
                     </div>
                 </div>
             )}
+
+            {/* Print Specific CSS */}
+            <style>{`
+                @media print {
+                    @page {
+                        size: A4 portrait;
+                        margin: 10mm;
+                    }
+                    body * {
+                        visibility: hidden !important;
+                    }
+                    .print-container, .print-container * {
+                        visibility: visible !important;
+                    }
+                    .print-container {
+                        position: fixed !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #ffffff !important;
+                        color: #000000 !important;
+                        z-index: 9999999 !important;
+                        overflow: visible !important;
+                        max-height: none !important;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
+                }
+            `}</style>
         </div>
     );
 }

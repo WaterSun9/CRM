@@ -672,8 +672,8 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
         const printFrame = document.createElement('iframe');
         printFrame.setAttribute('aria-hidden', 'true');
         printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
-        const cleanName = (selectedCust?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanRef = (selectedCust?.folder_no || selectedCust?.consumer_no || selectedCust?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanName = String(selectedCust?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanRef = String(selectedCust?.folder_no || selectedCust?.consumer_no || selectedCust?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
         const docTitle = `BOM_Material_Integration_${cleanName}_${cleanRef}`;
         const prevDocTitle = document.title;
 
@@ -1430,42 +1430,70 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                                             <Paperclip size={11} className="text-amber-500" /> Attached Documents & Uploads
                                         </h5>
                                         <div className="flex flex-col gap-2">
-                                            <CheckboxRemarkItem
-                                                label="Aadhar Card Front"
-                                                field="adhaar_card_front"
-                                                value={editData.adhaar_card_front}
-                                                onChange={handleChange}
-                                                isEditing={true}
-                                                documents={custDocs}
-                                                onUpload={handleUploadDocForCustomer}
-                                                onDelete={handleDeleteDoc}
-                                                onPreview={handlePreviewFile}
-                                                onUpdateRemark={handleUpdateDocRemark}
-                                            />
-                                            <CheckboxRemarkItem
-                                                label="Aadhar Card Back"
-                                                field="adhaar_card_back"
-                                                value={editData.adhaar_card_back}
-                                                onChange={handleChange}
-                                                isEditing={true}
-                                                documents={custDocs}
-                                                onUpload={handleUploadDocForCustomer}
-                                                onDelete={handleDeleteDoc}
-                                                onPreview={handlePreviewFile}
-                                                onUpdateRemark={handleUpdateDocRemark}
-                                            />
-                                            <CheckboxRemarkItem
-                                                label="PAN Card"
-                                                field="pan_card"
-                                                value={editData.pan_card}
-                                                onChange={handleChange}
-                                                isEditing={true}
-                                                documents={custDocs}
-                                                onUpload={handleUploadDocForCustomer}
-                                                onDelete={handleDeleteDoc}
-                                                onPreview={handlePreviewFile}
-                                                onUpdateRemark={handleUpdateDocRemark}
-                                            />
+                                            {(selectedCust?.payment_type || editData?.payment_type || '')?.trim().toLowerCase() !== 'cash' && (
+                                                <>
+                                                    <CheckboxRemarkItem
+                                                        label="Aadhar Card Front"
+                                                        field="adhaar_card_front"
+                                                        value={editData.adhaar_card_front}
+                                                        onChange={handleChange}
+                                                        isEditing={true}
+                                                        documents={custDocs}
+                                                        onUpload={handleUploadDocForCustomer}
+                                                        onDelete={handleDeleteDoc}
+                                                        onPreview={handlePreviewFile}
+                                                        onUpdateRemark={handleUpdateDocRemark}
+                                                    />
+                                                    <CheckboxRemarkItem
+                                                        label="Aadhar Card Back"
+                                                        field="adhaar_card_back"
+                                                        value={editData.adhaar_card_back}
+                                                        onChange={handleChange}
+                                                        isEditing={true}
+                                                        documents={custDocs}
+                                                        onUpload={handleUploadDocForCustomer}
+                                                        onDelete={handleDeleteDoc}
+                                                        onPreview={handlePreviewFile}
+                                                        onUpdateRemark={handleUpdateDocRemark}
+                                                    />
+                                                    <CheckboxRemarkItem
+                                                        label="PAN Card"
+                                                        field="pan_card"
+                                                        value={editData.pan_card}
+                                                        onChange={handleChange}
+                                                        isEditing={true}
+                                                        documents={custDocs}
+                                                        onUpload={handleUploadDocForCustomer}
+                                                        onDelete={handleDeleteDoc}
+                                                        onPreview={handlePreviewFile}
+                                                        onUpdateRemark={handleUpdateDocRemark}
+                                                    />
+                                                    <CheckboxRemarkItem
+                                                        label="Vera Pavti / Aakarni"
+                                                        field="index_2"
+                                                        value={editData.index_2}
+                                                        onChange={handleChange}
+                                                        isEditing={true}
+                                                        documents={custDocs}
+                                                        onUpload={handleUploadDocForCustomer}
+                                                        onDelete={handleDeleteDoc}
+                                                        onPreview={handlePreviewFile}
+                                                        onUpdateRemark={handleUpdateDocRemark}
+                                                    />
+                                                    <CheckboxRemarkItem
+                                                        label="House Geo Tag Photo"
+                                                        field="house_geo_tag_photo"
+                                                        value={editData.house_geo_tag_photo}
+                                                        onChange={handleChange}
+                                                        isEditing={true}
+                                                        documents={custDocs}
+                                                        onUpload={handleUploadDocForCustomer}
+                                                        onDelete={handleDeleteDoc}
+                                                        onPreview={handlePreviewFile}
+                                                        onUpdateRemark={handleUpdateDocRemark}
+                                                    />
+                                                </>
+                                            )}
                                             <CheckboxRemarkItem
                                                 label="Light Bill"
                                                 field="light_bill"
@@ -1479,33 +1507,9 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                                                 onUpdateRemark={handleUpdateDocRemark}
                                             />
                                             <CheckboxRemarkItem
-                                                label="Vera Pavti / Aakarni"
-                                                field="index_2"
-                                                value={editData.index_2}
-                                                onChange={handleChange}
-                                                isEditing={true}
-                                                documents={custDocs}
-                                                onUpload={handleUploadDocForCustomer}
-                                                onDelete={handleDeleteDoc}
-                                                onPreview={handlePreviewFile}
-                                                onUpdateRemark={handleUpdateDocRemark}
-                                            />
-                                            <CheckboxRemarkItem
                                                 label="Bank Details"
                                                 field="bank_details"
                                                 value={editData.bank_details}
-                                                onChange={handleChange}
-                                                isEditing={true}
-                                                documents={custDocs}
-                                                onUpload={handleUploadDocForCustomer}
-                                                onDelete={handleDeleteDoc}
-                                                onPreview={handlePreviewFile}
-                                                onUpdateRemark={handleUpdateDocRemark}
-                                            />
-                                            <CheckboxRemarkItem
-                                                label="House Geo Tag Photo"
-                                                field="house_geo_tag_photo"
-                                                value={editData.house_geo_tag_photo}
                                                 onChange={handleChange}
                                                 isEditing={true}
                                                 documents={custDocs}

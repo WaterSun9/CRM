@@ -217,39 +217,56 @@ export default function MaterialIntegrationTab({
             let bomData = null;
             let itemData = null;
 
-            try {
-                const { data, error: bomError } = await supabase
-                    .from('bom')
-                    .select('*')
-                    .eq('admin_id', customer.id)
-                    .maybeSingle();
-
-                if (!bomError && data) {
-                    bomData = data;
-                    const { data: items } = await supabase
-                        .from('bom_items')
-                        .select('*')
-                        .eq('bom_id', bomData.id)
-                        .order('sr_no', { ascending: true });
-                    itemData = items;
+            // 1. Check if admin record already contains bom_data JSON
+            const rawBomData = editData?.bom_data || customer?.bom_data;
+            if (rawBomData) {
+                try {
+                    const parsed = typeof rawBomData === 'string' ? JSON.parse(rawBomData) : rawBomData;
+                    if (parsed) {
+                        bomData = parsed.bom || parsed;
+                        itemData = parsed.items || (Array.isArray(parsed) ? parsed : null);
+                    }
+                } catch (e) {
+                    console.warn('Error parsing customer.bom_data:', e);
                 }
-            } catch (netErr) {
-                console.warn('Network loadBOM error, falling back to local:', netErr);
             }
 
-            // Fallback to local cached BOM if DB returned nothing
+            // 2. Try fetching from relational bom and bom_items tables
+            if (!bomData) {
+                try {
+                    const { data, error: bomError } = await supabase
+                        .from('bom')
+                        .select('*')
+                        .eq('admin_id', customer.id)
+                        .maybeSingle();
+
+                    if (!bomError && data) {
+                        bomData = data;
+                        const { data: items } = await supabase
+                            .from('bom_items')
+                            .select('*')
+                            .eq('bom_id', bomData.id)
+                            .order('created_at', { ascending: true });
+                        itemData = items;
+                    }
+                } catch (netErr) {
+                    console.warn('Network loadBOM error, falling back to local:', netErr);
+                }
+            }
+
+            // 3. Fallback to local cached BOM if DB returned nothing
             if (!bomData) {
                 try {
                     const localRaw = localStorage.getItem(`watersun_bom_${customer.id}`);
                     if (localRaw) {
                         const parsed = JSON.parse(localRaw);
-                        bomData = parsed.bom;
+                        bomData = parsed.bom || parsed;
                         itemData = parsed.items;
                     }
                 } catch (e) {}
             }
 
-            if (!bomData) {
+            if (!bomData && (!itemData || itemData.length === 0)) {
                 setBom(null);
                 setPaperPreparedBy('');
                 setPaperPreparedDate('');
@@ -257,45 +274,58 @@ export default function MaterialIntegrationTab({
                 setMaterialLoadedDate('');
 
                 const template = getTemplateForType(activeType);
-                setBomItems(template.map(item => ({
+                setBomItems(template.map((item, idx) => ({
                     ...item,
+                    sr_no: item.sr_no || idx + 1,
                     integration_by: '',
                     note: ''
                 })));
                 return;
             }
 
-            setPaperPreparedBy(bomData.paper_prepared_by || '');
-            setPaperPreparedDate(bomData.paper_prepared_date || '');
-            setMaterialLoadedBy(bomData.material_loaded_by || '');
-            setMaterialLoadedDate(bomData.material_loaded_date || '');
+            setPaperPreparedBy(bomData?.paper_prepared_by || '');
+            setPaperPreparedDate(bomData?.paper_prepared_date || '');
+            setMaterialLoadedBy(bomData?.material_loaded_by || '');
+            setMaterialLoadedDate(bomData?.material_loaded_date || '');
 
             const template = getTemplateForType(activeType);
             const savedItems = itemData || [];
 
-            const mergedItems = template.map(templateItem => {
-                const savedItem = savedItems.find(
-                    dbItem => dbItem.product_name === templateItem.product_name ||
-                        (templateItem.product_name === 'Solar Panel' && (dbItem.product_name === 'SOLAR PV MODULES' || dbItem.product_name === 'Solar Panel')) ||
-                        (templateItem.product_name === 'Inverter' && (dbItem.product_name === 'GRID TIED INVERTER' || dbItem.product_name === 'Inverter'))
-                );
+            const getUomForProduct = (prodName, templateList) => {
+                if (!prodName) return 'No.';
+                const found = templateList.find(t => t.product_name?.toLowerCase() === prodName?.toLowerCase());
+                if (found?.uom) return found.uom;
+                const lower = prodName.toLowerCase();
+                if (lower.includes('cable') || lower.includes('wire') || lower.includes('pipe') || lower.includes('strip')) return 'Mtr';
+                if (lower.includes('structure') || lower.includes('clamp') || lower.includes('earthing') || lower.includes('kit') || lower.includes('fastener')) return 'Set';
+                if (lower.includes('bag') || lower.includes('cement')) return 'Bag';
+                if (lower.includes('box') || lower.includes('dcdb') || lower.includes('acdb')) return 'Box';
+                return 'No.';
+            };
 
-                return {
-                    ...templateItem,
-                    id: savedItem?.id || null,
-                    integration_by: savedItem?.integration_by || '',
-                    note: savedItem?.note || '',
-                    quantity:
-                        savedItem?.quantity !== null &&
-                        savedItem?.quantity !== undefined &&
-                        savedItem?.quantity !== ''
-                            ? savedItem.quantity
-                            : templateItem.quantity,
-                };
-            });
+            let finalItems = [];
+            if (savedItems && savedItems.length > 0) {
+                // Preserve exact saved list (including all custom rows added by user) with constant UI Sr No & UOM
+                finalItems = savedItems.map((item, idx) => ({
+                    id: item.id || null,
+                    sr_no: idx + 1,
+                    product_name: item.product_name || '',
+                    quantity: item.quantity !== undefined && item.quantity !== null ? String(item.quantity) : '',
+                    uom: item.uom || getUomForProduct(item.product_name, template),
+                    integration_by: item.integration_by || '',
+                    note: item.note || ''
+                }));
+            } else {
+                finalItems = template.map((item, idx) => ({
+                    ...item,
+                    sr_no: idx + 1,
+                    integration_by: '',
+                    note: ''
+                }));
+            }
 
             setBom(bomData);
-            setBomItems(mergedItems);
+            setBomItems(finalItems);
 
         } catch (err) {
             console.error('loadBOM exception:', err);
@@ -355,9 +385,8 @@ export default function MaterialIntegrationTab({
             const prepDate = state.paperPreparedDate || null;
             const loadBy = state.materialLoadedBy || null;
             const loadDate = state.materialLoadedDate || null;
-            const items = state.bomItems || [];
-
             let currentBomId = state.bom?.id;
+            const items = state.bomItems || [];
 
             // 1. Check if a bom record exists for this customer if we don't have an ID
             if (!currentBomId) {
@@ -421,12 +450,10 @@ export default function MaterialIntegrationTab({
                 const validItems = items.filter(item => item.product_name && item.product_name.trim() !== '');
 
                 if (validItems.length > 0) {
-                    const rowsToInsert = validItems.map((item, index) => ({
+                    const rowsToInsert = validItems.map((item) => ({
                         bom_id: currentBomId,
-                        sr_no: item.sr_no || index + 1,
                         product_name: item.product_name,
                         quantity: item.quantity !== undefined && item.quantity !== null ? String(item.quantity) : '',
-                        uom: item.uom || 'No.',
                         integration_by: item.integration_by || null,
                         note: item.note || null
                     }));
@@ -495,34 +522,39 @@ export default function MaterialIntegrationTab({
         const documentBody = printableBomRef.current;
         if (!documentBody) return;
 
-        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-            .map(element => element.outerHTML)
-            .join('');
-        const printFrame = document.createElement('iframe');
-        printFrame.setAttribute('aria-hidden', 'true');
-        printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
-        const cleanName = (customer?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanRef = (customer?.folder_no || customer?.consumer_no || customer?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanName = String(customer?.customer_name || editData?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanRef = String(customer?.folder_no || customer?.consumer_no || customer?.crn || editData?.folder_no || editData?.consumer_no || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
         const docTitle = `BOM_Material_Integration_${cleanName}_${cleanRef}`;
         const prevDocTitle = document.title;
 
-        const removeFrame = () => {
+        // Remove any old print portal
+        const existing = document.getElementById('native-print-portal');
+        if (existing) existing.remove();
+
+        // Create top-level print portal directly on document.body
+        const printPortal = document.createElement('div');
+        printPortal.id = 'native-print-portal';
+        printPortal.innerHTML = documentBody.innerHTML;
+        document.body.appendChild(printPortal);
+
+        document.body.classList.add('is-printing-document');
+        document.title = docTitle;
+
+        const cleanup = () => {
+            document.body.classList.remove('is-printing-document');
             document.title = prevDocTitle;
-            setTimeout(() => printFrame.remove(), 250);
+            if (document.body.contains(printPortal)) {
+                document.body.removeChild(printPortal);
+            }
+            window.removeEventListener('afterprint', cleanup);
         };
 
-        printFrame.onload = () => {
-            const printWindow = printFrame.contentWindow;
-            if (!printWindow) return removeFrame();
-            printWindow.onafterprint = removeFrame;
-            setTimeout(() => {
-                document.title = docTitle;
-                printWindow.focus();
-                printWindow.print();
-            }, 100);
-        };
-        printFrame.srcdoc = `<!doctype html><html><head><title>${docTitle}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-bom { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-bom">${documentBody.innerHTML}</main></body></html>`;
-        document.body.appendChild(printFrame);
+        window.addEventListener('afterprint', cleanup);
+
+        setTimeout(() => {
+            window.print();
+            setTimeout(cleanup, 2000);
+        }, 100);
     };
 
     const isEditingMilestones = editingSection === 'procurement_milestones';
@@ -1155,160 +1187,241 @@ export default function MaterialIntegrationTab({
 
                         {/* Printable Document Body */}
                         <div ref={printableBomRef} className="flex-1 overflow-y-auto p-8 bg-white text-stone-900 print-document" id="printable-bom">
-                            {/* Company Header */}
-                            <div className="border-b-2 border-stone-900 pb-4 mb-6 text-center">
-                                <h1 className="text-xl font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
-                                <p className="text-xs font-semibold text-stone-600 mt-0.5">Solar PV Project Integration & Material Loading Checklist</p>
-                                <div className="inline-block mt-2 px-3 py-1 bg-stone-100 border border-stone-300 rounded text-[11px] font-black uppercase tracking-widest text-stone-800">
-                                    BILL OF MATERIALS (BOM) — {activeType} TYPE
-                                </div>
-                            </div>
-
-                            {/* Section: Customer & Site Details */}
-                            <div className="mb-6">
-                                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">1. Customer & Site Reference</h3>
-                                <table className="w-full text-xs border border-stone-300">
-                                    <tbody>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Customer Name:</td>
-                                            <td className="w-1/4 p-1.5 font-bold text-stone-900">{editData?.customer_name || customer?.customer_name || '–'}</td>
-                                            <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Phone Number:</td>
-                                            <td className="w-1/4 p-1.5 font-bold text-stone-900">{editData?.phone_number || customer?.phone_number || '–'}</td>
-                                        </tr>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Email Address:</td>
-                                            <td className="p-1.5 font-bold text-stone-900">{editData?.email_address || editData?.email || customer?.email_address || customer?.email || '–'}</td>
-                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Consumer No:</td>
-                                            <td className="p-1.5 font-bold text-stone-900">{editData?.consumer_no || customer?.consumer_no || '–'}</td>
-                                        </tr>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Villages:</td>
-                                            <td className="p-1.5 font-bold text-stone-900">{editData?.villages || customer?.villages || '–'}</td>
-                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Sub Division:</td>
-                                            <td className="p-1.5 font-bold text-stone-900">{editData?.sub_divisions || customer?.sub_divisions || '–'}</td>
-                                        </tr>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Channel Partner Name:</td>
-                                            <td className="p-1.5 font-bold text-stone-900">{editData?.channel_partner || customer?.channel_partner || '–'}</td>
-                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Sub Channel Partner Name:</td>
-                                            <td className="p-1.5 font-bold text-stone-900">{editData?.sub_channel_partner || customer?.sub_channel_partner || '–'}</td>
-                                        </tr>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">MODULE BRAND:</td>
-                                            <td className="p-1.5 font-bold text-stone-900">{editData?.module_brand || customer?.module_brand || '–'}</td>
-                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">MODULE WP:</td>
-                                            <td className="p-1.5 font-bold text-stone-900">{editData?.module_wp || customer?.module_wp || '–'}</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">No of Modules:</td>
-                                            <td className="p-1.5 font-bold text-stone-900">{editData?.no_of_modules || customer?.no_of_modules || '–'}</td>
-                                            <td className="p-1.5 bg-stone-50 font-bold text-stone-600">System Capacity (kWp):</td>
-                                            <td className="p-1.5 font-bold text-stone-900">
-                                                {editData?.system_capacity_kwp 
-                                                    ? `${toIndianCommas(editData.system_capacity_kwp)} kWp` 
-                                                    : (customer?.system_capacity_kwp ? `${toIndianCommas(customer.system_capacity_kwp)} kWp` : '–')}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {/* Section: Material Order Specifications */}
-                            <div className="mb-6">
-                                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">2. Material Order Specifications</h3>
-                                <table className="w-full text-xs border border-stone-300">
-                                    <tbody>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Roof / Shed:</td>
-                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.roof_shed || customer?.roof_shed || '–'}</td>
-                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Structure Leg Height:</td>
-                                            <td className="w-1/4 p-2 font-bold text-stone-900">
-                                                {editData?.structure_front_leg_height || customer?.structure_front_leg_height
-                                                    ? `Front: ${editData?.structure_front_leg_height || customer?.structure_front_leg_height} ft / Rear: ${editData?.structure_rear_leg_height || customer?.structure_rear_leg_height || '–'} ft`
-                                                    : '–'}
-                                            </td>
-                                        </tr>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">DC Cable Length:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.dc_cable ? `${editData.dc_cable} Meters` : '–'}</td>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">AC Cable Length:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.ac_cable ? `${editData.ac_cable} Meters` : '–'}</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Estimated Invoice Value:</td>
-                                            <td colSpan={3} className="p-2 font-bold text-stone-900">{editData?.invoice_value ? `₹ ${toIndianCommas(editData.invoice_value)}` : '–'}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {/* Section: Procurement Milestones */}
-                            <div className="mb-6">
-                                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">3. Procurement & Loading Milestones</h3>
-                                <table className="w-full text-xs border border-stone-300">
-                                    <tbody>
-                                        <tr>
-                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Paper Prepared By:</td>
-                                            <td className="w-1/4 p-2 font-bold text-stone-900">{paperPreparedBy || '–'}</td>
-                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Paper Prepared Date:</td>
-                                            <td className="w-1/4 p-2 font-bold text-stone-900">{paperPreparedDate || '–'}</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Material Loaded By:</td>
-                                            <td className="p-2 font-bold text-stone-900">{materialLoadedBy || '–'}</td>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Material Loaded Date:</td>
-                                            <td className="p-2 font-bold text-stone-900">{materialLoadedDate || '–'}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {/* Section: BOM Items Table */}
-                            <div className="mb-8">
-                                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">4. BOM Equipment Checklist ({activeType})</h3>
-                                <table className="w-full text-xs border-collapse border border-stone-400">
-                                    <thead>
-                                        <tr className="bg-stone-100 text-stone-900 uppercase font-black text-[10px]">
-                                            <th className="border border-stone-400 p-2 text-center w-10">#</th>
-                                            <th className="border border-stone-400 p-2 text-left">Product Name</th>
-                                            <th className="border border-stone-400 p-2 text-center w-16">Qty</th>
-                                            <th className="border border-stone-400 p-2 text-center w-16">UOM</th>
-                                            <th className="border border-stone-400 p-2 text-left w-32">Integration By</th>
-                                            <th className="border border-stone-400 p-2 text-left">Note / Remarks</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {bomItems.map((item, idx) => (
-                                            <tr key={idx} className="border-b border-stone-300">
-                                                <td className="border border-stone-400 p-1.5 text-center font-bold">{idx + 1}</td>
-                                                <td className="border border-stone-400 p-1.5 font-bold text-stone-900">{item.product_name || '–'}</td>
-                                                <td className="border border-stone-400 p-1.5 text-center font-bold">{item.quantity || '–'}</td>
-                                                <td className="border border-stone-400 p-1.5 text-center font-semibold">{item.uom || '–'}</td>
-                                                <td className="border border-stone-400 p-1.5 font-medium">{item.integration_by || '–'}</td>
-                                                <td className="border border-stone-400 p-1.5 text-stone-600">{item.note || '–'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {/* Signatures Footer */}
-                            <div className="grid grid-cols-3 gap-6 pt-10 text-center border-t border-stone-300 text-xs">
+                            {/* ================= PAGE 1 ================= */}
+                            <div className="print-page-1 flex flex-col justify-between min-h-[960px] pb-6">
                                 <div>
-                                    <div className="border-b border-stone-400 pb-8 mb-1.5 font-bold text-stone-700">
-                                        {paperPreparedBy ? `${paperPreparedBy}` : ''}
+                                    {/* Company Header */}
+                                    <div className="border-b-2 border-stone-900 pb-3 mb-5 text-center relative">
+                                        <h1 className="text-xl font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
+                                        <p className="text-xs font-semibold text-stone-600 mt-0.5">Solar PV Project Integration & Material Loading Checklist</p>
+                                        <div className="flex items-center justify-between mt-2.5">
+                                            <div className="px-3 py-1 bg-stone-100 border border-stone-300 rounded text-[11px] font-black uppercase tracking-widest text-stone-800">
+                                                BILL OF MATERIALS (BOM) — {activeType} TYPE
+                                            </div>
+                                            <div className="px-2.5 py-0.5 bg-stone-900 text-white font-black text-[10px] rounded uppercase tracking-wider">
+                                                Page 1 of 2
+                                            </div>
+                                        </div>
                                     </div>
-                                    <p className="font-black uppercase text-[10px] text-stone-900">Prepared By</p>
-                                </div>
-                                <div>
-                                    <div className="border-b border-stone-400 pb-8 mb-1.5 font-bold text-stone-700">
-                                        {materialLoadedBy ? `${materialLoadedBy}` : ''}
+
+                                    {/* Section 1: Customer & Site Details */}
+                                    <div className="mb-5">
+                                        <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">1. Customer & Site Reference</h3>
+                                        <table className="w-full text-xs border border-stone-300">
+                                            <tbody>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Customer Name:</td>
+                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">{editData?.customer_name || customer?.customer_name || '–'}</td>
+                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Phone Number:</td>
+                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">{editData?.phone_number || customer?.phone_number || '–'}</td>
+                                                </tr>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Email Address:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{editData?.email_address || editData?.email || customer?.email_address || customer?.email || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Consumer No:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{editData?.consumer_no || customer?.consumer_no || '–'}</td>
+                                                </tr>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Villages:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{editData?.villages || customer?.villages || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Sub Division:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{editData?.sub_divisions || customer?.sub_divisions || '–'}</td>
+                                                </tr>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Channel Partner Name:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{editData?.channel_partner || customer?.channel_partner || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Sub Channel Partner Name:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{editData?.sub_channel_partner || customer?.sub_channel_partner || '–'}</td>
+                                                </tr>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">MODULE BRAND:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{editData?.module_brand || customer?.module_brand || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">MODULE WP:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{editData?.module_wp || customer?.module_wp || '–'}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">No of Modules:</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">{editData?.no_of_modules || customer?.no_of_modules || '–'}</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">System Capacity (kWp):</td>
+                                                    <td className="p-1.5 font-bold text-stone-900">
+                                                        {editData?.system_capacity_kwp 
+                                                            ? `${toIndianCommas(editData.system_capacity_kwp)} kWp` 
+                                                            : (customer?.system_capacity_kwp ? `${toIndianCommas(customer.system_capacity_kwp)} kWp` : '–')}
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
                                     </div>
-                                    <p className="font-black uppercase text-[10px] text-stone-900">Loaded By</p>
+
+                                    {/* Section 2: Material Order Specifications */}
+                                    <div className="mb-5">
+                                        <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">2. Material Order Specifications</h3>
+                                        <table className="w-full text-xs border border-stone-300">
+                                            <tbody>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Roof / Shed:</td>
+                                                    <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.roof_shed || customer?.roof_shed || '–'}</td>
+                                                    <td className="w-1/4 bg-stone-50 font-bold text-stone-600">Structure Leg Height:</td>
+                                                    <td className="w-1/4 p-2 font-bold text-stone-900">
+                                                        {editData?.structure_front_leg_height || customer?.structure_front_leg_height
+                                                            ? `Front: ${editData?.structure_front_leg_height || customer?.structure_front_leg_height} ft / Rear: ${editData?.structure_rear_leg_height || customer?.structure_rear_leg_height || '–'} ft`
+                                                            : '–'}
+                                                    </td>
+                                                </tr>
+                                                <tr className="border-b border-stone-200">
+                                                    <td className="p-2 bg-stone-50 font-bold text-stone-600">DC Cable Length:</td>
+                                                    <td className="p-2 font-bold text-stone-900">{editData?.dc_cable ? `${editData.dc_cable} Meters` : '–'}</td>
+                                                    <td className="p-2 bg-stone-50 font-bold text-stone-600">AC Cable Length:</td>
+                                                    <td className="p-2 font-bold text-stone-900">{editData?.ac_cable ? `${editData.ac_cable} Meters` : '–'}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="p-2 bg-stone-50 font-bold text-stone-600">Estimated Invoice Value:</td>
+                                                    <td colSpan={3} className="p-2 font-bold text-stone-900">{editData?.invoice_value ? `₹ ${toIndianCommas(editData.invoice_value)}` : '–'}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Section 3: Procurement Milestones */}
+                                    <div className="mb-5">
+                                        <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">3. Procurement & Loading Milestones</h3>
+                                        <table className="w-full text-xs border border-stone-300">
+                                            <tbody>
+                                                <tr>
+                                                    <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Paper Prepared By:</td>
+                                                    <td className="w-1/4 p-2 font-bold text-stone-900">{paperPreparedBy || '–'}</td>
+                                                    <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Paper Prepared Date:</td>
+                                                    <td className="w-1/4 p-2 font-bold text-stone-900">{paperPreparedDate || '–'}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="p-2 bg-stone-50 font-bold text-stone-600">Material Loaded By:</td>
+                                                    <td className="p-2 font-bold text-stone-900">{materialLoadedBy || '–'}</td>
+                                                    <td className="p-2 bg-stone-50 font-bold text-stone-600">Material Loaded Date:</td>
+                                                    <td className="p-2 font-bold text-stone-900">{materialLoadedDate || '–'}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Section 4: Inverter & Serial Details */}
+                                    <div className="mb-5">
+                                        <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">4. Inverter & Equipment Specification</h3>
+                                        <table className="w-full text-xs border border-stone-300">
+                                            <tbody>
+                                                <tr>
+                                                    <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Inverter Make:</td>
+                                                    <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.inverter_make || customer?.inverter_make || '–'}</td>
+                                                    <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Inverter Serial No:</td>
+                                                    <td className="w-1/4 p-2 font-bold text-stone-900 font-mono">{editData?.inverter_serial_no || customer?.inverter_serial_no || '–'}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Section 5: Solar Panel Serial Numbers */}
+                                    <div className="mb-4">
+                                        <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2 flex items-center justify-between">
+                                            <span>5. Solar Panel Serial Numbers</span>
+                                            <span className="text-[10px] font-bold text-stone-600">Total: {filledCount} Panels</span>
+                                        </h3>
+                                        {filledCount > 0 ? (
+                                            <div className="grid grid-cols-5 gap-1.5 text-xs">
+                                                {panelSerials.filter(Boolean).map((serial, idx) => (
+                                                    <div key={idx} className="border border-stone-300 p-1.5 rounded flex items-center gap-1.5 bg-stone-50">
+                                                        <span className="font-bold text-stone-500 text-[10px] w-5 text-center">{idx + 1}.</span>
+                                                        <span className="font-mono font-bold text-stone-900 text-[11px] truncate">{serial}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-stone-400 italic py-1">No panel serial numbers recorded.</p>
+                                        )}
+                                    </div>
                                 </div>
+
+                                {/* Page 1 Footer Note */}
+                                <div className="pt-2 border-t border-stone-200 text-[9.5px] text-stone-400 flex justify-between">
+                                    <span>Watersun Electrical Solutions Pvt Ltd</span>
+                                    <span>BOM Page 1 of 2</span>
+                                </div>
+                            </div>
+
+                            {/* ================= PAGE 2 ================= */}
+                            <div className="print-page-2 flex flex-col justify-between min-h-[960px] mt-8 pt-8 border-t-2 border-dashed border-stone-300 print:mt-0 print:pt-0 print:border-none" style={{ pageBreakBefore: 'always', breakBefore: 'page' }}>
                                 <div>
-                                    <div className="border-b border-stone-400 pb-8 mb-1.5"></div>
-                                    <p className="font-black uppercase text-[10px] text-stone-900">Authorized / Received By</p>
+                                    {/* Company Header (Page 2) */}
+                                    <div className="border-b-2 border-stone-900 pb-3 mb-5 text-center">
+                                        <h1 className="text-xl font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
+                                        <p className="text-xs font-semibold text-stone-600 mt-0.5">Solar PV Project Integration & Material Loading Checklist</p>
+                                        <div className="flex items-center justify-between mt-2.5">
+                                            <div className="px-3 py-1 bg-stone-100 border border-stone-300 rounded text-[11px] font-black uppercase tracking-widest text-stone-800">
+                                                BILL OF MATERIALS (BOM) — {activeType} TYPE (EQUIPMENT CHECKLIST)
+                                            </div>
+                                            <div className="px-2.5 py-0.5 bg-stone-900 text-white font-black text-[10px] rounded uppercase tracking-wider">
+                                                Page 2 of 2
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 text-[11px] font-bold text-stone-700 flex justify-between px-3 bg-stone-50 border border-stone-200 py-1.5 rounded">
+                                            <span>Customer: <strong className="text-stone-950">{editData?.customer_name || customer?.customer_name || '–'}</strong></span>
+                                            <span>Consumer No: <strong className="text-stone-950">{editData?.consumer_no || customer?.consumer_no || '–'}</strong></span>
+                                            <span>Capacity: <strong className="text-stone-950">{editData?.system_capacity_kwp || customer?.system_capacity_kwp || '–'} kWp</strong></span>
+                                        </div>
+                                    </div>
+
+                                    {/* Section 6: BOM Items Table */}
+                                    <div className="mb-8">
+                                        <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">6. BOM Equipment Checklist ({activeType})</h3>
+                                        <table className="w-full text-xs border-collapse border border-stone-400">
+                                            <thead>
+                                                <tr className="bg-stone-100 text-stone-900 uppercase font-black text-[10px]">
+                                                    <th className="border border-stone-400 p-2 text-center w-10">#</th>
+                                                    <th className="border border-stone-400 p-2 text-left">Product Name</th>
+                                                    <th className="border border-stone-400 p-2 text-center w-16">Qty</th>
+                                                    <th className="border border-stone-400 p-2 text-center w-16">UOM</th>
+                                                    <th className="border border-stone-400 p-2 text-left w-32">Integration By</th>
+                                                    <th className="border border-stone-400 p-2 text-left">Note / Remarks</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {bomItems.map((item, idx) => (
+                                                    <tr key={idx} className="border-b border-stone-300">
+                                                        <td className="border border-stone-400 p-1.5 text-center font-bold">{idx + 1}</td>
+                                                        <td className="border border-stone-400 p-1.5 font-bold text-stone-900">{item.product_name || '–'}</td>
+                                                        <td className="border border-stone-400 p-1.5 text-center font-bold">{item.quantity || '–'}</td>
+                                                        <td className="border border-stone-400 p-1.5 text-center font-semibold">{item.uom || '–'}</td>
+                                                        <td className="border border-stone-400 p-1.5 font-medium">{item.integration_by || '–'}</td>
+                                                        <td className="border border-stone-400 p-1.5 text-stone-600">{item.note || '–'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Signatures Footer */}
+                                    <div className="grid grid-cols-3 gap-6 pt-12 text-center border-t border-stone-300 text-xs">
+                                        <div>
+                                            <div className="border-b border-stone-400 pb-8 mb-1.5 font-bold text-stone-700">
+                                                {paperPreparedBy ? `${paperPreparedBy}` : ''}
+                                            </div>
+                                            <p className="font-black uppercase text-[10px] text-stone-900">Prepared By</p>
+                                        </div>
+                                        <div>
+                                            <div className="border-b border-stone-400 pb-8 mb-1.5 font-bold text-stone-700">
+                                                {materialLoadedBy ? `${materialLoadedBy}` : ''}
+                                            </div>
+                                            <p className="font-black uppercase text-[10px] text-stone-900">Loaded By</p>
+                                        </div>
+                                        <div>
+                                            <div className="border-b border-stone-400 pb-8 mb-1.5"></div>
+                                            <p className="font-black uppercase text-[10px] text-stone-900">Authorized / Received By</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Page 2 Footer Note */}
+                                <div className="pt-2 border-t border-stone-200 text-[9.5px] text-stone-400 flex justify-between mt-8">
+                                    <span>Watersun Electrical Solutions Pvt Ltd</span>
+                                    <span>BOM Page 2 of 2</span>
                                 </div>
                             </div>
                         </div>
@@ -1321,57 +1434,91 @@ export default function MaterialIntegrationTab({
                 @media print {
                     @page {
                         size: A4 portrait;
-                        margin: 6mm;
+                        margin: 8mm 10mm;
                     }
-                    body * {
-                        visibility: hidden;
+                    *, *::before, *::after {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
                     }
-                    #printable-bom, #printable-bom * {
-                        visibility: visible;
+                    body.is-printing-document > *:not(#native-print-portal) {
+                        display: none !important;
                     }
-                    #printable-bom {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 198mm;
-                        box-sizing: border-box;
-                        margin: 0;
-                        padding: 0;
+                    body.is-printing-document {
                         background: #ffffff !important;
                         color: #000000 !important;
-                        font-size: 6.5pt;
-                        line-height: 1.08;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        overflow: visible !important;
+                        height: auto !important;
                     }
-                    #printable-bom .mb-6 { margin-bottom: 2.5mm !important; }
-                    #printable-bom .mb-8 { margin-bottom: 2.5mm !important; }
-                    #printable-bom .pb-4 { padding-bottom: 2mm !important; }
-                    #printable-bom .pt-10 { padding-top: 4mm !important; }
-                    #printable-bom h1 { font-size: 12pt !important; }
-                    #printable-bom h3 { font-size: 7pt !important; margin-bottom: 1mm !important; }
-                    #printable-bom p { line-height: 1.08 !important; }
-                    #printable-bom table {
-                        table-layout: fixed;
-                        font-size: 6.5pt !important;
-                        line-height: 1.05 !important;
-                        break-inside: avoid;
+                    #native-print-portal {
+                        display: block !important;
+                        width: 100% !important;
+                        max-width: 190mm !important;
+                        margin: 0 auto !important;
+                        padding: 0 !important;
+                        font-size: 8pt !important;
+                        line-height: 1.25 !important;
+                        color: #000000 !important;
+                        background: #ffffff !important;
                     }
-                    #printable-bom th,
-                    #printable-bom td {
-                        padding: 1.25px 3px !important;
-                        line-height: 1.05 !important;
-                        vertical-align: middle;
+                    #native-print-portal .print-page-1 {
+                        min-height: 250mm !important;
+                        box-sizing: border-box !important;
+                        padding-bottom: 0 !important;
                     }
-                    #printable-bom tbody tr {
-                        break-inside: avoid;
+                    #native-print-portal .print-page-2 {
+                        page-break-before: always !important;
+                        break-before: page !important;
+                        min-height: 250mm !important;
+                        box-sizing: border-box !important;
+                        margin-top: 0 !important;
+                        padding-top: 0 !important;
                     }
-                    /* Long notes must not expand a BOM row and force a second sheet. */
-                    #printable-bom table:last-of-type td {
-                        white-space: nowrap;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
+                    #native-print-portal .mb-5 { margin-bottom: 3.5mm !important; }
+                    #native-print-portal .mb-6 { margin-bottom: 4mm !important; }
+                    #native-print-portal .mb-8 { margin-bottom: 5mm !important; }
+                    #native-print-portal .pb-3 { padding-bottom: 2mm !important; }
+                    #native-print-portal .pb-4 { padding-bottom: 2.5mm !important; }
+                    #native-print-portal .pt-10 { padding-top: 6mm !important; }
+                    #native-print-portal .pt-12 { padding-top: 8mm !important; }
+                    #native-print-portal h1 { font-size: 13pt !important; margin: 0 0 1.5mm 0 !important; }
+                    #native-print-portal h3 { font-size: 8.5pt !important; margin-bottom: 1.5mm !important; padding-bottom: 0.8mm !important; }
+                    #native-print-portal p { line-height: 1.2 !important; }
+                    #native-print-portal table {
+                        width: 100% !important;
+                        border-collapse: collapse !important;
+                        font-size: 7.5pt !important;
+                        line-height: 1.15 !important;
+                        table-layout: fixed !important;
+                        margin-bottom: 2mm !important;
                     }
-                    #printable-bom .grid { gap: 4mm !important; }
-                    #printable-bom .pb-8 { padding-bottom: 5mm !important; }
+                    #native-print-portal th,
+                    #native-print-portal td {
+                        padding: 2.5px 5px !important;
+                        line-height: 1.15 !important;
+                        vertical-align: middle !important;
+                        border: 0.5px solid #d6d3d1 !important;
+                    }
+                    #native-print-portal th {
+                        background-color: #f5f5f4 !important;
+                        font-weight: 900 !important;
+                        font-size: 7.5pt !important;
+                    }
+                    #native-print-portal tbody tr {
+                        break-inside: avoid !important;
+                    }
+                    #native-print-portal .grid-cols-5 {
+                        display: grid !important;
+                        grid-template-columns: repeat(5, 1fr) !important;
+                        gap: 1.8mm !important;
+                    }
+                    #native-print-portal .grid-cols-3 {
+                        display: grid !important;
+                        grid-template-columns: repeat(3, 1fr) !important;
+                        gap: 8mm !important;
+                    }
+                    #native-print-portal .pb-8 { padding-bottom: 6mm !important; }
                     .no-print {
                         display: none !important;
                     }

@@ -743,6 +743,16 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                                 onFileRemove={handleFileRemove}
                                                 onPreview={handlePreviewFile}
                                             />
+                                            <AddLeadChecklistItem
+                                                label="House Geo Tag Photo"
+                                                field="house_geo_tag_photo"
+                                                checked={formData.house_geo_tag_photo}
+                                                onToggle={handleChange}
+                                                pendingFile={pendingFiles['house_geo_tag_photo']}
+                                                onFileAttach={handleFileAttach}
+                                                onFileRemove={handleFileRemove}
+                                                onPreview={handlePreviewFile}
+                                            />
                                         </>
                                     )}
 
@@ -763,17 +773,6 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         checked={formData.bank_details}
                                         onToggle={handleChange}
                                         pendingFile={pendingFiles['bank_details']}
-                                        onFileAttach={handleFileAttach}
-                                        onFileRemove={handleFileRemove}
-                                        onPreview={handlePreviewFile}
-                                    />
-
-                                    <AddLeadChecklistItem
-                                        label="House Geo Tag Photo"
-                                        field="house_geo_tag_photo"
-                                        checked={formData.house_geo_tag_photo}
-                                        onToggle={handleChange}
-                                        pendingFile={pendingFiles['house_geo_tag_photo']}
                                         onFileAttach={handleFileAttach}
                                         onFileRemove={handleFileRemove}
                                         onPreview={handlePreviewFile}

@@ -88,35 +88,39 @@ export default function MaterialDeliveryTab({
         const documentBody = printableDeliveryRef.current;
         if (!documentBody) return;
 
-        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-            .map(element => element.outerHTML)
-            .join('');
-        const printFrame = document.createElement('iframe');
-        printFrame.setAttribute('aria-hidden', 'true');
-        printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
-
-        const cleanName = (customer?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanInv = (editData?.invoice_no || customer?.folder_no || customer?.consumer_no || 'Challan').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanName = String(customer?.customer_name || editData?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanInv = String(editData?.invoice_no || customer?.folder_no || customer?.consumer_no || 'Challan').replace(/[^a-zA-Z0-9_-]/g, '_');
         const docTitle = `Material_Delivery_Note_${cleanName}_${cleanInv}`;
         const prevDocTitle = document.title;
 
-        const removeFrame = () => {
+        // Remove any old print portal
+        const existing = document.getElementById('native-print-portal');
+        if (existing) existing.remove();
+
+        // Create top-level print portal directly on document.body
+        const printPortal = document.createElement('div');
+        printPortal.id = 'native-print-portal';
+        printPortal.innerHTML = documentBody.innerHTML;
+        document.body.appendChild(printPortal);
+
+        document.body.classList.add('is-printing-document');
+        document.title = docTitle;
+
+        const cleanup = () => {
+            document.body.classList.remove('is-printing-document');
             document.title = prevDocTitle;
-            setTimeout(() => printFrame.remove(), 250);
+            if (document.body.contains(printPortal)) {
+                document.body.removeChild(printPortal);
+            }
+            window.removeEventListener('afterprint', cleanup);
         };
 
-        printFrame.onload = () => {
-            const printWindow = printFrame.contentWindow;
-            if (!printWindow) return removeFrame();
-            printWindow.onafterprint = removeFrame;
-            setTimeout(() => {
-                document.title = docTitle;
-                printWindow.focus();
-                printWindow.print();
-            }, 100);
-        };
-        printFrame.srcdoc = `<!doctype html><html><head><title>${docTitle}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-delivery { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-delivery">${documentBody.innerHTML}</main></body></html>`;
-        document.body.appendChild(printFrame);
+        window.addEventListener('afterprint', cleanup);
+
+        setTimeout(() => {
+            window.print();
+            setTimeout(cleanup, 2000);
+        }, 100);
     };
 
     return (
@@ -382,112 +386,86 @@ export default function MaterialDeliveryTab({
                         </div>
 
                         {/* Printable Document Body */}
-                        <div ref={printableDeliveryRef} className="flex-1 overflow-y-auto p-8 bg-white text-stone-900 print-document" id="printable-delivery">
+                        <div ref={printableDeliveryRef} className="flex-1 overflow-y-auto p-6 bg-white text-stone-900 print-document" id="printable-delivery">
                             {/* Company Header */}
-                            <div className="border-b-2 border-stone-900 pb-4 mb-6 text-center">
-                                <h1 className="text-xl font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
-                                <p className="text-xs font-semibold text-stone-600 mt-0.5">Material Delivery, Equipment Dispatch & Serial Numbers Note</p>
-                                <div className="inline-block mt-2 px-3 py-1 bg-stone-100 border border-stone-300 rounded text-[11px] font-black uppercase tracking-widest text-stone-800">
+                            <div className="header-box text-center">
+                                <h1 className="text-base font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
+                                <p className="text-[11px] font-semibold text-stone-600">Material Delivery, Equipment Dispatch & Serial Numbers Note</p>
+                                <div className="tag">
                                     DISPATCH NOTE — {editData?.invoice_no ? `INVOICE #${editData.invoice_no}` : 'PROJECT DISPATCH'}
                                 </div>
                             </div>
 
                             {/* Section: Customer & Site Details */}
-                            <div className="mb-6">
-                                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">1. Customer & Site Information</h3>
-                                <table className="w-full text-xs border border-stone-300">
+                            <div className="section-block">
+                                <h3>1. Customer & Site Information</h3>
+                                <table>
                                     <tbody>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Customer Name:</td>
-                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.customer_name || customer?.customer_name || '–'}</td>
-                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Contact Number:</td>
-                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.phone_number || customer?.phone_number || '–'}</td>
-                                        </tr>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Village / Address:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.villages || customer?.villages || '–'}</td>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Consumer No:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.consumer_no || customer?.consumer_no || '–'}</td>
+                                        <tr>
+                                            <td className="w-1/4 bg-stone-50 font-bold text-stone-600">Customer Name:</td>
+                                            <td className="w-1/4 font-bold text-stone-900">{editData?.customer_name || customer?.customer_name || '–'}</td>
+                                            <td className="w-1/4 bg-stone-50 font-bold text-stone-600">Contact Number:</td>
+                                            <td className="w-1/4 font-bold text-stone-900">{editData?.phone_number || customer?.phone_number || '–'}</td>
                                         </tr>
                                         <tr>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">System Capacity:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.system_capacity_kwp ? `${editData.system_capacity_kwp} kWp` : '–'}</td>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Channel Partner:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.channel_partner || customer?.channel_partner || '–'}</td>
+                                            <td className="bg-stone-50 font-bold text-stone-600">Village / Address:</td>
+                                            <td className="font-bold text-stone-900">{editData?.villages || customer?.villages || '–'}</td>
+                                            <td className="bg-stone-50 font-bold text-stone-600">Consumer No:</td>
+                                            <td className="font-bold text-stone-900">{editData?.consumer_no || customer?.consumer_no || '–'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="bg-stone-50 font-bold text-stone-600">System Capacity:</td>
+                                            <td className="font-bold text-stone-900">{editData?.system_capacity_kwp ? `${editData.system_capacity_kwp} kWp` : '–'}</td>
+                                            <td className="bg-stone-50 font-bold text-stone-600">Channel Partner:</td>
+                                            <td className="font-bold text-stone-900">{editData?.channel_partner || customer?.channel_partner || '–'}</td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
 
-                            {/* Section: Delivery & Dispatch Specifications */}
-                            <div className="mb-6">
-                                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">2. Delivery & Equipment Specifications</h3>
-                                <table className="w-full text-xs border border-stone-300">
+                            {/* Section: Delivery & Dispatch Logistics */}
+                            <div className="section-block">
+                                <h3>2. Delivery & Logistics Details</h3>
+                                <table>
                                     <tbody>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Allotted Vendor:</td>
-                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.vendor || '–'}</td>
-                                            <td className="w-1/4 p-2 bg-stone-50 font-bold text-stone-600">Invoice Number:</td>
-                                            <td className="w-1/4 p-2 font-bold text-stone-900">{editData?.invoice_no || '–'}</td>
+                                        <tr>
+                                            <td className="w-1/4 bg-stone-50 font-bold text-stone-600">Allotted Vendor:</td>
+                                            <td className="w-1/4 font-bold text-stone-900">{editData?.vendor || '–'}</td>
+                                            <td className="w-1/4 bg-stone-50 font-bold text-stone-600">Invoice Number:</td>
+                                            <td className="w-1/4 font-bold text-stone-900">{editData?.invoice_no || '–'}</td>
                                         </tr>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Inverter Make:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.inverter_make || '–'}</td>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Inverter Serial No:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.inverter_serial_no || '–'}</td>
+                                        <tr>
+                                            <td className="bg-stone-50 font-bold text-stone-600">Material Delivery Date:</td>
+                                            <td className="font-bold text-stone-900">{editData?.material_delivery_date || '–'}</td>
+                                            <td className="bg-stone-50 font-bold text-stone-600">Vehicle / Truck No:</td>
+                                            <td className="font-bold text-stone-900">{editData?.vehicle_number || '–'}</td>
                                         </tr>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Material Delivery Date:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.material_delivery_date || '–'}</td>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Vehicle / Truck No:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.vehicle_number || '–'}</td>
-                                        </tr>
-                                        <tr className="border-b border-stone-200">
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Driver Name:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.driver_name || '–'}</td>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Driver Phone Number:</td>
-                                            <td className="p-2 font-bold text-stone-900">{editData?.driver_phone_number || '–'}</td>
+                                        <tr>
+                                            <td className="bg-stone-50 font-bold text-stone-600">Driver Name:</td>
+                                            <td className="font-bold text-stone-900">{editData?.driver_name || '–'}</td>
+                                            <td className="bg-stone-50 font-bold text-stone-600">Driver Phone Number:</td>
+                                            <td className="font-bold text-stone-900">{editData?.driver_phone_number || '–'}</td>
                                         </tr>
                                     </tbody>
                                 </table>
-                            </div>
-
-                            {/* Section: Panel Serial Numbers Grid */}
-                            <div className="mb-8">
-                                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2 flex items-center justify-between">
-                                    <span>3. Solar Panel Serial Numbers Checklist</span>
-                                    <span className="text-[10px] font-bold text-stone-600">Total: {filledCount} Panels</span>
-                                </h3>
-                                {filledCount > 0 ? (
-                                    <div className="grid grid-cols-3 gap-2 text-xs">
-                                        {panelSerials.filter(Boolean).map((serial, idx) => (
-                                            <div key={idx} className="border border-stone-300 p-1.5 rounded flex items-center gap-2">
-                                                <span className="font-bold text-stone-600 w-6 text-center">{idx + 1}.</span>
-                                                <span className="font-mono font-bold text-stone-900">{serial}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-stone-400 italic py-2">No panel serial numbers recorded.</p>
-                                )}
                             </div>
 
                             {/* Signatures Footer */}
-                            <div className="grid grid-cols-3 gap-6 pt-12 text-center border-t border-stone-300 text-xs">
+                            <div className="sig-grid">
                                 <div>
-                                    <div className="border-b border-stone-400 pb-8 mb-1.5 font-bold text-stone-700">
+                                    <div className="sig-line">
                                         {user?.name || ''}
                                     </div>
                                     <p className="font-black uppercase text-[10px] text-stone-900">Dispatched By</p>
                                 </div>
                                 <div>
-                                    <div className="border-b border-stone-400 pb-8 mb-1.5 font-bold text-stone-700">
+                                    <div className="sig-line">
                                         {editData?.driver_name || ''}
                                     </div>
                                     <p className="font-black uppercase text-[10px] text-stone-900">Driver Signature</p>
                                 </div>
                                 <div>
-                                    <div className="border-b border-stone-400 pb-8 mb-1.5 font-bold text-stone-700">
+                                    <div className="sig-line">
                                         {editData?.customer_name || ''}
                                     </div>
                                     <p className="font-black uppercase text-[10px] text-stone-900">Customer / Site Received By</p>
@@ -501,21 +479,65 @@ export default function MaterialDeliveryTab({
             {/* Print Specific CSS */}
             <style>{`
                 @media print {
-                    body * {
-                        visibility: hidden;
+                    @page {
+                        size: A4 portrait;
+                        margin: 10mm;
                     }
-                    #printable-delivery, #printable-delivery * {
-                        visibility: visible;
+                    *, *::before, *::after {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
                     }
-                    #printable-delivery {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        margin: 0;
-                        padding: 20px;
+                    body.is-printing-document > *:not(#native-print-portal) {
+                        display: none !important;
+                    }
+                    body.is-printing-document {
                         background: #ffffff !important;
                         color: #000000 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        overflow: visible !important;
+                        height: auto !important;
+                    }
+                    #native-print-portal {
+                        display: block !important;
+                        width: 100% !important;
+                        max-width: 180mm !important;
+                        margin: 0 auto !important;
+                        padding: 0 !important;
+                        font-size: 11px !important;
+                        line-height: 1.4 !important;
+                        color: #000000 !important;
+                        background: #ffffff !important;
+                    }
+                    #native-print-portal .section-block { margin-bottom: 14px !important; }
+                    #native-print-portal table {
+                        width: 100% !important;
+                        border-collapse: collapse !important;
+                        border: 1px solid #a8a29e !important;
+                        font-size: 11px !important;
+                        margin-bottom: 2px !important;
+                    }
+                    #native-print-portal th, #native-print-portal td {
+                        border: 1px solid #d6d3d1 !important;
+                        padding: 5px 8px !important;
+                        vertical-align: middle !important;
+                    }
+                    #native-print-portal .sig-grid {
+                        display: grid !important;
+                        grid-template-columns: repeat(3, 1fr) !important;
+                        gap: 20px !important;
+                        text-align: center !important;
+                        padding-top: 30px !important;
+                    }
+                    #native-print-portal .sig-line {
+                        border-bottom: 1px solid #78716c !important;
+                        height: 35px !important;
+                        margin-bottom: 5px !important;
+                        font-weight: 700 !important;
+                        font-size: 10px !important;
+                        display: flex !important;
+                        align-items: flex-end !important;
+                        justify-content: center !important;
                     }
                     .no-print {
                         display: none !important;
