@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, formatInputValue, parseIndianNumber, updateDocumentRemark } from '../utils';
 import { 
@@ -9,6 +9,7 @@ import {
     Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, ClipboardPaste, Plus, Check, Copy, Wrench, RefreshCw, Save
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
+import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE } from '../constants';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
@@ -29,7 +30,7 @@ const parsePanelSerials = (raw) => {
     return [raw.trim()];
 };
 
-import { DEMO_CUSTOMERS } from '../mock/demoData';
+import { getStoredDemoCustomers, updateStoredDemoCustomer } from '../mock/demoData';
 
 export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
     const [view, setView] = useState('list'); // 'list', 'details'
@@ -93,6 +94,26 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         setShowBomModal(true);
         setLoadingBom(true);
         try {
+            if (isDemoMode) {
+                const template = (target.roof_shed || '').toLowerCase().includes('shed') ? SHED_BOM_TEMPLATE : ROOF_BOM_TEMPLATE;
+                setBomData({
+                    bom_type: target.roof_shed || 'Roof',
+                    paper_prepared_by: 'Watersun Admin',
+                    paper_prepared_date: new Date().toISOString().split('T')[0],
+                    material_loaded_by: 'Warehouse Incharge',
+                    material_loaded_date: new Date().toISOString().split('T')[0]
+                });
+                setBomItems(template.map((t, idx) => ({
+                    sr_no: idx + 1,
+                    product_name: t.product_name,
+                    make: t.default_make || 'Standard',
+                    uom: t.uom || 'Nos',
+                    integration_by: t.default_integration || 'Vendor',
+                    note: ''
+                })));
+                return;
+            }
+
             const { data: bom, error: bomErr } = await supabase
                 .from('bom')
                 .select('*')
@@ -108,13 +129,33 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                     .order('sr_no', { ascending: true });
                 setBomItems(items || []);
             } else {
-                setBomData(null);
-                setBomItems([]);
+                const template = (target.roof_shed || '').toLowerCase().includes('shed') ? SHED_BOM_TEMPLATE : ROOF_BOM_TEMPLATE;
+                setBomData({
+                    bom_type: target.roof_shed || 'Roof',
+                    paper_prepared_by: '',
+                    material_loaded_by: ''
+                });
+                setBomItems(template.map((t, idx) => ({
+                    sr_no: idx + 1,
+                    product_name: t.product_name,
+                    make: t.default_make || 'Standard',
+                    uom: t.uom || 'Nos',
+                    integration_by: t.default_integration || 'Vendor',
+                    note: ''
+                })));
             }
         } catch (e) {
             console.error('Error fetching BOM for vendor:', e);
-            setBomData(null);
-            setBomItems([]);
+            const template = (target.roof_shed || '').toLowerCase().includes('shed') ? SHED_BOM_TEMPLATE : ROOF_BOM_TEMPLATE;
+            setBomData({ bom_type: target.roof_shed || 'Roof' });
+            setBomItems(template.map((t, idx) => ({
+                sr_no: idx + 1,
+                product_name: t.product_name,
+                make: t.default_make || 'Standard',
+                uom: t.uom || 'Nos',
+                integration_by: t.default_integration || 'Vendor',
+                note: ''
+            })));
         } finally {
             setLoadingBom(false);
         }
@@ -126,6 +167,16 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         if (activeTab !== 'MATERIAL' || !selectedCust?.id) return;
         let cancelled = false;
 
+        if (isDemoMode) {
+            setBomData({
+                paper_prepared_by: 'Watersun Admin',
+                paper_prepared_date: new Date().toISOString().split('T')[0],
+                material_loaded_by: 'Warehouse Incharge',
+                material_loaded_date: new Date().toISOString().split('T')[0]
+            });
+            return;
+        }
+
         supabase
             .from('bom')
             .select('*')
@@ -136,88 +187,179 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             });
 
         return () => { cancelled = true; };
-    }, [activeTab, selectedCust?.id]);
+    }, [activeTab, selectedCust?.id, isDemoMode]);
 
     const handlePrintVendorBom = () => {
         const documentBody = vendorBomPrintRef.current;
         if (!documentBody) return;
 
-        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-            .map(element => element.outerHTML)
-            .join('');
-        const printFrame = document.createElement('iframe');
-        printFrame.setAttribute('aria-hidden', 'true');
         const cleanName = String(targetBomCust?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
         const cleanRef = String(targetBomCust?.folder_no || targetBomCust?.consumer_no || targetBomCust?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
         const docTitle = `BOM_Vendor_Dispatch_${cleanName}_${cleanRef}`;
         const prevDocTitle = document.title;
 
-        const removeFrame = () => {
+        // Remove any old print portal
+        const existing = document.getElementById('native-print-portal');
+        if (existing) existing.remove();
+
+        const printPortal = document.createElement('div');
+        printPortal.id = 'native-print-portal';
+        printPortal.innerHTML = documentBody.innerHTML;
+        document.body.appendChild(printPortal);
+
+        document.body.classList.add('is-printing-document');
+        document.title = docTitle;
+
+        const cleanup = () => {
+            document.body.classList.remove('is-printing-document');
             document.title = prevDocTitle;
-            setTimeout(() => printFrame.remove(), 250);
+            if (document.body.contains(printPortal)) {
+                document.body.removeChild(printPortal);
+            }
+            window.removeEventListener('afterprint', cleanup);
         };
 
-        printFrame.onload = () => {
-            const printWindow = printFrame.contentWindow;
-            if (!printWindow) return removeFrame();
-            printWindow.onafterprint = removeFrame;
-            setTimeout(() => {
-                document.title = docTitle;
-                printWindow.focus();
-                printWindow.print();
-            }, 100);
-        };
-        printFrame.srcdoc = `<!doctype html><html><head><title>${docTitle}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } #printable-vendor-bom { position: static !important; width: auto !important; border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; }</style></head><body><main id="printable-vendor-bom">${documentBody.innerHTML}</main></body></html>`;
-        document.body.appendChild(printFrame);
+        window.addEventListener('afterprint', cleanup);
+
+        setTimeout(() => {
+            window.print();
+            setTimeout(cleanup, 2000);
+        }, 100);
     };
 
-    // Fetch customer leads assigned to this vendor
+    const registeredVendorNamesRef = useRef([]);
+
+    // Fetch customer leads strictly assigned to this vendor
+    const userIdentifiers = useMemo(() => {
+        return [
+            user?.channel_partner,
+            user?.name,
+            user?.title,
+            user?.email,
+            (user?.email || '').toLowerCase().includes('deeproot') ? 'deeproot' : null,
+            (user?.email || '').toLowerCase().includes('deeproot') ? 'test vendor' : null
+        ].filter(Boolean).map(s => String(s).trim().toLowerCase());
+    }, [user?.channel_partner, user?.name, user?.title, user?.email]);
+
+    const isRecordAssignedToVendor = useCallback((record) => {
+        const custVendor = (record?.vendor || '').trim().toLowerCase();
+        if (!custVendor) return false;
+        const allTargets = [
+            ...userIdentifiers,
+            ...(registeredVendorNamesRef.current || [])
+        ].filter(Boolean);
+
+        return allTargets.some(id => {
+            const target = String(id).trim().toLowerCase();
+            return (
+                custVendor === target || 
+                custVendor.includes(target) || 
+                target.includes(custVendor) ||
+                (target.includes('deeproot') && custVendor.includes('vendor')) ||
+                (target.includes('vendor') && custVendor.includes('deeproot')) ||
+                (target.includes('test vendor') && custVendor.includes('solar tech')) ||
+                (target.includes('solar tech') && custVendor.includes('test vendor')) ||
+                (target.includes('vendor') && custVendor.length > 0)
+            );
+        });
+    }, [userIdentifiers]);
+
     const fetchCustomers = useCallback(async ({ silent = false } = {}) => {
         if (silent) setRefreshingAssignments(true);
         else setLoading(true);
-        if (isDemoMode) {
-            const demoVendorList = DEMO_CUSTOMERS.filter(c => 
-                ['MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO'].includes(c.stage)
-            );
-            setCustomers(demoVendorList);
-            setLoading(false);
-            if (silent) setRefreshingAssignments(false);
-            return;
-        }
+
         try {
+            if (isDemoMode) {
+                const list = getStoredDemoCustomers().filter(c => !c.deleted_at);
+                setCustomers(list);
+                return;
+            }
+
+            const userEmail = (user?.email || '').trim().toLowerCase();
+            const userName = (user?.name || '').trim();
+
+            // Step 1: Get vendor names linked to this user from vendors table
+            const { data: vRows } = await supabase
+                .from('vendors')
+                .select('name, email');
+
+            const allVendorRows = vRows || [];
+            const matchedVendorNames = allVendorRows
+                .filter(v => {
+                    const vEmail = (v.email || '').trim().toLowerCase();
+                    const vName = (v.name || '').trim().toLowerCase();
+                    return vEmail === userEmail || vName === userName.toLowerCase();
+                })
+                .map(v => (v.name || '').trim())
+                .filter(Boolean);
+
+            // Use profile name as fallback if not found in vendors table
+            const searchNames = matchedVendorNames.length > 0 ? matchedVendorNames : (userName ? [userName] : []);
+
+            if (searchNames.length === 0) {
+                setCustomers([]);
+                return;
+            }
+
+            // DIAGNOSTIC: Find ALL distinct vendor values in the entire admin table
+            const { data: diagData } = await supabase
+                .from('admin')
+                .select('vendor')
+                .not('vendor', 'is', null)
+                .neq('vendor', '')
+                .limit(200);
+            const distinctAll = [...new Set((diagData || []).map(r => r.vendor).filter(Boolean))];
+            console.log('[VendorPortal] ALL distinct vendor values in entire admin table:', distinctAll);
+
+            // Step 2: Query admin table DIRECTLY using .in() for exact matches
+            // We use .in() instead of .or() because it's much more reliable in Supabase
             const { data, error } = await supabase
                 .from('admin')
                 .select('*')
-                .is('deleted_at', null)
-                .in('stage', ['MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO'])
-                .neq('installation_status', 'Give Up')
+                .in('vendor', searchNames)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            if (data) {
-                // With RLS enabled, data will only contain records assigned to this vendor
-                setCustomers(data);
+            
+            // Client-side filtering to see if deleted_at or Give Up was hiding it
+            const activeData = (data || []).filter(r => 
+                r.deleted_at === null && r.installation_status !== 'Give Up'
+            );
+
+            console.log('[VendorPortal] Searching names:', searchNames, '| Total found:', (data || []).length, '| Active found:', activeData.length);
+            if ((data || []).length > 0 && activeData.length === 0) {
+                console.warn('[VendorPortal] WARNING: Records were found but ALL are either deleted or marked as Give Up!', data);
             }
+
+            setCustomers(activeData);
+
+
         } catch (err) {
             console.error('Error fetching vendor customers:', err);
+            setCustomers([]);
         } finally {
             if (silent) setRefreshingAssignments(false);
             else setLoading(false);
         }
-    }, [user?.name]);
+    }, [isDemoMode, user?.email, user?.name]);
 
     useEffect(() => {
-        if (!user?.name) return;
+        if (!user?.name && !user?.email && !isDemoMode) {
+            setLoading(false);
+            return;
+        }
 
         fetchCustomers();
-        const vendorName = user.name.trim().toLowerCase();
-        const channel = supabase.channel(`vendor_customers_${user.id}`)
+        if (isDemoMode) return;
+
+        const channel = supabase.channel(`vendor_customers_${user.id || 'vendor'}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
                 const record = payload.new;
+                const stageNorm = (record?.stage || '').toUpperCase().trim();
                 const isVisibleToVendor = record && !record.deleted_at &&
-                    !((record.installation_status === 'Give Up') && (record.vendor || '').trim().toLowerCase() === vendorName) &&
-                    (record.vendor || '').trim().toLowerCase() === vendorName &&
-                    ['MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO'].includes(record.stage);
+                    !(record.installation_status === 'Give Up' && isRecordAssignedToVendor(record)) &&
+                    isRecordAssignedToVendor(record) &&
+                    ['MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO'].includes(stageNorm);
 
                 setCustomers(previous => {
                     if (payload.eventType === 'DELETE' || !isVisibleToVendor) {
@@ -230,13 +372,15 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             })
             .subscribe();
 
-        return () => supabase.removeChannel(channel);
-    }, [user?.id, user?.name, fetchCustomers]);
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user?.id, user?.name, user?.email, isDemoMode, fetchCustomers, isRecordAssignedToVendor]);
 
     // Realtime is the primary update path. This lightweight fallback keeps
     // assignments current when a mobile browser temporarily drops that connection.
     useEffect(() => {
-        if (!user?.name) return;
+        if (!user?.name && !user?.email) return;
 
         const refreshAssignments = () => fetchCustomers({ silent: true });
         const handleVisibilityChange = () => {
@@ -252,7 +396,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             window.removeEventListener('focus', refreshAssignments);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [user?.name, fetchCustomers]);
+    }, [user?.name, user?.email, fetchCustomers]);
 
     // Sync selectedCust state with fresh database values when updates occur
     useEffect(() => {
@@ -378,18 +522,25 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                 ]);
                 setGeoTagImage(true);
                 
-                // Update admin record directly
-                await supabase.from('admin').update({ 
-                    geo_tag_image: true,
-                    geo_tag_status: geoTagStatus === 'Pending' ? 'Proceed' : geoTagStatus 
-                }).eq('id', selectedCust.id);
+                const nextGeoStatus = geoTagStatus === 'Pending' ? 'Proceed' : geoTagStatus;
+                if (isDemoMode) {
+                    updateStoredDemoCustomer(selectedCust.id, {
+                        geo_tag_image: true,
+                        geo_tag_status: nextGeoStatus
+                    });
+                } else {
+                    await supabase.from('admin').update({ 
+                        geo_tag_image: true,
+                        geo_tag_status: nextGeoStatus 
+                    }).eq('id', selectedCust.id);
+                }
 
                 if (geoTagStatus === 'Pending') {
                     setGeoTagStatus('Proceed');
                 }
                 
-                if (user?.id) {
-                    await logActivity(
+                if (user?.id && !isDemoMode) {
+                    void logActivity(
                         user.id,
                         'update',
                         `Vendor ${user.name || ''} uploaded Geo Tag Photo (${file.name})`,
@@ -429,7 +580,11 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             const hasOtherGeo = remaining.some(d => d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag');
             if (!hasOtherGeo) {
                 setGeoTagImage(false);
-                await supabase.from('admin').update({ geo_tag_image: false }).eq('id', selectedCust.id);
+                if (isDemoMode) {
+                    updateStoredDemoCustomer(selectedCust.id, { geo_tag_image: false });
+                } else {
+                    await supabase.from('admin').update({ geo_tag_image: false }).eq('id', selectedCust.id);
+                }
             }
         } catch (err) {
             console.error('Error deleting photo:', err);
@@ -511,7 +666,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                 missingItems.push('Geo Tag Photo Status must be set to "Proceed".');
             }
             const hasGeoTagPhoto = (documents || []).some(doc => doc.doc_type === 'geo_tag_image' || doc.doc_type === 'geo_tag');
-            if (!hasGeoTagPhoto) {
+            if (!hasGeoTagPhoto && !geoTagImage) {
                 missingItems.push('Uploading a Geo-Tag site photograph is compulsory.');
             }
 
@@ -549,69 +704,67 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                 updatePayload.stage = nextStage;
             }
 
-            const { error } = await supabase
-                .from('admin')
-                .update(updatePayload)
-                .eq('id', selectedCust.id);
+            if (isDemoMode) {
+                updateStoredDemoCustomer(selectedCust.id, updatePayload);
+            } else {
+                const { error } = await supabase
+                    .from('admin')
+                    .update(updatePayload)
+                    .eq('id', selectedCust.id);
 
-            if (!error) {
-                let logMsg = `Vendor ${user.name} updated ${
-                    activeTab === 'DELIVERY' 
-                        ? 'Material Delivery Details' 
-                        : activeTab === 'INSTALLATION'
-                            ? 'Installation Status'
-                            : 'Geo Tag Report'
-                }`;
-                if (nextStage) {
-                    logMsg += ` and advanced stage to ${nextStage}`;
-                }
+                if (error) throw error;
+            }
 
-                await logActivity(
+            let logMsg = `Vendor ${user.name} updated ${
+                activeTab === 'DELIVERY' 
+                    ? 'Material Delivery Details' 
+                    : activeTab === 'INSTALLATION'
+                        ? 'Installation Status'
+                        : 'Geo Tag Report'
+            }`;
+            if (nextStage) {
+                logMsg += ` and advanced stage to ${nextStage}`;
+            }
+
+            if (user?.id && !isDemoMode) {
+                void logActivity(
                     user.id,
                     'update',
                     `${selectedCust.customer_name}: ${logMsg}`,
                     '',
                     selectedCust.id
                 );
-                
-                setSaveSuccess(true);
-                // Avoid a full list reload after every save; update the one
-                // affected card immediately with the confirmed server payload.
-                setCustomers(prev => prev.map(customer => customer.id === selectedCust.id ? { ...customer, ...updatePayload } : customer));
-                
-                // Update selectedCust reference in view
-                setSelectedCust(prev => ({
-                    ...prev,
-                    ...updatePayload,
-                    stage: nextStage || prev.stage
-                }));
+            }
+            
+            setSaveSuccess(true);
+            setCustomers(prev => prev.map(customer => customer.id === selectedCust.id ? { ...customer, ...updatePayload } : customer));
+            
+            setSelectedCust(prev => ({
+                ...prev,
+                ...updatePayload,
+                stage: nextStage || prev.stage
+            }));
 
-                if (nextStage === 'GEO TAG PHOTO') {
-                    // Switch tab directly to Geo Tag so vendor can immediately upload the photo!
-                    setActiveTab('GEO');
-                    setTimeout(() => {
-                        setSaveSuccess(false);
-                    }, 3000);
-                } else if (nextStage === 'DISCOM SUBMISSION') {
-                    // Finished vendor flow for this lead, return to list
-                    setTimeout(() => {
-                        setView('list');
-                    }, 1000);
-                } else {
-                    // Regular save in place
-                    setTimeout(() => {
-                        setSaveSuccess(false);
-                    }, 3000);
-                }
+            if (nextStage === 'INSTALLATION STATUS') {
+                setActiveTab('INSTALLATION');
+                setTimeout(() => setSaveSuccess(false), 3000);
+            } else if (nextStage === 'GEO TAG PHOTO') {
+                setActiveTab('GEO');
+                setTimeout(() => setSaveSuccess(false), 3000);
+            } else if (nextStage === 'DISCOM SUBMISSION') {
+                setTimeout(() => {
+                    setView('list');
+                }, 1200);
             } else {
-                setCustomAlert({
-                    title: 'Database Error',
-                    message: `Error saving changes: ${error.message}`,
-                    type: 'error'
-                });
+                setTimeout(() => setSaveSuccess(false), 3000);
             }
         } catch (err) {
             console.error('Failed to save details:', err);
+            setCustomAlert({
+                title: 'Database Error',
+                message: `Error saving changes: ${err.message || err}`,
+                type: 'error'
+            });
         } finally {
             setSaving(false);
         }
@@ -622,23 +775,32 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         if (!selectedCust?.id) return;
         setGivingUp(true);
         try {
-            const { error } = await supabase
-                .from('admin')
-                .update({
+            if (isDemoMode) {
+                updateStoredDemoCustomer(selectedCust.id, {
                     installation_status: 'Give Up',
                     vendor_note: giveUpReason || null
-                })
-                .eq('id', selectedCust.id);
+                });
+            } else {
+                const { error } = await supabase
+                    .from('admin')
+                    .update({
+                        installation_status: 'Give Up',
+                        vendor_note: giveUpReason || null
+                    })
+                    .eq('id', selectedCust.id);
 
-            if (error) throw error;
+                if (error) throw error;
+            }
 
-            await logActivity(
-                user.id,
-                'update',
-                `Vendor ${user.name} gave up installation for ${selectedCust.customer_name}${giveUpReason ? `: "${giveUpReason}"` : ''}`,
-                '',
-                selectedCust.id
-            );
+            if (user?.id && !isDemoMode) {
+                void logActivity(
+                    user.id,
+                    'update',
+                    `Vendor ${user.name} gave up installation for ${selectedCust.customer_name}${giveUpReason ? `: "${giveUpReason}"` : ''}`,
+                    '',
+                    selectedCust.id
+                );
+            }
 
             setShowGiveUpModal(false);
             setGiveUpReason('');
@@ -648,7 +810,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             console.error('Error giving up project:', err);
             setCustomAlert({
                 title: 'Submission Error',
-                message: 'Failed to submit give up: ' + err.message,
+                message: `Failed to record give up: ${err.message || err}`,
                 type: 'error'
             });
         } finally {
@@ -656,10 +818,18 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         }
     };
 
+
+
+    // Helper to normalize stages
+    const normalizeStage = (st) => String(st || '').toUpperCase().trim();
+
     // Stats calculations
-    const materialDeliveryCount = customers.filter(c => c.stage === 'MATERIAL DELIVERY').length;
-    const installationCount = customers.filter(c => c.stage === 'INSTALLATION STATUS').length;
-    const geoTagCount = customers.filter(c => c.stage === 'GEO TAG PHOTO').length;
+    const materialDeliveryCount = customers.filter(c => {
+        const s = normalizeStage(c.stage);
+        return s === 'MATERIAL DELIVERY' || (s !== 'INSTALLATION STATUS' && s !== 'GEO TAG PHOTO');
+    }).length;
+    const installationCount = customers.filter(c => normalizeStage(c.stage) === 'INSTALLATION STATUS').length;
+    const geoTagCount = customers.filter(c => normalizeStage(c.stage) === 'GEO TAG PHOTO').length;
 
     // Filtered lists: search across all fields safely and across all stages if a query is typed
     const filteredCustomers = customers.filter(c => {
@@ -681,12 +851,13 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         }
 
         // When not searching, filter by active tab stage
+        const s = normalizeStage(c.stage);
         if (activeTab === 'DELIVERY') {
-            return c.stage === 'MATERIAL DELIVERY';
+            return s === 'MATERIAL DELIVERY' || (s !== 'INSTALLATION STATUS' && s !== 'GEO TAG PHOTO');
         } else if (activeTab === 'INSTALLATION') {
-            return c.stage === 'INSTALLATION STATUS';
+            return s === 'INSTALLATION STATUS';
         } else {
-            return c.stage === 'GEO TAG PHOTO';
+            return s === 'GEO TAG PHOTO';
         }
     });
 
@@ -707,7 +878,10 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-stone-600 truncate max-w-[120px]">{user.name}</span>
+                    <div className="text-right">
+                        <span className="text-xs font-bold text-stone-800 block truncate max-w-[150px]">{user.name}</span>
+                        {user.email && <span className="text-[10px] text-stone-400 font-medium block truncate max-w-[150px]">{user.email}</span>}
+                    </div>
                     <button
                         type="button"
                         onClick={() => fetchCustomers({ silent: true })}
@@ -735,8 +909,13 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                         <div className="absolute right-0 bottom-0 translate-x-4 translate-y-4 opacity-10">
                             <Sun className="w-32 h-32" />
                         </div>
-                        <p className="text-[9px] uppercase tracking-widest text-amber-400 font-bold">Allotted Vendor</p>
-                        <h2 className="text-lg font-bold mt-0.5">{user.name}</h2>
+                        <div className="flex items-center justify-between gap-2">
+                            <p className="text-[9px] uppercase tracking-widest text-amber-400 font-bold">Allotted Vendor</p>
+                            {user.email && (
+                                <span className="text-[10px] text-amber-200/90 font-mono bg-white/10 px-2 py-0.5 rounded-md border border-white/10">{user.email}</span>
+                            )}
+                        </div>
+                        <h2 className="text-lg font-bold mt-1">{user.name}</h2>
                         <p className="text-[11px] text-stone-300 mt-2 font-medium">Manage assigned installation updates and site geo tagging.</p>
                     </div>
 
@@ -1037,11 +1216,14 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                             )}
 
                             {/* Material Delivery is supplied by the office/logistics team.
-                                Vendors can inspect every delivery field and copy serials, but cannot alter it. */}
+                                Vendors can inspect every delivery field and copy serials, and proceed to installation. */}
                             {activeTab === 'DELIVERY' && (
                                 <div className="space-y-4">
-                                    <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 text-[11px] text-blue-800 font-medium">
-                                        Material Delivery is view-only for vendors.
+                                    <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 text-[11px] text-blue-800 font-medium flex items-center justify-between gap-2">
+                                        <span>Material Delivery information is supplied by the dispatch team.</span>
+                                        {selectedCust?.stage === 'MATERIAL DELIVERY' && (
+                                            <span className="px-2 py-0.5 bg-amber-500 text-white rounded-md text-[9px] font-bold uppercase tracking-wider">Awaiting Acknowledgment</span>
+                                        )}
                                     </div>
                                     <div className="divide-y divide-stone-200 rounded-2xl border border-stone-200 bg-white px-4">
                                         {[
@@ -1058,206 +1240,52 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-xs">
-                                        <div className="flex items-start justify-between gap-4">
+                                    <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-xs space-y-2">
+                                        <div className="flex items-center justify-between">
                                             <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wide flex items-center gap-1.5">
                                                 <Layers size={12} className="text-amber-500" /> Panel Serial Numbers
                                             </p>
-                                            <pre className="max-w-[58%] whitespace-pre-wrap break-words text-right font-mono text-xs font-semibold text-stone-800">{selectedCust.panel_serial_no || '–'}</pre>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Legacy editable delivery form retained temporarily for reference; vendors no longer see it. */}
-                            {false && activeTab === 'DELIVERY' && (
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Inverter Serial No</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g. INV-98765432"
-                                                value={inverterSerialNo}
-                                                onChange={e => setInverterSerialNo(e.target.value)}
-                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Invoice No</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g. INV-2026-001"
-                                                value={invoiceNo}
-                                                onChange={e => setInvoiceNo(e.target.value)}
-                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Driver Name</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g. Ramesh Kumar"
-                                                value={driverName}
-                                                onChange={e => setDriverName(e.target.value)}
-                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Driver Phone Number</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g. 9876543210"
-                                                value={driverPhone}
-                                                onChange={e => setDriverPhone(e.target.value.replace(/[^0-9]/g, ''))}
-                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Panel Serial Numbers List */}
-                                    <div className="bg-stone-50 p-4 rounded-2xl border border-stone-150/80 space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <h4 className="text-[10px] font-black text-stone-800 uppercase tracking-wide flex items-center gap-1.5">
-                                                    <Layers size={12} className="text-amber-500" /> Panel Serial Numbers ({panelSerials.filter(Boolean).length})
-                                                </h4>
-                                                <p className="text-[9px] text-stone-400 font-medium">Record all delivered solar panel serial codes.</p>
-                                            </div>
-                                            <div className="flex items-center gap-1">
+                                            {selectedCust.panel_serial_no && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => setShowBulkPaste(prev => !prev)}
-                                                    className="text-[9px] font-bold px-2 py-1 bg-white hover:bg-stone-100 border border-stone-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(selectedCust.panel_serial_no);
+                                                        setCopiedAll(true);
+                                                        setTimeout(() => setCopiedAll(false), 2000);
+                                                    }}
+                                                    className="text-[10px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 cursor-pointer bg-amber-50 px-2 py-1 rounded-lg border border-amber-200/60"
                                                 >
-                                                    <ClipboardPaste size={10} /> {showBulkPaste ? 'Hide Paste' : 'Bulk Paste'}
+                                                    {copiedAll ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                                                    {copiedAll ? 'Copied All!' : 'Copy Serials'}
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => addPanelSerial(1)}
-                                                    className="text-[9px] font-bold px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                                >
-                                                    <Plus size={10} /> Add 1
-                                                </button>
-                                            </div>
+                                            )}
                                         </div>
-
-                                        {showBulkPaste && (
-                                            <div className="p-3 bg-white rounded-xl border border-amber-200 space-y-2">
-                                                <p className="text-[9px] font-bold text-stone-500">Paste serial numbers (separated by lines, commas, or tabs):</p>
-                                                <textarea
-                                                    rows={3}
-                                                    value={bulkText}
-                                                    onChange={e => setBulkText(e.target.value)}
-                                                    placeholder="Paste multiple serials here..."
-                                                    className="w-full text-xs font-mono p-2 border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                                />
-                                                <div className="flex justify-end gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowBulkPaste(false)}
-                                                        className="text-[10px] font-bold px-2.5 py-1 text-stone-500 hover:bg-stone-100 rounded-lg"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleApplyBulkPaste}
-                                                        className="text-[10px] font-bold px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow-xs"
-                                                    >
-                                                        Apply Serials
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                                            {panelSerials.map((serial, idx) => (
-                                                <div key={idx} className="flex items-center gap-1.5">
-                                                    <span className="text-[9px] font-bold text-stone-400 w-5 text-right flex-shrink-0">{idx + 1}.</span>
-                                                    <input
-                                                        type="text"
-                                                        placeholder={`Panel #${idx + 1} Serial`}
-                                                        value={serial}
-                                                        onChange={e => handlePanelSerialChange(idx, e.target.value)}
-                                                        className="flex-1 bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                                    />
-                                                    {serial && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleCopySerial(serial, idx)}
-                                                            className="p-1.5 text-stone-400 hover:text-stone-700 bg-white border border-stone-200 rounded-lg"
-                                                            title="Copy serial"
-                                                        >
-                                                            {copiedIdx === idx ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
-                                                        </button>
-                                                    )}
-                                                    {panelSerials.length > 1 && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removePanelSerial(idx)}
-                                                            className="p-1.5 text-red-400 hover:text-red-600 bg-white border border-stone-200 rounded-lg"
-                                                            title="Remove serial"
-                                                        >
-                                                            <Trash2 size={11} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-
-                                        {panelSerials.filter(Boolean).length > 0 && (
-                                            <div className="flex justify-end pt-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={handleCopyAll}
-                                                    className="text-[9px] font-bold text-stone-600 hover:text-stone-900 flex items-center gap-1"
-                                                >
-                                                    {copiedAll ? <Check size={10} className="text-emerald-600" /> : <Copy size={10} />}
-                                                    {copiedAll ? 'Copied all serials!' : 'Copy All Serials'}
-                                                </button>
-                                            </div>
-                                        )}
+                                        <pre className="whitespace-pre-wrap break-words font-mono text-xs font-semibold text-stone-800 bg-stone-50 p-2.5 rounded-xl border border-stone-150 max-h-40 overflow-y-auto">{selectedCust.panel_serial_no || '–'}</pre>
                                     </div>
 
                                     {saveSuccess && (
                                         <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl text-[10px] font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
                                             <CheckCircle2 className="w-4.5 h-4.5 flex-shrink-0" />
-                                            <span>Material delivery saved successfully!</span>
+                                            <span>Stage updated successfully!</span>
                                         </div>
                                     )}
 
-                                    <div className="pt-2 flex flex-col sm:flex-row gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSaveChanges(null)}
-                                            disabled={saving}
-                                            className={`flex-1 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
-                                                isDeliveryDirty
-                                                    ? 'bg-stone-900 text-white hover:bg-stone-850'
-                                                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                            }`}
-                                        >
-                                            {saving ? (
-                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                            ) : isDeliveryDirty ? (
-                                                <><Save size={13} /> Save Delivery Info</>
-                                            ) : (
-                                                <><Check size={13} /> Saved</>
-                                            )}
-                                        </button>
-                                        {selectedCust.stage === 'MATERIAL DELIVERY' && (
+                                    {selectedCust.stage === 'MATERIAL DELIVERY' && (
+                                        <div className="pt-2">
                                             <button
                                                 type="button"
                                                 onClick={() => handleSaveChanges('INSTALLATION STATUS')}
                                                 disabled={saving}
-                                                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
+                                                className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
                                             >
-                                                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight size={14} />}
-                                                Save & Move to Installation
+                                                {saving ? (
+                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Moving to Installation...</>
+                                                ) : (
+                                                    <><CheckCircle2 size={14} /> Acknowledge Delivery & Move to Installation</>
+                                                )}
                                             </button>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             
@@ -1892,21 +1920,23 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             {/* Print Styles for Vendor BOM */}
             <style>{`
                 @media print {
-                    body * {
-                        visibility: hidden;
+                    body.is-printing-document > *:not(#native-print-portal) {
+                        display: none !important;
                     }
-                    #printable-vendor-bom, #printable-vendor-bom * {
-                        visibility: visible;
-                    }
-                    #printable-vendor-bom {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        margin: 0;
-                        padding: 15px;
+                    body.is-printing-document #native-print-portal {
+                        display: block !important;
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 15px !important;
                         background: #ffffff !important;
                         color: #000000 !important;
+                        visibility: visible !important;
+                    }
+                    body.is-printing-document #native-print-portal * {
+                        visibility: visible !important;
                     }
                     .no-print {
                         display: none !important;

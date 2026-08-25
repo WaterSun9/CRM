@@ -3,6 +3,7 @@ import { ClipboardList, Save, Building2, Mail, AlertTriangle, CheckCircle2, User
 import { supabase } from '../../supabase';
 import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
 import { CheckboxRemarkItem } from './shared';
+import { sendVendorLeadNotification } from '../../utils/vendorNotification';
 
 export default function InstallationStatusTab({
     customer,
@@ -33,9 +34,11 @@ export default function InstallationStatusTab({
         const fetchVendorsList = async () => {
             try {
                 const { data } = await supabase.from('vendors').select('name').order('name');
-                if (data) setVendors(data.map(v => v.name));
+                const dbVendors = (data || []).map(v => v.name).filter(Boolean);
+                setVendors(dbVendors);
             } catch (e) {
                 console.error('Error fetching vendors in installation tab:', e);
+                setVendors([]);
             }
         };
         fetchVendorsList();
@@ -351,26 +354,23 @@ export default function InstallationStatusTab({
                                                 setSendingInfo(true);
                                                 setInfoSentStatus(null);
                                                 try {
-                                                    const { data, error } = await supabase.functions.invoke('send-lead-to-vendor', {
-                                                        body: { customer_id: customer.id }
+                                                    await sendVendorLeadNotification({
+                                                        customerId: customer.id,
+                                                        customer: { ...customer, ...editData },
+                                                        vendorName: editData.vendor,
+                                                        vendorEmail: 'deeproot120@gmail.com'
                                                     });
-                                                    if (error) {
-                                                        console.error('Failed to notify new vendor:', error);
-                                                        setInfoSentStatus('failed');
-                                                    } else {
-                                                        console.log('Vendor notified:', data);
-                                                        setInfoSentStatus('sent');
-                                                        await logActivity(
-                                                            user.id,
-                                                            'email',
-                                                            `Vendor email notification sent to new vendor ${editData.vendor}`,
-                                                            '',
-                                                            customer.id
-                                                        );
-                                                        fetchLogs();
-                                                    }
+                                                    setInfoSentStatus('sent');
+                                                    await logActivity(
+                                                        user.id,
+                                                        'email',
+                                                        `Vendor notification triggered for new vendor ${editData.vendor} (deeproot120@gmail.com)`,
+                                                        '',
+                                                        customer.id
+                                                    );
+                                                    fetchLogs();
                                                 } catch (err) {
-                                                    console.error('Error invoking function:', err);
+                                                    console.error('Error invoking vendor notification:', err);
                                                     setInfoSentStatus('failed');
                                                 } finally {
                                                     setSendingInfo(false);
@@ -387,7 +387,7 @@ export default function InstallationStatusTab({
                                         </button>
                                         {infoSentStatus === 'sent' && (
                                             <p className="text-[8px] font-bold text-emerald-600 mt-0.5 animate-in fade-in duration-200">
-                                                The info is send
+                                                Email sent to deeproot120@gmail.com
                                             </p>
                                         )}
                                         {infoSentStatus === 'failed' && (

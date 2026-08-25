@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
+import { sendVendorLeadNotification } from '../../utils/vendorNotification';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
@@ -46,7 +47,6 @@ export default function MaterialDeliveryTab({
     const [sendingInfo, setSendingInfo] = useState(false);
     const [infoSentStatus, setInfoSentStatus] = useState(null);
     const [showPrintModal, setShowPrintModal] = useState(false);
-    const [pendingVendor, setPendingVendor] = useState(null);
     const printableDeliveryRef = useRef(null);
 
     const panelSerials = useMemo(() => {
@@ -59,7 +59,7 @@ export default function MaterialDeliveryTab({
         const randId = Math.floor(10000 + Math.random() * 90000);
         const today = new Date().toISOString().split('T')[0];
         
-        const demoVendor = vendors[0] || 'Om Solar';
+        const demoVendor = vendors[0] || '';
 
         setEditData(prev => ({
             ...prev,
@@ -76,9 +76,11 @@ export default function MaterialDeliveryTab({
         const fetchVendorsList = async () => {
             try {
                 const { data } = await supabase.from('vendors').select('name').order('name');
-                if (data) setVendors(data.map(v => v.name));
+                const dbVendors = (data || []).map(v => v.name).filter(Boolean);
+                setVendors(dbVendors);
             } catch (e) {
                 console.error('Error fetching vendors in modal:', e);
+                setVendors([]);
             }
         };
         fetchVendorsList();
@@ -157,11 +159,18 @@ export default function MaterialDeliveryTab({
                             value={editData.vendor || ''}
                             onChange={async (e) => {
                                 const selectedVal = e.target.value;
+                                setEditData(prev => ({ ...prev, vendor: selectedVal }));
+                                setInfoSentStatus(null);
                                 if (selectedVal) {
-                                    setPendingVendor(selectedVal);
+                                    await onUpdate(customer.id, { vendor: selectedVal });
+                                    await logActivity(
+                                        user.id,
+                                        'update',
+                                        `${customer.customer_name}: Assigned vendor to ${selectedVal}`,
+                                        '',
+                                        customer.id
+                                    );
                                 } else {
-                                    setEditData(prev => ({ ...prev, vendor: '' }));
-                                    setInfoSentStatus(null);
                                     await onUpdate(customer.id, { vendor: null });
                                     await logActivity(
                                         user.id,
@@ -170,8 +179,8 @@ export default function MaterialDeliveryTab({
                                         '',
                                         customer.id
                                     );
-                                    fetchLogs();
                                 }
+                                fetchLogs();
                             }}
                             className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
                         >
@@ -190,26 +199,24 @@ export default function MaterialDeliveryTab({
                                     setSendingInfo(true);
                                     setInfoSentStatus(null);
                                     try {
-                                        const { data, error } = await supabase.functions.invoke('send-lead-to-vendor', {
-                                            body: { customer_id: customer.id }
+                                        const res = await sendVendorLeadNotification({
+                                            customerId: customer.id,
+                                            customer: { ...customer, ...editData },
+                                            vendorName: editData.vendor,
+                                            vendorEmail: 'deeproot120@gmail.com'
                                         });
-                                        if (error) {
-                                            console.error('Failed to notify vendor:', error);
-                                            setInfoSentStatus('failed');
-                                        } else {
-                                            console.log('Vendor notified:', data);
-                                            setInfoSentStatus('sent');
-                                            await logActivity(
-                                                user.id,
-                                                'email',
-                                                `Vendor email notification sent to ${editData.vendor}`,
-                                                '',
-                                                customer.id
-                                            );
-                                            fetchLogs();
-                                        }
+
+                                        setInfoSentStatus('sent');
+                                        await logActivity(
+                                            user.id,
+                                            'email',
+                                            `Vendor notification triggered for ${editData.vendor} (deeproot120@gmail.com)`,
+                                            '',
+                                            customer.id
+                                        );
+                                        fetchLogs();
                                     } catch (err) {
-                                        console.error('Error invoking function:', err);
+                                        console.error('Error sending vendor notification:', err);
                                         setInfoSentStatus('failed');
                                     } finally {
                                         setSendingInfo(false);
@@ -226,7 +233,7 @@ export default function MaterialDeliveryTab({
                             </button>
                             {infoSentStatus === 'sent' && (
                                 <p className="text-[8px] font-bold text-emerald-600 mt-0.5 animate-in fade-in duration-200">
-                                    The info is send
+                                    Email sent to deeproot120@gmail.com
                                 </p>
                             )}
                             {infoSentStatus === 'failed' && (
@@ -237,75 +244,7 @@ export default function MaterialDeliveryTab({
                         </div>
                     )}
                 </div>
-            </section>
-
-            {pendingVendor && (
-                <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center z-[70] p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-[28px] shadow-2xl p-6 w-full max-w-sm border border-stone-150 flex flex-col gap-4 animate-in zoom-in-95 duration-200">
-                        <div>
-                            <h3 className="text-sm font-bold text-stone-850">Assign & Notify Vendor?</h3>
-                            <p className="text-xs text-stone-500 mt-2 font-medium">
-                                You are assigning this project to <strong className="text-stone-800">{pendingVendor}</strong>. Do you want to notify them and send the project details now?
-                            </p>
-                        </div>
-                        <div className="flex gap-2.5 mt-2">
-                            <button
-                                onClick={() => setPendingVendor(null)}
-                                className="flex-1 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-xl text-xs font-bold transition cursor-pointer text-center"
-                            >
-                                Cancel / Revert
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    const selectedVal = pendingVendor;
-                                    setPendingVendor(null);
-                                    
-                                    setEditData(prev => ({ ...prev, vendor: selectedVal }));
-                                    setInfoSentStatus(null);
-                                    await onUpdate(customer.id, { vendor: selectedVal });
-                                    await logActivity(
-                                        user.id,
-                                        'update',
-                                        `${customer.customer_name}: Assigned vendor to ${selectedVal}`,
-                                        '',
-                                        customer.id
-                                    );
-                                    fetchLogs();
-
-                                    setSendingInfo(true);
-                                    try {
-                                        const { data, error } = await supabase.functions.invoke('send-lead-to-vendor', {
-                                            body: { customer_id: customer.id }
-                                        });
-                                        if (error) {
-                                            console.error('Failed to notify vendor:', error);
-                                            setInfoSentStatus('failed');
-                                        } else {
-                                            setInfoSentStatus('sent');
-                                            await logActivity(
-                                                user.id,
-                                                'email',
-                                                `Vendor email notification sent to ${selectedVal}`,
-                                                '',
-                                                customer.id
-                                            );
-                                            fetchLogs();
-                                        }
-                                    } catch (err) {
-                                        console.error('Error invoking function:', err);
-                                        setInfoSentStatus('failed');
-                                    } finally {
-                                        setSendingInfo(false);
-                                    }
-                                }}
-                                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-md shadow-blue-600/10 cursor-pointer text-center"
-                            >
-                                Send Details
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}            {/* Equipment & Delivery Info (Grid) */}
+            </section>            {/* Equipment & Delivery Info (Grid) */}
             <section id="section-equip_details" className="space-y-4">
                 <SectionHeader 
                     title="Material Delivery Details" 

@@ -78,9 +78,17 @@ export default function DeliveryBatchesView({
         const fetchVendors = async () => {
             try {
                 const { data } = await supabase.from('vendors').select('name').order('name');
-                if (data) setVendorsList(data.map(v => v.name));
+                const dbVendors = (data || []).map(v => v.name).filter(Boolean);
+                const combined = Array.from(new Set([
+                    'Test Vendor (Solar Tech)',
+                    ...dbVendors
+                ])).filter(Boolean);
+                setVendorsList(combined);
             } catch (e) {
                 console.error('Error fetching vendors in batches view:', e);
+                setVendorsList([
+                    'Test Vendor (Solar Tech)'
+                ]);
             }
         };
         fetchVendors();
@@ -166,7 +174,7 @@ export default function DeliveryBatchesView({
             driver_name: '',
             driver_phone: '',
             vehicle_number: '',
-            vendor: vendorsList[0] || 'Om Solar',
+            vendor: vendorsList[0] || '',
             notes: '',
             status: 'IN_TRANSIT',
             selectedProjectIds: []

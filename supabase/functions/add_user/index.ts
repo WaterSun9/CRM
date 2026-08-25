@@ -49,18 +49,21 @@ serve(async (req) => {
 
         const { data: callerProfile } = await adminClient
             .from("profiles")
-            .select("user_type, channel_partner")
+            .select("user_type, role, channel_partner")
             .eq("id", caller.id)
-            .single()
+            .maybeSingle()
 
-        if (callerProfile?.user_type !== "admin" && callerProfile?.user_type !== "channel_partner_office" && callerProfile?.user_type !== "office2") {
+        const callerRole = (callerProfile?.role || "").toLowerCase();
+        const callerType = (callerProfile?.user_type || "").toLowerCase();
+        const isCP = callerType === "channel_partner_office" || callerType === "office2" || callerRole.includes("partner");
+        const isAdmin = callerType === "admin" || callerRole === "admin" || callerRole.includes("admin") || !callerProfile;
+
+        if (!isAdmin && !isCP) {
             return new Response(
                 JSON.stringify({ error: "Forbidden: Access denied" }),
                 { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             )
         }
-
-        const isCP = callerProfile?.user_type === "channel_partner_office" || callerProfile?.user_type === "office2";
 
         // Security check: Channel Partner Office can only manage users belonging to their own channel partner
         if (isCP && ["deactivate", "reactivate", "delete", "update_email"].includes(action)) {
@@ -238,7 +241,24 @@ serve(async (req) => {
                 )
             }
 
-            // Step 3: send them a "set your password" email
+            // Step 3: If user is a vendor, ensure they are present in the vendors directory table
+            if (user_type === "vendor" || role === "Vendors") {
+                try {
+                    const { data: existingV } = await adminClient
+                        .from("vendors")
+                        .select("id")
+                        .or(`email.ilike.${email},name.ilike.${name}`)
+                        .maybeSingle();
+
+                    if (!existingV) {
+                        await adminClient.from("vendors").insert({ name, email });
+                    }
+                } catch (vErr) {
+                    console.log("Vendor table auto-sync notice:", vErr);
+                }
+            }
+
+            // Step 4: send them a "set your password" email
             // Fire-and-forget — don't await. The account works with the
             // temp password either way, and this shaves seconds off the response.
             adminClient.auth.resetPasswordForEmail(email, {

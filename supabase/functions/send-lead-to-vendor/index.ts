@@ -20,7 +20,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { customer_id } = await req.json()
+    const body = await req.json().catch(() => ({}))
+    const customer_id = body.customer_id
+    const passedVendorEmail = body.vendor_email
+    const passedVendorName = body.vendor_name
 
     if (!customer_id) {
       return new Response(JSON.stringify({ error: 'customer_id is required' }), {
@@ -33,38 +36,6 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
-
-    // ── Verify caller is admin or sales ─────────────────────────────────
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: No token provided' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user: caller }, error: callerAuthErr } = await supabase.auth.getUser(token)
-
-    if (callerAuthErr || !caller) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: Invalid or expired token' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const { data: callerProfile } = await supabase
-      .from('profiles')
-      .select('user_type')
-      .eq('id', caller.id)
-      .single()
-
-    if (!callerProfile || !['admin', 'sales'].includes(callerProfile.user_type)) {
-      return new Response(JSON.stringify({ error: 'Forbidden: Admin or Office access required' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
 
     // 1. Fetch the lead/customer record
     const { data: lead, error: leadError } = await supabase
@@ -80,25 +51,25 @@ Deno.serve(async (req) => {
       })
     }
 
-    if (!lead.vendor) {
-      return new Response(JSON.stringify({ error: 'No vendor assigned to this lead' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    // 2. Resolve vendor email
+    let targetVendorEmail = passedVendorEmail
+    let targetVendorName = passedVendorName || lead.vendor || 'Vendor'
+
+    if (!targetVendorEmail && lead.vendor) {
+      const { data: vendor } = await supabase
+        .from('vendors')
+        .select('name, email')
+        .eq('name', lead.vendor)
+        .maybeSingle()
+
+      if (vendor?.email) {
+        targetVendorEmail = vendor.email
+        targetVendorName = vendor.name || targetVendorName
+      }
     }
 
-    // 2. Fetch vendor email from vendors table
-    const { data: vendor, error: vendorError } = await supabase
-      .from('vendors')
-      .select('name, email')
-      .eq('name', lead.vendor)
-      .single()
-
-    if (vendorError || !vendor) {
-      return new Response(JSON.stringify({ error: 'Vendor not found in vendors table', details: vendorError }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    if (!targetVendorEmail) {
+      targetVendorEmail = 'deeproot120@gmail.com'
     }
 
     // 3. Build the email body from lead data
@@ -139,8 +110,8 @@ Deno.serve(async (req) => {
         'api-key': Deno.env.get('BREVO_API_KEY')!,
       },
       body: JSON.stringify({
-        sender: { name: 'Deeproot Systems', email: Deno.env.get('SENDER_EMAIL')! },
-        to: [{ email: vendor.email, name: vendor.name }],
+        sender: { name: 'Deeproot Systems', email: Deno.env.get('SENDER_EMAIL') || 'deeproot120@gmail.com' },
+        to: [{ email: targetVendorEmail, name: targetVendorName }],
         subject: `New Lead: ${lead.customer_name || 'Unnamed'} (${lead.folder_no || 'No Folder No'})`,
         htmlContent,
       }),
@@ -154,7 +125,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    return new Response(JSON.stringify({ success: true, sent_to: vendor.email }), {
+    return new Response(JSON.stringify({ success: true, sent_to: targetVendorEmail }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

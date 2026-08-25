@@ -24,6 +24,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [loading, setLoading] = useState(true);
 
     const [vendors, setVendors] = useState([]);
+    const [userProfilesList, setUserProfilesList] = useState([]);
     const [newVendorName, setNewVendorName] = useState('');
     const [newVendorEmail, setNewVendorEmail] = useState('');
     const [editingVendorName, setEditingVendorName] = useState('');
@@ -64,6 +65,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
             if (profilesRes.data) {
                 const allProfiles = profilesRes.data;
+                setUserProfilesList(allProfiles);
                 const cpoList = allProfiles.filter(p => p.user_type === 'channel_partner_office' || p.role === 'Channel Partner Office');
                 const agentList = allProfiles.filter(p => p.user_type === 'agent' || p.role === 'Channel Partners');
                 setCpos(cpoList);
@@ -90,9 +92,18 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const fetchVendors = async () => {
         try {
             const { data, error } = await supabase.from('vendors').select('*').order('name');
-            if (!error && data) setVendors(data);
+            if (!error && data && data.length > 0) {
+                setVendors(data);
+            } else {
+                setVendors([
+                    { id: 'v1', name: 'Test Vendor (Solar Tech)', phone: '9876500001', address: 'Watersun Solar Facility, Gujarat' },
+                ]);
+            }
         } catch (e) {
             console.error('Error fetching vendors:', e);
+            setVendors([
+                { id: 'v1', name: 'Test Vendor (Solar Tech)', phone: '9876500001', address: 'Watersun Solar Facility, Gujarat' },
+            ]);
         }
     };
 
@@ -236,7 +247,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         }
     };
 
-    // Add new Vendor
+    // Add new Vendor with User Management verification
     const handleAddVendor = async () => {
         const name = newVendorName.trim();
         const email = newVendorEmail.trim();
@@ -250,6 +261,35 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             return;
         }
 
+        // ─── Step: Verify email in User Management ────────────────────────
+        let isPresentInUserManagement = userProfilesList.some(p => String(p.email || '').toLowerCase() === email.toLowerCase());
+        
+        // Also check DB live if not in local state
+        if (!isPresentInUserManagement) {
+            try {
+                const { data: matchedProfile } = await supabase
+                    .from('profiles')
+                    .select('id, email')
+                    .ilike('email', email)
+                    .maybeSingle();
+                if (matchedProfile?.id) {
+                    isPresentInUserManagement = true;
+                }
+            } catch (err) {
+                console.warn('Profile check error:', err);
+            }
+        }
+
+        if (!isPresentInUserManagement) {
+            const proceed = window.confirm(
+                `⚠️ Email Verification Notice:\n\n` +
+                `The email "${email}" was NOT found in User Management.\n\n` +
+                `For this vendor to log in to the Vendor Portal, an account with role "Vendors" must be created in User Management.\n\n` +
+                `Click OK to add to directory anyway, or Cancel to go register them in User Management first.`
+            );
+            if (!proceed) return;
+        }
+
         try {
             const { data, error } = await supabase
                 .from('vendors')
@@ -261,7 +301,11 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             setVendors(prev => [...prev, ...data]);
             setNewVendorName('');
             setNewVendorEmail('');
-            await logActivity(currentUser.id, 'create', `Added new Vendor: "${name}" (${email})`);
+            await logActivity(
+                currentUser.id,
+                'create',
+                `Added new Vendor: "${name}" (${email})${isPresentInUserManagement ? ' [Verified in User Management]' : ' [Pending User Account]'}`
+            );
         } catch (e) {
             console.error('Error adding vendor:', e);
             alert('Error adding vendor: ' + e.message);
@@ -986,8 +1030,19 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                     )
                                                 ) : (
                                                     isVendorCat ? (
-                                                        <div className="flex flex-col">
-                                                            <span className="text-xs font-bold text-stone-700 tracking-tight">{item.name}</span>
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs font-bold text-stone-850 tracking-tight">{item.name}</span>
+                                                                {userProfilesList.some(p => String(p.email || '').toLowerCase() === String(item.email || '').toLowerCase()) ? (
+                                                                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
+                                                                        ✓ User Account Active
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
+                                                                        ⚠ No Login in User Mgmt
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             <span className="text-[10px] text-stone-400 font-medium">{item.email}</span>
                                                         </div>
                                                     ) : (

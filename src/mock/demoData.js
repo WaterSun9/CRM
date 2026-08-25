@@ -171,7 +171,7 @@ export const DEMO_CUSTOMERS_ARCHIVE = [
         installation_status: 'Pending',
         channel_partner: 'Apex Solar Gujarat',
         po_number: 'PO-2026-089',
-        vendor: 'Shreeji Solar Installations',
+        vendor: 'Test Vendor (Solar Tech)',
         vendor_quote: 6500,
         created_at: '2026-02-15T12:00:00Z'
     },
@@ -227,7 +227,7 @@ export const DEMO_CUSTOMERS_ARCHIVE = [
         driver_name: 'Mahesh Rajput',
         driver_phone_number: '9876543210',
         delivery_vehicle_no: 'GJ-02-XX-4819',
-        vendor: 'Patel Solar Technicians',
+        vendor: 'Test Vendor (Solar Tech)',
         vendor_quote: 6000,
         created_at: '2026-02-17T15:45:00Z'
     },
@@ -253,10 +253,10 @@ export const DEMO_CUSTOMERS_ARCHIVE = [
         installation_status: 'Yes',
         installation_date: '2026-02-22',
         material_delivery_date: '2026-02-20',
-        vendor: 'Shreeji Solar Installations',
+        vendor: 'Test Vendor (Solar Tech)',
         vendor_quote: 8500,
         vendor_payment_status: 'Pending',
-        installed_by: 'Shreeji Solar Team (Lead: Jayesh)',
+        installed_by: 'Test Vendor Installation Team',
         channel_partner: 'Apex Solar Gujarat',
         created_at: '2026-02-18T10:10:00Z'
     },
@@ -281,6 +281,8 @@ export const DEMO_CUSTOMERS_ARCHIVE = [
         subsidy_tag: 'In Process',
         installation_status: 'Yes',
         installation_date: '2026-02-21',
+        vendor: 'Test Vendor (Solar Tech)',
+        vendor_quote: 7500,
         geo_tag_image: 'https://images.unsplash.com/photo-1509391365360-2e959784a276?w=600&q=80',
         house_geo_tag_photo: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=600&q=80',
         channel_partner: 'Apex Solar Gujarat',
@@ -519,13 +521,13 @@ export const MOCK_DEV_ROLES = [
     },
     {
         id: 'vendor_tech',
-        name: 'Vendor / Technician',
-        title: 'Shreeji Solar Installations',
-        email: 'vendor@watersun.com',
+        name: 'Test Vendor',
+        title: 'Test Vendor (Solar Tech)',
+        email: 'deeproot120@gmail.com',
         password: 'vendor',
         userType: 'vendor',
         role: 'Vendors',
-        channel_partner: '',
+        channel_partner: 'Test Vendor (Solar Tech)',
         badge: 'Vendor Portal',
         description: 'Mobile Vendor Portal for installation status, delivery details, and Geo Tag photos.'
     },
@@ -548,7 +550,20 @@ export const verifyDemoCredentials = (email, password) => {
     if (!email) return null;
     const cleanEmail = email.trim().toLowerCase();
     
-    // Check against mock roles
+    // Check against mock roles (accept deeproot120@gmail.com for test vendor)
+    if (cleanEmail === 'deeproot120@gmail.com' || cleanEmail === 'vendor@watersun.com' || cleanEmail === 'testvendor@watersun.com' || cleanEmail === 'vendor' || cleanEmail === 'testvendor') {
+        const vendorRole = MOCK_DEV_ROLES.find(r => r.id === 'vendor_tech');
+        return {
+            id: `dev-${vendorRole.id}`,
+            email: vendorRole.email,
+            name: vendorRole.title,
+            role: vendorRole.role,
+            userType: vendorRole.userType,
+            channel_partner: vendorRole.channel_partner || vendorRole.title || '',
+            isDevBackdoor: true
+        };
+    }
+
     const matchedRole = MOCK_DEV_ROLES.find(r => r.email.toLowerCase() === cleanEmail);
     if (matchedRole) {
         return {
@@ -580,16 +595,24 @@ export const verifyDemoCredentials = (email, password) => {
 };
 
 // ─── Safe Fallback Stubs ───────────────────────────────────────────────────
-const DEMO_STORAGE_KEY = 'watersun_demo_table_admin';
+const DEMO_STORAGE_KEY = 'watersun_demo_table_admin_v4';
 
 export const getStoredDemoCustomers = () => {
     if (typeof window === 'undefined') return [];
     try {
         const raw = window.sessionStorage.getItem(DEMO_STORAGE_KEY);
-        if (!raw) return [];
-        return JSON.parse(raw);
+        if (!raw) {
+            saveStoredDemoCustomers(DEMO_CUSTOMERS);
+            return DEMO_CUSTOMERS;
+        }
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+            saveStoredDemoCustomers(DEMO_CUSTOMERS);
+            return DEMO_CUSTOMERS;
+        }
+        return parsed;
     } catch (e) {
-        return [];
+        return DEMO_CUSTOMERS;
     }
 };
 
