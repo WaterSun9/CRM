@@ -305,16 +305,50 @@ export default function MaterialIntegrationTab({
 
             let finalItems = [];
             if (savedItems && savedItems.length > 0) {
-                // Preserve exact saved list (including all custom rows added by user) with constant UI Sr No & UOM
-                finalItems = savedItems.map((item, idx) => ({
+                // Normalize product name to index standard template items
+                const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                const templateKeys = new Set(template.map(t => norm(t.product_name)));
+                const savedMap = new Map();
+                const extraCustomItems = [];
+
+                savedItems.forEach(item => {
+                    const k = norm(item.product_name);
+                    if (templateKeys.has(k) && !savedMap.has(k)) {
+                        savedMap.set(k, item);
+                    } else {
+                        extraCustomItems.push(item);
+                    }
+                });
+
+                // 1. Populate all standard template items in canonical template order (1..45 or 1..35)
+                const mergedStandardItems = template.map((tItem, idx) => {
+                    const k = norm(tItem.product_name);
+                    const saved = savedMap.get(k);
+                    return {
+                        ...tItem,
+                        id: saved?.id || null,
+                        sr_no: idx + 1,
+                        quantity: saved?.quantity !== undefined && saved?.quantity !== null && String(saved.quantity).trim() !== ''
+                            ? String(saved.quantity)
+                            : (tItem.quantity || ''),
+                        uom: tItem.uom || getUomForProduct(tItem.product_name, template),
+                        integration_by: saved?.integration_by || '',
+                        note: saved?.note || ''
+                    };
+                });
+
+                // 2. Append any extra custom items added by user at the end
+                const mergedCustomItems = extraCustomItems.map((item, cIdx) => ({
                     id: item.id || null,
-                    sr_no: idx + 1,
+                    sr_no: template.length + cIdx + 1,
                     product_name: item.product_name || '',
                     quantity: item.quantity !== undefined && item.quantity !== null ? String(item.quantity) : '',
                     uom: item.uom || getUomForProduct(item.product_name, template),
                     integration_by: item.integration_by || '',
                     note: item.note || ''
                 }));
+
+                finalItems = [...mergedStandardItems, ...mergedCustomItems];
             } else {
                 finalItems = template.map((item, idx) => ({
                     ...item,
@@ -1434,7 +1468,7 @@ export default function MaterialIntegrationTab({
                 @media print {
                     @page {
                         size: A4 portrait;
-                        margin: 8mm 10mm;
+                        margin: 5mm 8mm;
                     }
                     *, *::before, *::after {
                         -webkit-print-color-adjust: exact !important;
@@ -1454,56 +1488,77 @@ export default function MaterialIntegrationTab({
                     #native-print-portal {
                         display: block !important;
                         width: 100% !important;
-                        max-width: 190mm !important;
+                        max-width: 194mm !important;
                         margin: 0 auto !important;
                         padding: 0 !important;
-                        font-size: 8pt !important;
-                        line-height: 1.25 !important;
+                        font-size: 7.5pt !important;
+                        line-height: 1.2 !important;
                         color: #000000 !important;
                         background: #ffffff !important;
                     }
                     #native-print-portal .print-page-1 {
-                        min-height: 250mm !important;
+                        height: 285mm !important;
+                        max-height: 285mm !important;
                         box-sizing: border-box !important;
-                        padding-bottom: 0 !important;
+                        padding: 0 0 2mm 0 !important;
+                        page-break-after: always !important;
+                        break-after: page !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                        overflow: hidden !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: space-between !important;
                     }
                     #native-print-portal .print-page-2 {
-                        page-break-before: always !important;
-                        break-before: page !important;
-                        min-height: 250mm !important;
+                        height: 285mm !important;
+                        max-height: 285mm !important;
                         box-sizing: border-box !important;
                         margin-top: 0 !important;
-                        padding-top: 0 !important;
+                        padding: 0 0 2mm 0 !important;
+                        page-break-before: always !important;
+                        break-before: page !important;
+                        page-break-after: avoid !important;
+                        break-after: avoid !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                        overflow: hidden !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: space-between !important;
                     }
-                    #native-print-portal .mb-5 { margin-bottom: 3.5mm !important; }
-                    #native-print-portal .mb-6 { margin-bottom: 4mm !important; }
-                    #native-print-portal .mb-8 { margin-bottom: 5mm !important; }
-                    #native-print-portal .pb-3 { padding-bottom: 2mm !important; }
-                    #native-print-portal .pb-4 { padding-bottom: 2.5mm !important; }
-                    #native-print-portal .pt-10 { padding-top: 6mm !important; }
-                    #native-print-portal .pt-12 { padding-top: 8mm !important; }
-                    #native-print-portal h1 { font-size: 13pt !important; margin: 0 0 1.5mm 0 !important; }
-                    #native-print-portal h3 { font-size: 8.5pt !important; margin-bottom: 1.5mm !important; padding-bottom: 0.8mm !important; }
-                    #native-print-portal p { line-height: 1.2 !important; }
+                    #native-print-portal .mb-4 { margin-bottom: 2mm !important; }
+                    #native-print-portal .mb-5 { margin-bottom: 2mm !important; }
+                    #native-print-portal .mb-6 { margin-bottom: 2.5mm !important; }
+                    #native-print-portal .mb-8 { margin-bottom: 2.5mm !important; }
+                    #native-print-portal .mt-8 { margin-top: 2mm !important; }
+                    #native-print-portal .pb-3 { padding-bottom: 1mm !important; }
+                    #native-print-portal .pb-4 { padding-bottom: 1.5mm !important; }
+                    #native-print-portal .pt-8 { padding-top: 0 !important; }
+                    #native-print-portal .pt-10 { padding-top: 3mm !important; }
+                    #native-print-portal .pt-12 { padding-top: 3mm !important; }
+                    #native-print-portal h1 { font-size: 11.5pt !important; margin: 0 0 0.8mm 0 !important; }
+                    #native-print-portal h3 { font-size: 7.5pt !important; margin-bottom: 1mm !important; padding-bottom: 0.5mm !important; }
+                    #native-print-portal p { line-height: 1.15 !important; }
                     #native-print-portal table {
                         width: 100% !important;
                         border-collapse: collapse !important;
-                        font-size: 7.5pt !important;
-                        line-height: 1.15 !important;
+                        font-size: 6.8pt !important;
+                        line-height: 1.1 !important;
                         table-layout: fixed !important;
-                        margin-bottom: 2mm !important;
+                        margin-bottom: 1.5mm !important;
                     }
                     #native-print-portal th,
                     #native-print-portal td {
-                        padding: 2.5px 5px !important;
-                        line-height: 1.15 !important;
+                        padding: 1px 3.5px !important;
+                        line-height: 1.1 !important;
                         vertical-align: middle !important;
-                        border: 0.5px solid #d6d3d1 !important;
+                        border: 0.5px solid #a8a29e !important;
                     }
                     #native-print-portal th {
                         background-color: #f5f5f4 !important;
                         font-weight: 900 !important;
-                        font-size: 7.5pt !important;
+                        font-size: 6.8pt !important;
                     }
                     #native-print-portal tbody tr {
                         break-inside: avoid !important;
@@ -1511,14 +1566,14 @@ export default function MaterialIntegrationTab({
                     #native-print-portal .grid-cols-5 {
                         display: grid !important;
                         grid-template-columns: repeat(5, 1fr) !important;
-                        gap: 1.8mm !important;
+                        gap: 1.2mm !important;
                     }
                     #native-print-portal .grid-cols-3 {
                         display: grid !important;
                         grid-template-columns: repeat(3, 1fr) !important;
-                        gap: 8mm !important;
+                        gap: 6mm !important;
                     }
-                    #native-print-portal .pb-8 { padding-bottom: 6mm !important; }
+                    #native-print-portal .pb-8 { padding-bottom: 4mm !important; }
                     .no-print {
                         display: none !important;
                     }

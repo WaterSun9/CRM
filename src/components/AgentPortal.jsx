@@ -344,21 +344,21 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
             throw error;
         }
 
-        // Show the saved lead straight away; attachments can continue uploading
-        // independently without holding the form open.
-        setCustomers(prev => prev.some(customer => customer.id === newCustomer.id) ? prev : [newCustomer, ...prev]);
-        setShowAddLead(false);
-
+        // Await all attached file uploads so documents are fully recorded in database before completion
         if (attachedFiles && attachedFiles.length > 0) {
-            void Promise.all(attachedFiles.map(item => {
+            await Promise.all(attachedFiles.map(async item => {
                 if (item.file) {
-                    return uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id).catch(uploadErr => {
+                    try {
+                        await uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id);
+                    } catch (uploadErr) {
                         console.error('Failed to upload file for lead:', uploadErr);
-                    });
+                    }
                 }
-                return Promise.resolve(null);
             }));
         }
+
+        setCustomers(prev => prev.some(customer => customer.id === newCustomer.id) ? prev : [newCustomer, ...prev]);
+        setShowAddLead(false);
 
         void logActivity(
             user.id,

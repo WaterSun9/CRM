@@ -675,22 +675,22 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
             alert(`Failed to add lead: ${error.message} (Code: ${error.code})`);
             throw error;
         } else {
-            // Put the new record on screen immediately. Attachments are
-            // independent uploads, so they should not make lead creation feel slow.
+            // Await all attached file uploads so documents are fully recorded in database before completion
+            if (attachedFiles && attachedFiles.length > 0) {
+                await Promise.all(attachedFiles.map(async item => {
+                    if (item.file) {
+                        try {
+                            await uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id);
+                        } catch (uploadErr) {
+                            console.error('Failed to upload file for new lead:', uploadErr);
+                        }
+                    }
+                }));
+            }
+
             setCustomers(prev => prev.some(c => c.id === newCustomer.id) ? prev : [newCustomer, ...prev]);
             setShowAddLead(false);
             syncMetadata(insertData);
-
-            if (attachedFiles && attachedFiles.length > 0) {
-                void Promise.all(attachedFiles.map(item => {
-                    if (item.file) {
-                        return uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id).catch(uploadErr => {
-                            console.error('Failed to upload file for new lead:', uploadErr);
-                        });
-                    }
-                    return Promise.resolve(null);
-                }));
-            }
 
             void logActivity(user.id, 'create', `Added new lead: ${data.customer_name}`, `Done by: ${user.name}`, newCustomer.id);
             return newCustomer;
