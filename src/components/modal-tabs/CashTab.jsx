@@ -17,7 +17,7 @@ export default function CashTab({
     saving,
     setSaving
 }) {
-    const defaultPaymentNames = ['Down Payment', '1st Payment', '2nd Payment'];
+    const defaultPaymentNames = ['1st Payment', '2nd Payment', '3rd Payment'];
     const rawCashDetails = editData.cash_details || { total_amount: 0, payments: [] };
     const rawPayments = Array.isArray(rawCashDetails.payments) ? rawCashDetails.payments : [];
 

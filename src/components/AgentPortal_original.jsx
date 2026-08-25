@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import {
-    User, Phone, Mail, MapPin, Zap, Building2, Sun, Home,
+    User, Phone, Mail, MapPin, Zap, Building2, Sun,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
     ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
-    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen
+    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer
 } from 'lucide-react';
 import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
@@ -31,13 +31,16 @@ import FinalReviewTab from './modal-tabs/FinalReviewTab';
 import { DEMO_CUSTOMERS, getStoredDemoCustomers, updateStoredDemoCustomer, createStoredDemoCustomer } from '../mock/demoData';
 
 export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
-    const [view, setView] = useState('menu');
-    const [activeWorkdeskTab, setActiveWorkdeskTab] = useState('LEADS');
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [view, setView] = useState('menu'); // 'menu', 'my_customers', 'workdesk'
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [showAddLead, setShowAddLead] = useState(false);
+    
+    // Customer search & accordion states — only LEADS expanded by default
     const [searchQuery, setSearchQuery] = useState('');
+    const [expandedStages, setExpandedStages] = useState({
+        'LEADS': true
+    });
     
     // Customer details view
     const [selectedCust, setSelectedCust] = useState(null);
@@ -407,14 +410,6 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
     };
 
     const handleUploadDocForCustomer = async (e, docType) => {
-        // Enforce document edit permissions
-        if (!['LEADS', 'REGISTRATION'].includes(activeCustomerStage) && 
-            !(['METER INSTALLATION'].includes(activeCustomerStage) && docType.includes('meter')) &&
-            !(['DISCOM SUBMISSION', 'DISCOM INSPECTION'].includes(activeCustomerStage) && (docType.includes('signature') || docType.includes('stamp') || docType.includes('dcr')))) {
-            setCustomAlert({ title: 'Permission Denied', message: 'You can only upload lead documents during the Leads and Registration stages.', type: 'error' });
-            if (fileInputRef.current) fileInputRef.current.value = '';
-            return;
-        }
         const file = e.target.files?.[0];
         if (!file || !selectedCust?.id) return;
         setUploadingDoc(true);
@@ -436,13 +431,6 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
     };
 
     const handleDeleteDoc = async (doc) => {
-        // Enforce document edit permissions
-        if (!['LEADS', 'REGISTRATION'].includes(activeCustomerStage) && 
-            !(['METER INSTALLATION'].includes(activeCustomerStage) && doc.doc_type.includes('meter')) &&
-            !(['DISCOM SUBMISSION', 'DISCOM INSPECTION'].includes(activeCustomerStage) && (doc.doc_type.includes('signature') || doc.doc_type.includes('stamp') || doc.doc_type.includes('dcr')))) {
-            setCustomAlert({ title: 'Permission Denied', message: 'You can only delete lead documents during the Leads and Registration stages.', type: 'error' });
-            return;
-        }
         try {
             await deleteDocument(doc.id, doc.storage_path);
             const updatedDocs = await getCustomerDocuments(selectedCust.id);
@@ -466,17 +454,47 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
         }
     };
 
-    // State moved to top
+    const [activeWorkdeskTab, setActiveWorkdeskTab] = useState('MATERIAL_ORDER'); // Material views, Meter Installation, Discom Inspection
 
     const handleSelectCustomerForStage = (cust, stageTab) => {
-        setEditData({});
-        setActiveCustomerStage(stageTab);
         setSelectedCust(cust);
+        setShowStageSidebar(false);
+        const stageMap = {
+            LEADS: 'LEADS',
+            REGISTRATION: 'REGISTRATION',
+            MATERIAL_ORDER: 'MATERIAL ORDER',
+            MATERIAL_INTEGRATION: 'MATERIAL INTEGRATION',
+            MATERIAL_DELIVERY: 'MATERIAL DELIVERY',
+            METER_INSTALLATION: 'METER INSTALLATION',
+            DISCOM_INSPECTION: 'DISCOM INSPECTION',
+        };
+        setActiveCustomerStage(stageMap[stageTab] || cust.stage);
+        if (stageTab === 'LEADS' || stageTab === 'REGISTRATION') {
+            setActiveDealerTab('LEAD_INFO');
+        } else if (stageTab === 'MATERIAL_ORDER') {
+            setActiveDealerTab('ORDER');
+        } else if (stageTab === 'MATERIAL_INTEGRATION' || stageTab === 'MATERIAL_DELIVERY') {
+            setActiveDealerTab('LEAD_INFO');
+        } else if (stageTab === 'METER_INSTALLATION') {
+            setActiveDealerTab('METER');
+        } else if (stageTab === 'DISCOM_INSPECTION') {
+            setActiveDealerTab('INSPECTION');
+        }
     };
 
     // Filter customers for workdesk
     const getWorkdeskCustomers = (stageTab) => {
-        return filteredCustomers.filter(c => c.stage === stageTab);
+        const stageMap = {
+            'LEADS': 'LEADS',
+            'REGISTRATION': 'REGISTRATION',
+            'MATERIAL_ORDER': 'MATERIAL ORDER',
+            'MATERIAL_INTEGRATION': 'MATERIAL INTEGRATION',
+            'MATERIAL_DELIVERY': 'MATERIAL DELIVERY',
+            'METER_INSTALLATION': 'METER INSTALLATION',
+            'DISCOM_INSPECTION': 'DISCOM INSPECTION'
+        };
+        const targetStage = stageMap[stageTab];
+        return filteredCustomers.filter(c => c.stage === targetStage);
     };
 
     const leadsCount = customers.filter(c => c.stage === 'LEADS').length;
@@ -496,7 +514,15 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                 ? 'MATERIAL_ORDER'
                 : 'LEADS';
     const displayedStage = activeCustomerStage || selectedCust?.stage;
-    const customerStageNavigation = PRIMARY_STAGES;
+    const customerStageNavigation = [
+        { id: 'LEADS', label: 'Lead', icon: Users },
+        { id: 'REGISTRATION', label: 'Registration', icon: ClipboardList },
+        { id: 'MATERIAL ORDER', label: 'Material Order', icon: ShoppingBag },
+        { id: 'MATERIAL INTEGRATION', label: 'Integration', icon: Package },
+        { id: 'MATERIAL DELIVERY', label: 'Delivery', icon: Truck },
+        { id: 'METER INSTALLATION', label: 'Meter', icon: Zap },
+        { id: 'DISCOM INSPECTION', label: 'Inspection', icon: ClipboardCheck },
+    ];
 
     const renderStatusBadge = (val, defaultVal = 'Pending') => {
         const status = val || defaultVal;
@@ -671,10 +697,9 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
     };
 
     return (
-        <>
-            {view === 'menu' && (
-                <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans flex flex-col pb-8">
-                    <header className="bg-white border-b border-stone-100 px-4 py-3 sticky top-0 z-30 flex items-center justify-between shadow-sm">
+        <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans flex flex-col pb-8">
+            {/* Top Bar */}
+            <header className="bg-white border-b border-stone-100 px-4 py-3 sticky top-0 z-30 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 bg-amber-500 rounded-xl flex items-center justify-center text-white shadow-md shadow-amber-500/10">
                         <Sun className="w-4 h-4 fill-white" />
@@ -695,8 +720,9 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                     </button>
                 </div>
             </header>
-                    {/* Menu View (Clean Action Cards) */}
-            
+
+            {/* Menu View (Clean Action Cards) */}
+            {view === 'menu' && (
                 <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 animate-in fade-in duration-300">
                     <section className="relative overflow-hidden rounded-[28px] bg-stone-950 px-5 py-6 text-white shadow-xl shadow-stone-900/10">
                         <div className="absolute -right-10 -top-12 h-52 w-52 rounded-full bg-amber-400/20 blur-2xl" />
@@ -727,9 +753,9 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                     <section className="grid grid-cols-2 gap-3">
                         {[
                             { label: 'Total customers', value: customers.length, icon: Users, tone: 'bg-stone-100 text-stone-700' },
-                            { label: 'Material Orders', value: getCustomersByStage('MATERIAL ORDER').length, icon: ShoppingBag, tone: 'bg-amber-50 text-amber-700' },
-                            { label: 'Discom Subs', value: getCustomersByStage('DISCOM SUBMISSION').length, icon: Send, tone: 'bg-blue-50 text-blue-700' },
-                            { label: 'Meter Installs', value: getCustomersByStage('METER INSTALLATION').length, icon: Zap, tone: 'bg-emerald-50 text-emerald-700' },
+                            { label: 'Action queue', value: operationalQueueCount, icon: ClipboardCheck, tone: 'bg-amber-50 text-amber-700' },
+                            { label: 'In progress', value: inProgressCount, icon: Layers, tone: 'bg-blue-50 text-blue-700' },
+                            { label: 'Ready for inspection', value: inspPendingCount, icon: Zap, tone: 'bg-emerald-50 text-emerald-700' },
                         ].map(({ label, value, icon: Icon, tone }) => (
                             <div key={label} className="rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm">
                                 <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${tone}`}><Icon size={15} /></div>
@@ -740,246 +766,475 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                     </section>
 
                     <section className="space-y-3">
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab(priorityWorkdeskTab); setView('workdesk'); }}
+                            className="group rounded-[26px] border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-white p-5 text-left shadow-sm transition hover:border-amber-400 hover:shadow-md active:scale-[0.99] cursor-pointer"
+                        >
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md shadow-amber-500/20"><ClipboardCheck size={20} /></div>
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-700">Next best action</p>
+                                        <h3 className="mt-1 text-base font-black text-stone-900">Continue stage operations</h3>
+                                        <p className="mt-1 text-xs font-medium leading-relaxed text-stone-500">{operationalQueueCount > 0 ? `${operationalQueueCount} customer${operationalQueueCount === 1 ? '' : 's'} need an operational update.` : 'Your operational queue is clear. Review your pipeline anytime.'}</p>
+                                    </div>
+                                </div>
+                                <ChevronRight size={19} className="mt-1 shrink-0 text-amber-600 transition-transform group-hover:translate-x-1" />
+                            </div>
+                            <div className="mt-5 flex flex-wrap gap-2">
+                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-stone-600 border border-stone-200">{materialOrderCount} material orders</span>
+                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-stone-600 border border-stone-200">{meterPendingCount} meter installs</span>
+                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-stone-600 border border-stone-200">{inspPendingCount} inspections</span>
+                            </div>
+                        </button>
+
                         <div className="grid gap-3">
                             <button onClick={() => setShowAddLead(true)} className="group flex items-center justify-between rounded-2xl bg-amber-500 p-4 text-left text-white shadow-md shadow-amber-500/20 transition hover:bg-amber-600 active:scale-[0.99] cursor-pointer">
                                 <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20"><Plus size={18} /></span><span><span className="block text-xs font-black">Add customer</span><span className="mt-0.5 block text-[10px] font-medium text-amber-100">Create a new lead</span></span></div>
                                 <ChevronRight size={16} className="transition-transform group-hover:translate-x-0.5" />
                             </button>
-                            <button onClick={() => { setActiveWorkdeskTab('LEADS'); setView('workdesk'); }} className="group flex items-center justify-between rounded-2xl border border-stone-200 bg-white p-4 text-left shadow-sm transition hover:border-stone-300 hover:shadow-md active:scale-[0.99] cursor-pointer">
+                            <button onClick={() => setView('my_customers')} className="group flex items-center justify-between rounded-2xl border border-stone-200 bg-white p-4 text-left shadow-sm transition hover:border-stone-300 hover:shadow-md active:scale-[0.99] cursor-pointer">
                                 <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-100 text-stone-700"><Search size={17} /></span><span><span className="block text-xs font-black text-stone-900">Customer directory</span><span className="mt-0.5 block text-[10px] font-medium text-stone-400">Search and track all leads</span></span></div>
                                 <ChevronRight size={16} className="text-stone-400 transition-transform group-hover:translate-x-0.5" />
                             </button>
                         </div>
                     </section>
                 </main>
-
-                </div>
             )}
-            
+
+            {/* Stage Workdesk View (Vendor-style Top Filter Cards & Customer List) */}
             {view === 'workdesk' && (
-                <div className="flex h-screen bg-stone-100 justify-center text-stone-850 font-sans overflow-hidden"><div className="w-full max-w-md bg-[#FCFBFA] h-full shadow-2xl relative flex flex-col">
-            
-            {/* MOBILE DRAWER */}
-            {isSidebarOpen && (
-                <div className="fixed inset-0 z-[100] flex">
-                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />
-                    <aside className="relative w-[280px] h-full bg-slate-900 flex flex-col shadow-2xl animate-in slide-in-from-left duration-300 z-10">
-                        <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
-                            <div>
-                                <h1 className="text-xs font-black tracking-widest text-white uppercase flex items-center gap-2">
-                                    <div className="w-6 h-6 bg-amber-500 rounded-lg flex items-center justify-center text-white">
-                                        <Sun size={12} className="fill-white" />
-                                    </div>
-                                    Watersun
-                                </h1>
-                            </div>
-                            <button onClick={() => setIsSidebarOpen(false)} className="p-1.5 text-slate-400 hover:text-white rounded-lg">
-                                <X size={16} />
-                            </button>
-                        </div>
-                        
-                        <div className="p-3 border-b border-slate-800 shrink-0">
-                            <button onClick={() => setView('menu')} className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition-colors cursor-pointer group shadow-sm">
-                                <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center text-white group-hover:scale-105 transition-transform shadow-md shadow-amber-500/20">
-                                    <Home size={14} />
-                                </div>
-                                <div className="flex flex-col items-start">
-                                    <span className="text-[11px] font-bold">Home Page</span>
-                                    <span className="text-[9px] text-slate-400 font-medium">Return to dashboard</span>
-                                </div>
-                            </button>
-                        </div>
+                <main className="flex-1 p-4 max-w-md mx-auto w-full animate-in slide-in-from-right duration-300 space-y-4">
+                    <button
+                        onClick={() => setView('menu')}
+                        className="flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 font-bold cursor-pointer"
+                    >
+                        <ChevronLeft className="w-4 h-4" /> Back to Dashboard
+                    </button>
 
-                        <div className="flex-1 overflow-y-auto p-3 space-y-1">
-                            <div className="mb-2 px-1 pt-2">
-                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Pipeline Stages</span>
-                            </div>
-                            {PRIMARY_STAGES.map(stage => {
-                                const count = getCustomersByStage(stage.id).length;
-                                const StageIcon = stage.icon || Folder;
-                                const isActive = activeWorkdeskTab === stage.id;
-                                return (
-                                    <button
-                                        key={stage.id}
-                                        onClick={() => { setActiveWorkdeskTab(stage.id); setIsSidebarOpen(false); }}
-                                        className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all cursor-pointer ${
-                                            isActive 
-                                            ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' 
-                                            : 'hover:bg-slate-800 text-slate-300 hover:text-white'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-2.5">
-                                            <StageIcon size={16} />
-                                            <span className="text-[11px] font-bold tracking-wide">{stage.label}</span>
-                                        </div>
-                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                                            isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                                        }`}>
-                                            {count}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </aside>
-                </div>
-            )}
-
-
-            {/* MAIN CONTENT */}
-            <main className="flex-1 flex flex-col h-screen overflow-hidden bg-stone-50/50 relative">
-                {/* HEADER */}
-                <header className="bg-white border-b border-stone-200 px-4 md:px-6 py-3 md:py-4 shrink-0 flex items-center justify-between shadow-sm z-10">
-                    <div className="flex items-center gap-3">
-                        <button onClick={() => setIsSidebarOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-[10px] uppercase tracking-wide font-black shadow-sm active:scale-95 transition-transform">
-                            <Layers size={14} /> Stages
-                        </button>
+                    <div className="flex items-start justify-between gap-3">
                         <div>
-                            <h2 className="text-sm md:text-lg font-black text-stone-900 uppercase tracking-tight flex items-center gap-2">
-                                {PRIMARY_STAGES.find(s => s.id === activeWorkdeskTab)?.label || activeWorkdeskTab}
-                            </h2>
+                            <h2 className="text-sm font-black text-stone-900 uppercase tracking-widest">Stage Operations Workdesk</h2>
+                            <p className="text-[10px] text-stone-400 font-semibold mt-0.5">View material progress and update Meter Installation or Discom Inspection.</p>
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowStageSidebar(true)}
+                            className="shrink-0 rounded-xl bg-stone-900 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-stone-700 cursor-pointer flex items-center gap-1.5"
+                        >
+                            <Layers size={13} /> Stages
+                        </button>
                     </div>
-                    
-                    <div className="flex items-center gap-2 md:gap-4">
-                        <div className="hidden">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-                            <input
-                                type="text"
-                                placeholder="Search by name, phone..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-stone-50 hover:bg-stone-100 focus:bg-white border border-stone-200 rounded-xl pl-9 pr-8 py-2 text-xs font-semibold text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500 transition-all"
-                            />
-                            {searchQuery && (
-                                <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-0.5 rounded-full cursor-pointer">
-                                    <X size={13} />
-                                </button>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-1 md:gap-2">
-                            <button onClick={onLogout} className="p-1.5 md:p-2 text-stone-400 hover:text-red-500 rounded-xl hover:bg-stone-100 transition-colors" title="Logout">
-                                <LogOut size={16} />
-                            </button>
-                            <button
-                                onClick={() => setShowAddLead(true)}
-                                className="hidden sm:flex shrink-0 px-3 md:px-4 py-1.5 md:py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold items-center gap-2 shadow-md transition-all cursor-pointer active:scale-[0.98]"
-                            >
-                                <Plus size={14} /> Add Lead
-                            </button>
-                        </div>
-                    </div>
-                </header>
 
-                
-                {/* MOBILE SEARCH BAR */}
-                <div className="sm:hidden px-4 py-3 bg-white border-b border-stone-150 shrink-0 shadow-sm z-10">
+                    {/* Stage sidebar / selector */}
+                    {showStageSidebar && !selectedCust && <>
+                    <button type="button" aria-label="Close stage sidebar" onClick={() => setShowStageSidebar(false)} className="fixed inset-0 z-[60] bg-stone-950/35 backdrop-blur-[1px] cursor-default" />
+                    <section className="stage-sidebar-scroll fixed inset-y-0 left-0 z-[70] w-[272px] overflow-y-auto border-r border-stone-200 bg-white p-3 shadow-2xl animate-in slide-in-from-left duration-200">
+                        <div className="mb-3 flex items-center justify-between px-1">
+                            <span className="text-[9px] font-black uppercase tracking-[0.16em] text-stone-400">Stage desk</span>
+                            <button type="button" onClick={() => setShowStageSidebar(false)} className="rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700 cursor-pointer"><X size={16} /></button>
+                        </div>
+                    <div className="flex flex-col gap-2">
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('LEADS'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'LEADS'
+                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <Users size={16} />
+                            <span className="text-[10px] font-bold">Leads</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'LEADS' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                                {leadsCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('REGISTRATION'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'REGISTRATION'
+                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <ClipboardList size={16} />
+                            <span className="text-[10px] font-bold">Registration</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'REGISTRATION' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                                {registrationCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('MATERIAL_ORDER'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'MATERIAL_ORDER'
+                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <ShoppingBag size={16} />
+                            <span className="text-[10px] font-bold">Material Order</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'MATERIAL_ORDER' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                                {materialOrderCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('MATERIAL_INTEGRATION'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'MATERIAL_INTEGRATION'
+                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <Package size={16} />
+                            <span className="text-[10px] font-bold">Integration</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'MATERIAL_INTEGRATION' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                                {materialIntegrationCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('MATERIAL_DELIVERY'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'MATERIAL_DELIVERY'
+                                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <Truck size={16} />
+                            <span className="text-[10px] font-bold">Delivery</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'MATERIAL_DELIVERY' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                                {materialDeliveryCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('METER_INSTALLATION'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'METER_INSTALLATION'
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <Zap size={16} />
+                            <span className="text-[10px] font-bold">Meter Inst.</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'METER_INSTALLATION' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700'
+                            }`}>
+                                {meterPendingCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => { setActiveWorkdeskTab('DISCOM_INSPECTION'); setShowStageSidebar(false); }}
+                            className={`w-full p-3 rounded-2xl border text-center transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                activeWorkdeskTab === 'DISCOM_INSPECTION'
+                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/20'
+                                    : 'bg-white hover:bg-stone-50 border-stone-200/80 text-stone-700'
+                            }`}
+                        >
+                            <ClipboardCheck size={16} />
+                            <span className="text-[10px] font-bold">Inspection</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                activeWorkdeskTab === 'DISCOM_INSPECTION' ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700'
+                            }`}>
+                                {inspPendingCount}
+                            </span>
+                        </button>
+                    </div>
+                    </section>
+                    </>}
+
+                    {/* Search in Workdesk */}
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+                        <Search className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
                         <input
                             type="text"
-                            placeholder="Search customers..."
+                            placeholder="Search by name, phone, consumer no..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-stone-50 focus:bg-white border border-stone-200 rounded-xl pl-9 pr-8 py-2 text-xs font-semibold text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-8 py-2.5 text-xs font-medium text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-xs"
                         />
                         {searchQuery && (
-                            <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-1">
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-2.5 top-2.5 text-stone-400 hover:text-stone-600 p-0.5 rounded-full cursor-pointer"
+                                title="Clear search"
+                            >
                                 <X size={13} />
                             </button>
                         )}
                     </div>
-                </div>
 
-                {/* CUSTOMER LIST */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
+                    {/* Customer Cards for Selected Stage */}
                     {loading ? (
-                        <div className="flex items-center justify-center h-32">
-                            <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+                        <div className="flex items-center justify-center h-48">
+                            <Loader2 className="w-7 h-7 text-amber-500 animate-spin" />
                         </div>
                     ) : getWorkdeskCustomers(activeWorkdeskTab).length === 0 ? (
-                        <div className="flex flex-col items-center justify-center text-center text-stone-400 bg-white border border-dashed border-stone-200 rounded-3xl p-6 md:p-8 mt-4 max-w-sm md:max-w-lg mx-auto">
-                            <div className="w-12 h-12 md:w-16 md:h-16 bg-stone-50 rounded-2xl flex items-center justify-center mb-3 md:mb-4">
-                                <Users className="w-6 h-6 md:w-8 md:h-8 text-stone-300" />
-                            </div>
-                            <p className="text-xs md:text-sm font-bold text-stone-600">No customers</p>
-                            <p className="text-[10px] md:text-[11px] text-stone-400 mt-1">
-                                {searchQuery ? 'No matches found.' : 'No customers in this stage.'}
-                            </p>
+                        <div className="bg-white border border-stone-150 p-8 rounded-2xl text-center text-stone-400">
+                            <Users className="w-8 h-8 mx-auto mb-2 text-stone-300" />
+                            <p className="text-xs font-bold text-stone-600">No leads in this stage matching your search.</p>
+                            <p className="text-[10px] text-stone-400 mt-1">Leads assigned to you in this stage will appear here.</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 gap-3 auto-rows-max">
+                        <div className="space-y-2.5">
                             {getWorkdeskCustomers(activeWorkdeskTab).map((cust) => (
                                 <div
                                     key={cust.id}
                                     onClick={() => handleSelectCustomerForStage(cust, activeWorkdeskTab)}
-                                    className="bg-white p-4 md:p-5 rounded-2xl border border-stone-200/80 shadow-sm hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] flex flex-col justify-between"
+                                    className="bg-white p-4 rounded-2xl border border-stone-200/80 shadow-xs hover:border-amber-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] space-y-2.5"
                                 >
-                                    <div>
-                                        <div className="flex justify-between items-start gap-2 mb-3">
-                                            <h4 className="text-sm font-black text-stone-900 group-hover:text-blue-600 transition-colors leading-snug">
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div>
+                                            <h4 className="text-xs font-black text-stone-900 group-hover:text-amber-600 transition-colors">
                                                 {cust.customer_name}
                                             </h4>
-                                            <button type="button" className="shrink-0 w-6 h-6 md:w-7 md:h-7 bg-stone-50 group-hover:bg-blue-600 group-hover:text-white text-stone-400 rounded-lg transition-all flex items-center justify-center shadow-2xs border border-stone-100 group-hover:border-blue-600">
-                                                <ChevronRight size={14} />
-                                            </button>
-                                        </div>
-                                        
-                                        <div className="space-y-1.5 md:space-y-2 text-[11px] md:text-xs text-stone-600">
-                                            <div className="flex items-center gap-2">
-                                                <Phone size={11} className="text-stone-400 shrink-0" />
-                                                <span className="font-semibold">{cust.phone_number || '–'}</span>
+                                            <div className="flex items-center gap-2 text-[11px] text-stone-500 mt-1">
+                                                <span className="flex items-center gap-1 font-semibold">
+                                                    <Phone size={10} className="text-stone-400" /> {cust.phone_number || '–'}
+                                                </span>
+                                                {cust.consumer_no && (
+                                                    <>
+                                                        <span className="text-stone-300">•</span>
+                                                        <span className="text-[10px] font-bold text-stone-600">
+                                                            #{cust.consumer_no}
+                                                        </span>
+                                                    </>
+                                                )}
                                             </div>
-                                            {cust.villages && (
-                                                <div className="flex items-start gap-2">
-                                                    <MapPin size={11} className="text-stone-400 shrink-0 mt-0.5" />
-                                                    <span className="font-medium text-stone-500 line-clamp-1">{cust.villages}</span>
-                                                </div>
-                                            )}
-                                            {cust.consumer_no && (
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <span className="font-bold text-stone-700 bg-stone-100 px-1.5 py-0.5 rounded text-[10px]">
-                                                        #{cust.consumer_no}
-                                                    </span>
-                                                </div>
-                                            )}
                                         </div>
+                                        <button
+                                            type="button"
+                                            className="px-2.5 py-1 bg-amber-50 group-hover:bg-amber-500 group-hover:text-white text-amber-700 text-[10px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                                        >
+                                            {['LEADS', 'REGISTRATION', 'MATERIAL_INTEGRATION', 'MATERIAL_DELIVERY'].includes(activeWorkdeskTab) ? 'View' : 'Edit'} <ChevronRight size={12} />
+                                        </button>
                                     </div>
-                                    
-                                    <div className="mt-3 md:mt-4 pt-3 border-t border-stone-100 flex flex-wrap gap-1.5 items-center justify-between text-[10px] md:text-[11px]">
-                                        {cust.system_capacity_kwp && (
-                                            <div className="flex items-center gap-1 font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                                                <Zap size={10} />
-                                                {cust.system_capacity_kwp} kWp
-                                            </div>
-                                        )}
-                                        {cust.payment_type && (
-                                            <span className="font-bold text-stone-500 bg-stone-50 border border-stone-100 px-2 py-0.5 rounded uppercase">
-                                                {cust.payment_type}
+
+                                    {/* Capacity and stage info */}
+                                    <div className="flex items-center justify-between text-[10px] pt-1 border-t border-stone-100 text-stone-500">
+                                        <span className="font-bold text-stone-800 flex items-center gap-1">
+                                            <Zap size={11} className="text-amber-500" />
+                                            {cust.system_capacity_kwp ? `${cust.system_capacity_kwp} kWp` : '–'}
+                                        </span>
+                                        {activeWorkdeskTab === 'MATERIAL_ORDER' && (
+                                            <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded">
+                                                {cust.roof_shed ? `Configured: ${cust.roof_shed}` : 'Pending specs'}
                                             </span>
                                         )}
-                                        {cust.discom_inspection === 'Yes' && activeWorkdeskTab === 'DISCOM_INSPECTION' && (
-                                            <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Inspected</span>
+                                        {(activeWorkdeskTab === 'LEADS' || activeWorkdeskTab === 'REGISTRATION') && (
+                                            <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded">View only</span>
                                         )}
-                                        {cust.meter_installation === 'Yes' && activeWorkdeskTab === 'METER_INSTALLATION' && (
-                                            <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Installed</span>
+                                        {activeWorkdeskTab === 'MATERIAL_INTEGRATION' && (
+                                            <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded">View only</span>
+                                        )}
+                                        {activeWorkdeskTab === 'MATERIAL_DELIVERY' && (
+                                            <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded">View only</span>
+                                        )}
+                                        {activeWorkdeskTab === 'METER_INSTALLATION' && (
+                                            <span className={`font-bold px-2 py-0.5 rounded ${
+                                                cust.meter_installation === 'Yes' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+                                            }`}>
+                                                {cust.meter_installation === 'Yes' ? 'Meter Done' : 'Meter Pending'}
+                                            </span>
+                                        )}
+                                        {activeWorkdeskTab === 'DISCOM_INSPECTION' && (
+                                            <span className={`font-bold px-2 py-0.5 rounded ${
+                                                cust.discom_inspection === 'Yes' ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-700'
+                                            }`}>
+                                                {cust.discom_inspection === 'Yes' ? 'Inspection Done' : 'Report Pending'}
+                                            </span>
                                         )}
                                     </div>
                                 </div>
                             ))}
                         </div>
                     )}
-                </div>
+                </main>
+            )}
 
-                {/* MOBILE FLOATING ACTION BUTTON */}
-                <button
-                    onClick={() => setShowAddLead(true)}
-                    className="sm:hidden fixed bottom-6 right-4 z-40 bg-blue-600 text-white w-12 h-12 rounded-full shadow-lg shadow-blue-500/40 flex items-center justify-center active:scale-95 transition-transform"
-                >
-                    <Plus size={22} />
-                </button>
-            </main>
-            </div></div>
+            {/* Track Leads / All My Customers View (Rich Cards with All Info) */}
+            {view === 'my_customers' && (
+                <main className="flex-1 p-4 max-w-md mx-auto w-full animate-in slide-in-from-right duration-300 space-y-4">
+                    <button
+                        onClick={() => { setView('menu'); setSelectedCust(null); }}
+                        className="flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 font-bold cursor-pointer"
+                    >
+                        <ChevronLeft className="w-4 h-4" /> Back to Dashboard
+                    </button>
+
+                    <div className="space-y-4">
+                        {/* Search and Header */}
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-sm font-black text-stone-900 uppercase tracking-widest">Track All Leads</h2>
+                                <p className="text-[10px] text-stone-400 font-semibold mt-0.5">
+                                    {isAgent2 
+                                        ? `Directory of all leads registered under sub-agent ${user.name} (${user.channel_partner || 'Direct'}).`
+                                        : `Directory of all leads registered under ${user.channel_partner || user.name}.`
+                                    }
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowAddLead(true)}
+                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs transition cursor-pointer"
+                            >
+                                <Plus size={14} /> Add Lead
+                            </button>
+                        </div>
+
+                        <div className="relative">
+                            <Search className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
+                            <input
+                                type="text"
+                                placeholder="Search by name, phone, or consumer #..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                className="pl-9 pr-3 py-2 bg-white border border-stone-200 rounded-xl text-xs w-full focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold"
+                            />
+                        </div>
+
+                        {loading ? (
+                            <div className="flex items-center justify-center h-48">
+                                <Loader2 className="w-7 h-7 text-amber-500 animate-spin" />
+                            </div>
+                        ) : filteredCustomers.length === 0 ? (
+                            <div className="bg-white border border-stone-100 p-8 rounded-[24px] text-center text-stone-400">
+                                <Users className="w-10 h-10 mx-auto mb-2 text-stone-200" />
+                                <p className="text-xs font-semibold">No customers found</p>
+                                <p className="text-[10px] text-stone-400 mt-0.5">Try searching for a different name or add a new lead.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {PRIMARY_STAGES.map(stage => {
+                                    const stageCustomers = getCustomersByStage(stage.id);
+                                    const isExpanded = !!expandedStages[stage.id];
+                                    const StageIcon = stage.icon || Users;
+
+                                    return (
+                                        <div key={stage.id} className="bg-white border border-stone-150 rounded-[20px] shadow-2xs overflow-hidden">
+                                            {/* Stage Accordion Header */}
+                                            <button
+                                                onClick={() => toggleStage(stage.id)}
+                                                className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-stone-50/50 transition-colors text-left cursor-pointer"
+                                            >
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                                                        stageCustomers.length > 0 ? 'bg-amber-50 text-amber-600' : 'bg-stone-100 text-stone-400'
+                                                    }`}>
+                                                        <StageIcon size={14} />
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-xs font-black text-stone-850 uppercase tracking-wide">
+                                                            {stage.label}
+                                                        </span>
+                                                        <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-stone-100 text-stone-600">
+                                                            {stageCustomers.length}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                {isExpanded ? (
+                                                    <ChevronUp size={16} className="text-stone-400" />
+                                                ) : (
+                                                    <ChevronDown size={16} className="text-stone-400" />
+                                                )}
+                                            </button>
+
+                                            {/* Stage Content - Rich Client Info Cards */}
+                                            {isExpanded && (
+                                                <div className="px-3 pb-3 pt-1 space-y-2.5">
+                                                    {stageCustomers.length === 0 ? (
+                                                        <p className="text-[11px] text-stone-400 font-medium py-3 italic text-center">
+                                                            No customers in this stage.
+                                                        </p>
+                                                    ) : (
+                                                        stageCustomers.map((cust) => (
+                                                            <div
+                                                                key={cust.id}
+                                                                onClick={() => setSelectedCust(cust)}
+                                                                className="p-3.5 bg-stone-50/70 hover:bg-amber-50/40 rounded-2xl border border-stone-200/70 transition-all cursor-pointer space-y-2 group"
+                                                            >
+                                                                {/* Line 1: Name and Details Button */}
+                                                                <div className="flex justify-between items-start gap-2">
+                                                                    <h4 className="text-xs font-black text-stone-900 group-hover:text-amber-600 transition-colors leading-snug">
+                                                                        {cust.customer_name}
+                                                                    </h4>
+                                                                    <span className="px-2.5 py-1 bg-white border border-stone-200 text-stone-700 text-[10px] font-bold rounded-lg shadow-2xs group-hover:border-amber-400 group-hover:text-amber-600 transition flex items-center gap-1 flex-shrink-0">
+                                                                        Details <ChevronRight size={11} />
+                                                                    </span>
+                                                                </div>
+
+                                                                {/* Line 2: Phone & Village/Address */}
+                                                                <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-600">
+                                                                    <span className="flex items-center gap-1 font-medium">
+                                                                        <Phone size={11} className="text-stone-400" /> {cust.phone_number || '–'}
+                                                                    </span>
+                                                                    {cust.villages && (
+                                                                        <>
+                                                                            <span className="text-stone-300">•</span>
+                                                                            <span className="flex items-center gap-1 font-medium truncate max-w-[150px]">
+                                                                                <MapPin size={11} className="text-stone-400" /> {cust.villages}
+                                                                            </span>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Line 3: Consumer #, Capacity, Module Brand, Payment */}
+                                                                <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-stone-500 pt-0.5">
+                                                                    {cust.consumer_no && (
+                                                                        <span className="bg-stone-200/70 text-stone-700 font-bold px-1.5 py-0.5 rounded text-[9px]">
+                                                                            #{cust.consumer_no}
+                                                                        </span>
+                                                                    )}
+                                                                    {cust.system_capacity_kwp && (
+                                                                        <span className="flex items-center gap-0.5 font-bold text-amber-700 bg-amber-100/70 px-1.5 py-0.5 rounded text-[9px]">
+                                                                            <Zap size={10} /> {cust.system_capacity_kwp} kWp
+                                                                        </span>
+                                                                    )}
+                                                                    {cust.module_brand && (
+                                                                        <span className="font-semibold text-stone-600 text-[9px] bg-stone-100 px-1.5 py-0.5 rounded">
+                                                                            {cust.module_brand}
+                                                                        </span>
+                                                                    )}
+                                                                    {cust.payment_type && (
+                                                                        <span className="bg-stone-100 border border-stone-200 text-stone-600 font-bold px-1.5 py-0.5 rounded uppercase text-[9px]">
+                                                                            {cust.payment_type}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </main>
             )}
 
             {/* Unified Add Lead Modal */}
@@ -996,7 +1251,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
 
             {/* Customer Details & Dealer Actions Modal */}
             {selectedCust && (
-                <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
                     <div className="w-full sm:max-w-lg bg-white rounded-t-[28px] sm:rounded-[28px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in slide-in-from-bottom-5 duration-300">
                         {/* Detail Header - Name, Phone Number & Consumer No on Top */}
                         <div className="shrink-0 px-5 py-5 border-b border-stone-150 bg-stone-50/90 flex justify-between items-start">
@@ -1047,15 +1302,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                         {/* Swipeable stage tabs for this customer */}
                         <div className="customer-stage-tabs shrink-0 border-b border-stone-150 bg-white px-4 py-3.5 overflow-x-auto">
                             <div className="flex min-w-max gap-2">
-                                {customerStageNavigation.filter(stage => {
-                                    const pType = (selectedCust?.payment_type || '').trim().toLowerCase();
-                                    if (stage.id === 'LOAN' && pType === 'cash') return false;
-                                    if (stage.id === 'CASH' && pType === 'loan') return false;
-                                    if (stage.id === 'COMPLETED' || stage.id === 'LOST PROJECT') return false;
-                                    return true;
-                                }).concat([
-                                    { id: 'DOCUMENTS', label: 'Documents', icon: FolderOpen }
-                                ]).map(stage => {
+                                {customerStageNavigation.map(stage => {
                                     const StageIcon = stage.icon;
                                     const isActive = displayedStage === stage.id;
                                     return (
@@ -1111,57 +1358,6 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                                 />
                             </section>}
                             {/* ─── STAGE SECTION (Render active stage component in phone format) ─── */}
-                            {displayedStage === 'CUSTOMER_CARD' && (
-                                <div className="space-y-4">
-                                    <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
-                                        <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
-                                            <User size={11} /> Customer Profile
-                                        </h5>
-                                        <div className="divide-y divide-stone-200/50 text-xs">
-                                            <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Customer Name</span><span className="font-semibold text-stone-900">{selectedCust.customer_name || '–'}</span></div>
-                                            <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Phone Number</span><span className="font-semibold text-stone-900">{selectedCust.phone_number || '–'}</span></div>
-                                            <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Email</span><span className="font-semibold text-stone-900">{selectedCust.email || selectedCust.email_address || '–'}</span></div>
-                                            <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Consumer No</span><span className="font-semibold text-stone-900">{selectedCust.consumer_no || '–'}</span></div>
-                                            <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Location</span><span className="font-semibold text-stone-900">{selectedCust.villages || '–'} {selectedCust.sub_divisions ? `(${selectedCust.sub_divisions})` : ''}</span></div>
-                                            <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Channel Partner</span><span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span></div>
-                                            <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">System Capacity</span><span className="font-semibold text-stone-900">{selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : '–'}</span></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {displayedStage === 'DOCUMENTS' && (
-                                <div className="space-y-3">
-                                    <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5 px-1">
-                                        <FolderOpen size={11} /> Uploaded Documents ({custDocs?.length || 0})
-                                    </h5>
-                                    {(!custDocs || custDocs.length === 0) ? (
-                                        <div className="p-8 text-center bg-stone-50 border border-dashed border-stone-200 rounded-xl">
-                                            <p className="text-xs font-bold text-stone-500">No documents found</p>
-                                        </div>
-                                    ) : (
-                                        <div className="grid gap-2">
-                                            {custDocs.map(doc => (
-                                                <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-white border border-stone-200 rounded-xl shadow-sm">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
-                                                            <FileText size={14} />
-                                                        </div>
-                                                        <div className="min-w-0 flex-1">
-                                                            <p className="text-xs font-bold text-stone-800 truncate">{doc.file_name || doc.doc_type}</p>
-                                                            <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide mt-0.5">{doc.doc_type.replace(/_/g, ' ')}</p>
-                                                        </div>
-                                                    </div>
-                                                    <a href={getViewUrl(doc.storage_path)} target="_blank" rel="noreferrer" className="shrink-0 w-full sm:w-auto bg-stone-100 hover:bg-blue-50 text-stone-600 hover:text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5">
-                                                        <Eye size={12} /> View File
-                                                    </a>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
                             {displayedStage === 'LEADS' && (
                                 <div className="space-y-4">
                                     {/* Lead Information Card (Line by Line Non-Editable) */}
@@ -1228,7 +1424,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                                     </div>
 
                                     {/* Track Leads is intentionally limited to the saved lead form data. */}
-                                    {true && (
+                                    {view !== 'my_customers' && (
                                     <div className="bg-white p-4 rounded-2xl border border-stone-150 shadow-2xs space-y-3">
                                         <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                             <Paperclip size={11} className="text-amber-500" /> Attached Documents & Uploads
@@ -1620,17 +1816,6 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                                                     className="w-32 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 text-right focus:outline-none focus:ring-1 focus:ring-amber-500"
                                                 />
                                             </div>
-
-                                            <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Notes / Instructions</span>
-                                                <input
-                                                    type="text"
-                                                    value={editData.material_order_notes ?? selectedCust.material_order_notes ?? ''}
-                                                    onChange={e => setEditData(prev => ({ ...prev, material_order_notes: e.target.value }))}
-                                                    placeholder="Optional notes"
-                                                    className="w-48 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                                />
-                                            </div>
                                         </div>
                                         <div className="pt-2 border-t border-stone-200/60">
                                             <button
@@ -1681,21 +1866,6 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                                             <span className="font-semibold text-stone-900">{selectedCust.invoice_value ? `₹${toIndianCommas(selectedCust.invoice_value)}` : '–'}</span>
                                         </div>
                                     </div>
-
-                                    <div className="flex items-center justify-between py-2 border-t border-stone-200/50 mt-2 pt-3">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Inverter Make</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.inverter_make || '–'}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Inverter Serial No</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.inverter_serial_no || '–'}</span>
-                                        </div>
-                                        <div className="flex flex-col gap-1 py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Panel Serial Numbers</span>
-                                            <div className="font-semibold text-stone-700 bg-stone-100 p-2.5 rounded-lg text-[10px] whitespace-pre-wrap break-all min-h-[40px] border border-stone-200">
-                                                {selectedCust.panel_serial_numbers || '–'}
-                                            </div>
-                                        </div>
 
                                     <section className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-3">
                                         <h6 className="mb-2 border-b border-amber-200/70 pb-2 text-[9px] font-black uppercase tracking-widest text-amber-800">
@@ -1825,31 +1995,19 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                                     <div className="divide-y divide-stone-200/50 text-xs">
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">File Status</span>
-                                            <div className="flex items-center gap-2">
-                                                {selectedCust.file_status && <a href={getViewUrl(selectedCust.file_status)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
-                                                {renderStatusBadge(selectedCust.file_status ? 'Yes' : 'Pending', 'Pending')}
-                                            </div>
+                                            {renderStatusBadge(selectedCust.file_status ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">DCR Certificate</span>
-                                            <div className="flex items-center gap-2">
-                                                {selectedCust.dcr_certificate && <a href={getViewUrl(selectedCust.dcr_certificate)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
-                                                {renderStatusBadge(selectedCust.dcr_certificate ? 'Yes' : 'Pending', 'Pending')}
-                                            </div>
+                                            {renderStatusBadge(selectedCust.dcr_certificate ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Signature Photo</span>
-                                            <div className="flex items-center gap-2">
-                                                {selectedCust.signature_pic && <a href={getViewUrl(selectedCust.signature_pic)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
-                                                {renderStatusBadge(selectedCust.signature_pic ? 'Yes' : 'Pending', 'Pending')}
-                                            </div>
+                                            {renderStatusBadge(selectedCust.signature_pic ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Stamp</span>
-                                            <div className="flex items-center gap-2">
-                                                {selectedCust.stamp && <a href={getViewUrl(selectedCust.stamp)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
-                                                {renderStatusBadge(selectedCust.stamp ? 'Yes' : 'Pending', 'Pending')}
-                                            </div>
+                                            {renderStatusBadge(selectedCust.stamp ? 'Yes' : 'Pending', 'Pending')}
                                         </div>
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">File Submitted By</span>
@@ -2356,6 +2514,6 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                     </div>
                 </div>
             )}
-        </>
+        </div>
     );
 }
