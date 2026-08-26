@@ -1,0 +1,1 @@
+import{xt as e}from"./index-DgECyynp.js";var t=e(`ChevronUp`,[[`path`,{d:`m18 15-6-6-6 6`,key:`153udz`}]]);export{t};
