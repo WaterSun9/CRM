@@ -301,16 +301,6 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                 return;
             }
 
-            // DIAGNOSTIC: Find ALL distinct vendor values in the entire admin table
-            const { data: diagData } = await supabase
-                .from('admin')
-                .select('vendor')
-                .not('vendor', 'is', null)
-                .neq('vendor', '')
-                .limit(200);
-            const distinctAll = [...new Set((diagData || []).map(r => r.vendor).filter(Boolean))];
-            console.log('[VendorPortal] ALL distinct vendor values in entire admin table:', distinctAll);
-
             // Step 2: Query admin table DIRECTLY using .in() for exact matches
             // We use .in() instead of .or() because it's much more reliable in Supabase
             const { data, error } = await supabase
@@ -355,11 +345,9 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         const channel = supabase.channel(`vendor_customers_${user.id || 'vendor'}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
                 const record = payload.new;
-                const stageNorm = (record?.stage || '').toUpperCase().trim();
                 const isVisibleToVendor = record && !record.deleted_at &&
-                    !(record.installation_status === 'Give Up' && isRecordAssignedToVendor(record)) &&
                     isRecordAssignedToVendor(record) &&
-                    ['MATERIAL DELIVERY', 'INSTALLATION STATUS', 'GEO TAG PHOTO'].includes(stageNorm);
+                    record.installation_status !== "Give Up";
 
                 setCustomers(previous => {
                     if (payload.eventType === 'DELETE' || !isVisibleToVendor) {
