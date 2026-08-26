@@ -22,7 +22,6 @@ import { Sun } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import SetPasswordPage from './components/SetPassword';
-import DevRoleSwitcher from './components/DevRoleSwitcher';
 import { lazy } from 'react';
 
 function lazyWithRetry(componentImport) {
@@ -47,6 +46,9 @@ function lazyWithRetry(componentImport) {
 const AgentPortal = lazyWithRetry(() => import('./components/AgentPortal'));
 const VendorPortal = lazyWithRetry(() => import('./components/VendorPortal'));
 const StampPortal = lazyWithRetry(() => import('./components/StampPortal'));
+const DevRoleSwitcher = import.meta.env.DEV
+    ? lazyWithRetry(() => import('./components/DevRoleSwitcher'))
+    : null;
 
 function ScreenLoader() {
     return (
@@ -185,9 +187,9 @@ export default function App() {
         return <Suspense fallback={<ScreenLoader />}><SetPasswordPage /></Suspense>;
     }
 
-    const isAgent = user && (user.userType === 'agent' || user.userType === 'agent2' || user.role === 'Channel Partners' || user.role === 'Channel Partner');
-    const isVendor = user && (user.userType === 'vendor' || user.role === 'Vendors');
-    const isStamp = user && (user.userType === 'stamp' || user.role === 'Stamp');
+    const isAgent = user && (user.userType === 'agent' || user.userType === 'agent2');
+    const isVendor = user && (user.userType === 'vendor');
+    const isStamp = user && (user.userType === 'stamp');
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -236,17 +238,21 @@ export default function App() {
             </Suspense>
 
             {/* Secret Backdoor Switcher (Ctrl + Shift + S) */}
-            <DevRoleSwitcher
-                currentUser={user}
-                onSwitchUser={(newUser) => {
-                    setUser(newUser);
-                    setIsDemoMode(false);
-                }}
-                isOpen={devSwitcherOpen}
-                onToggle={setDevSwitcherOpen}
-                isDemoMode={isDemoMode}
-                onToggleDemoMode={handleToggleDemoMode}
-            />
+            {import.meta.env.DEV && (
+                <Suspense fallback={null}>
+                    <DevRoleSwitcher
+                        currentUser={user}
+                        onSwitchUser={(newUser) => {
+                            setUser(newUser);
+                            setIsDemoMode(false);
+                        }}
+                        isOpen={devSwitcherOpen}
+                        onToggle={setDevSwitcherOpen}
+                        isDemoMode={isDemoMode}
+                        onToggleDemoMode={handleToggleDemoMode}
+                    />
+                </Suspense>
+            )}
         </>
     );
 }

@@ -219,7 +219,7 @@ function ResetPasswordModal({ user, onClose, onSuccess, currentUser }) {
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
 function CreateUserModal({ onClose, onCreated, currentUser }) {
-    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office' || currentUser?.role === 'Channel Partner Office' || currentUser?.user_type === 'office2' || currentUser?.userType === 'office2';
+    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office' || currentUser?.user_type === 'office2' || currentUser?.userType === 'office2';
     const partnerName = (currentUser?.channel_partner || currentUser?.name || '').trim();
     const initialFormState = isCP 
         ? { name: '', email: '', password: '', role: 'Channel Partner Manager', user_type: 'office2', channel_partner: partnerName }
@@ -541,7 +541,7 @@ export default function UserManagementView({ currentUser }) {
         setTimeout(() => setToast(null), 4000);
     };
 
-    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office' || currentUser?.role === 'Channel Partner Office';
+    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office';
     const partnerName = (currentUser?.channel_partner || currentUser?.name || '').trim();
 
     // ─── Robust Fetch Profiles ──────────────────────────────────────────────────

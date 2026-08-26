@@ -74,9 +74,7 @@ export default function DiscomSubmissionTab({
     const isDiscomDetailsEditable = isEditable || 
         user?.userType === 'sales' || 
         user?.userType === 'admin' || 
-        user?.userType === 'channel_partner_office' || 
-        user?.role === 'Channel Partner Office' ||
-        user?.role === 'Channel Partner Manager';
+        user?.userType === 'channel_partner_office';
 
     /* Send details to stamp maker */
     const handleSendToStampMaker = async () => {

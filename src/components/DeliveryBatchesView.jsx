@@ -33,14 +33,23 @@ export default function DeliveryBatchesView({
             return;
         }
         try {
-            const { data, error } = await supabase
-                .from('admin')
-                .select('*')
-                .is('deleted_at', null)
-                .order('created_at', { ascending: false });
-            if (!error && data) {
-                setAllCustomers(data);
+            let all = [];
+            let from = 0;
+            const pageSize = 1000;
+            while (true) {
+                const { data, error } = await supabase
+                    .from('admin')
+                    .select('*')
+                    .is('deleted_at', null)
+                    .order('created_at', { ascending: false })
+                    .range(from, from + pageSize - 1);
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                all = all.concat(data);
+                if (data.length < pageSize) break;
+                from += pageSize;
             }
+            setAllCustomers(all);
         } catch (e) {
             console.error('Error fetching customers in DeliveryBatchesView:', e);
         }

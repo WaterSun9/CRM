@@ -56,7 +56,7 @@ serve(async (req) => {
         const callerRole = (callerProfile?.role || "").toLowerCase();
         const callerType = (callerProfile?.user_type || "").toLowerCase();
         const isCP = callerType === "channel_partner_office" || callerType === "office2" || callerRole.includes("partner");
-        const isAdmin = callerType === "admin" || callerRole === "admin" || callerRole.includes("admin") || !callerProfile;
+        const isAdmin = callerType === "admin" || callerRole === "admin" || callerRole.includes("admin");
 
         if (!isAdmin && !isCP) {
             return new Response(

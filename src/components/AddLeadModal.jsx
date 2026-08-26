@@ -217,9 +217,9 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     const [saving, setSaving] = useState(false);
     const [validationErrors, setValidationErrors] = useState([]);
 
-    const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners';
-    const isAgent2 = user?.userType === 'agent2' || user?.role === 'Channel Partner (Agent 2)' || user?.role === 'Sub Agent';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager' || user?.role === 'Channel Partner Office' || user?.role === 'Channel Partner Office Manager';
+    const isAgent = user?.userType === 'agent';
+    const isAgent2 = user?.userType === 'agent2';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager';
     const partnerName = (user?.channel_partner || user?.name || '').trim();
 
     useEffect(() => {

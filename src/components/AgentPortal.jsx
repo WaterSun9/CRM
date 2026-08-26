@@ -88,7 +88,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
     // Metadata
     const [meta, setMeta] = useState({});
 
-    const isAgent2 = user?.userType === 'agent2' || user?.role === 'Channel Partner (Agent 2)' || user?.role === 'Sub Agent' || !!(user?.channel_partner && user?.channel_partner !== user?.name && user?.userType !== 'channel_partner_office' && user?.userType !== 'office2');
+    const isAgent2 = user?.userType === 'agent2' || !!(user?.channel_partner && user?.channel_partner !== user?.name && user?.userType !== 'channel_partner_office' && user?.userType !== 'office2');
 
     // Load agent's customers & metadata
     const fetchCustomers = async () => {

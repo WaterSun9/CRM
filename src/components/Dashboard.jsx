@@ -151,7 +151,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     const [hasMore, setHasMore] = useState(true);
     const [metrics, setMetrics] = useState(null);
     const [exporting, setExporting] = useState(false);
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.role === 'Channel Partner Office' || user?.userType === 'office2' || user?.role === 'Channel Partner Manager';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'office2';
     const partnerName = (user?.channel_partner || user?.name || ' ').trim();
 
     const handleFullExport = async () => {

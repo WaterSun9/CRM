@@ -29,11 +29,31 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [newVendorEmail, setNewVendorEmail] = useState('');
     const [editingVendorName, setEditingVendorName] = useState('');
     const [editingVendorEmail, setEditingVendorEmail] = useState('');
+    const [performanceStats, setPerformanceStats] = useState([]);
+
+    const fetchAllAdminChannelPartners = async () => {
+        let all = [];
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+            const { data, error } = await supabase
+                .from('admin')
+                .select('channel_partner')
+                .is('deleted_at', null)
+                .range(from, from + pageSize - 1);
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            all = all.concat(data);
+            if (data.length < pageSize) break;
+            from += pageSize;
+        }
+        return all;
+    };
 
     // Fetch partners, brands, registrations, integrations, inverters, and CPOs
     const fetchMetadata = async () => {
         try {
-            const [metaRes, profilesRes, adminRes] = await Promise.all([
+            const [metaRes, profilesRes, adminRows] = await Promise.all([
                 supabase
                     .from('metadata')
                     .select('id, category, label')
@@ -42,10 +62,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     .from('profiles')
                     .select('*')
                     .order('created_at', { ascending: false }),
-                supabase
-                    .from('admin')
-                    .select('channel_partner')
-                    .is('deleted_at', null)
+                fetchAllAdminChannelPartners()
             ]);
 
             if (metaRes.error) throw metaRes.error;
@@ -72,15 +89,25 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                 setSubAgents(agentList);
             }
 
-            if (adminRes.data) {
+            if (adminRows) {
                 const counts = {};
-                adminRes.data.forEach(c => {
+                adminRows.forEach(c => {
                     const partner = (c.channel_partner || '').trim().toLowerCase();
                     if (partner) {
                         counts[partner] = (counts[partner] || 0) + 1;
                     }
                 });
                 setCpoLeadsCount(counts);
+
+                const perfCounts = {};
+                adminRows.forEach(c => {
+                    const name = c.channel_partner?.trim() || 'No Channel Partner';
+                    perfCounts[name] = (perfCounts[name] || 0) + 1;
+                });
+                const sorted = Object.entries(perfCounts)
+                    .map(([name, count]) => ({ name, count }))
+                    .sort((a, b) => b.count - a.count);
+                setPerformanceStats(sorted);
             }
         } catch (e) {
             console.error('Error fetching metadata & CPOs:', e);
@@ -486,27 +513,6 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             console.error('Error deleting metadata:', e);
         }
     };
-
-    // ─── Calculate Channel Partner Performance statistics ───
-    const [performanceStats, setPerformanceStats] = useState([]);
-    
-    useEffect(() => {
-        const fetchStats = async () => {
-            const { data } = await supabase.from('admin').select('channel_partner').is('deleted_at', null);
-            if (data) {
-                const counts = {};
-                data.forEach(c => {
-                    const name = c.channel_partner?.trim() || 'No Channel Partner';
-                    counts[name] = (counts[name] || 0) + 1;
-                });
-                const sorted = Object.entries(counts)
-                    .map(([name, count]) => ({ name, count }))
-                    .sort((a, b) => b.count - a.count);
-                setPerformanceStats(sorted);
-            }
-        };
-        fetchStats();
-    }, []);
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700 max-w-7xl mx-auto">

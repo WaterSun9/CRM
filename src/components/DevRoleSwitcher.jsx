@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Settings2, X, Database, Search, LogIn, ArrowRight, Check, AlertTriangle } from 'lucide-react';
 import { supabase } from '../supabase';
+import { APP_ROLES } from '../constants';
 
 export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onToggle, isDemoMode }) {
     const [searchEmail, setSearchEmail] = useState('');
@@ -66,6 +67,24 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
         }
     };
 
+    const handleQuickPreview = (role) => {
+        if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem('watersun_demo_mode', 'false');
+        }
+
+        onSwitchUser({
+            id: `dev-preview-${role.user_type}`,
+            email: `preview-${role.user_type}@watersun.dev`,
+            userType: role.user_type,
+            role: role.role,
+            name: `${role.label} (Preview)`,
+            channel_partner: role.user_type === "channel_partner_office" || role.user_type === "office2" || role.user_type === "agent2" || role.user_type === "agent" ? "Demo Partner" : "",
+            isDevRole: true,
+        });
+
+        onToggle(false);
+    };
+
     return (
         <>
             {isOpen && (
@@ -120,8 +139,9 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                             </div>
                         </div>
 
-                        {/* Search Form */}
-                        <div className="py-6 flex-1">
+                        {/* Main Content Area */}
+                        <div className="py-4 flex-1 overflow-y-auto space-y-5 my-1 pr-0.5">
+                            {/* Search Form */}
                             <form onSubmit={handleImpersonate} className="space-y-4">
                                 <div>
                                     <label className="block text-xs font-bold text-stone-700 mb-1.5">
@@ -163,6 +183,44 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                                     )}
                                 </button>
                             </form>
+
+                            {/* Divider */}
+                            <div className="relative flex items-center justify-center">
+                                <div className="absolute inset-0 flex items-center">
+                                    <div className="w-full border-t border-stone-200" />
+                                </div>
+                                <div className="relative bg-white px-3 text-[10px] font-extrabold uppercase tracking-wider text-stone-400">
+                                    OR
+                                </div>
+                            </div>
+
+                            {/* Quick Preview (No Login) Section */}
+                            <div className="space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-xs font-bold text-stone-700">
+                                        Quick Preview (No Login)
+                                    </h4>
+                                    <span className="text-[10px] font-semibold text-stone-400 font-mono">
+                                        Client-Side Only
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {APP_ROLES.map((role) => (
+                                        <button
+                                            key={role.id}
+                                            type="button"
+                                            onClick={() => handleQuickPreview(role)}
+                                            className="flex items-center justify-between p-2.5 bg-stone-50 hover:bg-amber-50 hover:border-amber-300 border border-stone-200 rounded-xl text-xs font-bold text-stone-700 hover:text-amber-900 transition-all text-left group"
+                                        >
+                                            <span className="truncate">{role.label}</span>
+                                            <ArrowRight size={13} className="text-stone-400 group-hover:text-amber-600 transition-transform group-hover:translate-x-0.5 flex-shrink-0 ml-1.5" />
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="text-[10px] text-stone-500 font-medium">
+                                    Preview any role instantly with synthetic data without querying Supabase.
+                                </p>
+                            </div>
                         </div>
 
                         {/* Footer */}

@@ -177,12 +177,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [adminUnlocked, setAdminUnlocked] = useState(false);
     // Frozen for ALL users when completed. Admin can temporarily unlock.
     const isFrozen = isCompleted && !(isAdmin && adminUnlocked);
-    const isAgent = user?.userType === 'agent' || user?.role === 'Channel Partners';
+    const isAgent = user?.userType === 'agent';
     const isSales = user?.userType === 'sales' || user?.userType === 'office';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager' || user?.role === 'Channel Partner Office' || user?.role === 'Channel Partner Office Manager';
-    const isChannelPartnerManager = user?.userType === 'office2' || user?.role === 'Channel Partner Manager' || user?.role === 'CP Manager (Office 2)';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager';
+    const isChannelPartnerManager = user?.userType === 'office2';
     const isChannelPartnerOfficeOrManager = isChannelPartnerOffice || isChannelPartnerManager;
-    const isOffice = (user?.userType === 'sales' || user?.userType === 'office' || user?.role === 'Office' || user?.role === 'Backend Office' || user?.role?.toLowerCase().includes('office')) && !isChannelPartnerOfficeOrManager;
+    const isOffice = (user?.userType === 'sales' || user?.userType === 'office' || user?.role?.toLowerCase().includes('office')) && !isChannelPartnerOfficeOrManager;
 
     const isDiscomOrMeterStage = editData.stage === 'DISCOM SUBMISSION' || editData.stage === 'METER INSTALLATION';
 
