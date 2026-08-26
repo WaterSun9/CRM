@@ -1359,7 +1359,7 @@ export default function MaterialIntegrationTab({
                                             <span className="text-[10px] font-bold text-stone-600">Total: {filledCount} Panels</span>
                                         </h3>
                                         {filledCount > 0 ? (
-                                            <div className="grid grid-cols-5 gap-1.5 text-xs">
+                                            <div className="grid grid-cols-4 gap-2 text-xs">
                                                 {panelSerials.filter(Boolean).map((serial, idx) => (
                                                     <div key={idx} className="border border-stone-300 p-1.5 rounded flex items-center gap-1.5 bg-stone-50">
                                                         <span className="font-bold text-stone-500 text-[10px] w-5 text-center">{idx + 1}.</span>
@@ -1491,7 +1491,7 @@ export default function MaterialIntegrationTab({
                         max-width: 194mm !important;
                         margin: 0 auto !important;
                         padding: 0 !important;
-                        font-size: 7.5pt !important;
+                        font-size: 8.5pt !important;
                         line-height: 1.2 !important;
                         color: #000000 !important;
                         background: #ffffff !important;
@@ -1527,23 +1527,23 @@ export default function MaterialIntegrationTab({
                         flex-direction: column !important;
                         justify-content: space-between !important;
                     }
-                    #native-print-portal .mb-4 { margin-bottom: 2mm !important; }
-                    #native-print-portal .mb-5 { margin-bottom: 2mm !important; }
-                    #native-print-portal .mb-6 { margin-bottom: 2.5mm !important; }
-                    #native-print-portal .mb-8 { margin-bottom: 2.5mm !important; }
+                    #native-print-portal .mb-4 { margin-bottom: 1.5mm !important; }
+                    #native-print-portal .mb-5 { margin-bottom: 1.5mm !important; }
+                    #native-print-portal .mb-6 { margin-bottom: 1.5mm !important; }
+                    #native-print-portal .mb-8 { margin-bottom: 1.5mm !important; }
                     #native-print-portal .mt-8 { margin-top: 2mm !important; }
                     #native-print-portal .pb-3 { padding-bottom: 1mm !important; }
                     #native-print-portal .pb-4 { padding-bottom: 1.5mm !important; }
                     #native-print-portal .pt-8 { padding-top: 0 !important; }
-                    #native-print-portal .pt-10 { padding-top: 3mm !important; }
-                    #native-print-portal .pt-12 { padding-top: 3mm !important; }
-                    #native-print-portal h1 { font-size: 11.5pt !important; margin: 0 0 0.8mm 0 !important; }
-                    #native-print-portal h3 { font-size: 7.5pt !important; margin-bottom: 1mm !important; padding-bottom: 0.5mm !important; }
-                    #native-print-portal p { line-height: 1.15 !important; }
+                    #native-print-portal .pt-10 { padding-top: 1.5mm !important; }
+                    #native-print-portal .pt-12 { padding-top: 1.5mm !important; }
+                    #native-print-portal h1 { font-size: 12pt !important; margin: 0 0 0.8mm 0 !important; }
+                    #native-print-portal h3 { font-size: 9.5pt !important; margin-bottom: 1mm !important; padding-bottom: 0.5mm !important; }
+                    #native-print-portal p { font-size: 8.5pt !important; line-height: 1.15 !important; }
                     #native-print-portal table {
                         width: 100% !important;
                         border-collapse: collapse !important;
-                        font-size: 6.8pt !important;
+                        font-size: 8.5pt !important;
                         line-height: 1.1 !important;
                         table-layout: fixed !important;
                         margin-bottom: 1.5mm !important;
@@ -1558,14 +1558,14 @@ export default function MaterialIntegrationTab({
                     #native-print-portal th {
                         background-color: #f5f5f4 !important;
                         font-weight: 900 !important;
-                        font-size: 6.8pt !important;
+                        font-size: 8.5pt !important;
                     }
                     #native-print-portal tbody tr {
                         break-inside: avoid !important;
                     }
-                    #native-print-portal .grid-cols-5 {
+                    #native-print-portal .grid-cols-4 {
                         display: grid !important;
-                        grid-template-columns: repeat(5, 1fr) !important;
+                        grid-template-columns: repeat(4, 1fr) !important;
                         gap: 1.2mm !important;
                     }
                     #native-print-portal .grid-cols-3 {
@@ -1573,7 +1573,7 @@ export default function MaterialIntegrationTab({
                         grid-template-columns: repeat(3, 1fr) !important;
                         gap: 6mm !important;
                     }
-                    #native-print-portal .pb-8 { padding-bottom: 4mm !important; }
+                    #native-print-portal .pb-8 { padding-bottom: 2mm !important; }
                     .no-print {
                         display: none !important;
                     }

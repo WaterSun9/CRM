@@ -13,12 +13,28 @@ import { supabase } from '../supabase';
 export async function sendVendorLeadNotification({
     customerId,
     customer,
-    vendorName = 'Test Vendor (Solar Tech)',
-    vendorEmail = 'deeproot120@gmail.com'
+    vendorName
 }) {
     const cust = customer || {};
-    const recipient = vendorEmail || 'deeproot120@gmail.com';
-    const targetVendor = vendorName || 'Test Vendor';
+    const targetVendor = vendorName || cust.vendor || 'Test Vendor';
+    let recipient = ''; // no fallback
+
+    // Lookup real vendor email from database
+    try {
+        if (targetVendor) {
+            const { data: vendorData } = await supabase
+                .from('vendors')
+                .select('email')
+                .ilike('name', targetVendor.trim())
+                .maybeSingle();
+                
+            if (vendorData && vendorData.email) {
+                recipient = vendorData.email;
+            }
+        }
+    } catch (err) {
+        console.warn('[VendorNotification] Failed to lookup vendor email:', err);
+    }
 
     // 1. Try invoking the Supabase Edge Function
     try {
@@ -30,10 +46,14 @@ export async function sendVendorLeadNotification({
             }
         });
 
+        if (!recipient) {
+            return { success: false, message: 'Vendor email not found in database.' };
+        }
         if (!error && data?.success) {
             return {
                 success: true,
                 method: 'edge_function',
+                recipient,
                 message: `Email dispatched to ${recipient}`
             };
         }
@@ -87,6 +107,7 @@ Watersun Solar Operations`
     return {
         success: true,
         method: 'mailto',
+        recipient,
         mailtoUrl,
         message: `Prepared email for ${recipient}`
     };

@@ -217,26 +217,37 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     // ── Data fetching ──────────────────────────────────────────────────────────
     const fetchMetricsAndMeta = async () => {
         if (isDemoMode) {
-            setMetrics(getDemoMetrics(isChannelPartnerOffice ? partnerName : channelPartnerFilter));
+            const demoBatches = JSON.parse(localStorage.getItem('watersun_demo_delivery_batches') || '[]');
+            setMetrics({
+                ...getDemoMetrics(isChannelPartnerOffice ? partnerName : channelPartnerFilter),
+                deliveryBatchesCount: demoBatches.length
+            });
             setMeta(getDemoMetadata());
             return;
         }
         const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
-        const [metricsRes, metaRes] = await Promise.all([
+        const [metricsRes, metaRes, batchesRes] = await Promise.all([
             supabase.rpc('get_dashboard_metrics', { 
                 p_channel_partner: targetPartner 
             }),
             supabase.from('metadata').select('category, label'),
+            supabase.from('delivery_batches').select('*', { count: 'exact', head: true })
         ]);
 
+        let finalMetrics = {
+            totalProjects: 0, completedCount: 0, liveProjects: 0, loanCount: 0, cashCount: 0, stageCounts: {}, deliveryBatchesCount: 0
+        };
+
         if (!metricsRes.error && metricsRes.data) {
-            setMetrics(metricsRes.data);
+            finalMetrics = { ...metricsRes.data };
         } else {
             console.error('Metrics fetch error:', metricsRes.error);
-            setMetrics({
-                totalProjects: 0, completedCount: 0, liveProjects: 0, loanCount: 0, cashCount: 0, stageCounts: {}
-            });
         }
+        
+        if (!batchesRes.error) {
+            finalMetrics.deliveryBatchesCount = batchesRes.count || 0;
+        }
+        setMetrics(finalMetrics);
 
         if (!metaRes.error && metaRes.data) {
             const grouped = {};
@@ -731,6 +742,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     // Sidebar counts now come straight from the server metrics to avoid downloading all records
     const subsidyTagCount = metrics?.subsidyTagCount || 0;
     const loanTagCount = metrics?.loanTagCount || 0;
+    const deliveryBatchesCount = metrics?.deliveryBatchesCount || 0;
     const installationTagCount = metrics?.installationTagCount || 0;
     const stageCounts = useMemo(() => {
         const raw = metrics?.stageCounts || {};
@@ -795,7 +807,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                     style={{ minHeight: 0, maxHeight: 'calc(100vh - 150px)', WebkitOverflowScrolling: 'touch' }}
                 >
                     <NavBtn view="dashboard" icon={LayoutDashboard} label="Dashboard" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
-                    <NavBtn view="delivery_batches" icon={Truck} label="Delivery Batches" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                    <NavBtn view="delivery_batches" icon={Truck} label="Delivery Batches" count={deliveryBatchesCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     <NavBtn view="subsidy" icon={Tag} label="Subsidy Tags" count={subsidyTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     <NavBtn view="loan_tags" icon={IndianRupee} label="Loan Tags" count={loanTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     <NavBtn view="installation_tags" icon={Wrench} label="Installation Tags" count={installationTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
@@ -875,11 +887,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                         {/* ── Global search (always visible) ── */}
                         <div className="relative" ref={globalSearchRef}>
                             <Search className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                            <input
-                                type="text"
-                                placeholder={isChannelPartnerOffice ? `Search ${partnerName} leads...` : "Search all stages..."}
-                                value={globalSearch}
-                                onChange={e => setGlobalSearch(e.target.value)}
+                            <input type="text" readOnly onFocus={(e) => e.target.removeAttribute('readonly')}  name="crm_dash_global_search_unique" autoComplete="off" autoCorrect="off" spellCheck="false" placeholder={isChannelPartnerOffice ? `Search ${partnerName} leads...` : "Search all stages..."} value={globalSearch} onChange={e => setGlobalSearch(e.target.value)}
                                 onFocus={() => globalResults.length > 0 && setShowGlobalDrop(true)}
                                 className="pl-9 pr-4 py-2 bg-stone-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 w-40 lg:w-60"
                             />
@@ -905,8 +913,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                         {currentView === 'stages' && (
                             <div className="relative hidden lg:block">
                                 <Search className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                                <input type="text" placeholder="Filter this stage..." value={stageSearch}
-                                    onChange={e => setStageSearch(e.target.value)}
+                                <input type="text" readOnly onFocus={(e) => e.target.removeAttribute('readonly')}  name="crm_dash_stage_search_unique" autoComplete="off" autoCorrect="off" spellCheck="false" placeholder="Filter this stage..." value={stageSearch} onChange={e => setStageSearch(e.target.value)}
                                     className="pl-9 pr-4 py-2 bg-stone-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 w-40" />
                             </div>
                         )}

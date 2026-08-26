@@ -97,6 +97,18 @@ export default function RegistrationTab({
 
                     <div className="flex flex-col gap-2">
                         <CheckboxRemarkItem
+                            label="Application Acknowledgment *"
+                            field="application_acknowledgment"
+                            value={editData.application_acknowledgment}
+                            onChange={handleChange}
+                            isEditing={isEditable}
+                            documents={documents}
+                            onUpload={onFileUpload}
+                            onDelete={onFileDelete}
+                            onPreview={onFilePreview}
+                            onUpdateRemark={onUpdateRemark}
+                        />
+                        <CheckboxRemarkItem
                             label="Feasibility Document *"
                             field="feasibilty_document"
                             value={editData.feasibilty_document}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { History, Paperclip, IndianRupee, CheckCircle2, Lock, Edit3, X } from 'lucide-react';
+import { History, Paperclip, IndianRupee, CheckCircle2, Lock, Edit3, X, ClipboardList } from 'lucide-react';
 import { LOAN_TAGS, LOAN_TAG_COLORS } from '../../constants';
-import { CheckboxRemarkItem } from './shared';
+import { CheckboxRemarkItem, EditableDetailItem } from './shared';
 import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
 
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
@@ -29,6 +29,7 @@ export default function LoanTab({
     const [isCustomEditing, setIsCustomEditing] = useState(false);
     const [savedSuccess, setSavedSuccess] = useState(false);
     const [isPaymentsDirty, setIsPaymentsDirty] = useState(false);
+    const [isEditingAppDetails, setIsEditingAppDetails] = useState(false);
 
     const handleLocalChange = (field, val) => {
         if (handleChange) {
@@ -177,6 +178,47 @@ export default function LoanTab({
                 </div>
             ) : (
                 <>
+                    {/* Loan Application Details */}
+                    <section className="bg-white p-5 rounded-2xl border border-stone-200/70 shadow-xs space-y-4">
+                        <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+                            <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
+                                <ClipboardList size={12} className="text-amber-500" /> Application Details
+                            </h4>
+                            {isEditable && (
+                                <button 
+                                    type="button"
+                                    onClick={() => setIsEditingAppDetails(!isEditingAppDetails)}
+                                    className="text-stone-400 hover:text-amber-600 transition-colors p-1 cursor-pointer"
+                                >
+                                    {isEditingAppDetails ? <X size={14} /> : <Edit3 size={13} />}
+                                </button>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="p-1">
+                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Jansamarth Application No</p>
+                                {isEditingAppDetails ? (
+                                    <input 
+                                        type="text" 
+                                        placeholder="Enter number..."
+                                        value={editData.jansamarth_application_no || ''}
+                                        onChange={(e) => handleLocalChange('jansamarth_application_no', e.target.value)}
+                                        onBlur={async (e) => {
+                                            if (editData.jansamarth_application_no !== customer.jansamarth_application_no) {
+                                                await onUpdate(customer.id, { jansamarth_application_no: e.target.value });
+                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Jansamarth Application No`, '', customer.id);
+                                                fetchLogs();
+                                            }
+                                        }}
+                                        className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition shadow-sm"
+                                    />
+                                ) : (
+                                    <p className="text-xs font-bold text-stone-800 break-words">{editData.jansamarth_application_no || '–'}</p>
+                                )}
+                            </div>
+                        </div>
+                    </section>
+
                     {/* 1. Loan Documents Checklist */}
                     <section className="bg-white p-5 rounded-2xl border border-stone-200/70 shadow-xs space-y-3">
                         <div className="flex items-center justify-between border-b border-stone-100 pb-2">
@@ -187,6 +229,32 @@ export default function LoanTab({
                         </div>
 
                         <div className="flex flex-col gap-2">
+                            
+
+                            <CheckboxRemarkItem
+                                label="Vendor Feasibility *"
+                                field="vendor_feasibility"
+                                value={editData.vendor_feasibility}
+                                onChange={handleLocalChange}
+                                isEditing={isEditable}
+                                documents={documents}
+                                onUpload={onFileUpload}
+                                onDelete={onFileDelete}
+                                onPreview={onFilePreview}
+                                onUpdateRemark={onUpdateRemark}
+                            />
+                            <CheckboxRemarkItem
+                                label="Site Feasibility *"
+                                field="site_feasibility"
+                                value={editData.site_feasibility}
+                                onChange={handleLocalChange}
+                                isEditing={isEditable}
+                                documents={documents}
+                                onUpload={onFileUpload}
+                                onDelete={onFileDelete}
+                                onPreview={onFilePreview}
+                                onUpdateRemark={onUpdateRemark}
+                            />
                             <CheckboxRemarkItem
                                 label="Digital Certificate"
                                 field="digital_certificate"

@@ -238,7 +238,10 @@ export default function App() {
             {/* Secret Backdoor Switcher (Ctrl + Shift + S) */}
             <DevRoleSwitcher
                 currentUser={user}
-                onSwitchUser={setUser}
+                onSwitchUser={(newUser) => {
+                    setUser(newUser);
+                    setIsDemoMode(false);
+                }}
                 isOpen={devSwitcherOpen}
                 onToggle={setDevSwitcherOpen}
                 isDemoMode={isDemoMode}

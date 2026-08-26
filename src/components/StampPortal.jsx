@@ -184,6 +184,7 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
         ["First Party", subDetails.first_party],
         ["Second Party", subDetails.second_party],
         ["Purchased By", subDetails.purchased_party],
+        ["Stamp Value", subDetails.stamp_value ? `₹${subDetails.stamp_value}` : ''],
         ["Description", subDetails.stamp_description],
     ].filter(([, v]) => v);
 
@@ -418,7 +419,7 @@ export default function StampPortal({ user, onLogout, isDemoMode = false }) {
     const fetchCustomers = useCallback(async () => {
         setLoading(true);
         if (isDemoMode) {
-            const demoStampList = DEMO_CUSTOMERS.filter(c => c.stage === "DISCOM SUBMISSION");
+            const demoStampList = DEMO_CUSTOMERS.filter(c => c.discom_submission?.sent_to_stamp_maker === true && !c.discom_submission?.stamp_sent);
             setCustomers(demoStampList);
             setLoading(false);
             return;
@@ -427,7 +428,7 @@ export default function StampPortal({ user, onLogout, isDemoMode = false }) {
             const { data, error } = await supabase
                 .from("admin")
                 .select("*")
-                .eq("stage", "DISCOM SUBMISSION")
+                // Remove strict stage eq to allow records that were sent to stamp maker but might not be formally in DISCOM SUBMISSION stage
                 .is("deleted_at", null)
                 .order("created_at", { ascending: false });
 
@@ -466,7 +467,6 @@ export default function StampPortal({ user, onLogout, isDemoMode = false }) {
                 }
 
                 const isStampActive = record && !record.deleted_at &&
-                    record.stage === 'DISCOM SUBMISSION' &&
                     record.discom_submission?.sent_to_stamp_maker === true &&
                     !record.discom_submission?.stamp_sent;
 

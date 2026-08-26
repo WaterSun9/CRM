@@ -115,12 +115,12 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
 
             if (isAgent2) {
                 // Agent 2 (Sub-Agent) filters strictly by sub_channel_partner
-                const subFilter = user.name;
-                query = query.eq('sub_channel_partner', subFilter);
+                const subFilter = (user.name || '').trim();
+                query = query.ilike('sub_channel_partner', `%${subFilter}%`);
             } else {
                 // Main Channel Partner / Agent
-                const cpFilter = user.channel_partner || user.name;
-                query = query.eq('channel_partner', cpFilter);
+                const cpFilter = (user.channel_partner || user.name || '').trim();
+                query = query.ilike('channel_partner', `%${cpFilter}%`);
             }
 
             const { data, error } = await query;
@@ -181,7 +181,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
             }
         };
         fetchMetadata();
-    }, []);
+    }, [user?.id, user?.name, user?.channel_partner, isAgent2]);
 
     // Sync selectedCust state with fresh database values when updates occur
     useEffect(() => {
@@ -202,7 +202,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
                 .finally(() => setLoadingDocs(false));
 
             setEditData({ ...selectedCust });
-            setActiveCustomerStage(selectedCust.stage);
+            setActiveCustomerStage(selectedCust.stage === 'COMPLETED' ? 'LEADS' : selectedCust.stage);
 
             if (selectedCust.stage === 'MATERIAL ORDER') {
                 setActiveDealerTab('ORDER');
@@ -470,7 +470,7 @@ export default function AgentPortal({ user, onLogout, isDemoMode = false }) {
 
     const handleSelectCustomerForStage = (cust, stageTab) => {
         setEditData({});
-        setActiveCustomerStage(stageTab);
+        setActiveCustomerStage(stageTab === 'COMPLETED' ? 'LEADS' : stageTab);
         setSelectedCust(cust);
     };
 

@@ -225,6 +225,9 @@ export const HOLD_STATUS_TAGS = [
 // DOCUMENT TYPE LABELS
 // ════════════════════════════════════════════════════════════
 export const DOC_TYPE_LABELS = {
+    application_acknowledgment: 'Application Acknowledgment',
+    vendor_feasibility: 'Vendor Feasibility',
+    site_feasibility: 'Site Feasibility',
     adhaar_card_front: 'Aadhaar Card (Front)',
     adhaar_card_back: 'Aadhaar Card (Back)',
     pan_card: 'PAN Card',

@@ -112,6 +112,10 @@ const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', 
 export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab, isDemoMode = false }) {
     const [activeTab, setActiveTab] = useState(() => {
         if (defaultTab) return defaultTab;
+        
+        // Force completed customers to open on the LEADS tab by default
+        if ((customer?.stage || '').trim().toUpperCase() === 'COMPLETED') return 'LEADS';
+        
         if (typeof window !== 'undefined') {
             const saved = window.sessionStorage.getItem('watersun_modal_active_tab');
             if (saved) return saved;
@@ -127,6 +131,15 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             window.sessionStorage.setItem('watersun_modal_active_tab', activeTab);
         }
     }, [activeTab]);
+
+    // Prevent any scenario where the active tab becomes COMPLETED or CUSTOMER_CARD (since they were removed from the nav)
+    // We allow LOST PROJECT because there is an explicit "Move to Lost Project" button that needs to open it.
+    useEffect(() => {
+        if (activeTab === 'COMPLETED' || activeTab === 'CUSTOMER_CARD') {
+            setActiveTab('LEADS');
+        }
+    }, [activeTab]);
+
 
     const handleEditDataChange = (updater) => {
         setIsFormDirty(true);
@@ -408,12 +421,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             if (replacingDocId) {
                 const oldDoc = documents.find(d => d.id === replacingDocId);
                 if (oldDoc) {
-                    await deleteDocument(oldDoc.id, oldDoc.storage_path);
+                    deleteDocument(oldDoc.id, oldDoc.storage_path);
                 }
             } else if (docType) {
                 const existingDocs = documents.filter(d => d.doc_type === docType);
                 for (const oldDoc of existingDocs) {
-                    await deleteDocument(oldDoc.id, oldDoc.storage_path);
+                    deleteDocument(oldDoc.id, oldDoc.storage_path);
                 }
             }
 
@@ -430,15 +443,15 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 // Automatically mark checklist field as true and persist
                 if (docType) {
                     setEditData(prev => ({ ...prev, [docType]: true }));
-                    await onUpdate(customer.id, { [docType]: true });
+                    onUpdate(customer.id, { [docType]: true }).catch(console.error);
                 }
-                await logActivity(
+                logActivity(
                     user.id,
                     'update',
                     `${customer.customer_name}: Uploaded document (${file.name})`,
                     '',
                     customer.id
-                );
+                ).catch(console.error);
                 fetchLogs();
             }
         } catch (err) {
@@ -474,7 +487,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleDeleteDoc = async (doc) => {
-        await deleteDocument(doc.id, doc.storage_path);
+        deleteDocument(doc.id, doc.storage_path);
         setDocuments(prev => prev.filter(d => d.id !== doc.id));
         await logActivity(
             user.id,
@@ -1472,7 +1485,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         ...PRIMARY_STAGES.filter(s => {
                             if (s.id === 'LOAN' && editData.payment_type?.trim().toLowerCase() === 'cash') return false;
                             if (s.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') return false;
-                            if (s.id === 'COMPLETED') return false;
+                            if (s.id === 'COMPLETED' || s.id === 'LOST PROJECT') return false;
                             return true;
                         }).map(s => ({ id: s.id, label: s.label, icon: s.icon })),
                         { id: 'DOCUMENTS', label: 'Documents', icon: FolderOpen },

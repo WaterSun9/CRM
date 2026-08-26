@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabase';
 import { PRIMARY_STAGES } from '../constants';
-import { formatINR, toIndianCommas, logActivity } from '../utils';
+import { formatINR, toIndianCommas, logActivity, formatInputValue, parseIndianNumber } from '../utils';
 import { getStoredDemoCustomers } from '../mock/demoData';
 
 export default function DeliveryBatchesView({ 
@@ -19,9 +19,12 @@ export default function DeliveryBatchesView({
     const [batches, setBatches] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [monthFilter, setMonthFilter] = useState('');
+    const [appliedMonthFilter, setAppliedMonthFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL', 'IN_TRANSIT', 'DELIVERED'
     const [expandedBatchId, setExpandedBatchId] = useState(null);
     const [allCustomers, setAllCustomers] = useState([]);
+    const [localStatusOverrides, setLocalStatusOverrides] = useState({});
 
     // Fetch all customers for the batch dropdown and manifest
     const fetchAllCustomers = async () => {
@@ -69,6 +72,7 @@ export default function DeliveryBatchesView({
     });
 
     const [projectSearchQuery, setProjectSearchQuery] = useState('');
+    
     const [projectStageFilter, setProjectStageFilter] = useState('MATERIAL DELIVERY');
     const [saving, setSaving] = useState(false);
     const [vendorsList, setVendorsList] = useState([]);
@@ -174,7 +178,8 @@ export default function DeliveryBatchesView({
             driver_name: '',
             driver_phone: '',
             vehicle_number: '',
-            vendor: vendorsList[0] || '',
+            rent_amount: '',
+            car_rent_paid: '',
             notes: '',
             status: 'IN_TRANSIT',
             selectedProjectIds: []
@@ -194,7 +199,8 @@ export default function DeliveryBatchesView({
             driver_name: batch.driver_name || '',
             driver_phone: batch.driver_phone || '',
             vehicle_number: batch.vehicle_number || '',
-            vendor: batch.vendor || '',
+            rent_amount: batch.rent_amount || '',
+            car_rent_paid: batch.car_rent_paid || '',
             notes: batch.notes || '',
             status: batch.status || 'IN_TRANSIT',
             selectedProjectIds: batch.project_ids || []
@@ -300,9 +306,40 @@ export default function DeliveryBatchesView({
     };
 
     // Filter projects for the creation selector
+    
+    const checkMonthMatch = (dateStr, monthFilterStr) => {
+        if (!monthFilterStr) return true;
+        if (!dateStr) return false;
+        
+        // monthFilterStr is "YYYY-MM"
+        // Try simple startsWith first
+        if (dateStr.startsWith(monthFilterStr)) return true;
+        
+        // Try parsing the date
+        try {
+            // Handle DD-MM-YYYY manually if present
+            let parsedDate = new Date(dateStr);
+            if (isNaN(parsedDate.getTime()) && typeof dateStr === 'string' && dateStr.includes('-')) {
+                const parts = dateStr.split('-');
+                if (parts[0].length === 2 && parts[2].length === 4) {
+                    parsedDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                }
+            }
+            if (isNaN(parsedDate.getTime())) return false;
+            
+            const y = parsedDate.getFullYear();
+            const m = String(parsedDate.getMonth() + 1).padStart(2, '0');
+            return `${y}-${m}` === monthFilterStr;
+        } catch (e) {
+            return false;
+        }
+    };
+
     const eligibleProjects = useMemo(() => {
         return customers.filter(c => {
             if (c.deleted_at) return false;
+            const isAvailable = !c.delivery_batch_id || (editingBatch && c.delivery_batch_id === editingBatch.batch_no);
+            if (!isAvailable) return false;
             const matchesQuery = !projectSearchQuery || 
                 (c.customer_name || '').toLowerCase().includes(projectSearchQuery.toLowerCase()) ||
                 (c.phone_number || '').includes(projectSearchQuery) ||
@@ -322,11 +359,11 @@ export default function DeliveryBatchesView({
             const matchesQuery = !searchQuery ||
                 (b.batch_no || '').toLowerCase().includes(q) ||
                 (b.driver_name || '').toLowerCase().includes(q) ||
-                (b.vehicle_number || '').toLowerCase().includes(q) ||
-                (b.vendor || '').toLowerCase().includes(q);
-            return matchesStatus && matchesQuery;
+                (b.vehicle_number || '').toLowerCase().includes(q);
+            const matchesMonth = checkMonthMatch(b.dispatch_date, appliedMonthFilter);
+            return matchesStatus && matchesQuery && matchesMonth;
         });
-    }, [batches, searchQuery, statusFilter]);
+    }, [batches, searchQuery, statusFilter, appliedMonthFilter]);
 
     // Top Aggregate Metrics
     const metrics = useMemo(() => {
@@ -425,28 +462,59 @@ export default function DeliveryBatchesView({
                     <Search className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
                     <input
                         type="text"
-                        placeholder="Search batch #, driver, vehicle, vendor..."
+                        placeholder="Search batch #, driver, vehicle..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full bg-stone-50 border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-stone-800 placeholder-stone-400 outline-none focus:bg-white focus:border-amber-400 transition"
                     />
                 </div>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                    {['ALL', 'IN_TRANSIT', 'DELIVERED'].map((status) => (
-                        <button
-                            key={status}
-                            type="button"
-                            onClick={() => setStatusFilter(status)}
-                            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                                statusFilter === status
-                                    ? 'bg-stone-900 text-white shadow-xs'
-                                    : 'bg-stone-100 text-stone-600 hover:bg-stone-200/70'
-                            }`}
+                <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+                    {/* Month Filter Moved to Right Side */}
+                    <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mr-1">Dispatch Month</span>
+                        <input
+                            type="month"
+                            value={monthFilter}
+                            onChange={(e) => setMonthFilter(e.target.value)}
+                            className="bg-stone-50 border border-stone-200 rounded-xl px-2 py-1.5 text-xs font-medium text-stone-800 outline-none focus:bg-white focus:border-amber-400 transition"
+                        />
+                        <button 
+                            type="button" 
+                            onClick={() => setAppliedMonthFilter(monthFilter)} 
+                            className="bg-stone-800 hover:bg-stone-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition"
                         >
-                            {status === 'ALL' ? 'All Batches' : status === 'IN_TRANSIT' ? 'In Transit' : 'Delivered'}
+                            Apply
                         </button>
-                    ))}
+                        {appliedMonthFilter && (
+                            <button 
+                                type="button" 
+                                onClick={() => { setMonthFilter(''); setAppliedMonthFilter(''); }} 
+                                className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition"
+                            >
+                                Clear
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="h-6 w-px bg-stone-200 hidden sm:block"></div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        {['ALL', 'IN_TRANSIT', 'DELIVERED'].map((status) => (
+                            <button
+                                key={status}
+                                type="button"
+                                onClick={() => setStatusFilter(status)}
+                                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                    statusFilter === status
+                                        ? 'bg-stone-900 text-white shadow-xs'
+                                        : 'bg-stone-100 text-stone-600 hover:bg-stone-200/70'
+                                }`}
+                            >
+                                {status === 'ALL' ? 'All Batches' : status === 'IN_TRANSIT' ? 'In Transit' : 'Delivered'}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
@@ -479,6 +547,7 @@ export default function DeliveryBatchesView({
                         const linkedProjects = customers.filter(c => (batch.project_ids || []).includes(c.id));
                         const batchKwp = linkedProjects.reduce((sum, p) => sum + (parseFloat(p.system_capacity_kwp) || 0), 0);
                         const totalModules = linkedProjects.reduce((sum, p) => sum + (parseInt(p.no_of_modules) || 0), 0);
+                        const isAllDelivered = linkedProjects.length > 0 && linkedProjects.every(p => (localStatusOverrides[p.id] || p.delivery_status) === 'DELIVERED');
 
                         return (
                             <div 
@@ -492,13 +561,30 @@ export default function DeliveryBatchesView({
                                             <span className="text-xs font-black text-stone-950 uppercase tracking-wider bg-stone-100 px-2.5 py-1 rounded-lg">
                                                 {batch.batch_no || batch.id}
                                             </span>
-                                            <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
-                                                batch.status === 'DELIVERED' 
-                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                            }`}>
-                                                {batch.status === 'DELIVERED' ? 'Delivered' : 'In Transit'}
-                                            </span>
+                                            <select
+                                                value={batch.status || 'IN_TRANSIT'}
+                                                onChange={async (e) => {
+                                                    const newStatus = e.target.value;
+                                                    const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, status: newStatus } : b);
+                                                    setBatches(updatedBatches);
+                                                    if (isDemoMode) {
+                                                        localStorage.setItem('watersun_demo_delivery_batches', JSON.stringify(updatedBatches));
+                                                    } else {
+                                                        localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
+                                                        try {
+                                                            await supabase.from('delivery_batches').update({ status: newStatus }).eq('id', batch.id);
+                                                        } catch(err) {}
+                                                    }
+                                                }}
+                                                className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full outline-none cursor-pointer appearance-none ${
+                                                    batch.status === 'DELIVERED' 
+                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                                        : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                }`}
+                                            >
+                                                <option value="IN_TRANSIT">In Transit</option>
+                                                <option value="DELIVERED">Delivered</option>
+                                            </select>
                                             <span className="text-xs text-stone-400 font-medium">
                                                 Dispatched: <strong className="text-stone-700">{batch.dispatch_date || '–'}</strong>
                                             </span>
@@ -518,6 +604,40 @@ export default function DeliveryBatchesView({
                                             {batch.vendor && (
                                                 <span className="flex items-center gap-1 font-medium text-stone-500">
                                                     <Package size={12} className="text-stone-400" /> Vendor: <strong className="text-stone-700">{batch.vendor}</strong>
+                                                </span>
+                                            )}
+                                            <span className="h-3 w-px bg-stone-300 mx-1"></span>
+                                            <div className="flex items-center gap-1.5 font-medium text-stone-500">
+                                                <span className="text-[10px] uppercase font-bold text-stone-400">Car Rent Paid:</span>
+                                                <select
+                                                    value={batch.car_rent_paid || 'No'}
+                                                    onChange={async (e) => {
+                                                        const val = e.target.value;
+                                                        const userIdentifier = currentUser?.name || currentUser?.email || 'Admin';
+                                                        const timestamp = new Date().toISOString();
+                                                        
+                                                        const updates = { 
+                                                            car_rent_paid: val,
+                                                            car_rent_paid_by: val === 'Yes' ? userIdentifier : null,
+                                                            car_rent_paid_at: val === 'Yes' ? timestamp : null
+                                                        };
+                                                        
+                                                        const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, ...updates } : b);
+                                                        setBatches(updatedBatches);
+                                                        
+                                                        if (!isDemoMode) {
+                                                            try { await supabase.from('delivery_batches').update(updates).eq('id', batch.id); } catch(err) {}
+                                                        }
+                                                    }}
+                                                    className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded cursor-pointer outline-none shadow-xs ${batch.car_rent_paid === 'Yes' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}
+                                                >
+                                                    <option value="No">No</option>
+                                                    <option value="Yes">Yes</option>
+                                                </select>
+                                            </div>
+                                            {batch.car_rent_paid === 'Yes' && batch.car_rent_paid_by && (
+                                                <span className="text-[9px] text-stone-400 italic">
+                                                    (Paid by {batch.car_rent_paid_by} on {batch.car_rent_paid_at ? new Date(batch.car_rent_paid_at).toLocaleDateString('en-IN') : 'Unknown'})
                                                 </span>
                                             )}
                                         </div>
@@ -570,14 +690,46 @@ export default function DeliveryBatchesView({
                                         <span>Total Modules: <strong className="text-stone-900">{totalModules} Panels</strong></span>
                                     </div>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => setExpandedBatchId(isExpanded ? null : batch.id)}
-                                        className="text-amber-700 hover:text-amber-800 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-                                    >
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            type="button"
+                                            disabled={isAllDelivered}
+                                            onClick={async () => {
+                                                const newOverrides = { ...localStatusOverrides };
+                                                linkedProjects.forEach(p => newOverrides[p.id] = 'DELIVERED');
+                                                setLocalStatusOverrides(newOverrides);
+
+                                                const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, status: 'DELIVERED' } : b);
+                                                setBatches(updatedBatches);
+                                                
+                                                if (!isDemoMode) {
+                                                    try {
+                                                        await supabase.from('delivery_batches').update({ status: 'DELIVERED' }).eq('id', batch.id);
+                                                        const projectIds = linkedProjects.map(p => p.id);
+                                                        if (projectIds.length > 0) {
+                                                            await supabase.from('admin').update({ delivery_status: 'DELIVERED' }).in('id', projectIds);
+                                                        }
+                                                        if (onRefreshCustomers) onRefreshCustomers();
+                                                    } catch(err) {}
+                                                }
+                                            }}
+                                            className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider transition shadow-xs border ${
+                                                isAllDelivered 
+                                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200 cursor-default opacity-80' 
+                                                    : 'bg-stone-100 hover:bg-emerald-50 text-stone-600 hover:text-emerald-700 border-stone-200 hover:border-emerald-200 cursor-pointer'
+                                            }`}
+                                        >
+                                            {isAllDelivered ? '✓ All Delivered' : 'Mark All Delivered'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setExpandedBatchId(isExpanded ? null : batch.id)}
+                                            className="text-amber-700 hover:text-amber-800 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                                        >
                                         {isExpanded ? 'Hide project details' : `View ${linkedProjects.length} drop-off locations`}
                                         {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                                     </button>
+                                    </div>
                                 </div>
 
                                 {/* Expandable Project Drop-Off Table */}
@@ -589,9 +741,9 @@ export default function DeliveryBatchesView({
                                                     <th className="pb-2 w-8">#</th>
                                                     <th className="pb-2">Customer & Contact</th>
                                                     <th className="pb-2">Village / Sub-Division</th>
-                                                    <th className="pb-2">System Specs</th>
-                                                    <th className="pb-2">Inverter & Serials</th>
+                                                    
                                                     <th className="pb-2">Current Stage</th>
+                                                    <th className="pb-2">Location Status</th>
                                                     <th className="pb-2 text-right">Action</th>
                                                 </tr>
                                             </thead>
@@ -607,22 +759,33 @@ export default function DeliveryBatchesView({
                                                             <p className="font-semibold text-stone-800">{proj.villages || '–'}</p>
                                                             <p className="text-[10px] text-stone-400">{proj.sub_divisions || ''}</p>
                                                         </td>
-                                                        <td className="py-2.5">
-                                                            <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[11px]">
-                                                                {proj.system_capacity_kwp ? `${proj.system_capacity_kwp} kWp` : '–'}
-                                                            </span>
-                                                            <span className="text-[10px] text-stone-500 block mt-0.5">
-                                                                {proj.no_of_modules ? `${proj.no_of_modules} Modules` : ''}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-2.5 text-[11px]">
-                                                            <p className="font-semibold text-stone-800">{proj.inverter_make || '–'}</p>
-                                                            <p className="text-[10px] font-mono text-stone-500">{proj.inverter_serial_no || '–'}</p>
-                                                        </td>
+                                                        
                                                         <td className="py-2.5">
                                                             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-stone-100 text-stone-800 border border-stone-200">
                                                                 {PRIMARY_STAGES.find(s => s.id === proj.stage)?.label || proj.stage}
                                                             </span>
+                                                        </td>
+                                                        <td className="py-2.5">
+                                                            <select
+                                                                value={(localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING')}
+                                                                onChange={async (e) => {
+                                                                    const newStat = e.target.value;
+                                                                    setLocalStatusOverrides(prev => ({ ...prev, [proj.id]: newStat }));
+                                                                    try {
+                                                                        await supabase.from('admin').update({ delivery_status: newStat }).eq('id', proj.id);
+                                                                        if (onRefreshCustomers) onRefreshCustomers();
+                                                                    } catch(err) {}
+                                                                }}
+                                                                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md outline-none cursor-pointer ${
+                                                                    (localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING') === 'DELIVERED' 
+                                                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                                                        : 'bg-stone-100 text-stone-600 border border-stone-300'
+                                                                }`}
+                                                            >
+                                                                <option value="PENDING">Pending</option>
+                                                                <option value="IN_TRANSIT">In Transit</option>
+                                                                <option value="DELIVERED">Delivered</option>
+                                                            </select>
                                                         </td>
                                                         <td className="py-2.5 text-right">
                                                             <button
@@ -751,19 +914,20 @@ export default function DeliveryBatchesView({
 
                                     <div>
                                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">
-                                            Warehouse / Allotted Vendor <span className="text-red-500">*</span>
+                                            Rent Amount <span className="text-red-500">*</span>
                                         </label>
-                                        <select
-                                            value={batchForm.vendor}
-                                            onChange={e => setBatchForm(p => ({ ...p, vendor: e.target.value }))}
-                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-bold text-stone-800 outline-none focus:border-amber-400"
-                                        >
-                                            <option value="">Select Vendor...</option>
-                                            {vendorsList.map(v => (
-                                                <option key={v} value={v}>{v}</option>
-                                            ))}
-                                        </select>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 text-xs font-bold">₹</span>
+                                            <input
+                                                type="text"
+                                                value={formatInputValue(batchForm.rent_amount)}
+                                                onChange={e => setBatchForm(p => ({ ...p, rent_amount: parseIndianNumber(e.target.value) }))}
+                                                placeholder="0"
+                                                className="w-full bg-white border border-stone-200 rounded-xl pl-6 pr-3 py-2 text-xs font-bold text-stone-800 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                                            />
+                                        </div>
                                     </div>
+                                    
                                 </div>
                             </div>
 
@@ -787,6 +951,7 @@ export default function DeliveryBatchesView({
                                             onChange={e => setProjectSearchQuery(e.target.value)}
                                             className="bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1 text-xs outline-none focus:bg-white focus:border-amber-400 w-44"
                                         />
+                                        
                                         <select
                                             value={projectStageFilter}
                                             onChange={e => setProjectStageFilter(e.target.value)}
@@ -885,7 +1050,7 @@ export default function DeliveryBatchesView({
                             <div className="flex items-center gap-3">
                                 <button
                                     type="button"
-                                    onClick={handlePrintChallan}
+                                    onClick={handlePrintBatch}
                                     className="bg-amber-500 hover:bg-amber-400 text-stone-950 px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md"
                                 >
                                     <Printer size={14} /> Print Document
@@ -931,10 +1096,14 @@ export default function DeliveryBatchesView({
                                             <td className="p-2 font-bold text-stone-900">{printingBatch.driver_phone || '–'}</td>
                                         </tr>
                                         <tr>
-                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Allotted Vendor / Point:</td>
-                                            <td className="p-2 font-bold text-stone-900">{printingBatch.vendor || '–'}</td>
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Rent Amount:</td>
+                                            <td className="p-2 font-bold text-stone-900">{printingBatch.rent_amount ? `₹ ${toIndianCommas(printingBatch.rent_amount)}` : '–'}</td>
                                             <td className="p-2 bg-stone-50 font-bold text-stone-600">Total Sites:</td>
                                             <td className="p-2 font-bold text-stone-900">{(printingBatch.project_ids || []).length} Drop-off Locations</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-2 bg-stone-50 font-bold text-stone-600">Car Rent Paid:</td>
+                                            <td className="p-2 font-bold text-stone-900" colSpan={3}>{printingBatch.car_rent_paid || '–'}</td>
                                         </tr>
                                     </tbody>
                                 </table>

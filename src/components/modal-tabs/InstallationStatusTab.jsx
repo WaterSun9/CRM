@@ -29,6 +29,8 @@ export default function InstallationStatusTab({
     const [vendors, setVendors] = useState([]);
     const [sendingInfo, setSendingInfo] = useState(false);
     const [infoSentStatus, setInfoSentStatus] = useState(null);
+    const [infoSentMessage, setInfoSentMessage] = useState('');
+    const [vendorConfirm, setVendorConfirm] = useState({ isOpen: false, vendorName: '' });
 
     useEffect(() => {
         const fetchVendorsList = async () => {
@@ -320,22 +322,21 @@ export default function InstallationStatusTab({
                                         value={editData.vendor || ''}
                                         onChange={(e) => {
                                             const selectedVal = e.target.value;
-                                            // Update local state instantly
-                                            setEditData(prev => ({
-                                                ...prev,
-                                                vendor: selectedVal
-                                            }));
-                                            setInfoSentStatus(null);
-                                            // Fire‑and‑forget backend update to avoid UI blocking
-                                            onUpdate(customer.id, { vendor: selectedVal }).catch(console.error);
-                                            logActivity(
-                                                user.id,
-                                                'update',
-                                                `${customer.customer_name}: Assigned new vendor to ${selectedVal || 'None'}`,
-                                                '',
-                                                customer.id
-                                            ).catch(console.error);
-                                            fetchLogs();
+                                            if (selectedVal) {
+                                                setVendorConfirm({ isOpen: true, vendorName: selectedVal });
+                                            } else {
+                                                setEditData(prev => ({ ...prev, vendor: null }));
+                                                setInfoSentStatus(null);
+                                                onUpdate(customer.id, { vendor: null }).then(() => {
+                                                    logActivity(
+                                                        user.id,
+                                                        'update',
+                                                        `${customer.customer_name}: Removed assigned vendor`,
+                                                        '',
+                                                        customer.id
+                                                    ).then(fetchLogs);
+                                                });
+                                            }
                                         }}
                                         className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
                                     >
@@ -354,17 +355,17 @@ export default function InstallationStatusTab({
                                                 setSendingInfo(true);
                                                 setInfoSentStatus(null);
                                                 try {
-                                                    await sendVendorLeadNotification({
+                                                    const res = await sendVendorLeadNotification({
                                                         customerId: customer.id,
                                                         customer: { ...customer, ...editData },
-                                                        vendorName: editData.vendor,
-                                                        vendorEmail: 'deeproot120@gmail.com'
+                                                        vendorName: editData.vendor
                                                     });
                                                     setInfoSentStatus('sent');
+                                                    setInfoSentMessage(res.message || 'Email sent successfully');
                                                     await logActivity(
                                                         user.id,
                                                         'email',
-                                                        `Vendor notification triggered for new vendor ${editData.vendor} (deeproot120@gmail.com)`,
+                                                        `Vendor notification triggered for new vendor ${editData.vendor} (${res.recipient || 'no email found'})`,
                                                         '',
                                                         customer.id
                                                     );
@@ -383,11 +384,11 @@ export default function InstallationStatusTab({
                                             }`}
                                         >
                                             <Mail className="w-3.5 h-3.5" />
-                                            {sendingInfo ? 'Sending...' : 'Send Info to New Vendor'}
+                                            {sendingInfo ? 'Sending...' : 'Resend Info to New Vendor'}
                                         </button>
                                         {infoSentStatus === 'sent' && (
                                             <p className="text-[8px] font-bold text-emerald-600 mt-0.5 animate-in fade-in duration-200">
-                                                Email sent to deeproot120@gmail.com
+                                                {infoSentMessage}
                                             </p>
                                         )}
                                         {infoSentStatus === 'failed' && (
@@ -498,6 +499,84 @@ export default function InstallationStatusTab({
                     />
                 </div>
             </div>
+        
+            {vendorConfirm.isOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-stone-50 border-b border-stone-100 p-4">
+                            <h3 className="font-bold text-stone-800 text-sm flex items-center gap-2">
+                                <Building2 size={16} className="text-blue-500" />
+                                Confirm Vendor Assignment
+                            </h3>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <p className="text-xs text-stone-600 leading-relaxed">
+                                You are about to assign <strong className="text-stone-900">{vendorConfirm.vendorName}</strong> to this project.
+                            </p>
+                            <p className="text-xs text-stone-600 leading-relaxed">
+                                This will automatically assign them in the database and send an email notification with the project details. Do you want to proceed?
+                            </p>
+                        </div>
+                        <div className="p-4 bg-stone-50 border-t border-stone-100 flex gap-2 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setVendorConfirm({ isOpen: false, vendorName: '' })}
+                                className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 bg-white border border-stone-200 hover:bg-stone-100 transition cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const selectedVal = vendorConfirm.vendorName;
+                                    setVendorConfirm({ isOpen: false, vendorName: '' });
+                                    setSendingInfo(true);
+                                    setInfoSentStatus(null);
+                                    
+                                    setEditData(prev => ({ ...prev, vendor: selectedVal }));
+                                    await onUpdate(customer.id, { vendor: selectedVal });
+                                    
+                                    await logActivity(
+                                        user.id,
+                                        'update',
+                                        `${customer.customer_name}: Assigned vendor to ${selectedVal}`,
+                                        '',
+                                        customer.id
+                                    );
+                                    
+                                    try {
+                                        const res = await sendVendorLeadNotification({
+                                            customerId: customer.id,
+                                            customer: { ...customer, ...editData, vendor: selectedVal },
+                                            vendorName: selectedVal
+                                        });
+
+                                        setInfoSentStatus('sent');
+                                        setInfoSentMessage(res.message || 'Email sent successfully');
+                                        await logActivity(
+                                            user.id,
+                                            'email',
+                                            `Vendor notification triggered for ${selectedVal} (${res.recipient || 'no email found'})`,
+                                            '',
+                                            customer.id
+                                        );
+                                    } catch (err) {
+                                        console.error('Error sending vendor notification:', err);
+                                        setInfoSentStatus('failed');
+                                    } finally {
+                                        setSendingInfo(false);
+                                        fetchLogs();
+                                    }
+                                }}
+                                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20 transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                                <Mail size={14} />
+                                Confirm & Send Email
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

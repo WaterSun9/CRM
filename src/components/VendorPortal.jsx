@@ -1935,6 +1935,20 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                         color: #000000 !important;
                         visibility: visible !important;
                     }
+                    body.is-printing-document #native-print-portal,
+                    body.is-printing-document #native-print-portal p,
+                    body.is-printing-document #native-print-portal span,
+                    body.is-printing-document #native-print-portal td,
+                    body.is-printing-document #native-print-portal th,
+                    body.is-printing-document #native-print-portal div {
+                        font-size: 8.5pt !important;
+                    }
+                    body.is-printing-document #native-print-portal h1,
+                    body.is-printing-document #native-print-portal h2,
+                    body.is-printing-document #native-print-portal h3,
+                    body.is-printing-document #native-print-portal h4 {
+                        font-size: 10pt !important;
+                    }
                     body.is-printing-document #native-print-portal * {
                         visibility: visible !important;
                     }

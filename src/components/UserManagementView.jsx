@@ -873,9 +873,12 @@ export default function UserManagementView({ currentUser }) {
                 {/* Search */}
                 <div className="relative border-b border-stone-100 p-4 bg-stone-50/50">
                     <Search className="absolute left-7 top-6.5 w-4 h-4 text-stone-400 pointer-events-none" />
-                    <input
-                        type="text"
-                        placeholder="Search users by name, email, role, or channel partner..."
+                    <input type="text" readOnly onFocus={(e) => e.target.removeAttribute('readonly')} 
+                        name="crm_global_user_search_unique"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        spellCheck="false"
+                        placeholder="Search users by name, role, or channel partner..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         className="w-full pl-10 pr-4 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-500 placeholder:text-stone-400"

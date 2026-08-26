@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User } from 'lucide-react';
+import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User, Edit3 } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
@@ -46,6 +46,9 @@ export default function MaterialDeliveryTab({
     const [vendors, setVendors] = useState([]);
     const [sendingInfo, setSendingInfo] = useState(false);
     const [infoSentStatus, setInfoSentStatus] = useState(null);
+    const [infoSentMessage, setInfoSentMessage] = useState('');
+    const [vendorConfirm, setVendorConfirm] = useState({ isOpen: false, vendorName: '' });
+    const [localDeliveryStatus, setLocalDeliveryStatus] = useState(null);
     const [showPrintModal, setShowPrintModal] = useState(false);
     const printableDeliveryRef = useRef(null);
 
@@ -131,7 +134,7 @@ export default function MaterialDeliveryTab({
             <div className="flex flex-wrap justify-between items-center gap-2 border-b border-stone-100 pb-2">
                 <div>
                     <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Material Delivery & Dispatch</h4>
-                    <p className="text-[11px] text-stone-500 font-medium">Vendor assignment, equipment serial numbers and dispatch note.</p>
+                    <p className="text-[11px] text-stone-500 font-medium mt-1">Vendor assignment, equipment serial numbers and dispatch note.</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <button
@@ -157,30 +160,23 @@ export default function MaterialDeliveryTab({
                         <select
                             disabled={!isEditable}
                             value={editData.vendor || ''}
-                            onChange={async (e) => {
+                            onChange={(e) => {
                                 const selectedVal = e.target.value;
-                                setEditData(prev => ({ ...prev, vendor: selectedVal }));
-                                setInfoSentStatus(null);
                                 if (selectedVal) {
-                                    await onUpdate(customer.id, { vendor: selectedVal });
-                                    await logActivity(
-                                        user.id,
-                                        'update',
-                                        `${customer.customer_name}: Assigned vendor to ${selectedVal}`,
-                                        '',
-                                        customer.id
-                                    );
+                                    setVendorConfirm({ isOpen: true, vendorName: selectedVal });
                                 } else {
-                                    await onUpdate(customer.id, { vendor: null });
-                                    await logActivity(
-                                        user.id,
-                                        'update',
-                                        `${customer.customer_name}: Removed assigned vendor`,
-                                        '',
-                                        customer.id
-                                    );
+                                    setEditData(prev => ({ ...prev, vendor: null }));
+                                    setInfoSentStatus(null);
+                                    onUpdate(customer.id, { vendor: null }).then(() => {
+                                        logActivity(
+                                            user.id,
+                                            'update',
+                                            `${customer.customer_name}: Removed assigned vendor`,
+                                            '',
+                                            customer.id
+                                        ).then(fetchLogs);
+                                    });
                                 }
-                                fetchLogs();
                             }}
                             className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
                         >
@@ -202,15 +198,15 @@ export default function MaterialDeliveryTab({
                                         const res = await sendVendorLeadNotification({
                                             customerId: customer.id,
                                             customer: { ...customer, ...editData },
-                                            vendorName: editData.vendor,
-                                            vendorEmail: 'deeproot120@gmail.com'
+                                            vendorName: editData.vendor
                                         });
 
                                         setInfoSentStatus('sent');
+                                        setInfoSentMessage(res.message || 'Email sent successfully');
                                         await logActivity(
                                             user.id,
                                             'email',
-                                            `Vendor notification triggered for ${editData.vendor} (deeproot120@gmail.com)`,
+                                            `Vendor notification triggered for ${editData.vendor} (${res.recipient || 'no email found'})`,
                                             '',
                                             customer.id
                                         );
@@ -229,11 +225,11 @@ export default function MaterialDeliveryTab({
                                 }`}
                             >
                                 <Mail className="w-3.5 h-3.5" />
-                                {sendingInfo ? 'Sending...' : 'Send Info'}
+                                {sendingInfo ? 'Sending...' : 'Resend Info'}
                             </button>
                             {infoSentStatus === 'sent' && (
                                 <p className="text-[8px] font-bold text-emerald-600 mt-0.5 animate-in fade-in duration-200">
-                                    Email sent to deeproot120@gmail.com
+                                    {infoSentMessage}
                                 </p>
                             )}
                             {infoSentStatus === 'failed' && (
@@ -246,14 +242,50 @@ export default function MaterialDeliveryTab({
                 </div>
             </section>            {/* Equipment & Delivery Info (Grid) */}
             <section id="section-equip_details" className="space-y-4">
-                <SectionHeader 
-                    title="Material Delivery Details" 
-                    id="equip_details" 
-                    icon={Zap} 
-                    isEditable={isEditable} 
-                    editingSection={editingSection} 
-                    setEditingSection={setEditingSection} 
-                />
+                <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-1.5 mt-4">
+                    <h3 className="text-[9px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-2">
+                        <Zap size={12} /> Material Delivery Details
+                    </h3>
+                    <div className="flex items-center gap-3">
+                        <select
+                            value={localDeliveryStatus || editData.delivery_status || 'PENDING'}
+                            onChange={async (e) => {
+                                const newStat = e.target.value;
+                                setLocalDeliveryStatus(newStat);
+                                setEditData(p => ({ ...p, delivery_status: newStat }));
+                                try {
+                                    await onUpdate(customer.id, { delivery_status: newStat });
+                                } catch(err) {}
+                            }}
+                            className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full outline-none cursor-pointer tracking-normal shadow-xs ${
+                                (localDeliveryStatus || editData.delivery_status) === 'DELIVERED' 
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                    : (localDeliveryStatus || editData.delivery_status) === 'IN_TRANSIT'
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                        : 'bg-stone-100 text-stone-600 border border-stone-300'
+                            }`}
+                        >
+                            <option value="PENDING">Status: Pending</option>
+                            <option value="IN_TRANSIT">Status: In Transit</option>
+                            <option value="DELIVERED">Status: Delivered</option>
+                        </select>
+                        {isEditable && (
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    const isOpening = editingSection !== 'equip_details';
+                                    if (setEditingSection) {
+                                        setEditingSection(isOpening ? 'equip_details' : null);
+                                    }
+                                }}
+                                className="text-stone-400 hover:text-amber-600 transition cursor-pointer"
+                                title="Edit Section"
+                            >
+                                <Edit3 size={13} />
+                            </button>
+                        )}
+                    </div>
+                </div>
                 
                 {/* 5 Delivery Metadata Cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
@@ -483,6 +515,84 @@ export default function MaterialDeliveryTab({
                     }
                 }
             `}</style>
+        
+            {vendorConfirm.isOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-stone-50 border-b border-stone-100 p-4">
+                            <h3 className="font-bold text-stone-800 text-sm flex items-center gap-2">
+                                <Building2 size={16} className="text-blue-500" />
+                                Confirm Vendor Assignment
+                            </h3>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <p className="text-xs text-stone-600 leading-relaxed">
+                                You are about to assign <strong className="text-stone-900">{vendorConfirm.vendorName}</strong> to this project.
+                            </p>
+                            <p className="text-xs text-stone-600 leading-relaxed">
+                                This will automatically assign them in the database and send an email notification with the project details. Do you want to proceed?
+                            </p>
+                        </div>
+                        <div className="p-4 bg-stone-50 border-t border-stone-100 flex gap-2 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setVendorConfirm({ isOpen: false, vendorName: '' })}
+                                className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 bg-white border border-stone-200 hover:bg-stone-100 transition cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const selectedVal = vendorConfirm.vendorName;
+                                    setVendorConfirm({ isOpen: false, vendorName: '' });
+                                    setSendingInfo(true);
+                                    setInfoSentStatus(null);
+                                    
+                                    setEditData(prev => ({ ...prev, vendor: selectedVal }));
+                                    await onUpdate(customer.id, { vendor: selectedVal });
+                                    
+                                    await logActivity(
+                                        user.id,
+                                        'update',
+                                        `${customer.customer_name}: Assigned vendor to ${selectedVal}`,
+                                        '',
+                                        customer.id
+                                    );
+                                    
+                                    try {
+                                        const res = await sendVendorLeadNotification({
+                                            customerId: customer.id,
+                                            customer: { ...customer, ...editData, vendor: selectedVal },
+                                            vendorName: selectedVal
+                                        });
+
+                                        setInfoSentStatus('sent');
+                                        setInfoSentMessage(res.message || 'Email sent successfully');
+                                        await logActivity(
+                                            user.id,
+                                            'email',
+                                            `Vendor notification triggered for ${selectedVal} (${res.recipient || 'no email found'})`,
+                                            '',
+                                            customer.id
+                                        );
+                                    } catch (err) {
+                                        console.error('Error sending vendor notification:', err);
+                                        setInfoSentStatus('failed');
+                                    } finally {
+                                        setSendingInfo(false);
+                                        fetchLogs();
+                                    }
+                                }}
+                                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20 transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                                <Mail size={14} />
+                                Confirm & Send Email
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

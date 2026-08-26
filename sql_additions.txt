@@ -1,0 +1,5 @@
+ALTER TABLE customers 
+ADD COLUMN application_acknowledgment BOOLEAN DEFAULT false,
+ADD COLUMN vendor_feasibility BOOLEAN DEFAULT false,
+ADD COLUMN site_feasibility BOOLEAN DEFAULT false,
+ADD COLUMN gansamarth_application_no TEXT;

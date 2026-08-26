@@ -42,7 +42,7 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
     const tagColors = customer.subsidy_tag ? (SUBSIDY_TAG_COLORS[customer.subsidy_tag] || {}) : {};
 
     return (
-        <div className={`rounded-2xl border shadow-sm hover:shadow-md transition-all border-l-4 group flex flex-col ${isCompleted ? 'bg-stone-50/80 border-stone-200 border-l-emerald-500 opacity-80' : 'bg-white border-stone-100 border-l-amber-400'}`}>
+        <div className={`rounded-2xl border shadow-sm hover:shadow-md transition-all border-l-4 group flex flex-col relative ${showStageMenu ? 'z-50' : 'z-10'} ${isCompleted ? 'bg-stone-50/80 border-stone-200 border-l-emerald-500' : 'bg-white border-stone-100 border-l-amber-400'} ${isCompleted && !showStageMenu ? 'opacity-80' : ''}`}>
             {/* Clickable top section */}
             <div className="p-5 cursor-pointer flex-1" onClick={() => onSelect(customer)}>
                 <div className="flex justify-between items-start mb-3">

@@ -392,7 +392,15 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
         const cleanName = processedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const filePath = `${customerId}/${Date.now()}_${cleanName}`;
 
-        const { error: uploadError } = await supabase.storage
+        // Validate UUID for uploaded_by column
+        const isUUID = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+        
+        let sessionPromise = null;
+        if (!isUUID(passedUserId)) {
+            sessionPromise = supabase.auth.getSession().catch(() => null);
+        }
+
+        const uploadPromise = supabase.storage
             .from('customer-documents')
             .upload(filePath, processedFile, {
                 cacheControl: '3600',
@@ -400,24 +408,18 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
                 contentType: processedFile.type || 'application/octet-stream'
             });
 
-        if (uploadError) {
-            console.error('Storage upload failed:', uploadError);
-            throw new Error(uploadError.message || 'Storage upload failed');
+        const [uploadRes, sessionData] = await Promise.all([uploadPromise, sessionPromise]);
+        
+        if (uploadRes.error) {
+            console.error('Storage upload failed:', uploadRes.error);
+            throw new Error(uploadRes.error.message || 'Storage upload failed');
         }
 
-        // Validate UUID for uploaded_by column (PostgreSQL throws error if non-UUID is passed)
-        const isUUID = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
-        
         let validUserId = isUUID(passedUserId) ? passedUserId : null;
-        if (!validUserId) {
-            try {
-                const { data: sessionData } = await supabase.auth.getSession();
-                const sessionUserId = sessionData?.session?.user?.id;
-                if (isUUID(sessionUserId)) {
-                    validUserId = sessionUserId;
-                }
-            } catch {
-                validUserId = null;
+        if (!validUserId && sessionData) {
+            const sessionUserId = sessionData?.data?.session?.user?.id;
+            if (isUUID(sessionUserId)) {
+                validUserId = sessionUserId;
             }
         }
 

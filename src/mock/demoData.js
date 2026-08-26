@@ -497,7 +497,7 @@ export const MOCK_DEV_ROLES = [
     },
     {
         id: 'direct_cp_agent',
-        name: 'Channel Partner (Agent)',
+        name: 'Om Solar Direct',
         title: 'Om Solar (Direct CP)',
         email: 'direct.agent@watersun.com',
         password: 'agent',
@@ -509,7 +509,7 @@ export const MOCK_DEV_ROLES = [
     },
     {
         id: 'agent_partner_agent2',
-        name: 'Sub-Agent (Agent 2)',
+        name: 'Rahul Sharma',
         title: 'Rahul Sharma (Field Agent)',
         email: 'agent2@watersun.com',
         password: 'agent',
