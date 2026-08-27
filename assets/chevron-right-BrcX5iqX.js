@@ -1,0 +1,1 @@
+import{vt as e}from"./index-BHJwM0k5.js";var t=e(`ChevronRight`,[[`path`,{d:`m9 18 6-6-6-6`,key:`mthhwq`}]]);export{t};
