@@ -248,17 +248,14 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
 
         try {
             const finalForm = { ...form, name: uppercaseName, email: cleanEmail };
-            let userCreatedSuccessfully = false;
 
-            // 1. Try Supabase Edge Function first
+            // 1. Try Supabase Edge Function
             try {
                 const response = await supabase.functions.invoke('add_user', {
                     body: { ...finalForm, action: 'create' },
                 });
 
-                if (!response.error && !response.data?.error) {
-                    userCreatedSuccessfully = true;
-                } else if (response.data?.error) {
+                if (response.data?.error) {
                     throw new Error(response.data.error);
                 } else if (response.error) {
                     let errMsg = response.error.message || 'Edge function error';
@@ -271,61 +268,11 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
                     throw new Error(errMsg);
                 }
             } catch (edgeErr) {
-                if (edgeErr.message && !edgeErr.message.includes('FunctionsFetchError') && !edgeErr.message.includes('Failed to send')) {
-                    throw edgeErr;
-                }
-                console.warn('Edge function invoke not available, attempting client-side auth registration:', edgeErr);
+                console.error('Edge function invoke failed:', edgeErr);
+                throw new Error('Could not reach the account-creation service: ' + (edgeErr.message || 'Unknown error') + '. This usually means the add_user edge function needs to be deployed or is misconfigured — contact your developer.');
             }
 
-            // 2. Client-side Auth Sign-up fallback if edge function was unauthorized or unavailable
-            if (!userCreatedSuccessfully) {
-                try {
-                    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-                        email: finalForm.email,
-                        password: finalForm.password,
-                        options: {
-                            data: {
-                                name: finalForm.name,
-                                role: finalForm.role,
-                                user_type: finalForm.user_type,
-                                channel_partner: finalForm.channel_partner || null
-                            }
-                        }
-                    });
-
-                    if (signUpErr && !signUpErr.message.includes('already registered')) {
-                        throw signUpErr;
-                    }
-
-                    const authUserId = signUpData?.user?.id;
-                    if (authUserId) {
-                        const { error: profileErr } = await supabase
-                            .from('profiles')
-                            .insert({
-                                id: authUserId,
-                                name: finalForm.name,
-                                email: finalForm.email,
-                                role: finalForm.role,
-                                user_type: finalForm.user_type,
-                                channel_partner: finalForm.channel_partner || null,
-                                created_by: currentUser?.id && !currentUser.id.startsWith('dev-') ? currentUser.id : null,
-                                status: 'active'
-                            });
-
-                        if (!profileErr) {
-                            userCreatedSuccessfully = true;
-                        }
-                    }
-                } catch (clientAuthErr) {
-                    console.warn('Client auth fallback notice:', clientAuthErr);
-                }
-            }
-
-            if (!userCreatedSuccessfully) {
-                throw new Error("Failed to create user: all creation methods failed.");
-            }
-
-            // 4. If the created user is a vendor, check if present in vendors table; if not, auto-add
+            // If the created user is a vendor, check if present in vendors table; if not, auto-add
             if (finalForm.user_type === 'vendor' || finalForm.role === 'Vendors' || (finalForm.role || '').toLowerCase().includes('vendor')) {
                 try {
                     const { data: existingVendor } = await supabase

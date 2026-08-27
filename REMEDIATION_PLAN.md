@@ -11,6 +11,39 @@ progress · 🔴 needs your action (not something code can fix) · ⏸️ delibe
 
 ---
 
+## ✅ Agent Portal: BOM/Discom now use the EXACT SAME components as Admin
+You asked directly whether true, pixel-for-pixel parity was even
+possible and wanted honesty if not — it was possible, my first pass had
+just built simplified stand-ins instead of reusing Admin's real pieces.
+Reworked properly:
+- Fixed the real bug behind "BOM print doesn't look like admin's": a
+  broken database query silently returned zero BOM line items every
+  time (fixed — same query Admin's version uses). Also fixed the print
+  showing "General Type" instead of "Roof/Shed Type."
+- Discom Submission: reverted my first, custom-built version and
+  replaced it with a "Preview PM Surya Ghar Agreement" button that opens
+  the literal same reusable document-preview component Admin uses (not
+  a copy — the exact same one), so zoom, print, and layout are identical.
+- BOM print: replaced Agent's print mechanism (which used a different
+  technique than Admin's) with Admin's exact print method, copied
+  directly.
+Per your call: view-only for Agent — no editing or stamp-approval
+powers, those stay Admin/Office-only; this is purely about the document
+view/print matching exactly.
+
+## ✅ User Management: "Failed to create user" — real cause found, one more SQL step
+The error message was hiding the real problem. Fixed the code so real
+errors show up now (already found and fixed 2 things this surfaced):
+you were testing on the wrong port (switched, no action needed), and a
+security-rule check on the roles table doesn't currently allow every
+role the app actually has. Run this in the Supabase SQL Editor:
+```sql
+alter table public.profiles drop constraint if exists profiles_user_type_check;
+alter table public.profiles add constraint profiles_user_type_check
+  check (user_type in ('admin', 'sales', 'channel_partner_office', 'office2', 'agent2', 'agent', 'vendor', 'stamp', 'channel_partner_office_manager', 'dealer'));
+```
+Try creating a user again after that and let me know what happens.
+
 ## 🔴 CRITICAL — Delivery batches: 4 stacked bugs found, 3 fixed in code, 1 needs SQL
 
 Confirmed every one of these by testing directly against your live
@@ -73,9 +106,27 @@ whole-list-upsert problem. Fixed that too, and made your browser
 automatically clean out any old fake batches next time you load the page
 — nothing for you to manually clear.
 
-If you haven't run the cleanup SQL from Bug 4 yet, run that first, then
-try creating a batch again and let me know if it shows up and stays
-after a refresh.
+**Bug 6 (found, SQL given) — the real, final root cause of "uuid = text."**
+Same error kept happening even with Bug 5 fixed. Traced it precisely:
+you shared the actual column info and confirmed `project_ids` on the
+live table is `text[]`, not `uuid[]` — it diverged from what it should
+be at some point. That mismatch is what a trigger I gave you earlier
+(the driver-info auto-sync one, 10.14) was tripping on every time. SQL:
+```sql
+drop trigger if exists trigger_sync_driver_info on public.delivery_batches;
+
+alter table public.delivery_batches
+  alter column project_ids type uuid[] using project_ids::uuid[];
+
+create trigger trigger_sync_driver_info
+after insert or update of driver_name, driver_phone, project_ids on public.delivery_batches
+for each row
+execute function public.sync_driver_info_to_admin();
+```
+
+**Run in this order:** the cleanup SQL from Bug 4 (if not done yet),
+then the Bug 6 SQL above, then try creating a batch again and let me
+know if it shows up and stays after a refresh.
 
 ## ✅ Latest: two dev-only tools were still live on the deployed site — FIXED
 You caught this on production. Both fixed and verified they're actually

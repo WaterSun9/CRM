@@ -212,12 +212,13 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
 }
 
 export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, channel_partners = [], user }) {
-    const { showAlert } = useGlobalPopup();
+    const { showAlert, showConfirm } = useGlobalPopup();
     const [formData, setFormData] = useState({ ...DEFAULT_LEAD_FORM });
     const [pendingFiles, setPendingFiles] = useState({}); // { [doc_type]: File }
     const [previewDoc, setPreviewDoc] = useState(null); // { doc, url }
     const [saving, setSaving] = useState(false);
     const [validationErrors, setValidationErrors] = useState([]);
+    const [isFormDirty, setIsFormDirty] = useState(false);
 
     const isAgent = user?.userType === 'agent';
     const isAgent2 = user?.userType === 'agent2';
@@ -246,12 +247,14 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             setFormData(defaults);
             setPendingFiles({});
             setSaving(false);
+            setIsFormDirty(false);
         }
     }, [isOpen, user, isAgent, isAgent2, isChannelPartnerOffice, partnerName]);
 
     if (!isOpen) return null;
 
     const handleChange = (field, value) => {
+        setIsFormDirty(true);
         setValidationErrors([]);
         let processedValue = value;
         if (field === 'phone_number') {
@@ -273,10 +276,12 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     };
 
     const handleFileAttach = (docType, file) => {
+        setIsFormDirty(true);
         setPendingFiles(prev => ({ ...prev, [docType]: file }));
     };
 
     const handleFileRemove = (docType) => {
+        setIsFormDirty(true);
         setPendingFiles(prev => {
             const next = { ...prev };
             delete next[docType];
@@ -302,7 +307,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
 
     const handleSave = async (e) => {
         if (e) e.preventDefault();
-        if (saving) return; // Prevent double-submission from fast clicking
+        if (saving) return false; // Prevent double-submission from fast clicking
         
         const finalData = {
             ...formData,
@@ -323,7 +328,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             // Scroll to top
             const bodyEl = document.querySelector('.modal-body');
             if (bodyEl) bodyEl.scrollTop = 0;
-            return;
+            return false;
         }
 
         // Apply validated data
@@ -338,13 +343,29 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         setSaving(true);
         try {
             await onSave(validatedData, filesToUpload);
+            setIsFormDirty(false);
             onClose();
+            return true;
         } catch (err) {
             console.error('Error in onSave:', err);
             showAlert('Failed to save lead: ' + (err.message || err), { type: 'error' });
+            return false;
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleRequestClose = async () => {
+        if (!isFormDirty) {
+            onClose();
+            return;
+        }
+        const shouldSave = await showConfirm('This new lead has unsaved changes. Save it before closing?', {
+            confirmLabel: 'Save & Close',
+            cancelLabel: 'Keep Editing',
+            type: 'success'
+        });
+        if (shouldSave) await handleSave();
     };
 
     const moduleWpOptions = (meta['module_wp'] && meta['module_wp'].length > 0)
@@ -367,7 +388,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                     </div>
                     <div className="flex items-center gap-2">
                         <button 
-                            onClick={onClose} 
+                            onClick={handleRequestClose} 
                             className="p-2 hover:bg-stone-100 text-stone-400 hover:text-stone-700 rounded-xl transition cursor-pointer"
                         >
                             <X size={18} />
@@ -743,7 +764,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                 <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-stone-100 bg-white sticky bottom-0 z-10">
                     <button 
                         type="button"
-                        onClick={onClose}
+                        onClick={handleRequestClose}
                         disabled={saving}
                         className="px-4 py-2.5 text-xs font-bold text-stone-500 hover:text-stone-800 bg-stone-100 hover:bg-stone-200 rounded-xl transition cursor-pointer disabled:opacity-50"
                     >

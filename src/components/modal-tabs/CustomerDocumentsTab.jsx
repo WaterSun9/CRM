@@ -126,6 +126,16 @@ export default function CustomerDocumentsTab({
                                             {canDelete && (
                                                 <button
                                                     type="button"
+                                                    onClick={() => handleUpdateDocRemark(doc.id, '[RETURNED] Please upload the correct document.')}
+                                                    className="px-2.5 py-1.5 text-[10px] font-bold text-amber-700 hover:bg-amber-50 rounded-xl transition cursor-pointer"
+                                                    title="Allow the agent to replace this document"
+                                                >
+                                                    Send Back
+                                                </button>
+                                            )}
+                                            {canDelete && (
+                                                <button
+                                                    type="button"
                                                     onClick={() => handleDeleteDoc(doc)}
                                                     className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
                                                     title="Delete Document"
@@ -137,7 +147,7 @@ export default function CustomerDocumentsTab({
                                     </div>
 
                                     {/* Document Remark Section */}
-                                    <DocGalleryRemarkRow doc={doc} onUpdateRemark={handleUpdateDocRemark} isEditable={isEditable} />
+                                    <DocGalleryRemarkRow doc={doc} onUpdateRemark={handleUpdateDocRemark} isEditable={isEditable && canDelete} />
                                 </div>
                             );
                         })}

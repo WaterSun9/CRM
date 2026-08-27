@@ -418,7 +418,10 @@ function DocRemarkRow({ doc, onUpdateRemark, isEditing }) {
     return null;
 }
 
-export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onDownload, onUpdateRemark, note, canDelete = true }) {
+const RETURNED_DOCUMENT_PREFIX = '[RETURNED]';
+const isReturnedDocument = (doc) => String(doc?.remark || '').trim().toUpperCase().startsWith(RETURNED_DOCUMENT_PREFIX);
+
+export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onDownload, onUpdateRemark, note, canDelete = false, canReplace = canDelete, allowReturnedReplace = !canDelete }) {
     const fieldDocs = documents.filter(d => d.doc_type === field);
     const fileInputRef = React.useRef(null);
     const [replacingDocId, setReplacingDocId] = React.useState(null);
@@ -440,10 +443,12 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
         inputEl.value = '';
 
         // If replacing a specific document, or if field already has a document, delete old one first
-        if (replacingDocId && onDelete) {
+        const replacingDoc = fieldDocs.find(d => d.id === replacingDocId);
+        const replacementAllowed = canReplace || (allowReturnedReplace && isReturnedDocument(replacingDoc));
+        if (replacementAllowed && replacingDocId && onDelete) {
             const oldDoc = fieldDocs.find(d => d.id === replacingDocId);
             if (oldDoc) await onDelete(oldDoc);
-        } else if (fieldDocs.length > 0 && onDelete) {
+        } else if (canReplace && fieldDocs.length > 0 && onDelete) {
             for (const oldDoc of fieldDocs) {
                 await onDelete(oldDoc);
             }
@@ -540,13 +545,14 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
                         <div className="flex items-center gap-1.5">
                             <Paperclip size={11} className="text-stone-400 flex-shrink-0" />
                             <span className="text-[10px] text-stone-600 font-medium truncate flex-1">{doc.file_name}</span>
+                            {isReturnedDocument(doc) && <span className="text-[9px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">Returned</span>}
                             <div className="flex items-center gap-1 flex-shrink-0">
                                 {onPreview && (
                                     <button onClick={() => onPreview(doc)} className="text-[9px] font-bold text-amber-600 hover:text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-50 transition-colors flex items-center gap-0.5 cursor-pointer" title="View Document (opens preview & download)">
                                         <Eye size={10} /> View
                                     </button>
                                 )}
-                                {isEditing && (
+                                {isEditing && (canReplace || (allowReturnedReplace && isReturnedDocument(doc))) && (
                                     <button onClick={() => handleUploadClick(doc.id)} className="text-[9px] font-bold text-blue-600 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors flex items-center gap-0.5 cursor-pointer" title="Change / Replace File">
                                         <Upload size={10} /> Change
                                     </button>
@@ -556,11 +562,20 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
                                         <Trash2 size={10} /> Delete
                                     </button>
                                 )}
+                                {isEditing && canDelete && onUpdateRemark && !isReturnedDocument(doc) && (
+                                    <button
+                                        onClick={() => onUpdateRemark(doc.id, `${RETURNED_DOCUMENT_PREFIX} Please upload the correct document.`)}
+                                        className="text-[9px] font-bold text-amber-700 hover:text-amber-800 px-1.5 py-0.5 rounded hover:bg-amber-50 transition-colors cursor-pointer"
+                                        title="Send this document back for replacement"
+                                    >
+                                        Send Back
+                                    </button>
+                                )}
                             </div>
                         </div>
 
                         {/* Document Remark Row */}
-                        <DocRemarkRow doc={doc} onUpdateRemark={onUpdateRemark} isEditing={isEditing} />
+                        <DocRemarkRow doc={doc} onUpdateRemark={onUpdateRemark} isEditing={isEditing && canDelete} />
                     </div>
                 ))}
                 {fieldDocs.length === 0 && isEditing && onUpload && (

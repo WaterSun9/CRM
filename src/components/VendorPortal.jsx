@@ -6,7 +6,7 @@ import {
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Hash, Folder, Tag, ChevronLeft, Search, ClipboardList, Banknote, Calendar, ClipboardCheck,
     Camera, Paperclip, Eye, Trash2, Upload, Image as ImageIcon, X,
-    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, ClipboardPaste, Plus, Check, Copy, Wrench, RefreshCw, Save
+    Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, Check, Wrench, RefreshCw, Save, Terminal
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, STAGE_IDS, PRIMARY_STAGES } from '../constants';
@@ -31,7 +31,7 @@ const parsePanelSerials = (raw) => {
     return [raw.trim()];
 };
 
-export default function VendorPortal({ user, onLogout }) {
+export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     const { showAlert, showConfirm } = useGlobalPopup();
     const [view, setView] = useState('list'); // 'list', 'details'
     const [customers, setCustomers] = useState([]);
@@ -40,13 +40,13 @@ export default function VendorPortal({ user, onLogout }) {
     const [searchQuery, setSearchQuery] = useState('');
     // Material Integration and Material Delivery are intentionally hidden from vendors.
     const [activeTab, setActiveTab] = useState('DELIVERY'); // 'DELIVERY', 'INSTALLATION', 'GEO'
+    const [selectedCust, setSelectedCust] = useState(null);
     const vendorIsFutureTab = useMemo(() => {
         const TAB_STAGE_MAP = { MATERIAL: STAGE_IDS.MATERIAL_INTEGRATION, DELIVERY: STAGE_IDS.MATERIAL_DELIVERY, INSTALLATION: STAGE_IDS.INSTALLATION_STATUS, GEO: STAGE_IDS.GEO_TAG_PHOTO };
         const currentStageIdx = PRIMARY_STAGES.findIndex(s => s.id === selectedCust?.stage);
         const tabStageIdx = PRIMARY_STAGES.findIndex(s => s.id === TAB_STAGE_MAP[activeTab]);
         return currentStageIdx !== -1 && tabStageIdx !== -1 && tabStageIdx > currentStageIdx;
     }, [selectedCust?.stage, activeTab]);
-    const [selectedCust, setSelectedCust] = useState(null);
     
     // Edit Form State (for selected customer)
     const [geoTagStatus, setGeoTagStatus] = useState('Pending');
@@ -62,10 +62,6 @@ export default function VendorPortal({ user, onLogout }) {
     const [driverName, setDriverName] = useState('');
     const [driverPhone, setDriverPhone] = useState('');
     const [panelSerials, setPanelSerials] = useState(['']);
-    const [showBulkPaste, setShowBulkPaste] = useState(false);
-    const [bulkText, setBulkText] = useState('');
-    const [copiedIdx, setCopiedIdx] = useState(null);
-    const [copiedAll, setCopiedAll] = useState(false);
     
     const [saving, setSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
@@ -415,56 +411,6 @@ export default function VendorPortal({ user, onLogout }) {
         }
     };
 
-    // Panel serials helper functions
-    const handlePanelSerialChange = (idx, val) => {
-        const next = [...panelSerials];
-        next[idx] = val;
-        setPanelSerials(next);
-    };
-
-    const addPanelSerial = (count = 1) => {
-        if (panelSerials.length >= 100) return;
-        const toAdd = Math.min(count, 100 - panelSerials.length);
-        const newItems = Array(toAdd).fill('');
-        setPanelSerials(prev => [...prev, ...newItems]);
-    };
-
-    const removePanelSerial = (idx) => {
-        const next = panelSerials.filter((_, i) => i !== idx);
-        const finalVal = next.length > 0 ? next : [''];
-        setPanelSerials(finalVal);
-    };
-
-    const handleApplyBulkPaste = () => {
-        if (!bulkText.trim()) return;
-        const parsed = bulkText
-            .split(/[\n,;\t]+/)
-            .map(s => s.trim())
-            .filter(Boolean);
-        
-        if (parsed.length > 0) {
-            const finalSerials = parsed.slice(0, 100);
-            setPanelSerials(finalSerials);
-            setBulkText('');
-            setShowBulkPaste(false);
-        }
-    };
-
-    const handleCopySerial = (serial, idx) => {
-        if (!serial) return;
-        navigator.clipboard.writeText(serial);
-        setCopiedIdx(idx);
-        setTimeout(() => setCopiedIdx(null), 1500);
-    };
-
-    const handleCopyAll = () => {
-        const valid = panelSerials.filter(Boolean);
-        if (valid.length === 0) return;
-        navigator.clipboard.writeText(valid.join('\n'));
-        setCopiedAll(true);
-        setTimeout(() => setCopiedAll(false), 2000);
-    };
-
     // Upload geo tag photo handler
     const handlePhotoUpload = async (e) => {
         const file = e.target.files?.[0];
@@ -583,6 +529,19 @@ export default function VendorPortal({ user, onLogout }) {
 
     // Save changes to Supabase and optionally progress stage
     const handleSaveChanges = async (nextStage = null) => {
+        const currentStage = String(selectedCust?.stage || '').toUpperCase().trim();
+        const canEditCurrentTab =
+            (activeTab === 'INSTALLATION' && currentStage === STAGE_IDS.INSTALLATION_STATUS) ||
+            (activeTab === 'GEO' && currentStage === STAGE_IDS.GEO_TAG_PHOTO);
+
+        if (!canEditCurrentTab) {
+            showAlert('This stage is view-only until the office moves the customer to it.', {
+                title: 'Stage Not Available Yet',
+                type: 'warning'
+            });
+            return false;
+        }
+
         const todayStr = new Date().toISOString().split('T')[0];
         const effectiveInstallDate = installationDate || (installationStatus === 'Yes' ? todayStr : null);
 
@@ -605,7 +564,7 @@ export default function VendorPortal({ user, onLogout }) {
                     title: 'Installation Incomplete',
                     type: 'warning'
                 });
-                return;
+                return false;
             }
         }
 
@@ -625,29 +584,24 @@ export default function VendorPortal({ user, onLogout }) {
                     title: 'Geo Tag Report Incomplete',
                     type: 'warning'
                 });
-                return;
+                return false;
             }
         }
 
         setSaving(true);
         setSaveSuccess(false);
         try {
-            const filteredPanels = panelSerials.filter(Boolean);
-            const serializedPanels = filteredPanels.length > 0 ? filteredPanels.join('\n') : null;
-
-            const updatePayload = {
-                inverter_serial_no: inverterSerialNo || null,
-                invoice_no: invoiceNo || null,
-                driver_name: driverName || null,
-                driver_phone_number: driverPhone || null,
-                panel_serial_no: serializedPanels,
-                geo_tag_status: geoTagStatus,
-                geo_tag_image: geoTagImage,
-                installation_status: installationStatus,
-                installation_date: effectiveInstallDate,
-                vendor_note: vendorNote || null,
-                vendor_quote: commissionQuoteAmount,
-            };
+            const updatePayload = activeTab === 'INSTALLATION'
+                ? {
+                    installation_status: installationStatus,
+                    installation_date: effectiveInstallDate,
+                    vendor_note: vendorNote || null,
+                    vendor_quote: commissionQuoteAmount,
+                }
+                : {
+                    geo_tag_status: geoTagStatus,
+                    geo_tag_image: geoTagImage,
+                };
 
             if (nextStage) {
                 updatePayload.stage = nextStage;
@@ -703,12 +657,14 @@ export default function VendorPortal({ user, onLogout }) {
             } else {
                 setTimeout(() => setSaveSuccess(false), 3000);
             }
+            return true;
         } catch (err) {
             console.error('Failed to save details:', err);
             showAlert(`Error saving changes: ${err.message || err}`, {
                 title: 'Database Error',
                 type: 'error'
             });
+            return false;
         } finally {
             setSaving(false);
         }
@@ -717,6 +673,13 @@ export default function VendorPortal({ user, onLogout }) {
     // Give Up Project handler
     const handleConfirmGiveUp = async () => {
         if (!selectedCust?.id) return;
+        if (String(selectedCust.stage || '').toUpperCase().trim() !== STAGE_IDS.INSTALLATION_STATUS) {
+            showAlert('This project can only be given up during the Installation stage.', {
+                title: 'Action Not Available',
+                type: 'warning'
+            });
+            return;
+        }
         setGivingUp(true);
         try {
             const { error } = await supabase
@@ -758,6 +721,9 @@ export default function VendorPortal({ user, onLogout }) {
 
     // Helper to normalize stages
     const normalizeStage = (st) => String(st || '').toUpperCase().trim();
+    const selectedStage = normalizeStage(selectedCust?.stage);
+    const canEditInstallation = selectedStage === STAGE_IDS.INSTALLATION_STATUS;
+    const canEditGeoTag = selectedStage === STAGE_IDS.GEO_TAG_PHOTO;
 
     // Stats calculations
     const materialDeliveryCount = customers.filter(c => {
@@ -800,6 +766,18 @@ export default function VendorPortal({ user, onLogout }) {
     // Geo tag documents for current selected customer
     const geoDocs = documents.filter(d => d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag');
 
+    const saveBeforeVendorExit = async (confirmLabel) => {
+        const hasChanges = (activeTab === 'INSTALLATION' && isInstallationDirty) || (activeTab === 'GEO' && isGeoTagDirty);
+        if (!hasChanges) return true;
+        const shouldSave = await showConfirm('You have unsaved changes. Save them before leaving?', {
+            confirmLabel,
+            cancelLabel: 'Keep Editing',
+            type: 'success'
+        });
+        if (!shouldSave) return false;
+        return handleSaveChanges(null);
+    };
+
     return (
         <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans flex flex-col pb-8">
             {/* Top Header */}
@@ -828,8 +806,19 @@ export default function VendorPortal({ user, onLogout }) {
                     >
                         <RefreshCw className={`w-4 h-4 ${refreshingAssignments ? 'animate-spin' : ''}`} />
                     </button>
+                    {import.meta.env.DEV && onOpenDevSwitcher && (
+                        <button
+                            type="button"
+                            onClick={onOpenDevSwitcher}
+                            className="p-2 text-amber-600 hover:text-amber-700 transition-colors rounded-xl hover:bg-amber-50"
+                            title="Open development role switcher"
+                            aria-label="Open development role switcher"
+                        >
+                            <Terminal className="w-4 h-4" />
+                        </button>
+                    )}
                     <button
-                        onClick={onLogout}
+                        onClick={async () => { if (await saveBeforeVendorExit('Save & Logout')) onLogout(); }}
                         className="p-2 text-stone-400 hover:text-red-500 transition-colors rounded-xl hover:bg-stone-50"
                         title="Logout"
                     >
@@ -1044,18 +1033,27 @@ export default function VendorPortal({ user, onLogout }) {
                 <main className="flex-1 p-4 max-w-md mx-auto w-full space-y-4 animate-in slide-in-from-right duration-300">
                     <div className="flex items-center justify-between">
                         <button
-                            onClick={() => setView('list')}
+                            onClick={async () => {
+                                const hasChanges = (activeTab === 'INSTALLATION' && isInstallationDirty) || (activeTab === 'GEO' && isGeoTagDirty);
+                                if (hasChanges) {
+                                    const shouldSave = await showConfirm('You have unsaved changes. Save them before going back?', { confirmLabel: 'Save & Back', cancelLabel: 'Keep Editing', type: 'success' });
+                                    if (!shouldSave || !(await handleSaveChanges(null))) return;
+                                }
+                                setView('list');
+                            }}
                             className="flex items-center gap-1 text-xs font-bold text-stone-500 hover:text-stone-800 transition-colors py-1 cursor-pointer"
                         >
                             <ChevronLeft className="w-4.5 h-4.5" /> Back to Dashboard
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => setShowGiveUpModal(true)}
-                            className="text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
-                        >
-                            <AlertTriangle size={12} className="text-rose-600" /> Give Up Project
-                        </button>
+                        {canEditInstallation && (
+                            <button
+                                type="button"
+                                onClick={() => setShowGiveUpModal(true)}
+                                className="text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                            >
+                                <AlertTriangle size={12} className="text-rose-600" /> Give Up Project
+                            </button>
+                        )}
                     </div>
 
                     <div className="bg-white p-5 rounded-[24px] border border-stone-150 shadow-sm space-y-4">
@@ -1078,8 +1076,10 @@ export default function VendorPortal({ user, onLogout }) {
                                         key={tab.id}
                                         type="button"
                                         onClick={async () => {
-                                            if (tab.id !== activeTab && activeTab === 'INSTALLATION' && isInstallationDirty) {
-                                                if (!(await showConfirm('You have unsaved changes on this tab — leave without saving?', { confirmLabel: 'Leave Without Saving' }))) return;
+                                            const hasChanges = (activeTab === 'INSTALLATION' && isInstallationDirty) || (activeTab === 'GEO' && isGeoTagDirty);
+                                            if (tab.id !== activeTab && hasChanges) {
+                                                const shouldSave = await showConfirm('You have unsaved changes on this tab. Save them before continuing?', { confirmLabel: 'Save & Continue', cancelLabel: 'Keep Editing', type: 'success' });
+                                                if (!shouldSave || !(await handleSaveChanges(null))) return;
                                             }
                                             setActiveTab(tab.id);
                                         }}
@@ -1101,7 +1101,7 @@ export default function VendorPortal({ user, onLogout }) {
                         <div className="space-y-4">
                             {vendorIsFutureTab && (
                                 <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-center">
-                                    <p className="text-xs font-bold text-amber-800">This client has not reached this stage yet. You can save progress here, but you won't be able to advance to the next stage until they do.</p>
+                                    <p className="text-xs font-bold text-amber-800">This stage is view-only until the office moves the customer here.</p>
                                 </div>
                             )}
                             <div className="space-y-4">
@@ -1174,12 +1174,11 @@ export default function VendorPortal({ user, onLogout }) {
                                     </div>
                                     <div className="divide-y divide-stone-200 rounded-2xl border border-stone-200 bg-white px-4">
                                         {[
-                                            ['Inverter Make', selectedCust.inverter_make],
-                                            ['Inverter Serial No.', selectedCust.inverter_serial_no],
-                                            ['Invoice No.', selectedCust.invoice_no],
-                                            ['Delivery Date', selectedCust.material_delivery_date],
-                                            ['Driver Name', selectedCust.driver_name],
-                                            ['Driver Phone Number', selectedCust.driver_phone_number],
+                                            ['Invoice No *', selectedCust.invoice_no],
+                                            ['Delivery Date *', selectedCust.material_delivery_date],
+                                            ['Vehicle / Truck No', selectedCust.vehicle_number],
+                                            ['Driver Name *', selectedCust.driver_name],
+                                            ['Driver Phone Number *', selectedCust.driver_phone_number],
                                         ].map(([label, value]) => (
                                             <div key={label} className="flex items-start justify-between gap-4 py-3 text-xs">
                                                 <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wide">{label}</p>
@@ -1187,29 +1186,6 @@ export default function VendorPortal({ user, onLogout }) {
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-xs space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wide flex items-center gap-1.5">
-                                                <Layers size={12} className="text-amber-500" /> Panel Serial Numbers
-                                            </p>
-                                            {selectedCust.panel_serial_no && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        navigator.clipboard.writeText(selectedCust.panel_serial_no);
-                                                        setCopiedAll(true);
-                                                        setTimeout(() => setCopiedAll(false), 2000);
-                                                    }}
-                                                    className="text-[10px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 cursor-pointer bg-amber-50 px-2 py-1 rounded-lg border border-amber-200/60"
-                                                >
-                                                    {copiedAll ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
-                                                    {copiedAll ? 'Copied All!' : 'Copy Serials'}
-                                                </button>
-                                            )}
-                                        </div>
-                                        <pre className="whitespace-pre-wrap break-words font-mono text-xs font-semibold text-stone-800 bg-stone-50 p-2.5 rounded-xl border border-stone-150 max-h-40 overflow-y-auto">{selectedCust.panel_serial_no || '–'}</pre>
-                                    </div>
-
                                     {saveSuccess && (
                                         <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl text-[10px] font-bold flex items-center gap-1.5 animate-in fade-in duration-200">
                                             <CheckCircle2 className="w-4.5 h-4.5 flex-shrink-0" />
@@ -1217,22 +1193,9 @@ export default function VendorPortal({ user, onLogout }) {
                                         </div>
                                     )}
 
-                                    {selectedCust.stage === STAGE_IDS.MATERIAL_DELIVERY && (
-                                        <div className="pt-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => handleSaveChanges(STAGE_IDS.INSTALLATION_STATUS)}
-                                                disabled={saving}
-                                                className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
-                                            >
-                                                {saving ? (
-                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Moving to Installation...</>
-                                                ) : (
-                                                    <><CheckCircle2 size={14} /> Acknowledge Delivery & Move to Installation</>
-                                                )}
-                                            </button>
-                                        </div>
-                                    )}
+                                    <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-center text-[10px] font-semibold text-stone-500">
+                                        View only. The office will move this customer to Installation when delivery is complete.
+                                    </div>
                                 </div>
                             )}
                             
@@ -1254,8 +1217,9 @@ export default function VendorPortal({ user, onLogout }) {
                                                     <button
                                                         key={tag.id}
                                                         type="button"
+                                                        disabled={!canEditGeoTag}
                                                         onClick={() => setGeoTagStatus(tag.id)}
-                                                        className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                        className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${
                                                             isSelected
                                                                 ? tag.activeClass
                                                                 : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
@@ -1290,7 +1254,7 @@ export default function VendorPortal({ user, onLogout }) {
 
                                             <button
                                                 type="button"
-                                                disabled={uploadingPhoto}
+                                                disabled={uploadingPhoto || !canEditGeoTag}
                                                 onClick={() => fileInputRef.current?.click()}
                                                 className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-amber-500/10 cursor-pointer disabled:opacity-50"
                                             >
@@ -1322,16 +1286,18 @@ export default function VendorPortal({ user, onLogout }) {
                                                             </button>
                                                             <button
                                                                 type="button"
+                                                                disabled={!canEditGeoTag}
                                                                 onClick={() => fileInputRef.current?.click()}
-                                                                className="text-blue-600 hover:text-blue-800 p-1 rounded-lg hover:bg-blue-50 transition cursor-pointer"
+                                                                className="text-blue-600 hover:text-blue-800 p-1 rounded-lg hover:bg-blue-50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                                                 title="Change / Replace photo"
                                                             >
                                                                 <Upload size={13} />
                                                             </button>
                                                             <button
                                                                 type="button"
+                                                                disabled={!canEditGeoTag}
                                                                 onClick={() => handlePhotoDelete(doc)}
-                                                                className="text-red-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                                                                className="text-red-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                                                 title="Delete photo"
                                                             >
                                                                 <Trash2 size={13} />
@@ -1358,7 +1324,7 @@ export default function VendorPortal({ user, onLogout }) {
                                         <button
                                             type="button"
                                             onClick={() => handleSaveChanges(STAGE_IDS.DISCOM_SUBMISSION)}
-                                            disabled={saving || geoTagStatus !== 'Proceed' || geoDocs.length === 0 || vendorIsFutureTab}
+                                            disabled={saving || !canEditGeoTag || geoTagStatus !== 'Proceed' || geoDocs.length === 0 || vendorIsFutureTab}
                                             title={geoTagStatus !== 'Proceed' || geoDocs.length === 0 ? 'Set status to Proceed and upload a geo-tag photo first.' : undefined}
                                             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
                                         >
@@ -1370,7 +1336,7 @@ export default function VendorPortal({ user, onLogout }) {
                                         <button
                                             type="button"
                                             onClick={() => handleSaveChanges(null)}
-                                            disabled={saving}
+                                            disabled={saving || !canEditGeoTag}
                                             className={`mt-2 w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
                                                 isGeoTagDirty
                                                     ? 'bg-stone-900 text-white hover:bg-stone-850'
@@ -1410,7 +1376,7 @@ export default function VendorPortal({ user, onLogout }) {
                                                     <button
                                                         key={tag.id}
                                                         type="button"
-                                                        disabled={isLocked}
+                                                        disabled={isLocked || !canEditInstallation}
                                                         onClick={() => {
                                                             if (isLocked) return;
                                                             if (tag.id === 'Give Up') {
@@ -1446,6 +1412,7 @@ export default function VendorPortal({ user, onLogout }) {
                                                 inputMode="decimal"
                                                 value={vendorQuote === '' ? '' : formatInputValue(vendorQuote)}
                                                 onChange={event => setVendorQuote(formatInputValue(event.target.value))}
+                                                disabled={!canEditInstallation}
                                                 placeholder="Enter installation commission quote"
                                                 className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
                                             />
@@ -1456,6 +1423,7 @@ export default function VendorPortal({ user, onLogout }) {
                                                 rows={2}
                                                 value={vendorNote}
                                                 onChange={event => setVendorNote(event.target.value)}
+                                                disabled={!canEditInstallation}
                                                 placeholder="Add installation notes or a site update"
                                                 className="w-full resize-none bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
                                             />
@@ -1477,6 +1445,7 @@ export default function VendorPortal({ user, onLogout }) {
                                                     type="date"
                                                     value={installationDate || ''}
                                                     onChange={(e) => setInstallationDate(e.target.value)}
+                                                    disabled={!canEditInstallation}
                                                     className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-xs font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-emerald-400"
                                                 />
                                             </div>
@@ -1514,7 +1483,7 @@ export default function VendorPortal({ user, onLogout }) {
                                                 <button
                                                     type="button"
                                                     onClick={() => handleSaveChanges(STAGE_IDS.GEO_TAG_PHOTO)}
-                                                    disabled={saving || vendorIsFutureTab}
+                                                    disabled={saving || !canEditInstallation || vendorIsFutureTab}
                                                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
                                                 >
                                                     {saving ? (
@@ -1526,7 +1495,7 @@ export default function VendorPortal({ user, onLogout }) {
                                                 <button
                                                     type="button"
                                                     onClick={() => handleSaveChanges(null)}
-                                                    disabled={saving}
+                                                    disabled={saving || !canEditInstallation}
                                                     className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
                                                         isInstallationDirty
                                                             ? 'bg-stone-900 text-white hover:bg-stone-850'
@@ -1546,7 +1515,7 @@ export default function VendorPortal({ user, onLogout }) {
                                             <button
                                                 type="button"
                                                 onClick={() => handleSaveChanges(null)}
-                                                disabled={saving}
+                                                disabled={saving || !canEditInstallation}
                                                 className={`w-full py-3.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
                                                     isInstallationDirty
                                                         ? 'bg-stone-900 text-white hover:bg-stone-850'

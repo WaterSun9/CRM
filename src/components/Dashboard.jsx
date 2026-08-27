@@ -482,6 +482,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             
             if (!error) {
                 syncMetadata(cleanUpdates);
+                return true;
             } else {
                 console.error('Error updating customer in DB:', error);
                 showAlert('Database Save Error: ' + (error.message || 'Unknown database error'), { type: 'error' });
@@ -492,10 +493,12 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                     setCustomers(prev => prev.map(c => c.id === id ? previousCustomer : c));
                     if (selectedCustomer?.id === id) setSelectedCustomer(previousCustomer);
                 }
+                return false;
             }
         } catch (err) {
             console.error('Exception updating customer:', err);
             showAlert('Database Connection Error: ' + err.message, { type: 'error' });
+            return false;
         }
     };
 
@@ -783,7 +786,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                             <p className="text-[9px] text-stone-400">{user.role}</p>
                         </div>
                     </div>
-                    {import.meta.env.DEV && onOpenDevSwitcher && user.userType === 'admin' && (
+                    {import.meta.env.DEV && onOpenDevSwitcher && (
                         <button onClick={onOpenDevSwitcher}
                             className="w-full flex items-center gap-2 px-3 py-2 text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-xl text-xs font-bold transition-colors mb-1.5 cursor-pointer border border-amber-200">
                             <Terminal className="w-4 h-4 text-amber-600" /> Backdoor Terminal & Roles

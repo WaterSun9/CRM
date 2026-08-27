@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Camera, ClipboardList, ShieldAlert, MapPin } from 'lucide-react';
 import { CheckboxRemarkItem } from './shared';
 
@@ -25,15 +25,6 @@ export default function GeoTagPhotoTab({
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager';
     const canEditGeoTag = isVendor || ((isAdmin || isChannelPartnerOffice) && isEditable);
     const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
-
-    // Ensure a default Geo Tag status of 'No' for new records (only on mount)
-    const initializedRef = React.useRef(false);
-    useEffect(() => {
-        if (!initializedRef.current && !editData.geo_tag_status) {
-            initializedRef.current = true;
-            setEditData(prev => ({ ...prev, geo_tag_status: 'No' }));
-        }
-    }, []);
 
     const handleChange = (field, val) => {
         setEditData(prev => ({ ...prev, [field]: val }));
@@ -76,7 +67,7 @@ export default function GeoTagPhotoTab({
                             { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' },
                             { id: 'Proceed', label: 'Proceed', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' }
                         ].map(tag => {
-                            const isSelected = editData.geo_tag_status === tag.id;
+                            const isSelected = (editData.geo_tag_status || 'No') === tag.id;
                             return (
                                 <button
                                     key={tag.id}

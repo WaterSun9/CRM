@@ -84,7 +84,7 @@ export function GlobalPopupProvider({ children }) {
                                 <button
                                     type="button"
                                     onClick={() => popup.onResolve(true)}
-                                    className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer active:scale-[0.98]"
+                                    className={`flex-1 py-3 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer active:scale-[0.98] ${popup.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'}`}
                                 >
                                     {popup.confirmLabel}
                                 </button>

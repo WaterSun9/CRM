@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import {
     LogOut, Search, Upload, Trash2, Eye, Loader2, CheckCircle2,
     RefreshCw, X, MessageSquare, ChevronDown, ChevronUp, Save, FileText,
-    SendHorizonal, User, Sun, AlertTriangle, Check, AlertCircle, FileCheck
+    SendHorizonal, User, Sun, AlertTriangle, Check, AlertCircle, FileCheck, Terminal
 } from "lucide-react";
 import {
     uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, logActivity,
@@ -407,7 +407,7 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
     );
 }
 
-export default function StampPortal({ user, onLogout }) {
+export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
     const { showAlert } = useGlobalPopup();
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -586,6 +586,17 @@ export default function StampPortal({ user, onLogout }) {
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                     </button>
+                    {import.meta.env.DEV && onOpenDevSwitcher && (
+                        <button
+                            type="button"
+                            onClick={onOpenDevSwitcher}
+                            className="p-2 text-amber-600 hover:text-amber-700 transition-colors rounded-xl hover:bg-amber-50 cursor-pointer"
+                            title="Open development role switcher"
+                            aria-label="Open development role switcher"
+                        >
+                            <Terminal className="w-4 h-4" />
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={onLogout}

@@ -515,14 +515,25 @@ export const getCustomerDocuments = async (customerId) => {
             { id: 'demo-doc-7', doc_type: 'meter_photo', file_name: 'meter_installation_photo.jpg', file_type: 'image/jpeg', storage_path: 'mock/meter_photo.jpg' },
         ];
     }
-    const { data, error } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('customer_id', customerId)
-        .order('uploaded_at', { ascending: false });
+    const allDocuments = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabase
+            .from('documents')
+            .select('*')
+            .eq('customer_id', customerId)
+            .order('uploaded_at', { ascending: false })
+            .range(from, from + pageSize - 1);
 
-    if (error) console.error('Failed to fetch documents:', error);
-    return data || [];
+        if (error) {
+            console.error('Failed to fetch documents:', error);
+            break;
+        }
+        const page = data || [];
+        allDocuments.push(...page);
+        if (page.length < pageSize) break;
+    }
+    return allDocuments;
 };
 
 export const getViewUrl = async (storagePath) => {

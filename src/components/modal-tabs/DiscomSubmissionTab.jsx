@@ -25,7 +25,14 @@ export default function DiscomSubmissionTab({
     onUpdateRemark,
     meta = {}
 }) {
-    const submissionData = editData.discom_submission || {};
+    const storedSubmissionData = editData.discom_submission || {};
+    const submissionData = {
+        ...storedSubmissionData,
+        date: storedSubmissionData.date || new Date().toISOString().split('T')[0],
+        first_party: storedSubmissionData.first_party || customer.customer_name || '',
+        second_party: storedSubmissionData.second_party || 'WATERSUN ELECTRICAL SOLUTIONS PRIVATE LIMITED',
+        purchased_party: storedSubmissionData.purchased_party || 'WATERSUN ELECTRICAL SOLUTIONS PRIVATE LIMITED',
+    };
     const isStampSent = !!submissionData.stamp_sent;
     const isSentToStampMaker = !!submissionData.sent_to_stamp_maker;
 
@@ -45,23 +52,6 @@ export default function DiscomSubmissionTab({
         const staff = meta['registration_by'] || [];
         setStaffList(staff);
     }, [meta]);
-
-    // Set defaults if missing
-    React.useEffect(() => {
-        if (!submissionData.date) {
-            handleSubmissionFieldChange('date', new Date().toISOString().split('T')[0]);
-        }
-        if (!submissionData.first_party) {
-            handleSubmissionFieldChange('first_party', customer.customer_name);
-        }
-        if (!submissionData.second_party) {
-            handleSubmissionFieldChange('second_party', 'WATERSUN ELECTRICAL SOLUTIONS PRIVATE LIMITED');
-        }
-        if (!submissionData.purchased_party) {
-            handleSubmissionFieldChange('purchased_party', 'WATERSUN ELECTRICAL SOLUTIONS PRIVATE LIMITED');
-        }
-    }, [customer.customer_name, submissionData]);
-
 
     const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
 

@@ -214,6 +214,7 @@ export default function MaterialDeliveryTab({
                                     } catch (err) {
                                         console.error('Error sending vendor notification:', err);
                                         setInfoSentStatus('failed');
+                                        setInfoSentMessage(err.message || 'Edge Function failed to send the email');
                                     } finally {
                                         setSendingInfo(false);
                                     }
@@ -234,7 +235,7 @@ export default function MaterialDeliveryTab({
                             )}
                             {infoSentStatus === 'failed' && (
                                 <p className="text-[8px] font-bold text-red-500 mt-0.5 animate-in fade-in duration-200">
-                                    Failed to send
+                                    {infoSentMessage || 'Failed to send'}
                                 </p>
                             )}
                         </div>
@@ -579,6 +580,7 @@ export default function MaterialDeliveryTab({
                                     } catch (err) {
                                         console.error('Error sending vendor notification:', err);
                                         setInfoSentStatus('failed');
+                                        setInfoSentMessage(err.message || 'Edge Function failed to send the email');
                                     } finally {
                                         setSendingInfo(false);
                                         fetchLogs();

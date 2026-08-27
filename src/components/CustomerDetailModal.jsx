@@ -126,12 +126,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         setEditData(updater);
     };
 
-    // Opening a pencil editor is an intentional edit action. Reflect that in
-    // the footer immediately, even before the first field is typed.
-    useEffect(() => {
-        if (editingSection) setIsFormDirty(true);
-    }, [editingSection]);
-
     // Keep editData in sync with realtime prop updates if the user isn't currently editing
     useEffect(() => {
         if (!isFormDirty) {
@@ -1023,9 +1017,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         setSaving(true);
         if (saveBomRef.current) {
             try {
-                await saveBomRef.current();
+                const bomSaved = await saveBomRef.current();
+                if (bomSaved === false) throw new Error('The BOM could not be saved.');
             } catch (err) {
                 console.error('Error saving BOM during handleSave:', err);
+                showAlert(`Your BOM was not saved. Please try again.\n\n${err.message || ''}`, { type: 'error' });
+                setSaving(false);
+                return false;
             }
         }
         const updates = { ...editData };
@@ -1150,21 +1148,27 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const stageChanged = editData.stage !== customer.stage;
         delete updates.id; delete updates.created_at; delete updates.crn; delete updates.updated_at;
         
-        setEditingSection(null);
-        setIsFormDirty(false);
-        setSaved(true);
-        if (stageChanged) {
-            setActiveTab(editData.stage);
-        }
-
-        // Fire and forget in the background
-        (async () => {
+        try {
             const promises = [onUpdate(customer.id, updates)];
             if (changeSummary.length > 0) promises.push(logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id));
-            await Promise.all(promises);
-            fetchLogs();
-        })().catch(err => console.error("Background save error:", err));
-        setSaving(false);
+            const [updateResult] = await Promise.all(promises);
+            if (updateResult === false) throw new Error('The database did not accept the changes.');
+
+            setEditingSection(null);
+            setIsFormDirty(false);
+            setSaved(true);
+            if (stageChanged) setActiveTab(editData.stage);
+            // The customer update is already confirmed. Refreshing the activity
+            // list does not need to delay Save & Close.
+            void fetchLogs();
+            return true;
+        } catch (err) {
+            console.error('Save failed:', err);
+            showAlert(`Your changes were not saved. Please try again.\n\n${err.message || ''}`, { type: 'error' });
+            return false;
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleAddNote = async () => {
@@ -1303,7 +1307,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         )}
                         {isAdmin && <button onClick={() => setShowDeleteConfirm(true)} className="p-2 text-white/30 hover:text-red-400"><Trash2 size={18} /></button>}
                         <button onClick={async () => {
-                            if (isFormDirty && !(await showConfirm('You have unsaved changes. Close without saving?', { confirmLabel: 'Close Without Saving' }))) return;
+                            if (isFormDirty) {
+                                const shouldSave = await showConfirm('You have unsaved changes. Save them before closing?', { confirmLabel: 'Save & Close', cancelLabel: 'Keep Editing', type: 'success' });
+                                if (!shouldSave || !(await handleSave())) return;
+                            }
                             onClose();
                         }} className="p-2 text-white/30 hover:text-white"><X size={24} /></button>
                     </div>
@@ -1322,7 +1329,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         { id: 'history', label: 'Notes & History', icon: History },
                     ].map(tab => (
                         <button key={tab.id} onClick={async () => {
-                            if (tab.id !== activeTab && isFormDirty && !(await showConfirm('You have unsaved changes on this tab — leave without saving?', { confirmLabel: 'Leave Without Saving' }))) return;
+                            if (tab.id !== activeTab && isFormDirty) {
+                                const shouldSave = await showConfirm('You have unsaved changes on this tab. Save them before continuing?', { confirmLabel: 'Save & Continue', cancelLabel: 'Keep Editing', type: 'success' });
+                                if (!shouldSave || !(await handleSave())) return;
+                            }
                             setActiveTab(tab.id); setEditingSection(null);
                         }}
                             className={`flex items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-widest transition-all border-b-2 flex-shrink-0 ${activeTab === tab.id ? 'text-amber-400 border-amber-400' : 'text-stone-500 border-transparent hover:text-stone-300'}`}>
@@ -1517,21 +1527,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             )}
                         </button>
 
-                        {hasNextStage && activeTab === customer.stage && (
-                            <button
-                                onClick={() => {
-                                    if (nextStageId === STAGE_IDS.COMPLETED) {
-                                        setShowCompletedConfirm(true);
-                                    } else {
-                                        handleAdvanceStage();
-                                    }
-                                }}
-                                disabled={saving}
-                                className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {saving ? 'Saving & Moving...' : `Save & Move to ${nextStageLabel}`}
-                            </button>
-                        )}
                     </div>
                 )}
             </div>
@@ -1575,15 +1570,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                 >
                                     Review
                                 </button>
-                                {import.meta.env.DEV && (
-                                    <button
-                                        type="button"
-                                        onClick={handleBypassValidationAndAdvance}
-                                        className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-3 text-xs font-bold text-white transition-colors shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
-                                    >
-                                        ⚡ Auto-Fill & Move Next
-                                    </button>
-                                )}
                             </div>
                         </div>
                     </section>

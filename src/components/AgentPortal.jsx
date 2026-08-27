@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
+import BomPrintView from './BomPrintView';
+import { AgreementPreview } from './agreement/AgreementPreview';
 import {
     User, Phone, Mail, MapPin, Zap, Building2, Sun, Home,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
     ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
-    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen
+    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal
 } from 'lucide-react';
-import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark } from '../utils';
+import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES, STAGE_IDS } from '../constants';
 import AddLeadModal from './AddLeadModal';
@@ -29,8 +31,28 @@ import MeterInstallationTab from './modal-tabs/MeterInstallationTab';
 import DiscomInspectionTab from './modal-tabs/DiscomInspectionTab';
 import SubsidyStatusTab from './modal-tabs/SubsidyStatusTab';
 import FinalReviewTab from './modal-tabs/FinalReviewTab';
+import AgentStageDetails from './AgentStageDetails';
 
-export default function AgentPortal({ user, onLogout }) {
+const parsePanelSerials = (raw) => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) {
+        return raw.map(value => String(value || '').trim()).filter(Boolean);
+    }
+    const rawText = String(raw);
+    try {
+        const parsed = JSON.parse(rawText);
+        if (Array.isArray(parsed)) {
+            return parsed.map(value => String(value || '').trim()).filter(Boolean);
+        }
+    } catch (e) { /* not JSON */ }
+    if (rawText.includes('\n')) {
+        return rawText.split('\n').map(s => s.trim()).filter(Boolean);
+    }
+    const parts = rawText.split(',').map(s => s.trim()).filter(Boolean);
+    return parts.length > 0 ? parts : [rawText.trim()];
+};
+
+export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     const { showConfirm } = useGlobalPopup();
     const [view, setView] = useState('menu');
     const [activeWorkdeskTab, setActiveWorkdeskTab] = useState(STAGE_IDS.LEADS);
@@ -49,6 +71,8 @@ export default function AgentPortal({ user, onLogout }) {
     const [integrationBomItems, setIntegrationBomItems] = useState([]);
     const [showIntegrationPrint, setShowIntegrationPrint] = useState(false);
     const integrationPrintRef = useRef(null);
+    const [showAgreementPopup, setShowAgreementPopup] = useState(false);
+    const [agreementData, setAgreementData] = useState({});
     const [loadingDocs, setLoadingDocs] = useState(false);
     const [previewDoc, setPreviewDoc] = useState(null);
     const [showStageSidebar, setShowStageSidebar] = useState(false);
@@ -242,7 +266,7 @@ export default function AgentPortal({ user, onLogout }) {
                 .from('bom_items')
                 .select('*')
                 .eq('bom_id', data.id)
-                .order('sr_no', { ascending: true });
+                .order('created_at', { ascending: true });
             if (itemsError) console.error('Failed to load BOM items:', itemsError);
             setIntegrationBomItems(items || []);
         };
@@ -251,25 +275,42 @@ export default function AgentPortal({ user, onLogout }) {
 
     const handleUpdateCustomer = async (id, updates) => {
         setSaving(true);
+        const cleanUpdates = { ...updates };
+        // PostgreSQL date columns accept a date or NULL, never an empty string.
+        Object.keys(cleanUpdates).forEach(key => {
+            if ((key === 'date' || key.endsWith('_date')) && cleanUpdates[key] === '') {
+                cleanUpdates[key] = null;
+            }
+        });
         try {
-            const { error } = await supabase
+            const { data: savedRow, error } = await supabase
                 .from('admin')
-                .update(updates)
-                .eq('id', id);
+                .update(cleanUpdates)
+                .eq('id', id)
+                .select('id')
+                .maybeSingle();
 
             if (error) throw error;
+            if (!savedRow?.id) throw new Error('No customer row was updated. Please sign in with a real Agent account and try again.');
 
-            setSelectedCust(prev => ({ ...prev, ...updates }));
-            setEditData(prev => ({ ...prev, ...updates }));
+            setSelectedCust(prev => ({ ...prev, ...cleanUpdates }));
+            setEditData(prev => ({ ...prev, ...cleanUpdates }));
             // The server has already confirmed the update. Keep the local list
             // in sync instead of downloading every lead again after each edit.
-            setCustomers(prev => prev.map(customer => customer.id === id ? { ...customer, ...updates } : customer));
+            setCustomers(prev => prev.map(customer => customer.id === id ? { ...customer, ...cleanUpdates } : customer));
             return true;
         } catch (err) {
             console.error('Update failed:', err);
+            console.error('Update error details:', {
+                code: err?.code,
+                message: err?.message,
+                details: err?.details,
+                hint: err?.hint,
+                fields: Object.keys(cleanUpdates),
+            });
             setCustomAlert({
                 title: 'Update Failed',
-                message: err.message || 'Could not save changes to the database.',
+                message: [err?.message, err?.details, err?.hint].filter(Boolean).join('\n') || 'Could not save changes to the database.',
                 type: 'error'
             });
             return false;
@@ -414,24 +455,23 @@ export default function AgentPortal({ user, onLogout }) {
     };
 
     const handleDeleteDoc = async (doc) => {
-        // Enforce document edit permissions
-        if (![STAGE_IDS.LEADS, STAGE_IDS.REGISTRATION].includes(activeCustomerStage) && 
-            !([STAGE_IDS.METER_INSTALLATION].includes(activeCustomerStage) && doc.doc_type.includes('meter')) &&
-            !([STAGE_IDS.DISCOM_SUBMISSION, STAGE_IDS.DISCOM_INSPECTION].includes(activeCustomerStage) && (doc.doc_type.includes('signature') || doc.doc_type.includes('stamp') || doc.doc_type.includes('dcr')))) {
-            setCustomAlert({ title: 'Permission Denied', message: 'You can only delete lead documents during the Leads and Registration stages.', type: 'error' });
-            return;
+        const wasReturned = String(doc?.remark || '').trim().toUpperCase().startsWith('[RETURNED]');
+        if (!wasReturned) {
+            setCustomAlert({
+                title: 'Permission Denied',
+                message: 'This document is locked. Admin or Office must send it back before it can be replaced.',
+                type: 'warning'
+            });
+            return false;
         }
         try {
+            const { deleteDocument } = await import('../utils');
             await deleteDocument(doc.id, doc.storage_path);
-            const updatedDocs = await getCustomerDocuments(selectedCust.id);
-            setCustDocs(updatedDocs || []);
+            setCustDocs(prev => prev.filter(item => item.id !== doc.id));
+            return true;
         } catch (err) {
-            console.error('Delete failed:', err);
-            setCustomAlert({
-                title: 'Delete Failed',
-                message: err.message || 'Could not delete the selected document.',
-                type: 'error'
-            });
+            setCustomAlert({ title: 'Replacement Failed', message: err.message || 'Could not replace the returned document.', type: 'error' });
+            return false;
         }
     };
 
@@ -499,7 +539,30 @@ export default function AgentPortal({ user, onLogout }) {
         );
     };
 
-    const handleAdvanceMaterialOrder = async () => {
+    const isMaterialOrderDirty = () => {
+        if (!selectedCust) return false;
+        const currentData = {
+            roof_shed: selectedCust.roof_shed || '',
+            dc_cable: selectedCust.dc_cable || '',
+            ac_cable: selectedCust.ac_cable || '',
+            structure_front_leg_height: selectedCust.structure_front_leg_height || '',
+            structure_rear_leg_height: selectedCust.structure_rear_leg_height || '',
+            invoice_value: selectedCust.invoice_value || '',
+            material_order_notes: selectedCust.material_order_notes || ''
+        };
+        const editingData = {
+            roof_shed: editData.roof_shed ?? currentData.roof_shed,
+            dc_cable: editData.dc_cable ?? currentData.dc_cable,
+            ac_cable: editData.ac_cable ?? currentData.ac_cable,
+            structure_front_leg_height: editData.structure_front_leg_height ?? currentData.structure_front_leg_height,
+            structure_rear_leg_height: editData.structure_rear_leg_height ?? currentData.structure_rear_leg_height,
+            invoice_value: editData.invoice_value ?? currentData.invoice_value,
+            material_order_notes: editData.material_order_notes ?? currentData.material_order_notes
+        };
+        return Object.keys(editingData).some(k => String(editingData[k]) !== String(currentData[k]));
+    };
+
+    const handleSaveMaterialOrder = async (advance = false) => {
         if (!selectedCust) return;
 
         const updates = {
@@ -509,21 +572,26 @@ export default function AgentPortal({ user, onLogout }) {
             structure_front_leg_height: editData.structure_front_leg_height ?? selectedCust.structure_front_leg_height,
             structure_rear_leg_height: editData.structure_rear_leg_height ?? selectedCust.structure_rear_leg_height,
             invoice_value: editData.invoice_value ?? selectedCust.invoice_value,
+            material_order_notes: editData.material_order_notes ?? selectedCust.material_order_notes,
         };
-        const issues = [];
-        const requireField = (condition, label) => { if (!condition) issues.push(label); };
-        requireField(updates.roof_shed, 'Roof / Shed');
-        requireField(Number(parseIndianNumber(updates.dc_cable)) > 0, 'DC Cable Length');
-        requireField(Number(parseIndianNumber(updates.ac_cable)) > 0, 'AC Cable Length');
-        requireField(String(updates.structure_front_leg_height || '').trim(), 'Structure Front Leg Height');
-        requireField(String(updates.structure_rear_leg_height || '').trim(), 'Structure Rear Leg Height');
-        requireField(Number(parseIndianNumber(updates.invoice_value)) > 0, 'Invoice Value');
 
-        if (issues.length) {
-            setValidationIssues(issues);
-            setValidationNextStage('Material Integration');
-            setShowValidationModal(true);
-            return;
+        if (advance) {
+            const issues = [];
+            const requireField = (condition, label) => { if (!condition) issues.push(label); };
+            requireField(updates.roof_shed, 'Roof / Shed');
+            requireField(Number(parseIndianNumber(updates.dc_cable)) > 0, 'DC Cable Length');
+            requireField(Number(parseIndianNumber(updates.ac_cable)) > 0, 'AC Cable Length');
+            requireField(String(updates.structure_front_leg_height || '').trim(), 'Structure Front Leg Height');
+            requireField(String(updates.structure_rear_leg_height || '').trim(), 'Structure Rear Leg Height');
+            requireField(Number(parseIndianNumber(updates.invoice_value)) > 0, 'Invoice Value');
+
+            if (issues.length) {
+                setValidationIssues(issues);
+                setValidationNextStage('Material Integration');
+                setShowValidationModal(true);
+                return;
+            }
+            updates.stage = STAGE_IDS.MATERIAL_INTEGRATION;
         }
 
         const didSave = await handleUpdateCustomer(selectedCust.id, {
@@ -531,9 +599,48 @@ export default function AgentPortal({ user, onLogout }) {
             dc_cable: parseIndianNumber(updates.dc_cable),
             ac_cable: parseIndianNumber(updates.ac_cable),
             invoice_value: parseIndianNumber(updates.invoice_value),
-            stage: STAGE_IDS.MATERIAL_INTEGRATION,
         });
-        if (didSave) setActiveCustomerStage(STAGE_IDS.MATERIAL_INTEGRATION);
+        
+        if (didSave && advance) setActiveCustomerStage(STAGE_IDS.MATERIAL_INTEGRATION);
+    };
+
+    const handleSaveMaterialDelivery = async (advance = false) => {
+        if (!selectedCust) return;
+
+        const updates = {
+            vendor: editData.vendor ?? selectedCust.vendor,
+            invoice_no: editData.invoice_no ?? selectedCust.invoice_no,
+            material_delivery_date: editData.material_delivery_date ?? selectedCust.material_delivery_date,
+            vehicle_number: editData.vehicle_number ?? selectedCust.vehicle_number,
+            driver_name: editData.driver_name ?? selectedCust.driver_name,
+            driver_phone_number: editData.driver_phone_number ?? selectedCust.driver_phone_number,
+            delivery_status: editData.delivery_status ?? selectedCust.delivery_status,
+        };
+
+        if (advance) {
+            const issues = [];
+            const requireField = (condition, label) => { if (!condition) issues.push(label); };
+            requireField(updates.vendor, 'Vendor Allotment');
+            requireField(updates.invoice_no, 'Invoice No');
+            requireField(updates.material_delivery_date, 'Delivery Date');
+            requireField(updates.vehicle_number, 'Vehicle Number');
+            requireField(updates.driver_name, 'Driver Name');
+            requireField(updates.driver_phone_number, 'Driver Phone Number');
+            requireField(updates.delivery_status === 'DELIVERED', 'Delivery Status (Must be DELIVERED)');
+
+            if (issues.length) {
+                setValidationIssues(issues);
+                setValidationNextStage('Installation Status');
+                setShowValidationModal(true);
+                return;
+            }
+            updates.stage = STAGE_IDS.INSTALLATION_STATUS;
+        }
+
+        const didSave = await handleUpdateCustomer(selectedCust.id, updates);
+        
+        if (didSave && advance) setActiveCustomerStage(STAGE_IDS.INSTALLATION_STATUS);
+        return didSave;
     };
 
     const getMeterInstallationUpdates = () => {
@@ -548,7 +655,7 @@ export default function AgentPortal({ user, onLogout }) {
     };
 
     const handleSaveMeterInstallation = async (moveToNextStage = false) => {
-        if (!selectedCust) return;
+        if (!selectedCust) return false;
         const updates = getMeterInstallationUpdates();
 
         if (moveToNextStage) {
@@ -561,17 +668,18 @@ export default function AgentPortal({ user, onLogout }) {
                 setValidationIssues(issues);
                 setValidationNextStage('Discom Inspection');
                 setShowValidationModal(true);
-                return;
+                return false;
             }
             updates.stage = STAGE_IDS.DISCOM_INSPECTION;
         }
 
         const didSave = await handleUpdateCustomer(selectedCust.id, updates);
         if (didSave && moveToNextStage) setActiveCustomerStage(STAGE_IDS.DISCOM_INSPECTION);
+        return didSave;
     };
 
     const handleSaveDiscomInspection = async (moveToNextStage = false) => {
-        if (!selectedCust) return;
+        if (!selectedCust) return false;
         const updates = {
             discom_inspection: editData.discom_inspection ?? selectedCust.discom_inspection ?? '',
         };
@@ -581,7 +689,7 @@ export default function AgentPortal({ user, onLogout }) {
                 setValidationIssues(['Discom Inspection must be Yes']);
                 setValidationNextStage('Subsidy Status');
                 setShowValidationModal(true);
-                return;
+                return false;
             }
             updates.stage = STAGE_IDS.SUBSIDY_STATUS;
         }
@@ -593,6 +701,7 @@ export default function AgentPortal({ user, onLogout }) {
             setActiveCustomerStage(null);
             setActiveWorkdeskTab('DISCOM_INSPECTION');
         }
+        return didSave;
     };
 
     const handleBypassValidationAndAdvance = async () => {
@@ -621,34 +730,115 @@ export default function AgentPortal({ user, onLogout }) {
         const documentBody = integrationPrintRef.current;
         if (!documentBody) return;
 
-        const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-            .map(element => element.outerHTML)
-            .join('');
-        const printFrame = document.createElement('iframe');
-        printFrame.setAttribute('aria-hidden', 'true');
-        printFrame.style.cssText = 'position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0;pointer-events:none;';
-        const cleanName = String(selectedCust?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanRef = String(selectedCust?.folder_no || selectedCust?.consumer_no || selectedCust?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanName = String(selectedCust?.customer_name || editData?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanRef = String(selectedCust?.folder_no || selectedCust?.consumer_no || selectedCust?.crn || editData?.folder_no || editData?.consumer_no || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
         const docTitle = `BOM_Material_Integration_${cleanName}_${cleanRef}`;
         const prevDocTitle = document.title;
 
-        const removeFrame = () => {
+        const existing = document.getElementById('native-print-portal');
+        if (existing) existing.remove();
+
+        const printPortal = document.createElement('div');
+        printPortal.id = 'native-print-portal';
+        printPortal.innerHTML = documentBody.innerHTML;
+        document.body.appendChild(printPortal);
+
+        document.body.classList.add('is-printing-document');
+        document.title = docTitle;
+
+        const cleanup = () => {
+            document.body.classList.remove('is-printing-document');
             document.title = prevDocTitle;
-            setTimeout(() => printFrame.remove(), 250);
+            if (document.body.contains(printPortal)) {
+                document.body.removeChild(printPortal);
+            }
+            window.removeEventListener('afterprint', cleanup);
         };
 
-        printFrame.onload = () => {
-            const printWindow = printFrame.contentWindow;
-            if (!printWindow) return removeFrame();
-            printWindow.onafterprint = removeFrame;
-            setTimeout(() => {
-                document.title = docTitle;
-                printWindow.focus();
-                printWindow.print();
-            }, 100);
-        };
-        printFrame.srcdoc = `<!doctype html><html><head><title>${docTitle}</title>${styles}<style>@page { size: A4 portrait; margin: 12mm; } body { margin: 0; color: #1c1917; background: #fff; } .print-document-container { border: 1px solid #a8a29e; padding: 12mm !important; overflow: visible !important; } </style></head><body><main class="print-document-container">${documentBody.innerHTML}</main></body></html>`;
-        document.body.appendChild(printFrame);
+        window.addEventListener('afterprint', cleanup);
+
+        setTimeout(() => {
+            window.print();
+            setTimeout(cleanup, 2000);
+        }, 100);
+    };
+
+    const handleGenerateAgreementPreview = async () => {
+        if (!selectedCust) return;
+        const sigDoc = custDocs.find(d =>
+            d.doc_type === 'signature_pic' ||
+            d.doc_type === 'signature' ||
+            d.doc_type === 'firstPartySignature' ||
+            d.doc_type === 'customer_signature'
+        );
+        const stampDoc = custDocs.find(d =>
+            d.doc_type === 'stamp' ||
+            d.doc_type === 'stamp_pic' ||
+            d.doc_type === 'vendor_stamp' ||
+            d.doc_type === 'secondPartyStamp'
+        );
+        const gpaStampDoc = custDocs.find(d =>
+            d.doc_type === 'pm_surya_ghar_stamp' ||
+            d.doc_type === 'surya_ghar_stamp' ||
+            d.doc_type === 'ghar_stamp'
+        );
+
+        const sigUrl = sigDoc ? await getViewUrl(sigDoc.storage_path) : '';
+        const stampUrl = stampDoc ? await getViewUrl(stampDoc.storage_path) : '';
+        const gpaStampUrl = gpaStampDoc ? await getViewUrl(gpaStampDoc.storage_path) : '';
+
+        const rawDate = editData?.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0];
+        const [y, m, d] = rawDate.split('-');
+        const formattedDate = (y && m && d) ? `${d}-${m}-${y}` : rawDate;
+
+        setAgreementData({
+            executionDate: formattedDate,
+            consumerName: selectedCust.customer_name || '',
+            consumerNo: selectedCust.consumer_no || '',
+            village: selectedCust.villages || '',
+            taluka: selectedCust.villages || '',
+            district: selectedCust.sub_divisions || '',
+            vendorName: 'Watersun Electrical Solutions Pvt Ltd',
+            vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
+            paymentTerms: 'Mutually Agreed Terms of Payment',
+            firstPartySignature: sigUrl || '',
+            secondPartyStamp: stampUrl || './stamp.png',
+            secondPartySignature: '',
+            signatureUrl: sigUrl || '',
+            stampUrl: stampUrl || './stamp.png',
+            gpaStampUrl: gpaStampUrl || '',
+            highlightColor: '#fef08a',
+            showHighlights: true,
+        });
+        setShowAgreementPopup(true);
+    };
+
+    const saveBeforeAgentExit = async (confirmLabel) => {
+        const meterDirty = displayedStage === STAGE_IDS.METER_INSTALLATION && isMeterInstallationDirty();
+        const inspectionDirty = displayedStage === STAGE_IDS.DISCOM_INSPECTION && isDiscomInspectionDirty();
+        const materialOrderDirty = displayedStage === STAGE_IDS.MATERIAL_ORDER && isMaterialOrderDirty();
+        if (!meterDirty && !inspectionDirty && !materialOrderDirty) return true;
+        const shouldSave = await showConfirm('You have unsaved changes. Save them before leaving?', {
+            confirmLabel,
+            cancelLabel: 'Keep Editing',
+            type: 'success'
+        });
+        if (!shouldSave) return false;
+        return meterDirty ? handleSaveMeterInstallation(false) : handleSaveDiscomInspection(false);
+    };
+
+    const handleForceAdvanceStage = async () => {
+        let nextStageId = null;
+        if (validationNextStage === 'Material Integration') nextStageId = STAGE_IDS.MATERIAL_INTEGRATION;
+        else if (validationNextStage === 'Installation Status') nextStageId = STAGE_IDS.INSTALLATION_STATUS;
+        else if (validationNextStage === 'Discom Inspection') nextStageId = STAGE_IDS.DISCOM_INSPECTION;
+        else if (validationNextStage === 'Subsidy Status') nextStageId = STAGE_IDS.SUBSIDY_STATUS;
+        
+        if (nextStageId && selectedCust) {
+            await handleUpdateCustomer(selectedCust.id, { stage: nextStageId });
+            setActiveCustomerStage(nextStageId);
+        }
+        setShowValidationModal(false);
     };
 
     return (
@@ -668,7 +858,7 @@ export default function AgentPortal({ user, onLogout }) {
                 <div className="flex items-center gap-3">
                     <span className="text-xs font-bold text-stone-600 truncate max-w-[120px]">{user.name}</span>
                     <button
-                        onClick={onLogout}
+                        onClick={async () => { if (await saveBeforeAgentExit('Save & Logout')) onLogout(); }}
                         className="p-2 text-stone-400 hover:text-red-500 transition-colors rounded-xl hover:bg-stone-50 cursor-pointer"
                         title="Logout"
                     >
@@ -839,7 +1029,18 @@ export default function AgentPortal({ user, onLogout }) {
                             )}
                         </div>
                         <div className="flex items-center gap-1 md:gap-2">
-                            <button onClick={onLogout} className="p-1.5 md:p-2 text-stone-400 hover:text-red-500 rounded-xl hover:bg-stone-100 transition-colors" title="Logout">
+                            {import.meta.env.DEV && onOpenDevSwitcher && (
+                                <button
+                                    type="button"
+                                    onClick={onOpenDevSwitcher}
+                                    className="p-1.5 md:p-2 text-amber-600 hover:text-amber-700 rounded-xl hover:bg-amber-50 transition-colors"
+                                    title="Open development role switcher"
+                                    aria-label="Open development role switcher"
+                                >
+                                    <Terminal size={16} />
+                                </button>
+                            )}
+                            <button onClick={async () => { if (await saveBeforeAgentExit('Save & Logout')) onLogout(); }} className="p-1.5 md:p-2 text-stone-400 hover:text-red-500 rounded-xl hover:bg-stone-100 transition-colors" title="Logout">
                                 <LogOut size={16} />
                             </button>
                             <button
@@ -1017,7 +1218,7 @@ export default function AgentPortal({ user, onLogout }) {
                             </div>
                             <div className="flex items-center gap-2 ml-3">
                                 <button
-                                    onClick={() => setSelectedCust(null)}
+                                    onClick={async () => { if (await saveBeforeAgentExit('Save & Close')) setSelectedCust(null); }}
                                     className="w-8 h-8 rounded-full bg-stone-200/70 hover:bg-stone-300 flex items-center justify-center text-stone-600 hover:text-stone-900 transition-colors font-bold text-xs cursor-pointer"
                                 >
                                     <X size={16} />
@@ -1047,8 +1248,17 @@ export default function AgentPortal({ user, onLogout }) {
                                                 if (stage.id !== displayedStage) {
                                                     const leavingDirtySection =
                                                         (displayedStage === STAGE_IDS.METER_INSTALLATION && isMeterInstallationDirty()) ||
-                                                        (displayedStage === STAGE_IDS.DISCOM_INSPECTION && isDiscomInspectionDirty());
-                                                    if (leavingDirtySection && !(await showConfirm('You have unsaved changes on this stage — leave without saving?', { confirmLabel: 'Leave Without Saving' }))) return;
+                                                        (displayedStage === STAGE_IDS.DISCOM_INSPECTION && isDiscomInspectionDirty()) ||
+                                                        (displayedStage === STAGE_IDS.MATERIAL_ORDER && isMaterialOrderDirty());
+                                                    if (leavingDirtySection) {
+                                                        const shouldSave = await showConfirm('You have unsaved changes on this stage. Save them before continuing?', { confirmLabel: 'Save & Continue', cancelLabel: 'Keep Editing', type: 'success' });
+                                                        if (!shouldSave) return;
+                                                        let didSave = false;
+                                                        if (displayedStage === STAGE_IDS.METER_INSTALLATION) didSave = await handleSaveMeterInstallation(false);
+                                                        else if (displayedStage === STAGE_IDS.DISCOM_INSPECTION) didSave = await handleSaveDiscomInspection(false);
+                                                        else if (displayedStage === STAGE_IDS.MATERIAL_ORDER) didSave = await handleSaveMaterialOrder(false);
+                                                        if (!didSave) return;
+                                                    }
                                                 }
                                                 setActiveCustomerStage(stage.id);
                                             }}
@@ -1074,37 +1284,41 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
                             <div className="space-y-4">
+                            {![
+                                STAGE_IDS.LEADS,
+                                STAGE_IDS.MATERIAL_ORDER,
+                                STAGE_IDS.MATERIAL_INTEGRATION,
+                                STAGE_IDS.METER_INSTALLATION,
+                                STAGE_IDS.DISCOM_INSPECTION,
+                                STAGE_IDS.COMPLETED,
+                                'CUSTOMER_CARD',
+                                'DOCUMENTS',
+                            ].includes(displayedStage) && (
+                                <AgentStageDetails
+                                    stage={displayedStage}
+                                    customer={{ ...selectedCust, ...editData }}
+                                    bom={integrationBom}
+                                    bomItems={integrationBomItems}
+                                    documents={custDocs}
+                                    onPreview={handlePreviewFile}
+                                    onDownload={handleDownloadDoc}
+                                />
+                            )}
+
+                            {displayedStage === STAGE_IDS.DISCOM_SUBMISSION && (
+                                <div className="pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleGenerateAgreementPreview}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                    >
+                                        <FileText size={14} /> Preview PM Surya Ghar Agreement
+                                    </button>
+                                </div>
+                            )}
                             {/* Every assigned stage has one shared hand-off remark. This is
                                 separate from individual document remarks, which remain on
                                 each uploaded document. */}
-                            {displayedStage !== STAGE_IDS.REGISTRATION && displayedStage !== STAGE_IDS.LEADS && <section className="bg-amber-50/60 border border-amber-200/70 rounded-2xl p-3.5 space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-amber-800">
-                                        {PRIMARY_STAGES.find(stage => stage.id === displayedStage)?.label || displayedStage} Remark
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={handleSaveStageRemark}
-                                        disabled={saving}
-                                        className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-[10px] font-bold"
-                                    >
-                                        Save
-                                    </button>
-                                </div>
-                                <input
-                                    type="text"
-                                    value={getStageRemarks(editData.stages_remarks)[displayedStage] || ''}
-                                    onChange={event => setEditData(previous => ({
-                                        ...previous,
-                                        stages_remarks: {
-                                            ...getStageRemarks(previous.stages_remarks),
-                                            [displayedStage]: event.target.value,
-                                        },
-                                    }))}
-                                    placeholder="Add a hand-off or status remark for this stage"
-                                    className="w-full bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                />
-                            </section>}
                             {/* ─── STAGE SECTION (Render active stage component in phone format) ─── */}
                             {displayedStage === 'CUSTOMER_CARD' && (
                                 <div className="space-y-4">
@@ -1147,9 +1361,22 @@ export default function AgentPortal({ user, onLogout }) {
                                                             <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide mt-0.5">{doc.doc_type.replace(/_/g, ' ')}</p>
                                                         </div>
                                                     </div>
-                                                    <a href={getViewUrl(doc.storage_path)} target="_blank" rel="noreferrer" className="shrink-0 w-full sm:w-auto bg-stone-100 hover:bg-blue-50 text-stone-600 hover:text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5">
-                                                        <Eye size={12} /> View File
-                                                    </a>
+                                                    <div className="shrink-0 flex gap-2 w-full sm:w-auto">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handlePreviewFile(doc)}
+                                                            className="flex-1 sm:flex-none bg-stone-100 hover:bg-blue-50 text-stone-600 hover:text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5"
+                                                        >
+                                                            <Eye size={12} /> View
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDownloadDoc(doc)}
+                                                            className="flex-1 sm:flex-none bg-stone-900 hover:bg-stone-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5"
+                                                        >
+                                                            <Download size={12} /> Download
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -1335,7 +1562,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {displayedStage === STAGE_IDS.REGISTRATION && (
+                            {displayedStage === '__REMOVED_REGISTRATION_SUMMARY__' && (
                                 <div className="space-y-4">
                                     {/* Registration Details Card (Line by Line Non-Editable) */}
                                     <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
@@ -1405,7 +1632,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {displayedStage === STAGE_IDS.LOAN && (
+                            {displayedStage === '__REMOVED_LOAN_SUMMARY__' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Banknote size={11} /> Loan Information
@@ -1441,7 +1668,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {displayedStage === STAGE_IDS.CASH && (
+                            {displayedStage === '__REMOVED_CASH_SUMMARY__' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Banknote size={11} /> Cash Tracking
@@ -1480,9 +1707,9 @@ export default function AgentPortal({ user, onLogout }) {
                             )}
 
                             {displayedStage === STAGE_IDS.MATERIAL_ORDER && (
-                                <div className="space-y-4">
+                                <div className="flex flex-col gap-4">
                                     {/* Non-Editable Leads Details Card */}
-                                    <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
+                                    <div className="order-2 bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                         <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                             <User size={11} /> Customer & Site Reference
                                         </h5>
@@ -1545,7 +1772,7 @@ export default function AgentPortal({ user, onLogout }) {
                                     </div>
 
                                     {/* Material Order Form Card */}
-                                    <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-3">
+                                    <div className="order-1 bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-3">
                                         <div className="border-b border-stone-150 pb-2 mb-1">
                                             <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
                                                 <Package size={11} /> Material Order Details
@@ -1568,6 +1795,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">DC Cable (Mtrs)</span>
                                                 <input
                                                     type="number"
+                                                    onKeyDown={e => ['e', 'E', '-', '+'].includes(e.key) && e.preventDefault()}
                                                     value={editData.dc_cable ?? selectedCust.dc_cable ?? ''}
                                                     onChange={e => setEditData(prev => ({ ...prev, dc_cable: e.target.value }))}
                                                     placeholder="Meters"
@@ -1578,6 +1806,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">AC Cable (Mtrs)</span>
                                                 <input
                                                     type="number"
+                                                    onKeyDown={e => ['e', 'E', '-', '+'].includes(e.key) && e.preventDefault()}
                                                     value={editData.ac_cable ?? selectedCust.ac_cable ?? ''}
                                                     onChange={e => setEditData(prev => ({ ...prev, ac_cable: e.target.value }))}
                                                     placeholder="Meters"
@@ -1588,6 +1817,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Front Leg Height (ft)</span>
                                                 <input
                                                     type="number"
+                                                    onKeyDown={e => ['e', 'E', '-', '+'].includes(e.key) && e.preventDefault()}
                                                     value={editData.structure_front_leg_height ?? selectedCust.structure_front_leg_height ?? ''}
                                                     onChange={e => setEditData(prev => ({ ...prev, structure_front_leg_height: e.target.value }))}
                                                     placeholder="ft"
@@ -1598,6 +1828,7 @@ export default function AgentPortal({ user, onLogout }) {
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Rear Leg Height (ft)</span>
                                                 <input
                                                     type="number"
+                                                    onKeyDown={e => ['e', 'E', '-', '+'].includes(e.key) && e.preventDefault()}
                                                     value={editData.structure_rear_leg_height ?? selectedCust.structure_rear_leg_height ?? ''}
                                                     onChange={e => setEditData(prev => ({ ...prev, structure_rear_leg_height: e.target.value }))}
                                                     placeholder="ft"
@@ -1627,18 +1858,29 @@ export default function AgentPortal({ user, onLogout }) {
                                                 />
                                             </div>
                                         </div>
-                                        <div className="pt-2 border-t border-stone-200/60">
+                                        <div className={`grid gap-2 pt-2 border-t border-stone-200/60 ${selectedCust.stage === STAGE_IDS.MATERIAL_ORDER ? 'grid-cols-2' : 'grid-cols-1'}`}>
                                             <button
-                                                onClick={handleAdvanceMaterialOrder}
-                                                disabled={saving || isFutureStage}
-                                                className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                                onClick={() => handleSaveMaterialOrder(false)}
+                                                disabled={saving || !isMaterialOrderDirty()}
+                                                className={`py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 ${saving ? 'opacity-50 cursor-not-allowed' : (isMaterialOrderDirty() ? 'bg-stone-200 hover:bg-stone-300 text-stone-700 cursor-pointer' : 'bg-emerald-600 text-white cursor-default')}
+                                                `}
                                             >
-                                                <CheckCircle2 size={14} /> {saving ? 'Advancing...' : 'Save & Move to Material Integration'}
+                                                <Save size={14} /> {saving ? 'Saving...' : (isMaterialOrderDirty() ? 'Save' : 'Saved')}
                                             </button>
+                                            {selectedCust.stage === STAGE_IDS.MATERIAL_ORDER && (
+                                                <button
+                                                    onClick={() => handleSaveMaterialOrder(true)}
+                                                    disabled={saving}
+                                                    className="bg-amber-500 hover:bg-amber-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    <CheckCircle2 size={14} /> {saving ? 'Saving...' : 'Save & Move'}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
                             )}
+
 
                             {displayedStage === STAGE_IDS.MATERIAL_INTEGRATION && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-4">
@@ -1692,6 +1934,42 @@ export default function AgentPortal({ user, onLogout }) {
                                             </div>
                                         </div>
 
+                                    <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-3">
+                                        <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
+                                            <ClipboardList size={11} /> Bill of Materials (View Only)
+                                        </h5>
+                                        {integrationBomItems.length === 0 ? (
+                                            <p className="text-xs text-stone-400 italic py-2">No BOM items recorded yet.</p>
+                                        ) : (
+                                            <div className="overflow-x-auto border border-stone-200 rounded-xl bg-white">
+                                                <table className="min-w-full divide-y divide-stone-200 text-xs">
+                                                    <thead className="bg-stone-50 text-stone-500 uppercase tracking-wider font-bold text-[9px]">
+                                                        <tr>
+                                                            <th className="px-3 py-2 text-left w-10">#</th>
+                                                            <th className="px-3 py-2 text-left">Product Name</th>
+                                                            <th className="px-3 py-2 text-left w-20">Qty</th>
+                                                            <th className="px-3 py-2 text-left w-16">UOM</th>
+                                                            <th className="px-3 py-2 text-left w-32">Integration By</th>
+                                                            <th className="px-3 py-2 text-left">Note</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-stone-200 bg-white font-medium text-stone-700">
+                                                        {integrationBomItems.map((item, idx) => (
+                                                            <tr key={item.id || `${item.product_name}-${idx}`}>
+                                                                <td className="px-3 py-2 text-stone-400 font-bold">{idx + 1}</td>
+                                                                <td className="px-3 py-2 font-semibold text-stone-800">{item.product_name || ''}</td>
+                                                                <td className="px-3 py-2">{item.quantity || ''}</td>
+                                                                <td className="px-3 py-2 text-stone-500">{item.uom || ''}</td>
+                                                                <td className="px-3 py-2">{item.integration_by || ''}</td>
+                                                                <td className="px-3 py-2 text-stone-500">{item.note || ''}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <section className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-3">
                                         <h6 className="mb-2 border-b border-amber-200/70 pb-2 text-[9px] font-black uppercase tracking-widest text-amber-800">
                                             Procurement & Loading Milestones
@@ -1718,6 +1996,8 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
+
+
                             {(displayedStage === STAGE_IDS.LOST_PROJECT || displayedStage === 'HOLD PROCUREMENT') && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
@@ -1732,7 +2012,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {displayedStage === STAGE_IDS.MATERIAL_DELIVERY && (
+                            {displayedStage === '__REMOVED_DELIVERY_SUMMARY__' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Truck size={11} /> Material Delivery Details
@@ -1794,7 +2074,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {displayedStage === STAGE_IDS.GEO_TAG_PHOTO && (
+                            {displayedStage === '__REMOVED_GEO_SUMMARY__' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Camera size={11} /> Geo Tag Photo Details
@@ -1812,7 +2092,7 @@ export default function AgentPortal({ user, onLogout }) {
                                 </div>
                             )}
 
-                            {displayedStage === STAGE_IDS.DISCOM_SUBMISSION && (
+                            {displayedStage === '__REMOVED_DISCOM_SUMMARY__' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Send size={11} /> Discom Submission Details
@@ -1910,23 +2190,24 @@ export default function AgentPortal({ user, onLogout }) {
                                             onUpdateRemark={handleUpdateDocRemark}
                                         />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-200/60">
+                                    <div className={`grid gap-2 pt-2 border-t border-stone-200/60 ${selectedCust.stage === STAGE_IDS.METER_INSTALLATION ? 'grid-cols-2' : 'grid-cols-1'}`}>
                                         <button
                                             onClick={() => handleSaveMeterInstallation(false)}
-                                            disabled={saving}
-                                            className={`py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 ${
-                                                isMeterInstallationDirty() ? 'bg-stone-900 hover:bg-stone-800 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                            }`}
+                                            disabled={saving || !isMeterInstallationDirty()}
+                                            className={`py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 ${saving ? 'opacity-50 cursor-not-allowed' : (isMeterInstallationDirty() ? 'bg-stone-200 hover:bg-stone-300 text-stone-700 cursor-pointer' : 'bg-emerald-600 text-white cursor-default')}
+                                            `}
                                         >
                                             <Save size={14} /> {saving ? 'Saving...' : (isMeterInstallationDirty() ? 'Save' : 'Saved')}
                                         </button>
-                                        <button
-                                            onClick={() => handleSaveMeterInstallation(true)}
-                                            disabled={saving || isFutureStage}
-                                            className="bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
-                                        >
-                                            <CheckCircle2 size={14} /> {saving ? 'Saving...' : 'Save & Move'}
-                                        </button>
+                                        {selectedCust.stage === STAGE_IDS.METER_INSTALLATION && (
+                                            <button
+                                                onClick={() => handleSaveMeterInstallation(true)}
+                                                disabled={saving}
+                                                className="bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <CheckCircle2 size={14} /> {saving ? 'Saving...' : 'Save & Move'}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -1959,28 +2240,29 @@ export default function AgentPortal({ user, onLogout }) {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-200/60">
+                                    <div className={`grid gap-2 pt-2 border-t border-stone-200/60 ${selectedCust.stage === STAGE_IDS.DISCOM_INSPECTION ? 'grid-cols-2' : 'grid-cols-1'}`}>
                                         <button
                                             onClick={() => handleSaveDiscomInspection(false)}
-                                            disabled={saving}
-                                            className={`py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 ${
-                                                isDiscomInspectionDirty() ? 'bg-stone-900 hover:bg-stone-800 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                            }`}
+                                            disabled={saving || !isDiscomInspectionDirty()}
+                                            className={`py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 ${saving ? 'opacity-50 cursor-not-allowed' : (isDiscomInspectionDirty() ? 'bg-stone-200 hover:bg-stone-300 text-stone-700 cursor-pointer' : 'bg-emerald-600 text-white cursor-default')}
+                                            `}
                                         >
                                             <Save size={14} /> {saving ? 'Saving...' : (isDiscomInspectionDirty() ? 'Save' : 'Saved')}
                                         </button>
-                                        <button
-                                            onClick={() => handleSaveDiscomInspection(true)}
-                                            disabled={saving || isFutureStage}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
-                                        >
-                                            <CheckCircle2 size={14} /> {saving ? 'Saving...' : 'Save & Move'}
-                                        </button>
+                                        {selectedCust.stage === STAGE_IDS.DISCOM_INSPECTION && (
+                                            <button
+                                                onClick={() => handleSaveDiscomInspection(true)}
+                                                disabled={saving}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <CheckCircle2 size={14} /> {saving ? 'Saving...' : 'Save & Move'}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )}
 
-                            {displayedStage === STAGE_IDS.SUBSIDY_STATUS && (
+                            {displayedStage === '__REMOVED_SUBSIDY_SUMMARY__' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <Tag size={11} /> Subsidy Status Details
@@ -2235,34 +2517,9 @@ export default function AgentPortal({ user, onLogout }) {
                 </div>
             )}
 
-            {/* Vendor-style BOM print preview for Material Integration. */}
-            {showIntegrationPrint && selectedCust && (
-                <div className="fixed inset-0 z-[999] bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-                    <div className="print-only-modal bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden">
-                        <div className="no-print px-5 py-4 bg-stone-900 text-white flex items-center justify-between">
-                            <div className="flex items-center gap-2"><Printer size={16} className="text-amber-400" /><h3 className="text-xs sm:text-sm font-black uppercase tracking-wider">BOM Print Preview — {selectedCust.customer_name}</h3></div>
-                            <div className="flex items-center gap-2">
-                                <button type="button" onClick={handlePrintIntegrationPreview} className="bg-amber-500 hover:bg-amber-400 text-stone-950 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Printer size={13} /> Print Document</button>
-                                <button type="button" onClick={() => setShowIntegrationPrint(false)} className="text-stone-400 hover:text-white p-1 rounded-lg"><X size={18} /></button>
-                            </div>
-                        </div>
-                        <div ref={integrationPrintRef} className="print-document-container flex-1 overflow-y-auto p-6 bg-white text-stone-900">
-                            <div className="border-b-2 border-stone-900 pb-3 mb-5 text-center">
-                                <h1 className="text-lg font-black uppercase tracking-wider">Watersun Electrical Solutions Pvt Ltd</h1>
-                                <p className="text-[11px] font-semibold text-stone-600">Solar PV Project Integration & Material Loading Checklist</p>
-                                <p className="inline-block mt-2 px-2.5 py-0.5 bg-stone-100 border border-stone-300 rounded text-[10px] font-black uppercase tracking-widest">Bill of Materials — {integrationBom?.bom_type || 'General'} Type</p>
-                            </div>
-                            <section className="mb-4"><h4 className="text-[11px] font-black uppercase border-b border-stone-400 pb-1 mb-2">1. Customer & Site Reference</h4><table className="w-full text-[11px] border border-stone-300"><tbody><tr><td className="w-1/4 p-1.5 bg-stone-50 font-bold">Party Name:</td><td className="w-1/4 p-1.5 font-bold">{selectedCust.customer_name || '–'}</td><td className="w-1/4 p-1.5 bg-stone-50 font-bold">Contact Number:</td><td className="w-1/4 p-1.5 font-bold">{selectedCust.phone_number || '–'}</td></tr><tr><td className="p-1.5 bg-stone-50 font-bold">System Capacity:</td><td className="p-1.5 font-bold">{selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : '–'}</td><td className="p-1.5 bg-stone-50 font-bold">Dealer / Channel Partner:</td><td className="p-1.5 font-bold">{selectedCust.channel_partner || '–'}</td></tr><tr><td className="p-1.5 bg-stone-50 font-bold">File / Folder No:</td><td className="p-1.5 font-bold">{selectedCust.folder_no || '–'}</td><td className="p-1.5 bg-stone-50 font-bold">Registration Date:</td><td className="p-1.5 font-bold">{selectedCust.registration_date || '–'}</td></tr></tbody></table></section>
-                            <section className="mb-4"><h4 className="text-[11px] font-black uppercase border-b border-stone-400 pb-1 mb-2">2. Material Order Specifications</h4><table className="w-full text-[11px] border border-stone-300"><tbody><tr><td className="w-1/4 p-1.5 bg-stone-50 font-bold">Roof / Shed:</td><td className="w-1/4 p-1.5 font-bold">{selectedCust.roof_shed || '–'}</td><td className="w-1/4 p-1.5 bg-stone-50 font-bold">Structure Leg Height:</td><td className="w-1/4 p-1.5 font-bold">{selectedCust.structure_front_leg_height ? `${selectedCust.structure_front_leg_height} ft / ${selectedCust.structure_rear_leg_height || '–'} ft` : '–'}</td></tr><tr><td className="p-1.5 bg-stone-50 font-bold">DC Cable Length:</td><td className="p-1.5 font-bold">{selectedCust.dc_cable ? `${selectedCust.dc_cable} Meters` : '–'}</td><td className="p-1.5 bg-stone-50 font-bold">AC Cable Length:</td><td className="p-1.5 font-bold">{selectedCust.ac_cable ? `${selectedCust.ac_cable} Meters` : '–'}</td></tr><tr><td className="p-1.5 bg-stone-50 font-bold">Estimated Invoice Value:</td><td colSpan={3} className="p-1.5 font-bold">{selectedCust.invoice_value ? `₹ ${toIndianCommas(selectedCust.invoice_value)}` : '–'}</td></tr></tbody></table></section>
-                            <section className="mb-4"><h4 className="text-[11px] font-black uppercase border-b border-stone-400 pb-1 mb-2">3. Procurement & Loading Milestones</h4><table className="w-full text-[11px] border border-stone-300"><tbody><tr><td className="p-1.5 bg-stone-50 font-bold">Paper Prepared By</td><td className="p-1.5">{integrationBom?.paper_prepared_by || '–'}</td><td className="p-1.5 bg-stone-50 font-bold">Paper Prepared Date</td><td className="p-1.5">{integrationBom?.paper_prepared_date || '–'}</td></tr><tr><td className="p-1.5 bg-stone-50 font-bold">Material Loaded By</td><td className="p-1.5">{integrationBom?.material_loaded_by || '–'}</td><td className="p-1.5 bg-stone-50 font-bold">Material Loaded Date</td><td className="p-1.5">{integrationBom?.material_loaded_date || '–'}</td></tr></tbody></table></section>
-                            <section><h4 className="text-[11px] font-black uppercase border-b border-stone-400 pb-1 mb-2">4. BOM Equipment Checklist</h4>{integrationBomItems.length ? <table className="w-full text-[11px] border-collapse border border-stone-400"><thead><tr className="bg-stone-100 text-[9px] uppercase"><th className="border border-stone-400 p-1.5">#</th><th className="border border-stone-400 p-1.5 text-left">Product</th><th className="border border-stone-400 p-1.5 text-left">Make</th><th className="border border-stone-400 p-1.5">UOM</th><th className="border border-stone-400 p-1.5 text-left">Integration By</th><th className="border border-stone-400 p-1.5 text-left">Note</th></tr></thead><tbody>{integrationBomItems.map((item, index) => <tr key={item.id || index}><td className="border border-stone-400 p-1.5 text-center">{index + 1}</td><td className="border border-stone-400 p-1.5 font-bold">{item.product_name || '–'}</td><td className="border border-stone-400 p-1.5">{item.make || '–'}</td><td className="border border-stone-400 p-1.5 text-center">{item.uom || '–'}</td><td className="border border-stone-400 p-1.5">{item.integration_by || '–'}</td><td className="border border-stone-400 p-1.5">{item.note || '–'}</td></tr>)}</tbody></table> : <p className="py-4 text-center text-xs text-stone-400 border border-stone-200">No BOM checklist items configured yet.</p>}</section>
-                        </div>
-                    </div>
-                </div>
-            )}
-
+            {/* Soft-Validation / Requirements popup */}
             {showValidationModal && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-sm" onClick={() => setShowValidationModal(false)}>
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-sm" onClick={() => setShowValidationModal(false)}>
                     <section className="w-full max-w-md overflow-hidden rounded-[28px] border border-amber-200 bg-white shadow-2xl animate-in zoom-in-95 fade-in duration-200" onClick={event => event.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="requirements-title">
                         <div className="bg-gradient-to-br from-amber-500 via-amber-500 to-orange-500 px-6 py-5 text-white">
                             <div className="flex items-start justify-between gap-4">
@@ -2278,7 +2535,7 @@ export default function AgentPortal({ user, onLogout }) {
                         </div>
                         <div className="px-6 py-5">
                             <p className="text-sm font-medium leading-relaxed text-stone-600">Complete the required items below before moving this customer to <span className="font-bold text-stone-800">{validationNextStage}</span>.</p>
-                            <ul className="mt-4 space-y-2.5">
+                            <ul className="mt-4 space-y-2.5 max-h-48 overflow-y-auto">
                                 {validationIssues.map((issue, idx) => {
                                     const displayMsg = typeof issue === 'string'
                                         ? issue
@@ -2299,61 +2556,43 @@ export default function AgentPortal({ user, onLogout }) {
                                 >
                                     Review
                                 </button>
-                                {import.meta.env.DEV && (
-                                    <button
-                                        type="button"
-                                        onClick={handleBypassValidationAndAdvance}
-                                        className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-3 text-xs font-bold text-white transition-colors shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
-                                    >
-                                        ⚡ Auto-Fill & Move Next
-                                    </button>
-                                )}
+                                <button 
+                                    type="button" 
+                                    onClick={handleForceAdvanceStage}
+                                    className="flex-1 rounded-xl bg-rose-500 hover:bg-rose-600 px-4 py-3 text-xs font-bold text-white shadow-md shadow-rose-500/20 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                                >
+                                    Move Anyway
+                                </button>
                             </div>
                         </div>
                     </section>
                 </div>
             )}
 
-            {/* Document Preview Modal */}
-            {previewDoc && (
-                <FilePreviewModal
-                    file={previewDoc.doc}
-                    fileUrl={previewDoc.url}
-                    onClose={() => setPreviewDoc(null)}
-                    onDownload={() => handleDownloadDoc(previewDoc.doc)}
-                    onUpdateRemark={handleUpdateDocRemark}
-                />
-            )}
-
-            {/* Custom Alert Modal */}
-            {customAlert && (
-                <div
-                    className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200"
-                    onClick={() => setCustomAlert(null)}
-                >
-                    <div
-                        className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl border border-stone-150 animate-in zoom-in-95 duration-200 text-center space-y-4"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ${
-                            customAlert.type === 'error' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                            {customAlert.type === 'error' ? <AlertCircle size={24} /> : <AlertTriangle size={24} />}
+            {/* Vendor-style BOM print preview for Material Integration. */}
+            {showIntegrationPrint && selectedCust && (
+                <div className="fixed inset-0 z-[999] bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+                    <div className="print-only-modal bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+                        <div className="no-print px-5 py-4 bg-stone-900 text-white flex items-center justify-between">
+                            <div className="flex items-center gap-2"><Printer size={16} className="text-amber-400" /><h3 className="text-xs sm:text-sm font-black uppercase tracking-wider">BOM Print Preview — {selectedCust.customer_name}</h3></div>
+                            <div className="flex items-center gap-2">
+                                <button type="button" onClick={handlePrintIntegrationPreview} className="bg-amber-500 hover:bg-amber-400 text-stone-950 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Printer size={13} /> Print Document</button>
+                                <button type="button" onClick={() => setShowIntegrationPrint(false)} className="text-stone-400 hover:text-white p-1 rounded-lg"><X size={18} /></button>
+                            </div>
                         </div>
-                        <div className="space-y-1">
-                            <h4 className="text-base font-extrabold text-stone-900">{customAlert.title}</h4>
-                            <p className="text-xs text-stone-500 font-medium leading-relaxed">{customAlert.message}</p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setCustomAlert(null)}
-                            className="w-full py-3 bg-stone-900 hover:bg-stone-850 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-                        >
-                            Understood
-                        </button>
+                        <div ref={integrationPrintRef} className="flex-1 overflow-y-auto p-8 bg-white text-stone-900 print-document"><BomPrintView customer={{ ...selectedCust, ...editData }} bom={integrationBom} bomItems={integrationBomItems} activeType={integrationBom?.bom_type || ((selectedCust?.roof_shed || editData?.roof_shed || '').toLowerCase().includes('shed') ? 'SHED' : 'ROOF')} /></div>
                     </div>
                 </div>
+            )}
+
+            {showAgreementPopup && (
+                <AgreementPreview
+                    data={agreementData}
+                    onChange={setAgreementData}
+                    onClose={() => setShowAgreementPopup(false)}
+                />
             )}
         </>
     );
 }
+
