@@ -507,7 +507,7 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
                         )}
                     </div>
                     <span className={`text-xs select-none ${isUploaded ? 'font-bold text-stone-900' : 'font-medium text-stone-600'}`}>
-                        {label}
+                        <RequiredLabel label={label} />
                     </span>
                     {isUploaded ? (
                         <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">

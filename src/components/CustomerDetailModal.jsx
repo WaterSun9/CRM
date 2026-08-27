@@ -247,10 +247,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
                 paymentTerms: 'Mutually Agreed Terms of Payment',
                 firstPartySignature: initialSigUrl,
-                secondPartyStamp: '/stamp.png',
+                secondPartyStamp: initialStampUrl || './stamp.png',
                 secondPartySignature: '',
                 signatureUrl: initialSigUrl,
-                stampUrl: '/stamp.png',
+                stampUrl: initialStampUrl || './stamp.png',
                 gpaStampUrl: initialGpaStampUrl,
                 highlightColor: '#fef08a',
                 showHighlights: true,
@@ -339,10 +339,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
             paymentTerms: 'Mutually Agreed Terms of Payment',
             firstPartySignature: sigUrl || '',
-            secondPartyStamp: '/stamp.png',
+            secondPartyStamp: stampUrl || './stamp.png',
             secondPartySignature: '',
             signatureUrl: sigUrl || '',
-            stampUrl: '/stamp.png',
+            stampUrl: stampUrl || './stamp.png',
             gpaStampUrl: gpaStampUrl || '',
             highlightColor: '#fef08a',
             showHighlights: true,
@@ -716,13 +716,16 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const hasFeasibilityDoc = documents.some(d => d.doc_type === 'feasibilty_document' || d.doc_type === 'feasibility_document') || !!editData.feasibilty_document;
     const hasSubsidyTokenDoc = documents.some(d => d.doc_type === 'subsidy_token_photo') || !!editData.subsidy_token_photo;
+    const hasApplicationAcknowledgment = documents.some(d => d.doc_type === 'application_acknowledgment') || !!editData.application_acknowledgment;
+    const hasVendorFeasibility = documents.some(d => d.doc_type === 'vendor_feasibility') || !!editData.vendor_feasibility;
+    const hasSiteFeasibility = documents.some(d => d.doc_type === 'site_feasibility') || !!editData.site_feasibility;
     const isRegistrationFieldsFilled = !!(
         editData.registration_date &&
         editData.registration_by?.trim() &&
         (editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim()) &&
         editData.folder_no?.toString().trim()
     );
-    const isRegistrationReady = isRegistrationFieldsFilled && hasFeasibilityDoc && hasSubsidyTokenDoc;
+    const isRegistrationReady = isRegistrationFieldsFilled && hasFeasibilityDoc && hasSubsidyTokenDoc && hasApplicationAcknowledgment;
 
     const isMaterialOrderFilled = Boolean(
         editData.roof_shed &&
@@ -758,6 +761,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(editData.folder_no?.toString().trim(), 'File No');
                 requireField(hasFeasibilityDoc, 'Feasibility Document');
                 requireField(hasSubsidyTokenDoc, 'Subsidy Token Photo');
+                requireField(hasApplicationAcknowledgment, 'Application Acknowledgment');
+                break;
+            case STAGE_IDS.LOAN:
+                requireField(hasVendorFeasibility, 'Vendor Feasibility');
+                requireField(hasSiteFeasibility, 'Site Feasibility');
                 break;
             case STAGE_IDS.MATERIAL_ORDER:
                 requireField(editData.roof_shed, 'Roof / Shed');
@@ -1283,7 +1291,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             </button>
                         )}
                         {isAdmin && <button onClick={() => setShowDeleteConfirm(true)} className="p-2 text-white/30 hover:text-red-400"><Trash2 size={18} /></button>}
-                        <button onClick={onClose} className="p-2 text-white/30 hover:text-white"><X size={24} /></button>
+                        <button onClick={() => {
+                            if (isFormDirty && !window.confirm('You have unsaved changes. Close without saving?')) return;
+                            onClose();
+                        }} className="p-2 text-white/30 hover:text-white"><X size={24} /></button>
                     </div>
                 </div>
 

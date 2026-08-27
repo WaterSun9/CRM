@@ -1060,10 +1060,10 @@ export default function AgentPortal({ user, onLogout }) {
                         <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-6 pb-10 space-y-4">
                             {isFutureStage && (
                                 <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-center">
-                                    <p className="text-xs font-bold text-amber-800">This client has not reached this stage yet. Showing view-only.</p>
+                                    <p className="text-xs font-bold text-amber-800">This client has not reached this stage yet. You can save progress here, but you won't be able to advance to the next stage until they do.</p>
                                 </div>
                             )}
-                            <div className={isFutureStage ? "opacity-50 pointer-events-none space-y-4" : "space-y-4"}>
+                            <div className="space-y-4">
                             {/* Every assigned stage has one shared hand-off remark. This is
                                 separate from individual document remarks, which remain on
                                 each uploaded document. */}
@@ -1620,7 +1620,7 @@ export default function AgentPortal({ user, onLogout }) {
                                         <div className="pt-2 border-t border-stone-200/60">
                                             <button
                                                 onClick={handleAdvanceMaterialOrder}
-                                                disabled={saving}
+                                                disabled={saving || isFutureStage}
                                                 className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                                             >
                                                 <CheckCircle2 size={14} /> {saving ? 'Advancing...' : 'Save & Move to Material Integration'}
@@ -1912,7 +1912,7 @@ export default function AgentPortal({ user, onLogout }) {
                                         </button>
                                         <button
                                             onClick={() => handleSaveMeterInstallation(true)}
-                                            disabled={saving}
+                                            disabled={saving || isFutureStage}
                                             className="bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
                                         >
                                             <CheckCircle2 size={14} /> {saving ? 'Saving...' : 'Save & Move'}
@@ -1961,7 +1961,7 @@ export default function AgentPortal({ user, onLogout }) {
                                         </button>
                                         <button
                                             onClick={() => handleSaveDiscomInspection(true)}
-                                            disabled={saving}
+                                            disabled={saving || isFutureStage}
                                             className="bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
                                         >
                                             <CheckCircle2 size={14} /> {saving ? 'Saving...' : 'Save & Move'}

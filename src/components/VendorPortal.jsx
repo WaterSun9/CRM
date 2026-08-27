@@ -1102,10 +1102,10 @@ export default function VendorPortal({ user, onLogout }) {
                         <div className="space-y-4">
                             {vendorIsFutureTab && (
                                 <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-center">
-                                    <p className="text-xs font-bold text-amber-800">This client has not reached this stage yet. Showing view-only.</p>
+                                    <p className="text-xs font-bold text-amber-800">This client has not reached this stage yet. You can save progress here, but you won't be able to advance to the next stage until they do.</p>
                                 </div>
                             )}
-                            <div className={vendorIsFutureTab ? "opacity-50 pointer-events-none space-y-4" : "space-y-4"}>
+                            <div className="space-y-4">
                             <h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest border-b border-stone-100 pb-1.5">
                                 {activeTab === 'DELIVERY' 
                                     ? 'Material Delivery Details' 
@@ -1359,7 +1359,7 @@ export default function VendorPortal({ user, onLogout }) {
                                         <button
                                             type="button"
                                             onClick={() => handleSaveChanges(STAGE_IDS.DISCOM_SUBMISSION)}
-                                            disabled={saving || geoTagStatus !== 'Proceed' || geoDocs.length === 0}
+                                            disabled={saving || geoTagStatus !== 'Proceed' || geoDocs.length === 0 || vendorIsFutureTab}
                                             title={geoTagStatus !== 'Proceed' || geoDocs.length === 0 ? 'Set status to Proceed and upload a geo-tag photo first.' : undefined}
                                             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
                                         >
@@ -1515,7 +1515,7 @@ export default function VendorPortal({ user, onLogout }) {
                                                 <button
                                                     type="button"
                                                     onClick={() => handleSaveChanges(STAGE_IDS.GEO_TAG_PHOTO)}
-                                                    disabled={saving}
+                                                    disabled={saving || vendorIsFutureTab}
                                                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
                                                 >
                                                     {saving ? (

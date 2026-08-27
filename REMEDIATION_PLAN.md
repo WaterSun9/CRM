@@ -18,36 +18,80 @@ first) → quick ready-to-go fixes with zero open questions → items I'm
 blocked on waiting for your input (asked in parallel, not stalling
 anything) → pure hygiene → big optional rewrites last.
 
+### ✅ Latest round
+- **6.1** — Delivery Batches sidebar count question — resolved as
+  working-as-intended. The badge only shows when count > 0 (same rule
+  every sidebar item follows), and you confirmed the number should be
+  "batches in transit, not delivered" — which is exactly what it already
+  computes. It was hidden because there are currently 0 in-transit
+  batches, not broken. No code change.
+- **Export CSV rebuilt** — the old export had a ~66-column list written
+  against an outdated schema; columns like Application Number, Meter
+  Category, Sanctioned Load, Bank Name no longer exist on the live table
+  at all and always exported blank. Rebuilt from scratch against the
+  real current schema (cross-referenced `models.jsx`'s live field list
+  against every field actually used across the app) — 71 columns now,
+  organized by customer lifecycle stage. Confirmed with you: Export stays
+  Admin-only, no visibility change.
+
 ### Now — do these next, in this order
 1. ✅ **3.1** — Fix dangling `expandedStages` reference in `AgentPortal.jsx` — DONE
 2. ✅ **3.2** — Fix mismatched stamp-document alias lookups in `CustomerDetailModal.jsx` — DONE
 3. ✅ **3.3** — Add missing `logActivity` calls to delivery-batch status changes — DONE (also found + fixed 2 more silent-failure bugs in the same two write sites, same pattern as 6.2)
 4. ✅ **10.8** — Restrict document delete to Admin/Office only — DONE (verified via code review + build across all 9 files; live click-through not achievable — the dev "Force Login"/Quick Preview panel never creates a real Supabase Auth session by original design, so it can't load real row data for any role. Not a bug, just a hard limit of that tool.)
-5. ✅ **6.3** — Agent/Vendor stage-lock messaging — DONE (`AgentPortal.jsx` and `VendorPortal.jsx` both had their own free stage-tab switchers with zero gate tying the viewed tab to the customer's real stage; both now dim the fields and show a "hasn't reached this stage yet" banner when viewing a future stage. Verified via code review + build; live click-through blocked by the same Force Login/RLS limit as 10.8.)
+5. ✅ **6.3** — Agent/Vendor stage-lock messaging — DONE, reworked per your
+   feedback. Original version fully locked (dimmed + disabled) future-stage
+   tabs. You clarified: fields should stay editable and saveable — only
+   the actual "advance to next stage" action should be blocked, since a
+   full lock also stops legitimate early data entry. Now: all fields stay
+   editable everywhere, and only the specific buttons that write a new
+   `stage` value to the database get disabled when viewing a stage ahead
+   of the customer's real one (3 buttons in Agent Portal, 2 in Vendor
+   Portal — confirmed via code search these are the only stage-advancing
+   actions in either file). Verified via diff review + build + lint.
 6. ✅ **10.9** — Data-safety sweep across remaining write paths — DONE (7 real silent-failure bugs found and fixed across 5 files — see Phase 10 below for the full list. The most serious: the Material Integration BOM save could silently fail while still letting the stage advance, with zero indication the material list was never actually saved.)
 
-### 🆕 10.12 — No offline handling anywhere — flagged, not started
-You asked: what happens if the connection drops mid-use? Checked —
-**zero offline handling exists anywhere in the app.** No "you're offline"
-banner, no local draft autosave, no retry-when-back-online. If a
-connection drops while someone's filling out a form, whatever they typed
-lives only in memory — the 10.9 fixes mean most saves will now at least
-show a clear error instead of failing silently, but a dropped connection
-plus a reload or accidental tab close still loses unsaved input. Real fix
-is a genuine feature (offline banner at minimum, local autosave of
-in-progress forms for the fuller fix) — needs a scoping conversation
-before building, not started yet.
+7. ✅ **10.4** — Stamp document "corrupted" — DONE, real bug found and
+   fixed. `CustomerDetailModal.jsx`'s agreement generator computed the
+   real uploaded stamp's URL but then threw it away and hardcoded a
+   placeholder image path every time — so agreements always showed the
+   wrong stamp, or a broken image if the placeholder itself 404'd. Fixed
+   both spots to use the real stamp when one exists.
+8. ✅ **10.5** — "Saved then disappeared" — real cause found in the main
+   customer modal: the ✕ close button discarded unsaved edits with zero
+   warning if you clicked it instead of Save. Now shows a confirm dialog
+   first. Still added to the list to ask the client directly since it
+   hasn't reproduced on your end.
+9. ✅ **Phase 0** — stale-cache/version-check mechanism — built. A small
+   banner now appears telling users to refresh when a new deploy has
+   gone out, instead of their tab silently breaking.
 
-### Blocked on you — answer whenever, doesn't stall the queue above
-- **10.1** — redeploy `add_user` (code fix already done, just needs `supabase functions deploy add_user`)
-- **10.10** — you're already running the `delivery_batches` SQL yourself
-- **10.4** — does a hard refresh fix the "corrupted" stamp doc for the client?
-- **10.5** — which screen/field is "saved then disappears"?
-- **10.6** — which specific field needs the red-asterisk + enforced-required fix?
-- **10.7** — sub-channel-partner names ready, or seed with placeholders now?
-- **6.4** — go-ahead to run the `activity_log` column/trigger cleanup SQL?
-- **Phase 0** — version-check mechanism, or wait for the hosting migration you're discussing with the client?
-- **8.2** — which features should actually be toggleable per client?
+### ✅ Also resolved this round
+- **10.13** — missing `admin.jansamarth_application_no` column — done, you ran the SQL
+- **10.14** — new feature (yours): auto-sync delivery batch driver
+  name/phone into linked customers via a database trigger — done, you
+  ran the SQL. Reminder: Vendor Portal's own manual driver-name/phone
+  fields are now a second way to set the same data and could get
+  overwritten by the next batch save — worth a follow-up chat on
+  whether that should go read-only.
+- **6.4** — `activity_log` cleanup — done, you ran the SQL
+- **10.1** — `add_user` redeployed, live
+
+### ✅ 10.6 — DONE
+Black asterisk on "Application Acknowledgment," "Vendor Feasibility," and
+"Site Feasibility" — all three share one component that skipped the
+app's existing red-asterisk helper. Fixed with one shared fix. Also
+found and fixed a real enforcement gap while in there: the Loan stage
+had **zero** required-field checks of any kind before this — "Vendor
+Feasibility"/"Site Feasibility" looked required but nothing ever
+enforced it. Now all three are properly required before the customer can
+advance past their stage, same as every other required field in the app.
+
+### Still open
+- **10.7** — paused, will revisit later per your call
+- **10.12** — no offline handling anywhere (checked — zero "you're
+  offline" banner, no local draft autosave); noted for later per your call
+- **8.2** — feature flags, discuss later per your call
 
 ### After the above — hygiene, real but zero user-facing urgency
 7. ✅ **3.4** — Repo root cleanup — DONE (137 throwaway files deleted, `workflows/deploy.yml` moved to `.github/workflows/` where GitHub actually recognizes it, `backup-repo/` deleted per your confirmation — only `git rm -r --cached dist` still outstanding, see below)
@@ -122,18 +166,26 @@ before building, not started yet.
 - ✅ Confirmed the `ROLLDOWN_OPTIONS_VALIDATION=loose` build flag is
   deliberate and correct for this Vite 8 setup
 
-## Phase 5 — Full per-role verification walkthrough — 🟡 PARTIAL
-Ad-hoc smoke tests happened alongside other phases (role switching, a few
-portals clicked through) but a full formal pass through all 8 roles per
-the checklist hasn't been done as one deliberate pass.
+## Phase 5 — Full per-role verification pass — ✅ DONE (code-level)
+Live click-through per role isn't possible through my tools (confirmed
+during 10.8: neither Force Login nor Quick Preview creates a real
+Supabase session, so the database blocks all real data regardless of
+role) — so this was a deliberate code-level audit instead: checked the
+role-routing logic against the 8 real roles, grepped every role-string
+comparison in the app for typos/drift (found none), re-verified the
+document-delete permission (10.8) and stage-lock (6.3) logic are
+consistent everywhere they were touched this session, and confirmed the
+admin-only nav sections are still correctly gated. No new issues found —
+build and lint both re-run clean at the end. Full detail in the working
+plan file.
 
-## Phase 6 — Your originally-reported backlog — 🟡 PARTIAL (3 of 5 done)
+## Phase 6 — Your originally-reported backlog — 🟡 PARTIAL (4 of 5 done)
 - 6.1 ✅ Delivery Batches sidebar now shows count of active/undelivered batches
 - 6.2 ✅ "Car Rent Paid" toggle silent-save bug fixed
-- 6.3 ✅ Agent/Vendor stage-lock messaging — both portals now dim the fields
-  and show a "client hasn't reached this stage yet" banner when viewing a
-  stage ahead of the customer's real one
-- 6.4 ⏭️ `activity_log` schema cleanup — needs your SQL decision (see below)
+- 6.3 ✅ Agent/Vendor stage-lock messaging — reworked per your feedback:
+  fields stay editable/saveable in a future stage tab, only the specific
+  "advance to next stage" buttons get blocked
+- 6.4 ✅ `activity_log` schema cleanup — done, you ran the SQL
 - 6.5 ⏸️ Role naming — deliberately deferred, waiting on your client conversation
 
 ## Phase 7 — Shrink `CustomerDetailModal.jsx` — 🟡 PARTIAL (core value delivered)
@@ -156,20 +208,22 @@ Found and fixed 3 real bugs along the way (fake data silently written to
 real customer records / fake "success" on failed user creation / fake
 test-data buttons live in production).
 
-## Phase 10 — New client-reported issues (your Aug 27 batch) — 🟡 PARTIAL (7 of 11 done)
+## Phase 10 — New client-reported issues (your Aug 27 batch) — 🟡 PARTIAL (12 of 14 done — only 10.7 and 10.12 left, both paused per your call)
 - 10.1 ✅ Admin "Set Password Directly" — was completely broken (edge
-  function had no handler for it at all), now fixed. **Needs
-  `supabase functions deploy add_user` to go live**, same as before.
+  function had no handler for it at all), now fixed and redeployed — live.
 - 10.2 ✅ Channel-partner rename now also syncs the partner's own login
   profile, so their portal doesn't lose visibility of their own leads after a rename
 - 10.3 ✅ "Moves to next stage but still shows old stage" display bug fixed
-- 10.4 ⏭️ Stamp document "corrupted" for client — need to know if a hard
-  refresh fixes it (would confirm it's the same cache issue as Phase 0)
-- 10.5 ⏭️ Vague "panel disappearing" report — need to know which screen/field
-- 10.6 ⏭️ Black asterisk → red + enforce required field — need to know
-  which specific field is affected
-- 10.7 ⏭️ Sub Channel Partner dropdown in Operations — confirmed this
-  doesn't exist yet, need real names or OK to seed placeholders
+- 10.4 ✅ Stamp document "corrupted" — real bug found and fixed (see
+  above, ORDER OF BUSINESS section)
+- 10.5 ✅ "Panel disappeared" — real bug found and fixed in the main
+  customer modal's close button (see above)
+- 10.6 ✅ Black asterisk → red + enforce required field — done. Also
+  found the Loan stage had zero required-field enforcement at all before
+  this fix; now "Vendor Feasibility"/"Site Feasibility" are properly
+  required there, and "Application Acknowledgment" is properly required
+  in Registration
+- 10.7 ⏸️ Sub Channel Partner dropdown — paused, will revisit later
 - 10.8 ✅ Document delete restricted to Admin/Office only — done, verified
   via code review + clean build across all 9 files touched
 - 10.9 ✅ Swept remaining write paths for the "looks saved but silently
@@ -179,28 +233,24 @@ test-data buttons live in production).
   activate/deactivate/delete actions, and — most importantly — the
   Material Integration BOM save, which could silently fail while still
   letting the customer's stage advance)
-- 10.10 🔴 **`delivery_batches` table doesn't exist in the live database
-  at all** — confirmed directly via the API. You're handling this
-  yourself (SQL provided separately).
+- 10.10 ✅ `delivery_batches` table — you ran the SQL, resolved
 - 10.11 ✅ Managed dropdowns (Registration By, etc.) no longer lose a
   saved value that isn't in the current options list
+- 10.12 ⏸️ No offline handling anywhere — flagged for later per your call
+- 10.13 ✅ Missing `admin.jansamarth_application_no` column — done, you ran the SQL
+- 10.14 ✅ Auto-sync delivery batch driver info to admin — done, you ran the SQL
 
-## Phase 0 — Stale browser cache / deploy reliability — ⏭️ NOT STARTED
-Root cause confirmed (GitHub Pages can't set real cache headers, so a
-client's browser can serve a stale page pointing at deleted build files).
-Needs a decision: build a version-check/auto-reload mechanism, or the
-hosting migration you're separately discussing with your client. Either
-fixes it; not started yet.
+## Phase 0 — Stale browser cache / deploy reliability — ✅ DONE
+Built the version-check mechanism: every build now writes a fresh
+`public/version.json`, and a small banner tells users to refresh when a
+new deploy has gone out instead of their tab silently breaking. Runs
+automatically as part of `npm run build` / `npm run deploy` — no extra
+step needed on your end going forward.
 
 ---
 
 ## What's NOT yet decided / needs you specifically
-- Deploy the `add_user` edge function again (10.1)
-- Run the `delivery_batches` table SQL + decide on the admin-column cleanup (10.10)
-- Answer 10.4, 10.5, 10.6, 10.7 with more specifics
-- Decide Phase 0's approach (version-check vs. hosting migration)
-- Decide Phase 8.2 (which features should be toggleable)
-- Decide on Phase 6.4 (activity_log column/trigger cleanup SQL)
+- Decide Phase 8.2 (which features should be toggleable) — discuss later
 
 ## Not committed to git yet
 Everything done since the original Phase 1 commit is sitting in the

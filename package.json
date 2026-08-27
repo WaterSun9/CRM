@@ -6,7 +6,7 @@
   "homepage": "https://github.com/WaterSun9/CRM/",
   "scripts": {
     "dev": "ROLLDOWN_OPTIONS_VALIDATION=loose vite",
-    "build": "ROLLDOWN_OPTIONS_VALIDATION=loose vite build",
+    "build": "node scripts/write_version.js && ROLLDOWN_OPTIONS_VALIDATION=loose vite build",
     "lint": "eslint .",
     "preview": "ROLLDOWN_OPTIONS_VALIDATION=loose vite preview",
     "predeploy": "npm run build",
