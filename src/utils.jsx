@@ -576,6 +576,23 @@ export const updateDocumentRemark = async (documentId, remark) => {
     return data;
 };
 
+export async function fetchAgent2SubAgents(branchName) {
+    const clean = (branchName || '').trim();
+    if (!clean) return [];
+    try {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('name')
+            .eq('user_type', 'agent2')
+            .ilike('channel_partner', clean);
+        if (error || !data) return [];
+        return data.map(p => (p.name || '').trim()).filter(Boolean);
+    } catch (err) {
+        console.error('Error fetching sub-agents:', err);
+        return [];
+    }
+}
+
 // ─── Tag Normalizers ──────────────────────────────────────────────────────────
 export const normalizeLoanTag = (tag) => {
     if (!tag) return null;

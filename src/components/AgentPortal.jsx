@@ -2289,13 +2289,15 @@ export default function AgentPortal({ user, onLogout }) {
                                 >
                                     Review
                                 </button>
-                                <button 
-                                    type="button" 
-                                    onClick={handleBypassValidationAndAdvance} 
-                                    className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-3 text-xs font-bold text-white transition-colors shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
-                                >
-                                    ⚡ Auto-Fill & Move Next
-                                </button>
+                                {import.meta.env.DEV && (
+                                    <button
+                                        type="button"
+                                        onClick={handleBypassValidationAndAdvance}
+                                        className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-3 text-xs font-bold text-white transition-colors shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                                    >
+                                        ⚡ Auto-Fill & Move Next
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </section>

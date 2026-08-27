@@ -781,7 +781,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                             <p className="text-[9px] text-stone-400">{user.role}</p>
                         </div>
                     </div>
-                    {onOpenDevSwitcher && user.userType === 'admin' && (
+                    {import.meta.env.DEV && onOpenDevSwitcher && user.userType === 'admin' && (
                         <button onClick={onOpenDevSwitcher}
                             className="w-full flex items-center gap-2 px-3 py-2 text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-xl text-xs font-bold transition-colors mb-1.5 cursor-pointer border border-amber-200">
                             <Terminal className="w-4 h-4 text-amber-600" /> Backdoor Terminal & Roles

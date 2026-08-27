@@ -11,6 +11,20 @@ progress · 🔴 needs your action (not something code can fix) · ⏸️ delibe
 
 ---
 
+## ✅ Latest: two dev-only tools were still live on the deployed site — FIXED
+You caught this on production. Both fixed and verified they're actually
+gone from the shipped code (not just hidden — checked the built JS
+directly):
+- **"Backdoor Terminal & Roles" button** — the panel behind it was
+  already dev-only from way back (Phase 1.1), but the *button itself*
+  wasn't fully gated — the prop that controls it was always truthy in
+  production. Fixed at two levels this time and confirmed via
+  `grep -r "Backdoor Terminal" dist/` — genuinely nothing in the build now.
+- **"⚡ Auto-Fill & Move Next" bypass button** — appears when someone
+  tries to advance a stage without meeting its required fields; it skips
+  that enforcement entirely. You said this should be dev-only too — done,
+  confirmed gone from the build the same way.
+
 ## 📋 ORDER OF BUSINESS — full queue, next item at top
 
 Logic: real data-correctness/security bugs first (worst failure mode
@@ -87,11 +101,21 @@ Feasibility"/"Site Feasibility" looked required but nothing ever
 enforced it. Now all three are properly required before the customer can
 advance past their stage, same as every other required field in the app.
 
+### ✅ 10.7 — DONE
+Sub Channel Partner is now a real dropdown, scoped correctly. Turned out
+this needed more care than a plain managed name list (like Channel
+Partner has): `sub_channel_partner` has to match a real Agent 2
+(Sub-Agent) user account's name to actually work — so the dropdown pulls
+live from real Agent 2 accounts in User Management, scoped to the
+relevant branch (a CPO/Manager only sees their own branch's sub-agents,
+matching how the rest of the app keeps each branch separate). Works in
+both the "Add Lead" form and when editing an existing lead's details.
+
 ### Still open
-- **10.7** — paused, will revisit later per your call
 - **10.12** — no offline handling anywhere (checked — zero "you're
   offline" banner, no local draft autosave); noted for later per your call
-- **8.2** — feature flags, discuss later per your call
+- **8.2** — feature flags, deprioritized — you said work on other things
+  first, this is last on the list
 
 ### After the above — hygiene, real but zero user-facing urgency
 7. ✅ **3.4** — Repo root cleanup — DONE (137 throwaway files deleted, `workflows/deploy.yml` moved to `.github/workflows/` where GitHub actually recognizes it, `backup-repo/` deleted per your confirmation — only `git rm -r --cached dist` still outstanding, see below)
@@ -208,7 +232,7 @@ Found and fixed 3 real bugs along the way (fake data silently written to
 real customer records / fake "success" on failed user creation / fake
 test-data buttons live in production).
 
-## Phase 10 — New client-reported issues (your Aug 27 batch) — 🟡 PARTIAL (12 of 14 done — only 10.7 and 10.12 left, both paused per your call)
+## Phase 10 — New client-reported issues (your Aug 27 batch) — 🟡 PARTIAL (13 of 14 done — only 10.12 left, paused per your call)
 - 10.1 ✅ Admin "Set Password Directly" — was completely broken (edge
   function had no handler for it at all), now fixed and redeployed — live.
 - 10.2 ✅ Channel-partner rename now also syncs the partner's own login
@@ -223,7 +247,8 @@ test-data buttons live in production).
   this fix; now "Vendor Feasibility"/"Site Feasibility" are properly
   required there, and "Application Acknowledgment" is properly required
   in Registration
-- 10.7 ⏸️ Sub Channel Partner dropdown — paused, will revisit later
+- 10.7 ✅ Sub Channel Partner dropdown — done, scoped to real Agent 2
+  accounts per branch (see "Also resolved this round" above for detail)
 - 10.8 ✅ Document delete restricted to Admin/Office only — done, verified
   via code review + clean build across all 9 files touched
 - 10.9 ✅ Swept remaining write paths for the "looks saved but silently

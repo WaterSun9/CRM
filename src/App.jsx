@@ -188,13 +188,13 @@ export default function App() {
                 {!user ? (
                     <LoginScreen onLogin={setUser} />
                 ) : isAgent ? (
-                    <AgentPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={() => setDevSwitcherOpen(true)} />
+                    <AgentPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isVendor ? (
-                    <VendorPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={() => setDevSwitcherOpen(true)} />
+                    <VendorPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isStamp ? (
-                    <StampPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={() => setDevSwitcherOpen(true)} />
+                    <StampPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : (
-                    <Dashboard user={user} onLogout={handleLogout} onOpenDevSwitcher={() => setDevSwitcherOpen(true)} />
+                    <Dashboard user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 )}
             </Suspense>
 

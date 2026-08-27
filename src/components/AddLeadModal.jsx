@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
-import { toIndianCommas } from '../utils';
+import { toIndianCommas, fetchAgent2SubAgents } from '../utils';
 
 // Dropdown component for metadata fields (clean single outline)
 function AddLeadMetaSelect({ label, field, value, onChange, options = [] }) {
@@ -221,6 +221,16 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     const isAgent2 = user?.userType === 'agent2';
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager';
     const partnerName = (user?.channel_partner || user?.name || '').trim();
+
+    const [subAgentOptions, setSubAgentOptions] = useState([]);
+
+    useEffect(() => {
+        const branch = (isAgent || isChannelPartnerOffice) ? partnerName : (formData.channel_partner || '');
+        if (!branch) { setSubAgentOptions([]); return; }
+        let cancelled = false;
+        fetchAgent2SubAgents(branch).then(names => { if (!cancelled) setSubAgentOptions(names); });
+        return () => { cancelled = true; };
+    }, [isAgent, isChannelPartnerOffice, partnerName, formData.channel_partner]);
 
     useEffect(() => {
         if (isOpen) {
@@ -506,19 +516,28 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 />
                             )}
 
-                            {/* Optional for every user, including channel partners. */}
-                            <div className="space-y-1">
-                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
-                                    Sub Channel Partner Name <span className="normal-case text-stone-400 font-medium">(optional)</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formData.sub_channel_partner || ''}
-                                    onChange={e => handleChange('sub_channel_partner', e.target.value)}
-                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                                    placeholder="Sub channel partner (optional)"
-                                />
-                            </div>
+                            {/* Auto-filled to the Agent 2 user's own account for Agent 2; a scoped dropdown of real Agent 2 accounts for everyone else, sourced from User Management. */}
+                            {!isAgent2 && (
+                                <div className="space-y-1">
+                                    <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
+                                        Sub Channel Partner Name <span className="normal-case text-stone-400 font-medium">(optional)</span>
+                                    </label>
+                                    <select
+                                        value={formData.sub_channel_partner || ''}
+                                        onChange={e => handleChange('sub_channel_partner', e.target.value)}
+                                        className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                    >
+                                        <option value="">None</option>
+                                        {formData.sub_channel_partner && !subAgentOptions.includes(formData.sub_channel_partner) && (
+                                            <option value={formData.sub_channel_partner}>{formData.sub_channel_partner}</option>
+                                        )}
+                                        {subAgentOptions.map(name => <option key={name} value={name}>{name}</option>)}
+                                    </select>
+                                    {subAgentOptions.length === 0 && (
+                                        <p className="text-[10px] text-stone-400 italic">No Agent 2 sub-agents found for this channel partner yet — add them in User Management first.</p>
+                                    )}
+                                </div>
+                            )}
 
                             {/* MODULE BRAND */}
                             <div className="space-y-1">

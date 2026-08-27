@@ -18,7 +18,7 @@ import {
     Eye, Search, Image as ImageIcon, MessageSquare
 } from 'lucide-react';
 import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS } from '../constants';
-import { logActivity, formatLogDate, formatDateToDDMMYYYY, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
+import { logActivity, formatLogDate, formatDateToDDMMYYYY, formatINR, toIndianCommas, formatInputValue, parseIndianNumber, fetchAgent2SubAgents } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
@@ -94,6 +94,15 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [editingSection, setEditingSection] = useState(null);
     const [isFormDirty, setIsFormDirty] = useState(false);
     const [editData, setEditData] = useState({ ...customer });
+    const [subAgents, setSubAgents] = useState([]);
+
+    useEffect(() => {
+        const branch = (editData.channel_partner || customer.channel_partner || '').trim();
+        if (!branch) { setSubAgents([]); return; }
+        let cancelled = false;
+        fetchAgent2SubAgents(branch).then(names => { if (!cancelled) setSubAgents(names); });
+        return () => { cancelled = true; };
+    }, [editData.channel_partner, customer.channel_partner]);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && activeTab) {
@@ -1230,7 +1239,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const tabProps = {
         activeTab, customer, editData, setEditData: handleEditDataChange, handleChange, 
-        isEditable, editingSection, setEditingSection, channel_partners, isAdmin, 
+        isEditable, editingSection, setEditingSection, channel_partners, subAgents, isAdmin, 
         isOffice, meta, user, isRegChecklistDirty, handleSaveRegChecklist, 
         isOperationalChecklistDirty, handleSaveOperationalChecklist, documents, 
         uploading, 
@@ -1561,13 +1570,15 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                 >
                                     Review
                                 </button>
-                                <button 
-                                    type="button" 
-                                    onClick={handleBypassValidationAndAdvance} 
-                                    className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-3 text-xs font-bold text-white transition-colors shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
-                                >
-                                    ⚡ Auto-Fill & Move Next
-                                </button>
+                                {import.meta.env.DEV && (
+                                    <button
+                                        type="button"
+                                        onClick={handleBypassValidationAndAdvance}
+                                        className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-3 text-xs font-bold text-white transition-colors shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                                    >
+                                        ⚡ Auto-Fill & Move Next
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </section>

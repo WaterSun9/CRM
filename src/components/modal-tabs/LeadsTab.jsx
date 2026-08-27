@@ -8,6 +8,7 @@ export default function LeadsTab({
     editingSection,
     setEditingSection,
     channel_partners,
+    subAgents = [],
     isAdmin,
     user,
     meta,
@@ -69,7 +70,7 @@ export default function LeadsTab({
                     <EditableDetailItem label="Villages *" field="villages" value={editData.villages} onChange={handleChange} isEditing={editingSection === 'cus'} />
                     <EditableDetailItem label="Sub Division *" field="sub_divisions" value={editData.sub_divisions} onChange={handleChange} isEditing={editingSection === 'cus'} />
                     <EditableDetailItem label="Channel Partner Name *" field="channel_partner" value={editData.channel_partner} onChange={handleChange} isEditing={editingSection === 'cus'} channel_partners={channel_partners} isAdmin={isAdmin} />
-                    <EditableDetailItem label="Sub Channel Partner Name (optional)" field="sub_channel_partner" value={editData.sub_channel_partner} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                    <EditableDetailItem label="Sub Channel Partner Name (optional)" field="sub_channel_partner" value={editData.sub_channel_partner} onChange={handleChange} isEditing={editingSection === 'cus'} options={subAgents} />
                     <EditableDetailItem label="MODULE BRAND *" field="module_brand" value={editData.module_brand} onChange={handleChange} options={meta['module_brand']} category="module_brand" isEditing={editingSection === 'cus'} user={user} />
                     <EditableDetailItem label="MODULE WP *" field="module_wp" value={editData.module_wp} onChange={handleChange} options={meta['module_wp'] && meta['module_wp'].length > 0 ? meta['module_wp'] : ['540', '545', '550', '570', '575', '580', '585', '590', '600', '610', '615', '620']} category="module_wp" isEditing={editingSection === 'cus'} user={user} />
                     <EditableDetailItem label="No of Modules *" field="no_of_modules" value={editData.no_of_modules} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
