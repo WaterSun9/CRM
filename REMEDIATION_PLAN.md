@@ -11,42 +11,71 @@ progress · 🔴 needs your action (not something code can fix) · ⏸️ delibe
 
 ---
 
-## 🔴 CRITICAL — Delivery batches were never actually saving to the shared database
-You reported this live. Confirmed via direct testing against the real
-database — two separate bugs stacked on top of each other:
+## 🔴 CRITICAL — Delivery batches: 4 stacked bugs found, 3 fixed in code, 1 needs SQL
 
-**Bug 1 (fixed in code):** batch creation was generating an id in the
-wrong format — the database column expects a real UUID, but the code
-was making up a plain text string. Every single batch save has been
-failing at the database step since the table was created — it just
-*looked* saved because the screen updates immediately before the actual
-database write happens, and the failure was being silently swallowed.
-The moment the page reloads (or anyone else opens it), the real
-database has nothing, so the batch disappears — exactly what you saw.
-Fixed and confirmed against the live database.
+Confirmed every one of these by testing directly against your live
+database, not guessing.
 
-**Bug 2 (needs you to run SQL):** even with the id fixed, the database
-still refused the write with a permissions error. This table almost
-certainly has security rules turned on with no rule actually allowing
-anyone to write to it — a gap I flagged back when the table was first
-created but which never got filled in. Run this in the Supabase SQL
-Editor:
+**Bug 1 (fixed) — wrong id format.** Batch creation was generating a
+plain text id, but the database column expects a real UUID. Every save
+failed at the database step since the table was created — it looked
+saved because the screen updates before the write happens, and the
+failure was silently swallowed. Fixed, confirmed against the live DB.
+
+**Bug 2 (fixed — you ran this SQL already) — no write permission.** The
+table had security rules with no rule allowing writes. You already ran
+the fix for this.
+
+**Bug 3 (fixed — you ran this SQL already) — missing column.** The code
+was writing an `updated_at` field the table didn't have. You already
+added it.
+
+**Bug 4 (fixed, just found) — this is the one that caused what you saw:
+"no batches" on the list, but "no available customers" in the picker.**
+Even when the batch save failed, the code was *still* going ahead and
+marking every selected customer as "already in a batch" — because that
+marking happens in a totally separate write to the customer table,
+disconnected from whether the batch itself actually saved. So every
+failed test attempt (during all this debugging) quietly used up your
+available Material Delivery customers without ever creating a real
+batch. Fixed: the customer-marking step now only runs if the batch
+itself genuinely saved.
+
+**Cleanup needed — run this SQL** to release the customers that got
+incorrectly marked "batched" during those failed attempts (this only
+touches records pointing at a batch that doesn't actually exist, so any
+genuinely real assignment is left alone):
 ```sql
-alter table public.delivery_batches enable row level security;
-
-create policy "Authenticated users can read delivery_batches"
-on public.delivery_batches for select
-to authenticated
-using (true);
-
-create policy "Authenticated users can write delivery_batches"
-on public.delivery_batches for all
-to authenticated
-using (true)
-with check (true);
+update public.admin
+set delivery_batch_id = null
+where delivery_batch_id is not null
+  and not exists (
+    select 1 from public.delivery_batches db where db.batch_no = admin.delivery_batch_id
+  );
 ```
-After running that, try creating a delivery batch again and let me know
-if it now shows up and stays after a refresh.
+
+**Bonus fix, you also asked for this:** there was no way to remove a
+customer from an existing batch. Turns out the Edit Batch screen already
+lets you uncheck a customer — it just never actually released them
+afterward. Fixed — unchecking someone and saving now properly frees them
+up again.
+
+**Bug 5 (just found and fixed) — "operator does not exist: uuid = text."**
+The save was sending your ENTIRE batch list to the database every time,
+not just the one you were creating — and since real saves have been
+failing since the table was created, your browser had quietly built up
+old fake batches (from before Bug 1 was fixed) mixed in with the real
+one. The database choked comparing those old, wrong-format ids against
+the new correct one. Fixed properly: only the one batch actually being
+saved gets sent now. While in there, also found that **deleting a batch
+never actually deleted it from the database** — it had the same
+whole-list-upsert problem. Fixed that too, and made your browser
+automatically clean out any old fake batches next time you load the page
+— nothing for you to manually clear.
+
+If you haven't run the cleanup SQL from Bug 4 yet, run that first, then
+try creating a batch again and let me know if it shows up and stays
+after a refresh.
 
 ## ✅ Latest: two dev-only tools were still live on the deployed site — FIXED
 You caught this on production. Both fixed and verified they're actually

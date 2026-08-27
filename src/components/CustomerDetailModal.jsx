@@ -80,7 +80,7 @@ const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', 
 
 // ─── CustomerDetailModal ──────────────────────────────────────────────────────
 export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab }) {
-    const { showAlert } = useGlobalPopup();
+    const { showAlert, showConfirm } = useGlobalPopup();
     const [activeTab, setActiveTab] = useState(() => {
         if (defaultTab) return defaultTab;
         
@@ -1302,8 +1302,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             </button>
                         )}
                         {isAdmin && <button onClick={() => setShowDeleteConfirm(true)} className="p-2 text-white/30 hover:text-red-400"><Trash2 size={18} /></button>}
-                        <button onClick={() => {
-                            if (isFormDirty && !window.confirm('You have unsaved changes. Close without saving?')) return;
+                        <button onClick={async () => {
+                            if (isFormDirty && !(await showConfirm('You have unsaved changes. Close without saving?', { confirmLabel: 'Close Without Saving' }))) return;
                             onClose();
                         }} className="p-2 text-white/30 hover:text-white"><X size={24} /></button>
                     </div>
@@ -1321,7 +1321,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         { id: 'DOCUMENTS', label: 'Documents', icon: FolderOpen },
                         { id: 'history', label: 'Notes & History', icon: History },
                     ].map(tab => (
-                        <button key={tab.id} onClick={() => { setActiveTab(tab.id); setEditingSection(null); }}
+                        <button key={tab.id} onClick={async () => {
+                            if (tab.id !== activeTab && isFormDirty && !(await showConfirm('You have unsaved changes on this tab — leave without saving?', { confirmLabel: 'Leave Without Saving' }))) return;
+                            setActiveTab(tab.id); setEditingSection(null);
+                        }}
                             className={`flex items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-widest transition-all border-b-2 flex-shrink-0 ${activeTab === tab.id ? 'text-amber-400 border-amber-400' : 'text-stone-500 border-transparent hover:text-stone-300'}`}>
                             <tab.icon size={12} /> {tab.label}
                         </button>

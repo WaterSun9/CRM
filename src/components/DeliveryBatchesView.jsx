@@ -55,6 +55,12 @@ export default function DeliveryBatchesView({
         fetchAllCustomers();
     }, []);
 
+    // Wrap onRefreshCustomers to also update local customers list
+    const handleRefresh = async () => {
+        await fetchAllCustomers();
+        if (onRefreshCustomers) onRefreshCustomers();
+    };
+
     const customers = propCustomers && propCustomers.length > 0 ? propCustomers : allCustomers;
     
     // Modal states
@@ -115,14 +121,19 @@ export default function DeliveryBatchesView({
 
             if (!error && data) {
                 setBatches(data);
+                localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(data));
             } else {
-                // Fallback to synthesizing batches from localStorage
+                console.error('Failed to fetch delivery batches from the database:', error);
+                // Fallback to localStorage, but only ever trust entries with
+                // a real UUID id — older locally-cached batches from before
+                // the id-format fix used a fake string id that was never
+                // actually written to the database, and would break any
+                // future save that tries to upsert alongside them.
+                const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
                 const localStored = localStorage.getItem('watersun_local_delivery_batches');
-                if (localStored) {
-                    setBatches(JSON.parse(localStored));
-                } else {
-                    setBatches([]);
-                }
+                const parsed = localStored ? JSON.parse(localStored).filter(b => uuidRe.test(String(b.id))) : [];
+                setBatches(parsed);
+                localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(parsed));
             }
         } catch (err) {
             console.error('Failed to load delivery batches:', err);
@@ -136,15 +147,33 @@ export default function DeliveryBatchesView({
     }, []);
 
     // Save Batches Helper
-    const saveBatchesState = async (updatedBatches) => {
+    // Returns true only if the write to the real shared database actually
+    // succeeded — callers (like handleSaveBatch) must check this before
+    // doing anything that assumes the batch genuinely exists in the
+    // database, such as marking customer records as "already batched".
+    //
+    // Only `changedBatch` (the one record actually being created/edited)
+    // is sent to Supabase — never the whole local `updatedBatches` list.
+    // Upserting the entire list previously caused
+    // "operator does not exist: uuid = text" whenever any older,
+    // locally-cached batch (from before the id-format bug was fixed, or
+    // loaded from the localStorage fallback) was still sitting in local
+    // state with a non-UUID id — mixing valid and invalid ids in one
+    // upsert call trips Postgres before it even gets to check individual
+    // rows. `updatedBatches` is still used for the local UI state and
+    // localStorage cache, which have no such type constraint.
+    const saveBatchesState = async (updatedBatches, previousBatches, changedBatch) => {
         setBatches(updatedBatches);
         localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
         try {
-            const { error } = await supabase.from('delivery_batches').upsert(updatedBatches);
+            const { error } = await supabase.from('delivery_batches').upsert([changedBatch]);
             if (error) throw error;
+            return true;
         } catch (e) {
             console.error('Failed to sync delivery batch to the database:', e);
-            showAlert('This batch is only saved on this device right now — it failed to save to the shared database: ' + (e.message || 'Unknown error') + '. Other users won\'t see it until this is fixed.', { type: 'error' });
+            setBatches(previousBatches ?? batches);
+            showAlert('Failed to save this batch to the shared database: ' + (e.message || 'Unknown error') + '. Nothing was saved — please try again.', { type: 'error' });
+            return false;
         }
     };
 
@@ -217,21 +246,32 @@ export default function DeliveryBatchesView({
             // looked saved locally but never actually persisted.
             const batchId = editingBatch ? editingBatch.id : crypto.randomUUID();
             const displayBatchNo = batchForm.batch_no || `BATCH-${Date.now()}`;
+            // project_ids is a real `uuid[]` column — any non-UUID id in
+            // this list (e.g. a leftover synthetic/demo id) would cause
+            // the exact same "operator does not exist: uuid = text" error
+            // as the batch id bug above, just for the array column
+            // instead of the primary key. Filter defensively.
+            const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const validProjectIds = batchForm.selectedProjectIds.filter(id => uuidRe.test(String(id)));
+            if (validProjectIds.length !== batchForm.selectedProjectIds.length) {
+                console.warn('Dropped non-UUID project id(s) before saving delivery batch:', batchForm.selectedProjectIds.filter(id => !uuidRe.test(String(id))));
+            }
             const batchPayload = {
                 id: batchId,
                 batch_no: displayBatchNo,
                 dispatch_date: batchForm.dispatch_date,
                 driver_name: batchForm.driver_name,
-                driver_phone: batchForm.driver_phone,
+                driver_phone: batchForm.driver_phone ? Number(String(batchForm.driver_phone).replace(/\D/g, '')) || null : null,
                 vehicle_number: batchForm.vehicle_number,
                 vendor: batchForm.vendor,
                 notes: batchForm.notes,
                 status: batchForm.status,
-                project_ids: batchForm.selectedProjectIds,
+                project_ids: validProjectIds,
                 created_at: editingBatch?.created_at || new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
 
+            const previousBatches = batches;
             let updatedBatches;
             if (editingBatch) {
                 updatedBatches = batches.map(b => b.id === editingBatch.id ? batchPayload : b);
@@ -239,7 +279,14 @@ export default function DeliveryBatchesView({
                 updatedBatches = [batchPayload, ...batches];
             }
 
-            await saveBatchesState(updatedBatches);
+            const didSave = await saveBatchesState(updatedBatches, previousBatches, batchPayload);
+            if (!didSave) {
+                // The batch itself never made it to the database — do not
+                // mark any customer as "already batched" for a batch that
+                // doesn't actually exist.
+                setSaving(false);
+                return;
+            }
 
             // Bulk update selected projects in admin table with shared delivery metadata
             const customerUpdates = {
@@ -248,7 +295,8 @@ export default function DeliveryBatchesView({
                 driver_name: batchPayload.driver_name,
                 driver_phone_number: batchPayload.driver_phone,
                 vehicle_number: batchPayload.vehicle_number,
-                vendor: batchPayload.vendor
+                vendor: batchPayload.vendor,
+                delivery_status: 'IN_TRANSIT'
             };
 
             for (const projId of batchForm.selectedProjectIds) {
@@ -260,7 +308,28 @@ export default function DeliveryBatchesView({
                 }
             }
 
-            if (onRefreshCustomers) onRefreshCustomers();
+            // If editing an existing batch, any customer that was
+            // previously assigned but got unchecked in this edit needs
+            // their delivery_batch_id cleared — otherwise they'd stay
+            // stuck showing as "already in a batch" forever with no way
+            // to reassign them, even though they were removed here.
+            if (editingBatch) {
+                const removedProjectIds = (editingBatch.project_ids || [])
+                    .filter(id => !batchForm.selectedProjectIds.includes(id));
+                for (const projId of removedProjectIds) {
+                    if (!String(projId).startsWith('demo-')) {
+                        await supabase
+                            .from('admin')
+                            .update({ 
+                                delivery_batch_id: null,
+                                delivery_status: 'PENDING'
+                            })
+                            .eq('id', projId);
+                    }
+                }
+            }
+
+            await handleRefresh();
             setShowCreateModal(false);
         } catch (err) {
             console.error('Error saving delivery batch:', err);
@@ -274,8 +343,24 @@ export default function DeliveryBatchesView({
     const handleDeleteBatch = async (batchId) => {
         if (!window.confirm('Are you sure you want to disband this delivery batch? The projects will remain intact.')) return;
         const batchToDelete = batches.find(b => b.id === batchId);
+        const previousBatches = batches;
         const updatedBatches = batches.filter(b => b.id !== batchId);
-        await saveBatchesState(updatedBatches);
+
+        setBatches(updatedBatches);
+        localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
+        // Only attempt the real delete for batches that were actually
+        // persisted with a real UUID — a leftover locally-cached batch
+        // from before the id-format fix has no matching row to delete.
+        if (batchToDelete && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(batchToDelete.id))) {
+            const { error } = await supabase.from('delivery_batches').delete().eq('id', batchToDelete.id);
+            if (error) {
+                console.error('Failed to delete delivery batch from the database:', error);
+                setBatches(previousBatches);
+                localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(previousBatches));
+                showAlert('Failed to delete this batch from the shared database: ' + error.message + '. Nothing was changed — please try again.', { type: 'error' });
+                return;
+            }
+        }
 
         // Clear delivery_batch_id from linked projects
         if (batchToDelete?.project_ids) {
@@ -283,12 +368,15 @@ export default function DeliveryBatchesView({
                 if (!String(projId).startsWith('demo-')) {
                     await supabase
                         .from('admin')
-                        .update({ delivery_batch_id: null })
+                        .update({ 
+                            delivery_batch_id: null,
+                            delivery_status: 'PENDING'
+                        })
                         .eq('id', projId);
                 }
             }
         }
-        if (onRefreshCustomers) onRefreshCustomers();
+        await handleRefresh();
     };
 
     // Filter projects for the creation selector
@@ -706,7 +794,7 @@ export default function DeliveryBatchesView({
                                                          if (adminError) throw adminError;
                                                      }
                                                      await logActivity(currentUser?.id || "admin", "update", `Marked delivery batch ${batch.batch_no || batch.id} as DELIVERED (${projectIds.length} projects)`, "");
-                                                     if (onRefreshCustomers) onRefreshCustomers();
+                                                     await handleRefresh();
                                                  } catch (err) {
                                                      setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
                                                      setLocalStatusOverrides(previousOverrides);
@@ -775,7 +863,7 @@ export default function DeliveryBatchesView({
                                                                      try {
                                                                          const { error } = await supabase.from('admin').update({ delivery_status: newStat }).eq('id', proj.id);
                                                                          if (error) throw error;
-                                                                         if (onRefreshCustomers) onRefreshCustomers();
+                                                                         await handleRefresh();
                                                                      } catch (err) {
                                                                          setLocalStatusOverrides(prev => ({ ...prev, [proj.id]: previousStat }));
                                                                          showAlert("Failed to update delivery status: " + (err.message || "Unknown error"), { type: 'error' });
@@ -911,7 +999,7 @@ export default function DeliveryBatchesView({
                                             type="tel"
                                             required
                                             value={batchForm.driver_phone}
-                                            onChange={e => setBatchForm(p => ({ ...p, driver_phone: e.target.value }))}
+                                            onChange={e => setBatchForm(p => ({ ...p, driver_phone: e.target.value.replace(/\D/g, '') }))}
                                             placeholder="e.g. 9876543210"
                                             className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 outline-none focus:border-amber-400"
                                         />

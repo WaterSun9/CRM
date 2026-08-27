@@ -13,6 +13,7 @@ import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES, STAGE_IDS } from '../constants';
 import AddLeadModal from './AddLeadModal';
 import { FilePreviewModal, CheckboxRemarkItem } from './modal-tabs/shared';
+import { useGlobalPopup } from './GlobalPopup';
 import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
 import LoanTab from './modal-tabs/LoanTab';
@@ -30,6 +31,7 @@ import SubsidyStatusTab from './modal-tabs/SubsidyStatusTab';
 import FinalReviewTab from './modal-tabs/FinalReviewTab';
 
 export default function AgentPortal({ user, onLogout }) {
+    const { showConfirm } = useGlobalPopup();
     const [view, setView] = useState('menu');
     const [activeWorkdeskTab, setActiveWorkdeskTab] = useState(STAGE_IDS.LEADS);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -1041,7 +1043,15 @@ export default function AgentPortal({ user, onLogout }) {
                                         <button
                                             key={stage.id}
                                             type="button"
-                                            onClick={() => setActiveCustomerStage(stage.id)}
+                                            onClick={async () => {
+                                                if (stage.id !== displayedStage) {
+                                                    const leavingDirtySection =
+                                                        (displayedStage === STAGE_IDS.METER_INSTALLATION && isMeterInstallationDirty()) ||
+                                                        (displayedStage === STAGE_IDS.DISCOM_INSPECTION && isDiscomInspectionDirty());
+                                                    if (leavingDirtySection && !(await showConfirm('You have unsaved changes on this stage — leave without saving?', { confirmLabel: 'Leave Without Saving' }))) return;
+                                                }
+                                                setActiveCustomerStage(stage.id);
+                                            }}
                                             className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wide transition cursor-pointer ${
                                                 isActive
                                                     ? 'border-amber-500 bg-amber-500 text-white shadow-sm shadow-amber-500/20'

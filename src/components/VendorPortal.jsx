@@ -32,7 +32,7 @@ const parsePanelSerials = (raw) => {
 };
 
 export default function VendorPortal({ user, onLogout }) {
-    const { showAlert } = useGlobalPopup();
+    const { showAlert, showConfirm } = useGlobalPopup();
     const [view, setView] = useState('list'); // 'list', 'details'
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -1077,7 +1077,12 @@ export default function VendorPortal({ user, onLogout }) {
                                     <button
                                         key={tab.id}
                                         type="button"
-                                        onClick={() => setActiveTab(tab.id)}
+                                        onClick={async () => {
+                                            if (tab.id !== activeTab && activeTab === 'INSTALLATION' && isInstallationDirty) {
+                                                if (!(await showConfirm('You have unsaved changes on this tab — leave without saving?', { confirmLabel: 'Leave Without Saving' }))) return;
+                                            }
+                                            setActiveTab(tab.id);
+                                        }}
                                         className={`min-w-[82px] flex-1 snap-start py-1.5 px-2 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                                             isCurrent
                                                 ? 'bg-amber-500 text-white shadow-xs'
