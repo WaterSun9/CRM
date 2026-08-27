@@ -73,7 +73,7 @@ export default function AgentPortal({ user, onLogout }) {
             try {
                 const parsed = JSON.parse(value);
                 if (parsed && typeof parsed === 'object') return parsed;
-            } catch (e) { }
+            } catch (e) { /* not valid JSON, fall through to default */ }
         }
         return {};
     };
@@ -93,22 +93,37 @@ export default function AgentPortal({ user, onLogout }) {
     const fetchCustomers = async () => {
         setLoading(true);
         try {
-            let query = supabase.from('admin').select('*').is('deleted_at', null).order('created_at', { ascending: false });
+            const buildQuery = () => {
+                let q = supabase.from('admin').select('*').is('deleted_at', null).order('created_at', { ascending: false });
+                if (isAgent2) {
+                    // Agent 2 (Sub-Agent) filters strictly by sub_channel_partner
+                    const subFilter = (user.name || '').trim();
+                    q = q.ilike('sub_channel_partner', `%${subFilter}%`);
+                } else {
+                    // Main Channel Partner / Agent
+                    const cpFilter = (user.channel_partner || user.name || '').trim();
+                    q = q.ilike('channel_partner', `%${cpFilter}%`);
+                }
+                return q;
+            };
 
-            if (isAgent2) {
-                // Agent 2 (Sub-Agent) filters strictly by sub_channel_partner
-                const subFilter = (user.name || '').trim();
-                query = query.ilike('sub_channel_partner', `%${subFilter}%`);
-            } else {
-                // Main Channel Partner / Agent
-                const cpFilter = (user.channel_partner || user.name || '').trim();
-                query = query.ilike('channel_partner', `%${cpFilter}%`);
+            let data = [];
+            let from = 0;
+            const pageSize = 1000;
+            let fetchError = null;
+            while (true) {
+                const { data: page, error } = await buildQuery().range(from, from + pageSize - 1);
+                if (error) { fetchError = error; break; }
+                if (!page || page.length === 0) break;
+                data = data.concat(page);
+                if (page.length < pageSize) break;
+                from += pageSize;
             }
 
-            const { data, error } = await query;
-
-            if (!error && data) {
+            if (!fetchError) {
                 setCustomers(data);
+            } else {
+                console.error('Error fetching customers:', fetchError);
             }
         } catch (err) {
             console.error('Error fetching customers:', err);
@@ -1198,7 +1213,7 @@ export default function AgentPortal({ user, onLogout }) {
                                     </div>
 
                                     {/* Track Leads is intentionally limited to the saved lead form data. */}
-                                    {true && (
+                                    {(
                                     <div className="bg-white p-4 rounded-2xl border border-stone-150 shadow-2xs space-y-3">
                                         <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                             <Paperclip size={11} className="text-amber-500" /> Attached Documents & Uploads

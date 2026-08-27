@@ -19,7 +19,7 @@ const parsePanelSerials = (raw) => {
             const serials = parsed.map(value => String(value || '').trim()).filter(Boolean);
             return serials.length > 0 ? serials : [''];
         }
-    } catch (e) { }
+    } catch (e) { /* not valid JSON, fall through to default */ }
 
     if (rawText.includes('\n')) {
         return rawText.split('\n').map(s => s.trim()).filter(Boolean);
@@ -208,7 +208,7 @@ export default function MaterialIntegrationTab({
                         bomData = parsed.bom || parsed;
                         itemData = parsed.items;
                     }
-                } catch (e) {}
+                } catch (e) { /* not valid JSON, fall through to default */ }
             }
 
             if (!bomData && (!itemData || itemData.length === 0)) {
@@ -345,7 +345,7 @@ export default function MaterialIntegrationTab({
                     items: next
                 };
                 localStorage.setItem(`watersun_bom_${customer.id}`, JSON.stringify(localData));
-            } catch (e) {}
+            } catch (e) { /* best-effort, ignore failure */ }
             return next;
         });
     };

@@ -18,7 +18,7 @@ const parsePanelSerials = (raw) => {
             const serials = parsed.map(value => String(value || '').trim()).filter(Boolean);
             return serials.length > 0 ? serials : [''];
         }
-    } catch (e) { }
+    } catch (e) { /* not valid JSON, fall through to default */ }
 
     if (rawText.includes('\n')) {
         return rawText.split('\n').map(s => s.trim()).filter(Boolean);
@@ -255,7 +255,7 @@ export default function MaterialDeliveryTab({
                                 setEditData(p => ({ ...p, delivery_status: newStat }));
                                 try {
                                     await onUpdate(customer.id, { delivery_status: newStat });
-                                } catch(err) {}
+                                } catch(err) { /* best-effort, ignore failure */ }
                             }}
                             className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full outline-none cursor-pointer tracking-normal shadow-xs ${
                                 (localDeliveryStatus || editData.delivery_status) === 'DELIVERED' 

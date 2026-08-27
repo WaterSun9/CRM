@@ -578,151 +578,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
 
 
-    const handleToggleSubsidyTag = (tagId) => {
-        if (customer.subsidy_tag === 'Received') return;
-        const newTag = editData.subsidy_tag === tagId ? null : tagId;
-        setEditData(prev => ({ ...prev, subsidy_tag: newTag }));
-        if (newTag) {
-            setDraftStatus(newTag);
-        }
-    };
-
-    const handleSaveSubsidyTag = async () => {
-        if (customer.subsidy_tag === 'Received' && editData.subsidy_tag !== 'Received') return;
-        const newTag = editData.subsidy_tag;
-        const entryDate = new Date().toISOString().split('T')[0];
-        let updatedHistory = editData.subsidy_history || [];
-
-        if (newTag) {
-            const newEntry = {
-                status: newTag,
-                date: entryDate,
-                remark: 'Status updated via tag selector',
-                created_at: new Date().toISOString()
-            };
-            updatedHistory = [...updatedHistory, newEntry];
-        }
-
-        setEditData(prev => ({
-            ...prev,
-            subsidy_history: updatedHistory,
-            subsidy_tag: newTag
-        }));
-
-        await onUpdate(customer.id, {
-            subsidy_tag: newTag,
-            subsidy_history: updatedHistory
-        });
-
-        const tagLabel = SUBSIDY_TAGS.find(t => t.id === newTag)?.label || newTag;
-        await logActivity(
-            user.id,
-            'update',
-            `${customer.customer_name}: Subsidy Tag saved to ${newTag ? tagLabel : 'None'} (logged to history)`,
-            '',
-            customer.id
-        );
-
-        fetchLogs();
-    };
-
-    const handleToggleLoanTag = (tagId) => {
-        if (customer.loan_tag === 'All Clear') return;
-        const newTag = editData.loan_tag === tagId ? null : tagId;
-        setEditData(prev => ({ ...prev, loan_tag: newTag }));
-        if (newTag) {
-            setLoanDraftStatus(newTag);
-        }
-    };
-
-    const handleSaveLoanTag = async () => {
-        if (customer.loan_tag === 'All Clear' && editData.loan_tag !== 'All Clear') return;
-        const newTag = editData.loan_tag;
-        const entryDate = new Date().toISOString().split('T')[0];
-        let updatedHistory = editData.loan_history || [];
-
-        if (newTag) {
-            const newEntry = {
-                status: newTag,
-                date: entryDate,
-                remark: 'Status updated via tag selector',
-                created_at: new Date().toISOString()
-            };
-            updatedHistory = [...updatedHistory, newEntry];
-        }
-
-        setEditData(prev => ({
-            ...prev,
-            loan_history: updatedHistory,
-            loan_tag: newTag
-        }));
-
-        await onUpdate(customer.id, {
-            loan_tag: newTag,
-            loan_history: updatedHistory
-        });
-
-        const tagLabel = LOAN_TAGS.find(t => t.id === newTag)?.label || newTag;
-        await logActivity(
-            user.id,
-            'update',
-            `${customer.customer_name}: Loan Tag saved to ${newTag ? tagLabel : 'None'} (logged to history)`,
-            '',
-            customer.id
-        );
-
-        fetchLogs();
-    };
-
-    const handleToggleInstallationTag = (tagId) => {
-        if (customer.installation_status === 'Yes') return;
-        const newTag = editData.installation_status === tagId ? null : tagId;
-        const todayStr = new Date().toISOString().split('T')[0];
-        setEditData(prev => ({
-            ...prev,
-            installation_status: newTag,
-            installation_date: (newTag === 'Process' || newTag === 'Yes') ? (prev.installation_date || todayStr) : prev.installation_date
-        }));
-    };
-
-    const handleSaveInstallationDetails = async () => {
-        setSaving(true);
-        const updates = {
-            installation_status: editData.installation_status,
-            installation_date: editData.installation_date || null,
-            installed_by: editData.installed_by || null
-        };
-        await onUpdate(customer.id, updates);
-
-        let logMsg = `${customer.customer_name}: Updated Installation Status to ${editData.installation_status}`;
-        if (editData.installation_status === 'Process') {
-            logMsg += ` (Date: ${editData.installation_date || 'N/A'}, Installed By: ${editData.installed_by || 'N/A'})`;
-        }
-        await logActivity(user.id, 'update', logMsg, '', customer.id);
-
-        setSaving(false);
-        fetchLogs();
-    };
-
-    const handleToggleHoldStatus = (status) => {
-        const newStatus = editData.hold_procurement === status ? null : status;
-        setEditData(prev => ({ ...prev, hold_procurement: newStatus }));
-    };
-
-    const handleSaveHoldStatus = async () => {
-        const newStatus = editData.hold_procurement;
-        setSaving(true);
-        await onUpdate(customer.id, { hold_procurement: newStatus });
-        await logActivity(
-            user.id,
-            'update',
-            `${customer.customer_name}: Lost Project status saved to ${newStatus || 'None'}`,
-            '',
-            customer.id
-        );
-        setSaving(false);
-        fetchLogs();
-    };
 
     const handleSaveStageRemark = async (stageId) => {
         const targetStage = stageId || editData.stage;
@@ -737,7 +592,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 try {
                     const parsed = JSON.parse(customer.stages_remarks);
                     if (typeof parsed === 'object' && parsed) prevObj = parsed;
-                } catch (ex) { }
+                } catch (ex) { /* not valid JSON, fall through to default */ }
             }
             const updatedRemarks = {
                 ...prevObj,
@@ -763,7 +618,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 internal_remarks: updatedInternalRemarks
             });
 
-            setIsSaved(true);
             await logActivity(
                 user.id,
                 'update',
@@ -1048,7 +902,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             try {
                 const parsed = JSON.parse(editData.stages_remarks);
                 if (typeof parsed === 'object' && parsed) prevObj = parsed;
-            } catch (e) { }
+            } catch (e) { /* not valid JSON, fall through to default */ }
         }
         const updatedRemarks = {
             ...prevObj,

@@ -419,14 +419,23 @@ export default function StampPortal({ user, onLogout }) {
     const fetchCustomers = useCallback(async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from("admin")
-                .select("*")
-                // Remove strict stage eq to allow records that were sent to stamp maker but might not be formally in DISCOM SUBMISSION stage
-                .is("deleted_at", null)
-                .order("created_at", { ascending: false });
-
-            if (error) throw error;
+            let data = [];
+            let from = 0;
+            const pageSize = 1000;
+            while (true) {
+                const { data: page, error } = await supabase
+                    .from("admin")
+                    .select("*")
+                    // Remove strict stage eq to allow records that were sent to stamp maker but might not be formally in DISCOM SUBMISSION stage
+                    .is("deleted_at", null)
+                    .order("created_at", { ascending: false })
+                    .range(from, from + pageSize - 1);
+                if (error) throw error;
+                if (!page || page.length === 0) break;
+                data = data.concat(page);
+                if (page.length < pageSize) break;
+                from += pageSize;
+            }
             // Only show customers sent to stamp maker and not yet finished
             const active = (data || []).filter(c =>
                 c.discom_submission?.sent_to_stamp_maker === true &&
@@ -522,13 +531,13 @@ export default function StampPortal({ user, onLogout }) {
         if (!rawQ) return true;
         
         // Clean query for number matching (remove spaces, dashes, plus signs)
-        const cleanNumberQ = rawQ.replace(/[\s\-\+]/g, '');
+        const cleanNumberQ = rawQ.replace(/[\s\-+]/g, '');
 
         const name = String(c.customer_name || "").toLowerCase();
         const phone = String(c.phone_number || "").toLowerCase();
-        const cleanPhone = String(c.phone_number || "").replace(/[\s\-\+]/g, '');
+        const cleanPhone = String(c.phone_number || "").replace(/[\s\-+]/g, '');
         const consumerNo = String(c.consumer_no || "").toLowerCase();
-        const cleanConsumerNo = String(c.consumer_no || "").replace(/[\s\-\+]/g, '').toLowerCase();
+        const cleanConsumerNo = String(c.consumer_no || "").replace(/[\s\-+]/g, '').toLowerCase();
         const folderNo = String(c.folder_no || "").toLowerCase();
         const village = String(c.villages || "").toLowerCase();
         

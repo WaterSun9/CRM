@@ -238,13 +238,14 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
 
 // ─── FilePreviewModal ─────────────────────────────────────────────────────────
 export function FilePreviewModal({ file, fileUrl, onClose, onDownload, onUpdateRemark }) {
+    const [remark, setRemark] = useState(file?.remark || '');
+    const [savingRemark, setSavingRemark] = useState(false);
+    const [remarkSaved, setRemarkSaved] = useState(false);
+
     if (!file) return null;
     const ext = (file.file_name || '').split('.').pop()?.toLowerCase();
     const isImage = file.file_type?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg'].includes(ext);
     const isPdf = file.file_type === 'application/pdf' || ext === 'pdf' || (fileUrl && fileUrl.toLowerCase().includes('.pdf'));
-    const [remark, setRemark] = useState(file.remark || '');
-    const [savingRemark, setSavingRemark] = useState(false);
-    const [remarkSaved, setRemarkSaved] = useState(false);
 
     const handleSaveRemark = async () => {
         if (!onUpdateRemark) return;

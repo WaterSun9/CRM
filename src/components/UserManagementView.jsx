@@ -267,7 +267,7 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
                             const errJson = await response.error.context.json();
                             if (errJson?.error) errMsg = errJson.error;
                         }
-                    } catch (_) {}
+                    } catch (_) { /* could not parse error body, use default message */ }
                     throw new Error(errMsg);
                 }
             } catch (edgeErr) {
@@ -698,7 +698,7 @@ export default function UserManagementView({ currentUser }) {
                     await supabase.functions.invoke('add_user', {
                         body: { action: 'deactivate', user_id: userId },
                     });
-                } catch (_) {}
+                } catch (_) { /* edge function sync is best-effort; DB write above is authoritative */ }
             }
 
             setProfiles(prev => prev.map(p => p.id === userId ? { ...p, status: 'inactive' } : p));
@@ -721,7 +721,7 @@ export default function UserManagementView({ currentUser }) {
                     await supabase.functions.invoke('add_user', {
                         body: { action: 'reactivate', user_id: userId },
                     });
-                } catch (_) {}
+                } catch (_) { /* edge function sync is best-effort; DB write above is authoritative */ }
             }
 
             setProfiles(prev => prev.map(p => p.id === userId ? { ...p, status: 'active' } : p));
@@ -746,7 +746,7 @@ export default function UserManagementView({ currentUser }) {
                     await supabase.functions.invoke('add_user', {
                         body: { action: 'delete', user_id: userId },
                     });
-                } catch (_) {}
+                } catch (_) { /* edge function sync is best-effort; DB write above is authoritative */ }
             }
 
             setProfiles(prev => prev.filter(p => p.id !== userId));

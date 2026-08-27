@@ -19,7 +19,7 @@ const parsePanelSerials = (raw) => {
     try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) return parsed.length > 0 ? parsed : [''];
-    } catch (e) { }
+    } catch (e) { /* not valid JSON, fall through to default */ }
 
     if (raw.includes('\n')) {
         return raw.split('\n').map(s => String(s).trim()).filter(Boolean);
@@ -271,13 +271,22 @@ export default function VendorPortal({ user, onLogout }) {
 
             // Step 2: Query admin table DIRECTLY using .in() for exact matches
             // We use .in() instead of .or() because it's much more reliable in Supabase
-            const { data, error } = await supabase
-                .from('admin')
-                .select('*')
-                .in('vendor', searchNames)
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
+            let data = [];
+            let from = 0;
+            const pageSize = 1000;
+            while (true) {
+                const { data: page, error } = await supabase
+                    .from('admin')
+                    .select('*')
+                    .in('vendor', searchNames)
+                    .order('created_at', { ascending: false })
+                    .range(from, from + pageSize - 1);
+                if (error) throw error;
+                if (!page || page.length === 0) break;
+                data = data.concat(page);
+                if (page.length < pageSize) break;
+                from += pageSize;
+            }
             
             // Client-side filtering to see if deleted_at or Give Up was hiding it
             const activeData = (data || []).filter(r => 

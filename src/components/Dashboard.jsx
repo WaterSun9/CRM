@@ -136,7 +136,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 if (data) {
                     setSelectedCustomer(data);
                 }
-            } catch (_) {}
+            } catch (_) { /* best-effort restore, ignore failure */ }
         };
         restoreOpenedCustomer();
     }, []);
@@ -816,8 +816,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         {/* ── Global search (always visible) ── */}
                         <div className="relative" ref={globalSearchRef}>
                             <Search className="absolute left-3 top-2.5 text-stone-400 w-4 h-4" />
-                            <input type="text" readOnly onFocus={(e) => e.target.removeAttribute('readonly')}  name="crm_dash_global_search_unique" autoComplete="off" autoCorrect="off" spellCheck="false" placeholder={isChannelPartnerOffice ? `Search ${partnerName} leads...` : "Search all stages..."} value={globalSearch} onChange={e => setGlobalSearch(e.target.value)}
-                                onFocus={() => globalResults.length > 0 && setShowGlobalDrop(true)}
+                            <input type="text" readOnly onFocus={(e) => { e.target.removeAttribute('readonly'); if (globalResults.length > 0) setShowGlobalDrop(true); }} name="crm_dash_global_search_unique" autoComplete="off" autoCorrect="off" spellCheck="false" placeholder={isChannelPartnerOffice ? `Search ${partnerName} leads...` : "Search all stages..."} value={globalSearch} onChange={e => setGlobalSearch(e.target.value)}
                                 className="pl-9 pr-4 py-2 bg-stone-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 w-40 lg:w-60"
                             />
                             {/* Results dropdown */}

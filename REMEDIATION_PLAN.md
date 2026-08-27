@@ -26,6 +26,18 @@ anything) → pure hygiene → big optional rewrites last.
 5. ✅ **6.3** — Agent/Vendor stage-lock messaging — DONE (`AgentPortal.jsx` and `VendorPortal.jsx` both had their own free stage-tab switchers with zero gate tying the viewed tab to the customer's real stage; both now dim the fields and show a "hasn't reached this stage yet" banner when viewing a future stage. Verified via code review + build; live click-through blocked by the same Force Login/RLS limit as 10.8.)
 6. ✅ **10.9** — Data-safety sweep across remaining write paths — DONE (7 real silent-failure bugs found and fixed across 5 files — see Phase 10 below for the full list. The most serious: the Material Integration BOM save could silently fail while still letting the stage advance, with zero indication the material list was never actually saved.)
 
+### 🆕 10.12 — No offline handling anywhere — flagged, not started
+You asked: what happens if the connection drops mid-use? Checked —
+**zero offline handling exists anywhere in the app.** No "you're offline"
+banner, no local draft autosave, no retry-when-back-online. If a
+connection drops while someone's filling out a form, whatever they typed
+lives only in memory — the 10.9 fixes mean most saves will now at least
+show a clear error instead of failing silently, but a dropped connection
+plus a reload or accidental tab close still loses unsaved input. Real fix
+is a genuine feature (offline banner at minimum, local autosave of
+in-progress forms for the fuller fix) — needs a scoping conversation
+before building, not started yet.
+
 ### Blocked on you — answer whenever, doesn't stall the queue above
 - **10.1** — redeploy `add_user` (code fix already done, just needs `supabase functions deploy add_user`)
 - **10.10** — you're already running the `delivery_batches` SQL yourself
@@ -39,9 +51,18 @@ anything) → pure hygiene → big optional rewrites last.
 
 ### After the above — hygiene, real but zero user-facing urgency
 7. ✅ **3.4** — Repo root cleanup — DONE (137 throwaway files deleted, `workflows/deploy.yml` moved to `.github/workflows/` where GitHub actually recognizes it, `backup-repo/` deleted per your confirmation — only `git rm -r --cached dist` still outstanding, see below)
-8. **3.5** — Actually install and configure ESLint (currently a no-op script)
-9. **3.6** — Remove or properly adopt the unused `react-router-dom` dependency
-10. **4.x** — Add `.range()`/`.limit()` to the remaining lower-risk unbounded queries; audit `.single()` vs `.maybeSingle()`; confirm the Rolldown build flag was deliberate
+8. ✅ **3.5** — Wire up ESLint for real — DONE, and it caught **3 real bugs**, one of them live in production (see below)
+9. ✅ **3.6** — Removed the unused `react-router-dom` dependency — DONE (confirmed zero references anywhere, removed cleanly, build + lint still pass)
+10. ✅ **4.x** — DONE. Found and fixed one more genuinely serious bug in
+    the process: `StampPortal.jsx` was fetching the whole `admin` table
+    unpaginated (3,700+ rows, capped at 1,000 by the database) — meaning
+    any pending stamp job on a customer older than the newest 1,000
+    created records was invisible to the Stamp Maker with zero warning.
+    Also paginated `TrashView.jsx`, `AgentPortal.jsx`, `VendorPortal.jsx`
+    defensively. Audited every `.single()` call site (10 of them) — all
+    correct as-is, no changes needed. Confirmed the Rolldown build flag
+    is a deliberate, working setup (Vite 8 genuinely uses Rolldown now),
+    not a leftover — nothing to fix there.
 
 ### Big/optional — lowest priority, not blocking anything
 11. **Phase 7 (more)** — further splitting `CustomerDetailModal.jsx` (diminishing returns past what's already done)
@@ -63,7 +84,7 @@ anything) → pure hygiene → big optional rewrites last.
 - 2.5 ✅ Leftover debug query removed
 - 2.6 ✅ ~25 fragile role-string checks consolidated across 10 files
 
-## Phase 3 — Medium-severity fixes — 🟡 PARTIAL (4 of 6 done)
+## Phase 3 — Medium-severity fixes — ✅ ALL DONE (6 of 6)
 - 3.1 ✅ Dangling `expandedStages` reference in `AgentPortal.jsx` — dead code deleted
 - 3.2 ✅ Stamp-document alias-lookup mismatch in `CustomerDetailModal.jsx` — fixed
 - 3.3 ✅ Missing `logActivity` calls on delivery-batch status changes — fixed, plus 2 bonus silent-failure bugs fixed
@@ -71,14 +92,35 @@ anything) → pure hygiene → big optional rewrites last.
   relocated so GitHub Actions can actually run it, `backup-repo/` deleted).
   Only remaining piece: `git rm -r --cached dist` to untrack the already-committed
   `dist/` files (small, separate follow-up, not done yet)
-- 3.5 ⏭️ Wire up ESLint for real (currently not installed despite the lint script)
-- 3.6 ⏭️ Decide fate of the unused `react-router-dom` dependency
+- 3.5 ✅ Wire up ESLint for real — done, and it found 3 real bugs:
+  1. **Live crash on every stage-remark save** — `CustomerDetailModal.jsx`
+     called a state setter (`setIsSaved`) that never existed, right after
+     the save succeeded. This silently broke the activity-log entry for
+     every single stage remark saved (the remark itself was fine, but
+     nothing ever logged it). Fixed.
+  2. **145 lines of dead code with 2 more broken references inside** —
+     8 leftover handler functions in `CustomerDetailModal.jsx`, never
+     called from anywhere, left over from before the tab-extraction work.
+     Deleted.
+  3. **A document-preview crash risk used app-wide** — `FilePreviewModal`
+     (used in every portal for viewing uploaded documents) and
+     `DashboardView` both called a React hook *after* an early return,
+     which is undefined behavior in React and can crash the component.
+     Very plausibly connected to the vague "panel disappears" report
+     (10.5). Fixed both.
+  Also fixed a duplicate `onFocus` prop on the Dashboard search box that
+  was silently breaking an autofill workaround.
+- 3.6 ✅ Removed the unused `react-router-dom` dependency (zero references
+  anywhere in the app — Phase 1.3's role switcher was built with plain
+  React state, no routing needed)
 
-## Phase 4 — Low-severity cleanup — ⏭️ NOT STARTED
-- Add `.range()`/`.limit()` to remaining lower-risk unbounded queries
-- Audit `.single()` vs `.maybeSingle()` usage across the app
-- (Optional) split the 754-line `modal-tabs/shared.jsx` into per-component files
-- Confirm the `ROLLDOWN_OPTIONS_VALIDATION=loose` build flag was deliberate
+## Phase 4 — Low-severity cleanup — ✅ ALL DONE (optional split skipped, not needed)
+- ✅ Paginated remaining unbounded queries — including a real live bug in
+  `StampPortal.jsx` (see Phase 10 area above for detail)
+- ✅ Audited `.single()` vs `.maybeSingle()` usage — all correct as-is
+- ⏸️ (Optional, skipped) splitting the 754-line `modal-tabs/shared.jsx`
+- ✅ Confirmed the `ROLLDOWN_OPTIONS_VALIDATION=loose` build flag is
+  deliberate and correct for this Vite 8 setup
 
 ## Phase 5 — Full per-role verification walkthrough — 🟡 PARTIAL
 Ad-hoc smoke tests happened alongside other phases (role switching, a few

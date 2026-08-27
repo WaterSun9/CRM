@@ -64,7 +64,25 @@ export default function TrashView({ onRecover, onHardDelete, isAdmin }) {
     useEffect(() => {
         const fetchTrashed = async () => {
             setLoading(true);
-            const { data } = await supabase.from('admin').select('*').not('deleted_at', 'is', null).order('deleted_at', { ascending: false });
+            let data = [];
+            let from = 0;
+            const pageSize = 1000;
+            while (true) {
+                const { data: page, error } = await supabase
+                    .from('admin')
+                    .select('*')
+                    .not('deleted_at', 'is', null)
+                    .order('deleted_at', { ascending: false })
+                    .range(from, from + pageSize - 1);
+                if (error) {
+                    console.error('Error fetching trashed customers:', error);
+                    break;
+                }
+                if (!page || page.length === 0) break;
+                data = data.concat(page);
+                if (page.length < pageSize) break;
+                from += pageSize;
+            }
             setTrashedCustomers(data || []);
             setLoading(false);
         };

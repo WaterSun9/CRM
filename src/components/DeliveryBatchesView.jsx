@@ -140,7 +140,7 @@ export default function DeliveryBatchesView({
         try {
             // Also attempt syncing with Supabase if table exists
             await supabase.from('delivery_batches').upsert(updatedBatches);
-        } catch (e) {}
+        } catch (e) { /* best-effort sync; localStorage above is the source of truth until the table exists */ }
     };
 
     // Open Create Modal

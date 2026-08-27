@@ -32,12 +32,6 @@ const MetricBox = ({ label, value, sub, icon: Icon, color }) => {
 };
 
 export default function DashboardView({ metrics, loading }) {
-    if (!metrics) return (
-        <div className="p-20 text-center text-stone-400 font-medium italic animate-pulse">
-            Calculating solar metrics...
-        </div>
-    );
-
     const {
         totalProjects = 0,
         completedCount = 0,
@@ -45,7 +39,7 @@ export default function DashboardView({ metrics, loading }) {
         loanCount = 0,
         cashCount = 0,
         stageCounts = {}
-    } = metrics;
+    } = metrics || {};
 
     // Loan vs Cash (memoized)
     const { loanPerc, cashPerc } = useMemo(() => {
@@ -54,6 +48,12 @@ export default function DashboardView({ metrics, loading }) {
         const cashPerc = totalCategorized > 0 ? (cashCount / totalCategorized) * 100 : 0;
         return { loanPerc, cashPerc };
     }, [loanCount, cashCount]);
+
+    if (!metrics) return (
+        <div className="p-20 text-center text-stone-400 font-medium italic animate-pulse">
+            Calculating solar metrics...
+        </div>
+    );
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700">

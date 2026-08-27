@@ -89,7 +89,7 @@ function cleanDate(val) {
 
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
-    const dmy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+    const dmy = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
     if (dmy) {
         const day = dmy[1].padStart(2, '0');
         const month = dmy[2].padStart(2, '0');
@@ -97,7 +97,7 @@ function cleanDate(val) {
         return `${year}-${month}-${day}`;
     }
 
-    const mdy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);
+    const mdy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2})$/);
     if (mdy) {
         const day = mdy[1].padStart(2, '0');
         const month = mdy[2].padStart(2, '0');
@@ -253,7 +253,7 @@ function main() {
     console.log(`Detected format: ${delimiter === '\t' ? 'Tab-Separated (Excel Copy-Paste)' : 'Comma-Separated (CSV)'}`);
 
     const headers = parseLine(firstLine, delimiter).map(h => 
-        h.trim().toLowerCase().replace(/[\s\-]/g, '_')
+        h.trim().toLowerCase().replace(/[\s-]/g, '_')
     ).filter(h => h.length > 0);
 
     const folderIdx = headers.findIndex(h => h.includes('folder'));

@@ -59,7 +59,7 @@ export function reportError(error, context = {}) {
                         const parsed = JSON.parse(sessionStorage.getItem(key));
                         userId = parsed?.user?.id || null;
                         break;
-                    } catch (e) {}
+                    } catch (e) { /* not valid JSON, skip this key */ }
                 }
             }
         }
