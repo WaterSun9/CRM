@@ -9,7 +9,7 @@ import {
     Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, ClipboardPaste, Plus, Check, Copy, Wrench, RefreshCw, Save
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
-import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE } from '../constants';
+import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, STAGE_IDS, PRIMARY_STAGES } from '../constants';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
@@ -30,9 +30,7 @@ const parsePanelSerials = (raw) => {
     return [raw.trim()];
 };
 
-import { getStoredDemoCustomers, updateStoredDemoCustomer } from '../mock/demoData';
-
-export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
+export default function VendorPortal({ user, onLogout }) {
     const [view, setView] = useState('list'); // 'list', 'details'
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -40,6 +38,12 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
     const [searchQuery, setSearchQuery] = useState('');
     // Material Integration and Material Delivery are intentionally hidden from vendors.
     const [activeTab, setActiveTab] = useState('DELIVERY'); // 'DELIVERY', 'INSTALLATION', 'GEO'
+    const vendorIsFutureTab = useMemo(() => {
+        const TAB_STAGE_MAP = { MATERIAL: STAGE_IDS.MATERIAL_INTEGRATION, DELIVERY: STAGE_IDS.MATERIAL_DELIVERY, INSTALLATION: STAGE_IDS.INSTALLATION_STATUS, GEO: STAGE_IDS.GEO_TAG_PHOTO };
+        const currentStageIdx = PRIMARY_STAGES.findIndex(s => s.id === selectedCust?.stage);
+        const tabStageIdx = PRIMARY_STAGES.findIndex(s => s.id === TAB_STAGE_MAP[activeTab]);
+        return currentStageIdx !== -1 && tabStageIdx !== -1 && tabStageIdx > currentStageIdx;
+    }, [selectedCust?.stage, activeTab]);
     const [selectedCust, setSelectedCust] = useState(null);
     
     // Edit Form State (for selected customer)
@@ -94,26 +98,6 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         setShowBomModal(true);
         setLoadingBom(true);
         try {
-            if (isDemoMode) {
-                const template = (target.roof_shed || '').toLowerCase().includes('shed') ? SHED_BOM_TEMPLATE : ROOF_BOM_TEMPLATE;
-                setBomData({
-                    bom_type: target.roof_shed || 'Roof',
-                    paper_prepared_by: 'Watersun Admin',
-                    paper_prepared_date: new Date().toISOString().split('T')[0],
-                    material_loaded_by: 'Warehouse Incharge',
-                    material_loaded_date: new Date().toISOString().split('T')[0]
-                });
-                setBomItems(template.map((t, idx) => ({
-                    sr_no: idx + 1,
-                    product_name: t.product_name,
-                    make: t.default_make || 'Standard',
-                    uom: t.uom || 'Nos',
-                    integration_by: t.default_integration || 'Vendor',
-                    note: ''
-                })));
-                return;
-            }
-
             const { data: bom, error: bomErr } = await supabase
                 .from('bom')
                 .select('*')
@@ -167,16 +151,6 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         if (activeTab !== 'MATERIAL' || !selectedCust?.id) return;
         let cancelled = false;
 
-        if (isDemoMode) {
-            setBomData({
-                paper_prepared_by: 'Watersun Admin',
-                paper_prepared_date: new Date().toISOString().split('T')[0],
-                material_loaded_by: 'Warehouse Incharge',
-                material_loaded_date: new Date().toISOString().split('T')[0]
-            });
-            return;
-        }
-
         supabase
             .from('bom')
             .select('*')
@@ -187,7 +161,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             });
 
         return () => { cancelled = true; };
-    }, [activeTab, selectedCust?.id, isDemoMode]);
+    }, [activeTab, selectedCust?.id]);
 
     const handlePrintVendorBom = () => {
         const documentBody = vendorBomPrintRef.current;
@@ -269,12 +243,6 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         else setLoading(true);
 
         try {
-            if (isDemoMode) {
-                const list = getStoredDemoCustomers().filter(c => !c.deleted_at);
-                setCustomers(list);
-                return;
-            }
-
             const userEmail = (user?.email || '').trim().toLowerCase();
             const userName = (user?.name || '').trim();
 
@@ -331,16 +299,15 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             if (silent) setRefreshingAssignments(false);
             else setLoading(false);
         }
-    }, [isDemoMode, user?.email, user?.name]);
+    }, [user?.email, user?.name]);
 
     useEffect(() => {
-        if (!user?.name && !user?.email && !isDemoMode) {
+        if (!user?.name && !user?.email) {
             setLoading(false);
             return;
         }
 
         fetchCustomers();
-        if (isDemoMode) return;
 
         const channel = supabase.channel(`vendor_customers_${user.id || 'vendor'}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
@@ -363,7 +330,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user?.id, user?.name, user?.email, isDemoMode, fetchCustomers, isRecordAssignedToVendor]);
+    }, [user?.id, user?.name, user?.email, fetchCustomers, isRecordAssignedToVendor]);
 
     // Realtime is the primary update path. This lightweight fallback keeps
     // assignments current when a mobile browser temporarily drops that connection.
@@ -401,11 +368,11 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         setSelectedCust(cust);
         
         // Match active tab to the vendor-facing customer stage.
-        if (cust.stage === 'MATERIAL DELIVERY') {
+        if (cust.stage === STAGE_IDS.MATERIAL_DELIVERY) {
             setActiveTab('DELIVERY');
-        } else if (cust.stage === 'GEO TAG PHOTO') {
+        } else if (cust.stage === STAGE_IDS.GEO_TAG_PHOTO) {
             setActiveTab('GEO');
-        } else if (cust.stage === 'INSTALLATION STATUS') {
+        } else if (cust.stage === STAGE_IDS.INSTALLATION_STATUS) {
             setActiveTab('INSTALLATION');
         }
 
@@ -511,23 +478,16 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                 setGeoTagImage(true);
                 
                 const nextGeoStatus = geoTagStatus === 'Pending' ? 'Proceed' : geoTagStatus;
-                if (isDemoMode) {
-                    updateStoredDemoCustomer(selectedCust.id, {
-                        geo_tag_image: true,
-                        geo_tag_status: nextGeoStatus
-                    });
-                } else {
-                    await supabase.from('admin').update({ 
-                        geo_tag_image: true,
-                        geo_tag_status: nextGeoStatus 
-                    }).eq('id', selectedCust.id);
-                }
+                await supabase.from('admin').update({ 
+                    geo_tag_image: true,
+                    geo_tag_status: nextGeoStatus 
+                }).eq('id', selectedCust.id);
 
                 if (geoTagStatus === 'Pending') {
                     setGeoTagStatus('Proceed');
                 }
                 
-                if (user?.id && !isDemoMode) {
+                if (user?.id) {
                     void logActivity(
                         user.id,
                         'update',
@@ -568,11 +528,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
             const hasOtherGeo = remaining.some(d => d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag');
             if (!hasOtherGeo) {
                 setGeoTagImage(false);
-                if (isDemoMode) {
-                    updateStoredDemoCustomer(selectedCust.id, { geo_tag_image: false });
-                } else {
-                    await supabase.from('admin').update({ geo_tag_image: false }).eq('id', selectedCust.id);
-                }
+                await supabase.from('admin').update({ geo_tag_image: false }).eq('id', selectedCust.id);
             }
         } catch (err) {
             console.error('Error deleting photo:', err);
@@ -624,7 +580,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         const effectiveInstallDate = installationDate || (installationStatus === 'Yes' ? todayStr : null);
 
         // Comprehensive Logical Validation when advancing from Installation to Geo Tag
-        if (nextStage === 'GEO TAG PHOTO') {
+        if (nextStage === STAGE_IDS.GEO_TAG_PHOTO) {
             const missingItems = [];
             if (installationStatus !== 'Yes') {
                 missingItems.push('Physical Installation Status must be marked "Yes".');
@@ -648,7 +604,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         }
 
         // Comprehensive Logical Validation when advancing from Geo Tag to Discom Submission
-        if (nextStage === 'DISCOM SUBMISSION') {
+        if (nextStage === STAGE_IDS.DISCOM_SUBMISSION) {
             const missingItems = [];
             if (geoTagStatus !== 'Proceed') {
                 missingItems.push('Geo Tag Photo Status must be set to "Proceed".');
@@ -692,16 +648,12 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                 updatePayload.stage = nextStage;
             }
 
-            if (isDemoMode) {
-                updateStoredDemoCustomer(selectedCust.id, updatePayload);
-            } else {
-                const { error } = await supabase
-                    .from('admin')
-                    .update(updatePayload)
-                    .eq('id', selectedCust.id);
+            const { error } = await supabase
+                .from('admin')
+                .update(updatePayload)
+                .eq('id', selectedCust.id);
 
-                if (error) throw error;
-            }
+            if (error) throw error;
 
             let logMsg = `Vendor ${user.name} updated ${
                 activeTab === 'DELIVERY' 
@@ -714,7 +666,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                 logMsg += ` and advanced stage to ${nextStage}`;
             }
 
-            if (user?.id && !isDemoMode) {
+            if (user?.id) {
                 void logActivity(
                     user.id,
                     'update',
@@ -733,13 +685,13 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                 stage: nextStage || prev.stage
             }));
 
-            if (nextStage === 'INSTALLATION STATUS') {
+            if (nextStage === STAGE_IDS.INSTALLATION_STATUS) {
                 setActiveTab('INSTALLATION');
                 setTimeout(() => setSaveSuccess(false), 3000);
-            } else if (nextStage === 'GEO TAG PHOTO') {
+            } else if (nextStage === STAGE_IDS.GEO_TAG_PHOTO) {
                 setActiveTab('GEO');
                 setTimeout(() => setSaveSuccess(false), 3000);
-            } else if (nextStage === 'DISCOM SUBMISSION') {
+            } else if (nextStage === STAGE_IDS.DISCOM_SUBMISSION) {
                 setTimeout(() => {
                     setView('list');
                 }, 1200);
@@ -763,24 +715,17 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         if (!selectedCust?.id) return;
         setGivingUp(true);
         try {
-            if (isDemoMode) {
-                updateStoredDemoCustomer(selectedCust.id, {
+            const { error } = await supabase
+                .from('admin')
+                .update({
                     installation_status: 'Give Up',
                     vendor_note: giveUpReason || null
-                });
-            } else {
-                const { error } = await supabase
-                    .from('admin')
-                    .update({
-                        installation_status: 'Give Up',
-                        vendor_note: giveUpReason || null
-                    })
-                    .eq('id', selectedCust.id);
+                })
+                .eq('id', selectedCust.id);
 
-                if (error) throw error;
-            }
+            if (error) throw error;
 
-            if (user?.id && !isDemoMode) {
+            if (user?.id) {
                 void logActivity(
                     user.id,
                     'update',
@@ -814,10 +759,10 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
     // Stats calculations
     const materialDeliveryCount = customers.filter(c => {
         const s = normalizeStage(c.stage);
-        return s === 'MATERIAL DELIVERY' || (s !== 'INSTALLATION STATUS' && s !== 'GEO TAG PHOTO');
+        return s === STAGE_IDS.MATERIAL_DELIVERY || (s !== STAGE_IDS.INSTALLATION_STATUS && s !== STAGE_IDS.GEO_TAG_PHOTO);
     }).length;
-    const installationCount = customers.filter(c => normalizeStage(c.stage) === 'INSTALLATION STATUS').length;
-    const geoTagCount = customers.filter(c => normalizeStage(c.stage) === 'GEO TAG PHOTO').length;
+    const installationCount = customers.filter(c => normalizeStage(c.stage) === STAGE_IDS.INSTALLATION_STATUS).length;
+    const geoTagCount = customers.filter(c => normalizeStage(c.stage) === STAGE_IDS.GEO_TAG_PHOTO).length;
 
     // Filtered lists: search across all fields safely and across all stages if a query is typed
     const filteredCustomers = customers.filter(c => {
@@ -841,11 +786,11 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
         // When not searching, filter by active tab stage
         const s = normalizeStage(c.stage);
         if (activeTab === 'DELIVERY') {
-            return s === 'MATERIAL DELIVERY' || (s !== 'INSTALLATION STATUS' && s !== 'GEO TAG PHOTO');
+            return s === STAGE_IDS.MATERIAL_DELIVERY || (s !== STAGE_IDS.INSTALLATION_STATUS && s !== STAGE_IDS.GEO_TAG_PHOTO);
         } else if (activeTab === 'INSTALLATION') {
-            return s === 'INSTALLATION STATUS';
+            return s === STAGE_IDS.INSTALLATION_STATUS;
         } else {
-            return s === 'GEO TAG PHOTO';
+            return s === STAGE_IDS.GEO_TAG_PHOTO;
         }
     });
 
@@ -975,7 +920,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                             </div>
                         ) : filteredCustomers.length > 0 ? (
                             filteredCustomers.map(cust => {
-                                if (cust.stage === 'MATERIAL INTEGRATION') {
+                                if (cust.stage === STAGE_IDS.MATERIAL_INTEGRATION) {
                                     return (
                                         <div 
                                             key={cust.id} 
@@ -1019,7 +964,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                     );
                                 }
 
-                                if (cust.stage === 'MATERIAL DELIVERY') {
+                                if (cust.stage === STAGE_IDS.MATERIAL_DELIVERY) {
                                     const panels = parsePanelSerials(cust.panel_serial_no).filter(Boolean);
                                     return (
                                         <div 
@@ -1048,7 +993,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                     );
                                 }
 
-                                const isInstallation = cust.stage === 'INSTALLATION STATUS';
+                                const isInstallation = cust.stage === STAGE_IDS.INSTALLATION_STATUS;
                                 const statusValue = isInstallation ? (cust.installation_status || 'Pending') : (cust.geo_tag_status || 'Pending');
                                 const isComplete = isInstallation ? statusValue === 'Yes' : statusValue === 'Proceed';
 
@@ -1146,6 +1091,12 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
 
                         {/* Editable Form Card */}
                         <div className="space-y-4">
+                            {vendorIsFutureTab && (
+                                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-center">
+                                    <p className="text-xs font-bold text-amber-800">This client has not reached this stage yet. Showing view-only.</p>
+                                </div>
+                            )}
+                            <div className={vendorIsFutureTab ? "opacity-50 pointer-events-none space-y-4" : "space-y-4"}>
                             <h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest border-b border-stone-100 pb-1.5">
                                 {activeTab === 'DELIVERY' 
                                     ? 'Material Delivery Details' 
@@ -1209,7 +1160,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                 <div className="space-y-4">
                                     <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 text-[11px] text-blue-800 font-medium flex items-center justify-between gap-2">
                                         <span>Material Delivery information is supplied by the dispatch team.</span>
-                                        {selectedCust?.stage === 'MATERIAL DELIVERY' && (
+                                        {selectedCust?.stage === STAGE_IDS.MATERIAL_DELIVERY && (
                                             <span className="px-2 py-0.5 bg-amber-500 text-white rounded-md text-[9px] font-bold uppercase tracking-wider">Awaiting Acknowledgment</span>
                                         )}
                                     </div>
@@ -1258,11 +1209,11 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                         </div>
                                     )}
 
-                                    {selectedCust.stage === 'MATERIAL DELIVERY' && (
+                                    {selectedCust.stage === STAGE_IDS.MATERIAL_DELIVERY && (
                                         <div className="pt-2">
                                             <button
                                                 type="button"
-                                                onClick={() => handleSaveChanges('INSTALLATION STATUS')}
+                                                onClick={() => handleSaveChanges(STAGE_IDS.INSTALLATION_STATUS)}
                                                 disabled={saving}
                                                 className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
                                             >
@@ -1398,7 +1349,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                     <div className="pt-2">
                                         <button
                                             type="button"
-                                            onClick={() => handleSaveChanges('DISCOM SUBMISSION')}
+                                            onClick={() => handleSaveChanges(STAGE_IDS.DISCOM_SUBMISSION)}
                                             disabled={saving || geoTagStatus !== 'Proceed' || geoDocs.length === 0}
                                             title={geoTagStatus !== 'Proceed' || geoDocs.length === 0 ? 'Set status to Proceed and upload a geo-tag photo first.' : undefined}
                                             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
@@ -1554,7 +1505,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                             <div className="space-y-2">
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleSaveChanges('GEO TAG PHOTO')}
+                                                    onClick={() => handleSaveChanges(STAGE_IDS.GEO_TAG_PHOTO)}
                                                     disabled={saving}
                                                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/10 disabled:opacity-50 transition-all active:scale-[0.98] cursor-pointer"
                                                 >
@@ -1606,6 +1557,7 @@ export default function VendorPortal({ user, onLogout, isDemoMode = false }) {
                                     </div>
                                 </div>
                             )}
+                        </div>
                         </div>
                     </div>
 

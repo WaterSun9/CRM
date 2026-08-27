@@ -302,6 +302,17 @@ export function formatDate(dateStr) {
     return new Date(dateStr).toLocaleDateString('en-IN');
 }
 
+export function formatDateToDDMMYYYY(dateStr) {
+    if (!dateStr) return "";
+    const str = String(dateStr);
+    const datePart = str.includes("T") ? str.split("T")[0] : str;
+    const parts = datePart.split("-");
+    if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return str;
+}
+
 /**
  * High-speed client-side image compression
  * Automatically downscales large phone/camera images (5-15MB) to ~200-400KB

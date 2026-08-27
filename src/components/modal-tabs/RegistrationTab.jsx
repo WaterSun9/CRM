@@ -16,6 +16,8 @@ export default function RegistrationTab({
     onFilePreview,
     onUpdateRemark
 }) {
+    const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
+
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
             {/* Registration Details */}
@@ -107,6 +109,7 @@ export default function RegistrationTab({
                             onDelete={onFileDelete}
                             onPreview={onFilePreview}
                             onUpdateRemark={onUpdateRemark}
+                            canDelete={canDeleteDocs}
                         />
                         <CheckboxRemarkItem
                             label="Feasibility Document *"
@@ -119,6 +122,7 @@ export default function RegistrationTab({
                             onDelete={onFileDelete}
                             onPreview={onFilePreview}
                             onUpdateRemark={onUpdateRemark}
+                            canDelete={canDeleteDocs}
                         />
                         <CheckboxRemarkItem
                             label="Subsidy Token Photo *"
@@ -131,6 +135,7 @@ export default function RegistrationTab({
                             onDelete={onFileDelete}
                             onPreview={onFilePreview}
                             onUpdateRemark={onUpdateRemark}
+                            canDelete={canDeleteDocs}
                         />
                     </div>
                 </div>

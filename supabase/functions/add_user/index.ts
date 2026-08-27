@@ -193,6 +193,35 @@ serve(async (req) => {
             )
         }
 
+        // ── UPDATE USER PASSWORD ──────────────────────────────────────────
+        if (action === "update_password") {
+            const { user_id, new_password } = body
+
+            if (!user_id || !new_password) return new Response(
+                JSON.stringify({ error: "user_id and new_password are required" }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+
+            if (new_password.length < 6) return new Response(
+                JSON.stringify({ error: "Password must be at least 6 characters" }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+
+            const { error: authError } = await adminClient.auth.admin.updateUserById(user_id, {
+                password: new_password
+            })
+
+            if (authError) return new Response(
+                JSON.stringify({ error: authError.message }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+
+            return new Response(
+                JSON.stringify({ success: true }),
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+        }
+
         // ── CREATE USER ───────────────────────────────────────────────────
         if (action === "create") {
             console.log("Body:", JSON.stringify(body))

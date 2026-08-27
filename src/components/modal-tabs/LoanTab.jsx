@@ -22,6 +22,7 @@ export default function LoanTab({
     onFilePreview,
     onUpdateRemark
 }) {
+    const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
     const today = new Date().toISOString().split('T')[0];
     const [loanDraftStatus, setLoanDraftStatus] = useState('Sanctioned');
     const [loanDraftDate, setLoanDraftDate] = useState(today);
@@ -242,6 +243,7 @@ export default function LoanTab({
                                 onDelete={onFileDelete}
                                 onPreview={onFilePreview}
                                 onUpdateRemark={onUpdateRemark}
+                                canDelete={canDeleteDocs}
                             />
                             <CheckboxRemarkItem
                                 label="Site Feasibility *"
@@ -254,6 +256,7 @@ export default function LoanTab({
                                 onDelete={onFileDelete}
                                 onPreview={onFilePreview}
                                 onUpdateRemark={onUpdateRemark}
+                                canDelete={canDeleteDocs}
                             />
                             <CheckboxRemarkItem
                                 label="Digital Certificate"
@@ -266,6 +269,7 @@ export default function LoanTab({
                                 onDelete={onFileDelete}
                                 onPreview={onFilePreview}
                                 onUpdateRemark={onUpdateRemark}
+                                canDelete={canDeleteDocs}
                             />
                         </div>
                     </section>

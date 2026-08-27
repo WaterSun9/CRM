@@ -2,12 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { Tag, Search, RefreshCw, ChevronDown } from 'lucide-react';
 import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 import { normalizeSubsidyTag } from '../utils';
-import { getStoredDemoCustomers } from '../mock/demoData';
 import { supabase } from '../supabase';
 
 const PAGE_SIZE = 50;
 
-export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode = false }) {
+export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
     const [activeFilter, setActiveFilter] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -30,21 +29,6 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
 
     // Fetch True Exact Counts via Supabase HEAD queries (bypasses 1,000 PostgREST row limits)
     const fetchCounts = useCallback(async () => {
-        const isDemo = isDemoMode || (typeof window !== 'undefined' && window.sessionStorage.getItem('watersun_demo_mode') === 'true');
-        if (isDemo) {
-            let list = getStoredDemoCustomers().filter(c => !c.deleted_at && c.subsidy_tag);
-            const counts = {};
-            let total = 0;
-            SUBSIDY_TAGS.forEach(tag => {
-                const count = list.filter(c => normalizeSubsidyTag(c.subsidy_tag) === tag.id).length;
-                counts[tag.id] = count;
-                total += count;
-            });
-            setTagCounts(counts);
-            setTotalCount(total || list.length);
-            return;
-        }
-
         try {
             const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
 
@@ -93,39 +77,12 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
         } catch (err) {
             console.error('Error fetching subsidy counts:', err);
         }
-    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode]);
+    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
 
     // Fetch Paginated Customer Records with Backend Search
     const fetchCustomers = useCallback(async (pageNum = 0, isAppend = false) => {
         if (pageNum === 0) setLoading(true);
         else setLoadingMore(true);
-
-        const isDemo = isDemoMode || (typeof window !== 'undefined' && window.sessionStorage.getItem('watersun_demo_mode') === 'true');
-        if (isDemo) {
-            let list = getStoredDemoCustomers().filter(c => !c.deleted_at && c.subsidy_tag);
-            if (activeFilter) {
-                list = list.filter(c => normalizeSubsidyTag(c.subsidy_tag) === activeFilter);
-            }
-            if (debouncedSearch) {
-                const q = debouncedSearch.toLowerCase();
-                list = list.filter(c => 
-                    (c.customer_name || '').toLowerCase().includes(q) ||
-                    (c.phone_number || '').includes(q) ||
-                    (c.consumer_no || '').includes(q) ||
-                    (c.crn || '').toLowerCase().includes(q)
-                );
-            }
-            const paginated = list.slice(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE);
-            if (isAppend) {
-                setCustomers(prev => [...prev, ...paginated]);
-            } else {
-                setCustomers(paginated);
-            }
-            setHasMore((pageNum + 1) * PAGE_SIZE < list.length);
-            setLoading(false);
-            setLoadingMore(false);
-            return;
-        }
 
         try {
             const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
@@ -177,7 +134,7 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
             setLoading(false);
             setLoadingMore(false);
         }
-    }, [activeFilter, debouncedSearch, isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode]);
+    }, [activeFilter, debouncedSearch, isChannelPartnerOffice, partnerName, channelPartnerFilter]);
 
     useEffect(() => {
         fetchCounts();

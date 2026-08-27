@@ -7,7 +7,6 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { logActivity } from '../utils';
 import { APP_ROLES } from '../constants';
-import { MOCK_DEV_ROLES } from '../mock/demoData';
 import { 
     ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, 
     UserCog, X, KeyRound, Ban, Search, Edit2, Check, Loader2, Building2, Send, Lock 
@@ -24,37 +23,33 @@ function ResetPasswordModal({ user, onClose, onSuccess, currentUser }) {
 
     const handleDirectSet = async () => {
         if (!newPassword || newPassword.length < 6) {
-            setError('Password must be at least 6 characters.');
+            setError("Password must be at least 6 characters.");
             return;
         }
 
         setLoading(true);
-        setError('');
+        setError("");
         try {
-            // 1. Try Supabase Edge Function to update auth password
-            let success = false;
-            try {
-                const response = await supabase.functions.invoke('add_user', {
-                    body: { action: 'update_password', user_id: user.id, new_password: newPassword },
-                });
-                if (!response.error && !response.data?.error) {
-                    success = true;
-                }
-            } catch (edgeErr) {
-                console.warn('Edge function password update notice:', edgeErr);
+            const response = await supabase.functions.invoke("add_user", {
+                body: { action: "update_password", user_id: user.id, new_password: newPassword },
+            });
+
+            if (response.error || response.data?.error) {
+                const message = response.data?.error || response.error?.message || "Failed to update password.";
+                throw new Error(message);
             }
 
             logActivity(
-                currentUser?.id || 'admin',
-                'update',
+                currentUser?.id || "admin",
+                "update",
                 `Admin directly set new password for user: ${user.name} (${user.email})`,
-                ''
+                ""
             );
 
             onSuccess(`Password for ${user.name} successfully updated!`);
             onClose();
         } catch (err) {
-            setError(err.message || 'Failed to update password.');
+            setError(err.message || "Failed to update password.");
         } finally {
             setLoading(false);
         }
@@ -283,7 +278,7 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
             }
 
             // 2. Client-side Auth Sign-up fallback if edge function was unauthorized or unavailable
-            if (!userCreatedSuccessfully && !currentUser?.isDevBackdoor) {
+            if (!userCreatedSuccessfully) {
                 try {
                     const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
                         email: finalForm.email,
@@ -326,26 +321,8 @@ function CreateUserModal({ onClose, onCreated, currentUser }) {
                 }
             }
 
-            // 3. Dev Backdoor / Local profiles fallback
             if (!userCreatedSuccessfully) {
-                try {
-                    const saved = localStorage.getItem('watersun_dev_profiles');
-                    const currentList = saved ? JSON.parse(saved) : [];
-                    const newDevProfile = {
-                        id: `dev-${Date.now()}`,
-                        name: finalForm.name,
-                        email: finalForm.email,
-                        role: finalForm.role,
-                        user_type: finalForm.user_type,
-                        channel_partner: finalForm.channel_partner || null,
-                        status: 'active',
-                        created_at: new Date().toISOString()
-                    };
-                    const updated = [newDevProfile, ...currentList.filter(p => p.email !== finalForm.email)];
-                    localStorage.setItem('watersun_dev_profiles', JSON.stringify(updated));
-                    setProfiles(prev => [newDevProfile, ...prev]);
-                    userCreatedSuccessfully = true;
-                } catch (_) {}
+                throw new Error("Failed to create user: all creation methods failed.");
             }
 
             // 4. If the created user is a vendor, check if present in vendors table; if not, auto-add
@@ -579,26 +556,7 @@ export default function UserManagementView({ currentUser }) {
                     setProfiles(data);
                 }
             } else {
-                // Fallback mock roles if database has 0 profiles or network issue
-                let cachedDevProfiles = null;
-                try {
-                    const saved = localStorage.getItem('watersun_dev_profiles');
-                    if (saved) cachedDevProfiles = JSON.parse(saved);
-                } catch (_) {}
-
-                const fallbackProfiles = (Array.isArray(cachedDevProfiles) && cachedDevProfiles.length > 0)
-                    ? cachedDevProfiles
-                    : MOCK_DEV_ROLES.map(r => ({
-                        id: `dev-${r.id}`,
-                        name: r.name,
-                        email: r.email,
-                        role: r.role,
-                        user_type: r.userType,
-                        channel_partner: r.channel_partner,
-                        status: 'active',
-                        created_at: new Date().toISOString()
-                    }));
-                setProfiles(fallbackProfiles);
+                setProfiles([]);
             }
         } catch (err) {
             console.error('Error fetching user profiles:', err);
@@ -618,23 +576,6 @@ export default function UserManagementView({ currentUser }) {
 
         setActionLoading(profile.id);
         try {
-            // If it's a dev fallback user, update state & persist in localStorage
-            if (String(profile.id).startsWith('dev-')) {
-                setProfiles(prev => {
-                    const updated = prev.map(p => p.id === profile.id ? { 
-                        ...p, 
-                        user_type: selected.user_type, 
-                        role: selected.role 
-                    } : p);
-                    try {
-                        localStorage.setItem('watersun_dev_profiles', JSON.stringify(updated));
-                    } catch (_) {}
-                    return updated;
-                });
-                showToast('success', `Role for ${profile.name} updated to ${selected.label}`);
-                return;
-            }
-
             // 1. Direct Supabase Database Update on profiles table
             const { error: dbError } = await supabase
                 .from('profiles')
@@ -751,7 +692,8 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(userId);
         try {
             if (!String(userId).startsWith('dev-')) {
-                await supabase.from('profiles').update({ status: 'inactive' }).eq('id', userId);
+                const { error: dbErr } = await supabase.from('profiles').update({ status: 'inactive' }).eq('id', userId);
+                if (dbErr) throw dbErr;
                 try {
                     await supabase.functions.invoke('add_user', {
                         body: { action: 'deactivate', user_id: userId },
@@ -773,7 +715,8 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(userId);
         try {
             if (!String(userId).startsWith('dev-')) {
-                await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
+                const { error: dbErr } = await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
+                if (dbErr) throw dbErr;
                 try {
                     await supabase.functions.invoke('add_user', {
                         body: { action: 'reactivate', user_id: userId },
@@ -797,7 +740,8 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(userId);
         try {
             if (!String(userId).startsWith('dev-')) {
-                await supabase.from('profiles').delete().eq('id', userId);
+                const { error: dbErr } = await supabase.from('profiles').delete().eq('id', userId);
+                if (dbErr) throw dbErr;
                 try {
                     await supabase.functions.invoke('add_user', {
                         body: { action: 'delete', user_id: userId },

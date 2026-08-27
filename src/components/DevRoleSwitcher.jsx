@@ -3,7 +3,7 @@ import { Settings2, X, Database, Search, LogIn, ArrowRight, Check, AlertTriangle
 import { supabase } from '../supabase';
 import { APP_ROLES } from '../constants';
 
-export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onToggle, isDemoMode }) {
+export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onToggle }) {
     const [searchEmail, setSearchEmail] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -43,11 +43,6 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                 return;
             }
 
-            // Explicitly operate on the REAL Supabase website & database
-            if (typeof window !== 'undefined') {
-                window.sessionStorage.setItem('watersun_demo_mode', 'false');
-            }
-
             onSwitchUser({
                 id: profile.id, // Use their real DB id so actions save properly
                 email: profile.email,
@@ -68,10 +63,6 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
     };
 
     const handleQuickPreview = (role) => {
-        if (typeof window !== 'undefined') {
-            window.sessionStorage.setItem('watersun_demo_mode', 'false');
-        }
-
         onSwitchUser({
             id: `dev-preview-${role.user_type}`,
             email: `preview-${role.user_type}@watersun.dev`,

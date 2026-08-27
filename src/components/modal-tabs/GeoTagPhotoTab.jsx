@@ -24,6 +24,7 @@ export default function GeoTagPhotoTab({
     const isAdmin = user?.userType === 'admin';
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager';
     const canEditGeoTag = isVendor || ((isAdmin || isChannelPartnerOffice) && isEditable);
+    const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
 
     // Ensure a default Geo Tag status of 'No' for new records (only on mount)
     const initializedRef = React.useRef(false);
@@ -124,6 +125,7 @@ export default function GeoTagPhotoTab({
                         onDelete={onFileDelete} 
                         onPreview={onFilePreview} 
                         onUpdateRemark={onUpdateRemark}
+                        canDelete={canDeleteDocs}
                     />
                 </div>
 

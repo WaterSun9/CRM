@@ -27,6 +27,10 @@ export const PRIMARY_STAGES = [
     { id: 'LOST PROJECT', label: 'Lost Project', icon: PauseCircle },
 ];
 
+export const STAGE_IDS = Object.fromEntries(
+    PRIMARY_STAGES.map(s => [s.id.replace(/ /g, "_"), s.id])
+);
+
 export const SUBSIDY_TAGS = [
     { id: 'Received', label: 'Received', icon: CheckCircle2 },
     { id: 'In Process', label: 'In Process', icon: Clock },

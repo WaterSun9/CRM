@@ -7,14 +7,12 @@ import {
 import { supabase } from '../supabase';
 import { PRIMARY_STAGES } from '../constants';
 import { formatINR, toIndianCommas, logActivity, formatInputValue, parseIndianNumber } from '../utils';
-import { getStoredDemoCustomers } from '../mock/demoData';
 
 export default function DeliveryBatchesView({ 
     currentUser, 
     customers: propCustomers = [], 
     onRefreshCustomers,
-    onOpenCustomerModal,
-    isDemoMode = false 
+    onOpenCustomerModal
 }) {
     const [batches, setBatches] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -28,10 +26,6 @@ export default function DeliveryBatchesView({
 
     // Fetch all customers for the batch dropdown and manifest
     const fetchAllCustomers = async () => {
-        if (isDemoMode) {
-            setAllCustomers(getStoredDemoCustomers().filter(c => !c.deleted_at));
-            return;
-        }
         try {
             let all = [];
             let from = 0;
@@ -57,7 +51,7 @@ export default function DeliveryBatchesView({
 
     useEffect(() => {
         fetchAllCustomers();
-    }, [isDemoMode]);
+    }, []);
 
     const customers = propCustomers && propCustomers.length > 0 ? propCustomers : allCustomers;
     
@@ -107,49 +101,25 @@ export default function DeliveryBatchesView({
         fetchVendors();
     }, []);
 
-    // Load Batches from Database or LocalStorage (with demo mode support)
+    // Load Batches from Database or LocalStorage
     const fetchBatches = async () => {
         setLoading(true);
         try {
-            if (isDemoMode) {
-                const stored = localStorage.getItem('watersun_demo_delivery_batches');
-                if (stored) {
-                    setBatches(JSON.parse(stored));
-                } else {
-                    // Seed initial demo batch
-                    const demoBatch = [{
-                        id: 'BATCH-2026-001',
-                        batch_no: 'BATCH-2026-001 (North Gujarat Run)',
-                        dispatch_date: new Date().toISOString().split('T')[0],
-                        driver_name: 'Ramesh Kumar',
-                        driver_phone: '9876543210',
-                        vehicle_number: 'GJ-02-XY-8419',
-                        vendor: 'Om Solar',
-                        status: 'IN_TRANSIT',
-                        notes: 'Handle fragile mono-perc solar panels with care.',
-                        project_ids: customers.slice(0, 3).map(c => c.id),
-                        created_at: new Date().toISOString()
-                    }];
-                    localStorage.setItem('watersun_demo_delivery_batches', JSON.stringify(demoBatch));
-                    setBatches(demoBatch);
-                }
-            } else {
-                // Try fetching from delivery_batches table
-                const { data, error } = await supabase
-                    .from('delivery_batches')
-                    .select('*')
-                    .order('created_at', { ascending: false });
+            // Try fetching from delivery_batches table
+            const { data, error } = await supabase
+                .from('delivery_batches')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-                if (!error && data) {
-                    setBatches(data);
+            if (!error && data) {
+                setBatches(data);
+            } else {
+                // Fallback to synthesizing batches from localStorage
+                const localStored = localStorage.getItem('watersun_local_delivery_batches');
+                if (localStored) {
+                    setBatches(JSON.parse(localStored));
                 } else {
-                    // Fallback to synthesizing batches from localStorage
-                    const localStored = localStorage.getItem('watersun_local_delivery_batches');
-                    if (localStored) {
-                        setBatches(JSON.parse(localStored));
-                    } else {
-                        setBatches([]);
-                    }
+                    setBatches([]);
                 }
             }
         } catch (err) {
@@ -161,20 +131,16 @@ export default function DeliveryBatchesView({
 
     useEffect(() => {
         fetchBatches();
-    }, [isDemoMode]);
+    }, []);
 
     // Save Batches Helper
     const saveBatchesState = async (updatedBatches) => {
         setBatches(updatedBatches);
-        if (isDemoMode) {
-            localStorage.setItem('watersun_demo_delivery_batches', JSON.stringify(updatedBatches));
-        } else {
-            localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
-            try {
-                // Also attempt syncing with Supabase if table exists
-                await supabase.from('delivery_batches').upsert(updatedBatches);
-            } catch (e) {}
-        }
+        localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
+        try {
+            // Also attempt syncing with Supabase if table exists
+            await supabase.from('delivery_batches').upsert(updatedBatches);
+        } catch (e) {}
     };
 
     // Open Create Modal
@@ -574,15 +540,17 @@ export default function DeliveryBatchesView({
                                                 value={batch.status || 'IN_TRANSIT'}
                                                 onChange={async (e) => {
                                                     const newStatus = e.target.value;
+                                                    const previousBatch = batch;
                                                     const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, status: newStatus } : b);
                                                     setBatches(updatedBatches);
-                                                    if (isDemoMode) {
-                                                        localStorage.setItem('watersun_demo_delivery_batches', JSON.stringify(updatedBatches));
-                                                    } else {
-                                                        localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
-                                                        try {
-                                                            await supabase.from('delivery_batches').update({ status: newStatus }).eq('id', batch.id);
-                                                        } catch(err) {}
+                                                    localStorage.setItem("watersun_local_delivery_batches", JSON.stringify(updatedBatches));
+                                                    try {
+                                                        const { error } = await supabase.from("delivery_batches").update({ status: newStatus }).eq("id", batch.id);
+                                                        if (error) throw error;
+                                                        await logActivity(currentUser?.id || "admin", "update", `Changed delivery batch ${batch.batch_no || batch.id} status to ${newStatus}`, "");
+                                                    } catch (err) {
+                                                        setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
+                                                        alert("Failed to update batch status: " + (err.message || "Unknown error"));
                                                     }
                                                 }}
                                                 className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full outline-none cursor-pointer appearance-none ${
@@ -622,20 +590,25 @@ export default function DeliveryBatchesView({
                                                     value={batch.car_rent_paid || 'No'}
                                                     onChange={async (e) => {
                                                         const val = e.target.value;
-                                                        const userIdentifier = currentUser?.name || currentUser?.email || 'Admin';
+                                                        const userIdentifier = currentUser?.name || currentUser?.email || "Admin";
                                                         const timestamp = new Date().toISOString();
-                                                        
+                                                        const previousBatch = batch;
+
                                                         const updates = { 
                                                             car_rent_paid: val,
-                                                            car_rent_paid_by: val === 'Yes' ? userIdentifier : null,
-                                                            car_rent_paid_at: val === 'Yes' ? timestamp : null
+                                                            car_rent_paid_by: val === "Yes" ? userIdentifier : null,
+                                                            car_rent_paid_at: val === "Yes" ? timestamp : null
                                                         };
                                                         
                                                         const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, ...updates } : b);
                                                         setBatches(updatedBatches);
                                                         
-                                                        if (!isDemoMode) {
-                                                            try { await supabase.from('delivery_batches').update(updates).eq('id', batch.id); } catch(err) {}
+                                                        try {
+                                                            const { error } = await supabase.from("delivery_batches").update(updates).eq("id", batch.id);
+                                                            if (error) throw error;
+                                                        } catch (err) {
+                                                            setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
+                                                            alert("Failed to save Car Rent Paid status: " + (err.message || "Unknown error"));
                                                         }
                                                     }}
                                                     className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded cursor-pointer outline-none shadow-xs ${batch.car_rent_paid === 'Yes' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}
@@ -704,22 +677,29 @@ export default function DeliveryBatchesView({
                                             type="button"
                                             disabled={isAllDelivered}
                                             onClick={async () => {
+                                                const previousBatch = batch;
+                                                const previousOverrides = { ...localStatusOverrides };
                                                 const newOverrides = { ...localStatusOverrides };
-                                                linkedProjects.forEach(p => newOverrides[p.id] = 'DELIVERED');
+                                                linkedProjects.forEach(p => newOverrides[p.id] = "DELIVERED");
                                                 setLocalStatusOverrides(newOverrides);
 
-                                                const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, status: 'DELIVERED' } : b);
+                                                const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, status: "DELIVERED" } : b);
                                                 setBatches(updatedBatches);
                                                 
-                                                if (!isDemoMode) {
-                                                    try {
-                                                        await supabase.from('delivery_batches').update({ status: 'DELIVERED' }).eq('id', batch.id);
-                                                        const projectIds = linkedProjects.map(p => p.id);
-                                                        if (projectIds.length > 0) {
-                                                            await supabase.from('admin').update({ delivery_status: 'DELIVERED' }).in('id', projectIds);
-                                                        }
-                                                        if (onRefreshCustomers) onRefreshCustomers();
-                                                    } catch(err) {}
+                                                try {
+                                                    const { error: batchError } = await supabase.from("delivery_batches").update({ status: "DELIVERED" }).eq("id", batch.id);
+                                                    if (batchError) throw batchError;
+                                                    const projectIds = linkedProjects.map(p => p.id);
+                                                    if (projectIds.length > 0) {
+                                                        const { error: adminError } = await supabase.from("admin").update({ delivery_status: "DELIVERED" }).in("id", projectIds);
+                                                        if (adminError) throw adminError;
+                                                    }
+                                                    await logActivity(currentUser?.id || "admin", "update", `Marked delivery batch ${batch.batch_no || batch.id} as DELIVERED (${projectIds.length} projects)`, "");
+                                                    if (onRefreshCustomers) onRefreshCustomers();
+                                                } catch (err) {
+                                                    setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
+                                                    setLocalStatusOverrides(previousOverrides);
+                                                    alert("Failed to mark batch delivered: " + (err.message || "Unknown error"));
                                                 }
                                             }}
                                             className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider transition shadow-xs border ${
@@ -779,11 +759,16 @@ export default function DeliveryBatchesView({
                                                                 value={(localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING')}
                                                                 onChange={async (e) => {
                                                                     const newStat = e.target.value;
+                                                                    const previousStat = localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING';
                                                                     setLocalStatusOverrides(prev => ({ ...prev, [proj.id]: newStat }));
                                                                     try {
-                                                                        await supabase.from('admin').update({ delivery_status: newStat }).eq('id', proj.id);
+                                                                        const { error } = await supabase.from('admin').update({ delivery_status: newStat }).eq('id', proj.id);
+                                                                        if (error) throw error;
                                                                         if (onRefreshCustomers) onRefreshCustomers();
-                                                                    } catch(err) {}
+                                                                    } catch (err) {
+                                                                        setLocalStatusOverrides(prev => ({ ...prev, [proj.id]: previousStat }));
+                                                                        alert("Failed to update delivery status: " + (err.message || "Unknown error"));
+                                                                    }
                                                                 }}
                                                                 className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md outline-none cursor-pointer ${
                                                                     (localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING') === 'DELIVERED' 

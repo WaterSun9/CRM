@@ -11,7 +11,7 @@
 import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, normalizeInstallationStatus, lazyWithRetry } from '../utils';
-import { PRIMARY_STAGES } from '../constants';
+import { PRIMARY_STAGES, STAGE_IDS } from '../constants';
 import DashboardView from './DashboardView';
 import CustomerCard from './CustomerCard';
 
@@ -27,11 +27,6 @@ const TrashView = lazyWithRetry(() => import('./TrashView'));
 const ChannelPartnerManagementView = lazyWithRetry(() => import('./ChannelPartnerManagementView'));
 const InstallationPaymentsView = lazyWithRetry(() => import('./InstallationPaymentsView'));
 const DeliveryBatchesView = lazyWithRetry(() => import('./DeliveryBatchesView'));
-import { 
-    DEMO_CUSTOMERS, getStoredDemoCustomers, updateStoredDemoCustomer, 
-    createStoredDemoCustomer, moveStoredDemoCustomerStage, softDeleteStoredDemoCustomer, 
-    recoverStoredDemoCustomer, hardDeleteStoredDemoCustomer, getDemoMetadata, getDemoMetrics 
-} from '../mock/demoData';
 
 const ViewLoader = () => <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -64,7 +59,7 @@ const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, 
     );
 };
 
-export default function Dashboard({ user, onLogout, isDemoMode = false, onToggleDemoMode, onOpenDevSwitcher }) {
+export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
     
@@ -83,7 +78,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
             const saved = window.sessionStorage.getItem('watersun_selected_stage');
             if (saved) return saved;
         }
-        return 'LEADS';
+        return STAGE_IDS.LEADS;
     });
 
     const [stageSearch, setStageSearch] = useState('');    // per-stage search
@@ -157,16 +152,6 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     const handleFullExport = async () => {
         setExporting(true);
         try {
-            if (isDemoMode) {
-                let list = getStoredDemoCustomers().filter(c => !c.deleted_at);
-                if (isChannelPartnerOffice) {
-                    list = list.filter(c => (c.channel_partner || '').toLowerCase() === partnerName.toLowerCase());
-                } else if (channelPartnerFilter && channelPartnerFilter.trim()) {
-                    list = list.filter(c => (c.channel_partner || '').toLowerCase() === channelPartnerFilter.trim().toLowerCase());
-                }
-                exportAllToCSV(list);
-                return;
-            }
 
             // Fetch all records with chunking to ensure 100% of rows beyond 1000 limit are retrieved
             let allRows = [];
@@ -216,22 +201,13 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
 
     // ── Data fetching ──────────────────────────────────────────────────────────
     const fetchMetricsAndMeta = async () => {
-        if (isDemoMode) {
-            const demoBatches = JSON.parse(localStorage.getItem('watersun_demo_delivery_batches') || '[]');
-            setMetrics({
-                ...getDemoMetrics(isChannelPartnerOffice ? partnerName : channelPartnerFilter),
-                deliveryBatchesCount: demoBatches.length
-            });
-            setMeta(getDemoMetadata());
-            return;
-        }
         const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
         const [metricsRes, metaRes, batchesRes] = await Promise.all([
             supabase.rpc('get_dashboard_metrics', { 
                 p_channel_partner: targetPartner 
             }),
             supabase.from('metadata').select('category, label'),
-            supabase.from('delivery_batches').select('*', { count: 'exact', head: true })
+            supabase.from('delivery_batches').select('*', { count: 'exact', head: true }).neq('status', 'DELIVERED')
         ]);
 
         let finalMetrics = {
@@ -262,20 +238,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
 
     const fetchStageCustomers = async (stage = selectedStage, pageNum = 0) => {
         setLoading(true);
-        const normalizedStage = (stage || 'LEADS').toUpperCase();
-        if (isDemoMode) {
-            let list = getStoredDemoCustomers().filter(c => !c.deleted_at);
-            if (isChannelPartnerOffice) {
-                list = list.filter(c => (c.channel_partner || '').toLowerCase() === partnerName.toLowerCase());
-            } else if (channelPartnerFilter && channelPartnerFilter.trim()) {
-                list = list.filter(c => (c.channel_partner || '').toLowerCase() === channelPartnerFilter.trim().toLowerCase());
-            }
-            const demoStageList = list.filter(c => (c.stage || '').toUpperCase() === normalizedStage);
-            setCustomers(demoStageList);
-            setHasMore(false);
-            setLoading(false);
-            return;
-        }
+        const normalizedStage = (stage || STAGE_IDS.LEADS).toUpperCase();
         let query = supabase
             .from('admin')
             .select('*')
@@ -319,7 +282,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
         setPage(0);
         fetchMetricsAndMeta();
         fetchStageCustomers(selectedStage, 0);
-    }, [selectedStage, channelPartnerFilter, isChannelPartnerOffice, partnerName, isDemoMode]);
+    }, [selectedStage, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
 
     useEffect(() => {
         const channel = supabase.channel('admin_changes')
@@ -510,11 +473,6 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
             setSelectedCustomer(prev => ({ ...prev, ...cleanUpdates }));
         }
 
-        if (isDemoMode || String(id).startsWith('demo-')) {
-            updateStoredDemoCustomer(id, cleanUpdates);
-            fetchMetricsAndMeta();
-            return;
-        }
 
         // 2. Background Database Save
         try {
@@ -545,22 +503,11 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: ts } : c));
         setSelectedCustomer(null);
 
-        if (isDemoMode || String(id).startsWith('demo-')) {
-            softDeleteStoredDemoCustomer(id);
-            fetchMetricsAndMeta();
-            return;
-        }
         await supabase.from('admin').update({ deleted_at: ts }).eq('id', id);
     };
 
     // Recover from trash
     const handleRecover = async (id) => {
-        if (isDemoMode || String(id).startsWith('demo-')) {
-            recoverStoredDemoCustomer(id);
-            setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: null } : c));
-            fetchMetricsAndMeta();
-            return;
-        }
         await supabase.from('admin').update({ deleted_at: null }).eq('id', id);
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: null } : c));
         logActivity(
@@ -575,12 +522,6 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     // Hard-delete: permanent, admin only
     const handleHardDelete = async (id) => {
         const c = customers.find(x => x.id === id);
-        if (isDemoMode || String(id).startsWith('demo-')) {
-            hardDeleteStoredDemoCustomer(id);
-            setCustomers(prev => prev.filter(c => c.id !== id));
-            fetchMetricsAndMeta();
-            return;
-        }
         await logActivity(
             user.id,
             'delete',
@@ -610,11 +551,6 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...optimisticUpdates } : c));
         if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...optimisticUpdates }));
 
-        if (isDemoMode || String(id).startsWith('demo-')) {
-            moveStoredDemoCustomerStage(id, newStage, oldRemark);
-            fetchMetricsAndMeta();
-            return;
-        }
 
         // 2. Call Atomic RPC to append remarks safely on the server
         const { data: updatedRecord, error } = await supabase.rpc('move_stage', {
@@ -672,13 +608,6 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
             }
         });
 
-        if (isDemoMode) {
-            const created = createStoredDemoCustomer(insertData);
-            setCustomers(prev => [created, ...prev]);
-            setShowAddLead(false);
-            fetchMetricsAndMeta();
-            return created;
-        }
 
         const { data: newCustomer, error } = await supabase.from('admin').insert(insertData).select().single();
         if (error) {
@@ -747,8 +676,8 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
     const stageCounts = useMemo(() => {
         const raw = metrics?.stageCounts || {};
         const normalized = { ...raw };
-        if (!normalized['LOST PROJECT']) {
-            normalized['LOST PROJECT'] = normalized['HOLD PROCUREMENT'] || normalized['HOLD_PROCUREMENT'] || normalized['Lost Project'] || 0;
+        if (!normalized[STAGE_IDS.LOST_PROJECT]) {
+            normalized[STAGE_IDS.LOST_PROJECT] = normalized['HOLD PROCUREMENT'] || normalized['HOLD_PROCUREMENT'] || normalized['Lost Project'] || 0;
         }
         return normalized;
     }, [metrics?.stageCounts]);
@@ -852,7 +781,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                             <p className="text-[9px] text-stone-400">{user.role}</p>
                         </div>
                     </div>
-                    {onOpenDevSwitcher && (user.userType === 'admin' || isDemoMode) && (
+                    {onOpenDevSwitcher && user.userType === 'admin' && (
                         <button onClick={onOpenDevSwitcher}
                             className="w-full flex items-center gap-2 px-3 py-2 text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-xl text-xs font-bold transition-colors mb-1.5 cursor-pointer border border-amber-200">
                             <Terminal className="w-4 h-4 text-amber-600" /> Backdoor Terminal & Roles
@@ -993,15 +922,14 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                             currentUser={user} 
                             onRefreshCustomers={fetchMetricsAndMeta} 
                             onOpenCustomerModal={setSelectedCustomer} 
-                            isDemoMode={isDemoMode} 
                         />
                     )}
-                    {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} isDemoMode={isDemoMode} />}
-                    {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} isDemoMode={isDemoMode} />}
-                    {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} isDemoMode={isDemoMode} />}
+                    {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
+                    {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
+                    {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
 
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView currentUser={user} />}
-                    {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} isDemoMode={isDemoMode} />}
+                    {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} />}
                     {currentView === 'activity' && user.userType === 'admin' && <ActivityLogView />}
                     {currentView === 'users' && (user.userType === 'admin' || user.userType === 'channel_partner_office') && <UserManagementView currentUser={user} />}
 
@@ -1011,8 +939,6 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                             onRecover={handleRecover}
                             onHardDelete={handleHardDelete}
                             isAdmin={user.userType === 'admin'}
-                            isDemoMode={isDemoMode}
-                            demoTrashed={trashed}
                         />
                     )}
 
@@ -1063,8 +989,7 @@ export default function Dashboard({ user, onLogout, isDemoMode = false, onToggle
                     user={user}
                     meta={meta}
                     channel_partners={uniqueChannelPartners}
-                    defaultTab={currentView === 'subsidy' ? 'SUBSIDY STATUS' : currentView === 'loan_tags' ? 'LOAN' : currentView === 'installation_tags' ? 'INSTALLATION STATUS' : currentView === 'stages' ? selectedStage : undefined}
-                    isDemoMode={isDemoMode}
+                    defaultTab={currentView === 'subsidy' ? STAGE_IDS.SUBSIDY_STATUS : currentView === 'loan_tags' ? STAGE_IDS.LOAN : currentView === 'installation_tags' ? STAGE_IDS.INSTALLATION_STATUS : currentView === 'stages' ? selectedStage : undefined}
                 />
                 </Suspense>
             )}

@@ -3,15 +3,7 @@ import { ClipboardList, Save, FileText, Printer, RotateCcw, AlertTriangle, Check
 import { supabase } from '../../supabase';
 import { Page1 } from '../agreement/Page1';
 import { CheckboxRemarkItem } from './shared';
-
-const formatDateToDDMMYYYY = (dateStr) => {
-    if (!dateStr) return '';
-    const parts = String(dateStr).split('-');
-    if (parts.length === 3) {
-        return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    return String(dateStr);
-};
+import { formatDateToDDMMYYYY } from '../../utils';
 
 export default function DiscomSubmissionTab({
     customer,
@@ -70,6 +62,8 @@ export default function DiscomSubmissionTab({
         }
     }, [customer.customer_name, submissionData]);
 
+
+    const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
 
     const isDiscomDetailsEditable = isEditable || 
         user?.userType === 'sales' || 
@@ -197,9 +191,9 @@ export default function DiscomSubmissionTab({
                     <ClipboardList className="w-4 h-4 text-amber-500" /> Utility File Checklist
                 </h4>
                 <div className="flex flex-col gap-2">
-                    <CheckboxRemarkItem label="File Status" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
-                    <CheckboxRemarkItem label="DCR Certificate" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
-                    <CheckboxRemarkItem label="Signiture" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} />
+                    <CheckboxRemarkItem label="File Status" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                    <CheckboxRemarkItem label="DCR Certificate" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                    <CheckboxRemarkItem label="Signiture" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                 </div>
                 {isEditable && (editData.file_status !== customer.file_status || editData.dcr_certificate !== customer.dcr_certificate || editData.signature_pic !== customer.signature_pic) && (
                     <div className="flex justify-end pt-2">
@@ -382,6 +376,7 @@ export default function DiscomSubmissionTab({
                                     onPreview={onFilePreview}
                                     onUpdateRemark={onUpdateRemark}
                                     note={isStampSent && submissionData.stamp_completed_at ? `Uploaded by ${submissionData.stamp_completed_by || 'Document Maker'} on ${new Date(submissionData.stamp_completed_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : isStampSent ? 'Uploaded by Document Maker' : null}
+                                    canDelete={canDeleteDocs}
                                 />
 
                                 {/* ── Stamp Sent to Document Making Review Box (Positioned directly below PM Surya Ghar Stamp) ── */}

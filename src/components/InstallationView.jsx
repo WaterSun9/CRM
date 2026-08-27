@@ -2,14 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { Wrench, Search, RefreshCw, ChevronDown } from 'lucide-react';
 import { normalizeInstallationStatus } from '../utils';
 import { INSTALLATION_TAGS, INSTALLATION_TAG_COLORS } from '../constants';
-import { getStoredDemoCustomers } from '../mock/demoData';
 import { supabase } from '../supabase';
 
 export { normalizeInstallationStatus };
 
 const PAGE_SIZE = 50;
 
-export default function InstallationView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode = false }) {
+export default function InstallationView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
     const [activeFilter, setActiveFilter] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -32,21 +31,6 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
 
     // Fetch True Exact Counts via Supabase HEAD queries (bypasses 1,000 PostgREST row limits)
     const fetchCounts = useCallback(async () => {
-        const isDemo = isDemoMode || (typeof window !== 'undefined' && window.sessionStorage.getItem('watersun_demo_mode') === 'true');
-        if (isDemo) {
-            let list = getStoredDemoCustomers().filter(c => !c.deleted_at && c.installation_status);
-            const counts = {};
-            let total = 0;
-            INSTALLATION_TAGS.forEach(tag => {
-                const count = list.filter(c => normalizeInstallationStatus(c.installation_status) === tag.id).length;
-                counts[tag.id] = count;
-                total += count;
-            });
-            setTagCounts(counts);
-            setTotalCount(total || list.length);
-            return;
-        }
-
         try {
             const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
 
@@ -95,39 +79,12 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
         } catch (err) {
             console.error('Error fetching installation counts:', err);
         }
-    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode]);
+    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
 
     // Fetch Paginated Customer Records with Backend Search
     const fetchCustomers = useCallback(async (pageNum = 0, isAppend = false) => {
         if (pageNum === 0) setLoading(true);
         else setLoadingMore(true);
-
-        const isDemo = isDemoMode || (typeof window !== 'undefined' && window.sessionStorage.getItem('watersun_demo_mode') === 'true');
-        if (isDemo) {
-            let list = getStoredDemoCustomers().filter(c => !c.deleted_at && c.installation_status);
-            if (activeFilter) {
-                list = list.filter(c => normalizeInstallationStatus(c.installation_status) === activeFilter);
-            }
-            if (debouncedSearch) {
-                const q = debouncedSearch.toLowerCase();
-                list = list.filter(c => 
-                    (c.customer_name || '').toLowerCase().includes(q) ||
-                    (c.phone_number || '').includes(q) ||
-                    (c.consumer_no || '').includes(q) ||
-                    (c.crn || '').toLowerCase().includes(q)
-                );
-            }
-            const paginated = list.slice(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE);
-            if (isAppend) {
-                setCustomers(prev => [...prev, ...paginated]);
-            } else {
-                setCustomers(paginated);
-            }
-            setHasMore((pageNum + 1) * PAGE_SIZE < list.length);
-            setLoading(false);
-            setLoadingMore(false);
-            return;
-        }
 
         try {
             const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
@@ -179,7 +136,7 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
             setLoading(false);
             setLoadingMore(false);
         }
-    }, [activeFilter, debouncedSearch, isChannelPartnerOffice, partnerName, channelPartnerFilter, isDemoMode]);
+    }, [activeFilter, debouncedSearch, isChannelPartnerOffice, partnerName, channelPartnerFilter]);
 
     useEffect(() => {
         fetchCounts();

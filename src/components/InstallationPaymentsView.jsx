@@ -1,13 +1,12 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, toIndianCommas, normalizeInstallationStatus } from '../utils';
-import { getStoredDemoCustomers } from '../mock/demoData';
 import { 
     Search, CreditCard, CheckCircle2, AlertCircle, Calendar, 
     Building2, Users, Check, Loader2, RefreshCw 
 } from 'lucide-react';
 
-export default function InstallationPaymentsView({ onSelectCustomer, currentUser, isDemoMode = false }) {
+export default function InstallationPaymentsView({ onSelectCustomer, currentUser }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('All'); // 'All', 'Pending', 'Paid'
     const [selectedMonthKey, setSelectedMonthKey] = useState('All');
@@ -45,17 +44,6 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
     // Fast lightweight fetch strictly for completed installation status ("Yes")
     const fetchInstallations = useCallback(async () => {
         setLoading(true);
-        const isDemo = isDemoMode || (typeof window !== 'undefined' && window.sessionStorage.getItem('watersun_demo_mode') === 'true');
-        if (isDemo) {
-            const list = getStoredDemoCustomers().filter(c => 
-                !c.deleted_at && 
-                (normalizeInstallationStatus(c.installation_status) === 'yes' || String(c.installation_status || '').toLowerCase().includes('yes'))
-            );
-            setInstallations(list);
-            setLoading(false);
-            return;
-        }
-
         try {
             const { data, error } = await supabase
                 .from('admin')
@@ -90,7 +78,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         } finally {
             setLoading(false);
         }
-    }, [isDemoMode]);
+    }, []);
 
     useEffect(() => {
         fetchInstallations();
@@ -204,9 +192,11 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                 );
             } else {
                 console.error("Error updating vendor payment status:", error);
+                alert("Failed to update payment status: " + error.message);
             }
         } catch (err) {
             console.error("Error changing payment status:", err);
+            alert("Error changing payment status: " + err.message);
         } finally {
             setUpdatingId(null);
         }

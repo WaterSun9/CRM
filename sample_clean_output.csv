@@ -1,6 +1,0 @@
-folder_no,sub_channel_partner,channel_partner,stage,customer_name,phone_number,consumer_no,registration_date,payment_type,loan_tag,module_brand,module_wp,villages,sub_divisions,system_capacity_kwp,registration_by,invoice_no,stamp,file_status,subsidy_tag,installation_status
-F-101,Rahul S,SunPower Gujarat,LEADS,Amitabh Verma,9825123456,1029384756,2024-08-15,Loan,SBI Approved,Waaree,545,Anand,North,3.3,Priya,INV-2024-01,true,false,Eligible,Pending
-F-102,,SolarDirect,REGISTRATION,Ramesh Patel,9876543210,0987654321,,Cash,,Adani,,Navsari,South,5,Ramesh,,false,false,TBD,No
-F-103,Vikas K,Apex Solar,DISCOM SUBMISSION,Suresh Mehta,9812345678,5544332211,2024-07-20,Loan,HDFC Pending,Goldi,550,Surat,West,6,Kavita,INV-8899,true,true,Claimed,Completed
-F-104,--,SunPower Gujarat,MATERIAL ORDER,Geeta Sharma,9988776655,9988776655,2024-06-12,Cash,--,Tata Power,540,Vadodara,East,4.5,Priya,INV-1029,false,false,,Pending
-F-105,Rohit P,SolarDirect,INSTALLATION STATUS,Rajesh Shah,8877665544,1234567890,,Loan,BOB Done,Waaree,545,Rajkot,Central,3.3,Amit,,true,true,Ready,Yes

@@ -26,6 +26,7 @@ export default function InstallationStatusTab({
     onFilePreview,
     onUpdateRemark
 }) {
+    const canDeleteDocs = isAdmin || isOffice;
     const [vendors, setVendors] = useState([]);
     const [sendingInfo, setSendingInfo] = useState(false);
     const [infoSentStatus, setInfoSentStatus] = useState(null);
@@ -121,6 +122,7 @@ export default function InstallationStatusTab({
                         onDelete={onFileDelete} 
                         onPreview={onFilePreview} 
                         onUpdateRemark={onUpdateRemark}
+                        canDelete={canDeleteDocs}
                     />
                 </div>
                 {isSfdcEditable && editData.sfdc_photo !== customer.sfdc_photo && (

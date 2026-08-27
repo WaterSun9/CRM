@@ -1,4 +1,5 @@
 import React from 'react';
+import { STAGE_IDS } from "../constants";
 import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
 import LoanTab from './modal-tabs/LoanTab';
@@ -20,21 +21,21 @@ export default function CustomerModalTabsRouter(props) {
 
     return (
         <>
-            {activeTab === 'LEADS' && <LeadsTab {...props} />}
-            {activeTab === 'REGISTRATION' && <RegistrationTab {...props} />}
-            {activeTab === 'LOAN' && <LoanTab {...props} />}
-            {activeTab === 'CASH' && <CashTab {...props} />}
-            {activeTab === 'MATERIAL ORDER' && <MaterialOrderTab {...props} />}
-            {activeTab === 'MATERIAL INTEGRATION' && <MaterialIntegrationTab {...props} />}
-            {(activeTab === 'LOST PROJECT' || activeTab === 'HOLD PROCUREMENT') && <HoldProcurementTab {...props} />}
-            {activeTab === 'MATERIAL DELIVERY' && <MaterialDeliveryTab {...props} />}
-            {activeTab === 'INSTALLATION STATUS' && <InstallationStatusTab {...props} />}
-            {activeTab === 'GEO TAG PHOTO' && <GeoTagPhotoTab {...props} />}
-            {activeTab === 'DISCOM SUBMISSION' && <DiscomSubmissionTab {...props} />}
-            {activeTab === 'METER INSTALLATION' && <MeterInstallationTab {...props} />}
-            {activeTab === 'DISCOM INSPECTION' && <DiscomInspectionTab {...props} />}
-            {activeTab === 'SUBSIDY STATUS' && <SubsidyStatusTab {...props} />}
-            {activeTab === 'FINAL REVIEW' && <FinalReviewTab {...props} />}
+            {activeTab === STAGE_IDS.LEADS && <LeadsTab {...props} />}
+            {activeTab === STAGE_IDS.REGISTRATION && <RegistrationTab {...props} />}
+            {activeTab === STAGE_IDS.LOAN && <LoanTab {...props} />}
+            {activeTab === STAGE_IDS.CASH && <CashTab {...props} />}
+            {activeTab === STAGE_IDS.MATERIAL_ORDER && <MaterialOrderTab {...props} />}
+            {activeTab === STAGE_IDS.MATERIAL_INTEGRATION && <MaterialIntegrationTab {...props} />}
+            {(activeTab === STAGE_IDS.LOST_PROJECT || activeTab === 'HOLD PROCUREMENT') && <HoldProcurementTab {...props} />}
+            {activeTab === STAGE_IDS.MATERIAL_DELIVERY && <MaterialDeliveryTab {...props} />}
+            {activeTab === STAGE_IDS.INSTALLATION_STATUS && <InstallationStatusTab {...props} />}
+            {activeTab === STAGE_IDS.GEO_TAG_PHOTO && <GeoTagPhotoTab {...props} />}
+            {activeTab === STAGE_IDS.DISCOM_SUBMISSION && <DiscomSubmissionTab {...props} />}
+            {activeTab === STAGE_IDS.METER_INSTALLATION && <MeterInstallationTab {...props} />}
+            {activeTab === STAGE_IDS.DISCOM_INSPECTION && <DiscomInspectionTab {...props} />}
+            {activeTab === STAGE_IDS.SUBSIDY_STATUS && <SubsidyStatusTab {...props} />}
+            {activeTab === STAGE_IDS.FINAL_REVIEW && <FinalReviewTab {...props} />}
         </>
     );
 }

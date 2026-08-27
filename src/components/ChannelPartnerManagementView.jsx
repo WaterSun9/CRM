@@ -163,6 +163,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Channel Partner: "${val}"`);
         } catch (e) {
             console.error('Error adding partner:', e);
+            alert('Error adding partner: ' + e.message);
         }
     };
 
@@ -190,6 +191,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Module Brand: "${val}"`);
         } catch (e) {
             console.error('Error adding brand:', e);
+            alert('Error adding brand: ' + e.message);
         }
     };
 
@@ -217,6 +219,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Registration Staff: "${val}"`);
         } catch (e) {
             console.error('Error adding registration staff:', e);
+            alert('Error adding registration staff: ' + e.message);
         }
     };
 
@@ -244,6 +247,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Integration Staff: "${val}"`);
         } catch (e) {
             console.error('Error adding integration staff:', e);
+            alert('Error adding integration staff: ' + e.message);
         }
     };
 
@@ -271,6 +275,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Inverter Make: "${val}"`);
         } catch (e) {
             console.error('Error adding inverter make:', e);
+            alert('Error adding inverter make: ' + e.message);
         }
     };
 
@@ -435,6 +440,16 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                 if (adminError) throw adminError;
             }
 
+            // Also sync the renamed label to any profiles (real logins) using the old name,
+            // so a channel partner's own portal session reflects the rename immediately.
+            if (category === "channel_partner") {
+                const { error: profileSyncError } = await supabase
+                    .from("profiles")
+                    .update({ channel_partner: trimmed })
+                    .eq("channel_partner", oldLabel);
+                if (profileSyncError) throw profileSyncError;
+            }
+
             // Update in bom_items table if integration_by
             if (category === 'integration_by') {
                 await supabase
@@ -477,40 +492,53 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
             if (error) throw error;
 
+            let cascadeError = null;
             if (category === 'channel_partner') {
                 setPartners(prev => prev.filter(p => p.id !== id));
-                await supabase
+                const { error: cErr } = await supabase
                     .from('admin')
                     .update({ channel_partner: null })
                     .eq('channel_partner', label);
+                cascadeError = cErr;
             } else if (category === 'module_brand') {
                 setBrands(prev => prev.filter(b => b.id !== id));
-                await supabase
+                const { error: cErr } = await supabase
                     .from('admin')
                     .update({ module_brand: null })
                     .eq('module_brand', label);
+                cascadeError = cErr;
             } else if (category === 'registration_by') {
                 setRegistrations(prev => prev.filter(r => r.id !== id));
-                await supabase
+                const { error: cErr } = await supabase
                     .from('admin')
                     .update({ registration_by: null })
                     .eq('registration_by', label);
+                cascadeError = cErr;
             } else if (category === 'integration_by') {
                 setIntegrations(prev => prev.filter(i => i.id !== id));
-                await supabase
+                const { error: cErr } = await supabase
                     .from('bom_items')
                     .update({ integration_by: null })
                     .eq('integration_by', label);
+                cascadeError = cErr;
             } else if (category === 'inverter_make') {
                 setInverters(prev => prev.filter(i => i.id !== id));
-                await supabase
+                const { error: cErr } = await supabase
                     .from('admin')
                     .update({ inverter_make: null })
                     .eq('inverter_make', label);
+                cascadeError = cErr;
             }
-            await logActivity(currentUser.id, 'delete', `Deleted ${category}: "${label}" (cleared from customers)`);
+
+            if (cascadeError) {
+                await logActivity(currentUser.id, 'delete', `Deleted ${category}: "${label}" (WARNING: failed to clear from existing customer records: ${cascadeError.message})`);
+                alert(`"${label}" was removed from the dropdown, but clearing it from existing customer records failed: ${cascadeError.message}. Some records may still show the old value.`);
+            } else {
+                await logActivity(currentUser.id, 'delete', `Deleted ${category}: "${label}" (cleared from customers)`);
+            }
         } catch (e) {
             console.error('Error deleting metadata:', e);
+            alert('Error deleting metadata: ' + e.message);
         }
     };
 

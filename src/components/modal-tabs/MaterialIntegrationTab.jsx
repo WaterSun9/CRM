@@ -137,61 +137,6 @@ export default function MaterialIntegrationTab({
     const currentSerialized = panelSerials.filter(Boolean).join('\n');
     const isSerialsDirty = originalSerialized !== currentSerialized;
 
-    const handleFillMilestones = async () => {
-        const today = new Date().toISOString().split('T')[0];
-        setPaperPreparedBy('Ramesh Sharma');
-        setPaperPreparedDate(today);
-        setMaterialLoadedBy('Suresh Patel');
-        setMaterialLoadedDate(today);
-        onDirty?.();
-
-        setActionSaving(true);
-        try {
-            let currentBomId = bom?.id;
-            if (currentBomId) {
-                const { error } = await supabase
-                    .from('bom')
-                    .update({
-                        bom_type: activeType,
-                        paper_prepared_by: 'Ramesh Sharma',
-                        paper_prepared_date: today,
-                        material_loaded_by: 'Suresh Patel',
-                        material_loaded_date: today
-                    })
-                    .eq('id', currentBomId);
-                if (error) throw error;
-            } else {
-                const { data, error } = await supabase
-                    .from('bom')
-                    .insert({
-                        admin_id: customer.id,
-                        bom_type: activeType,
-                        paper_prepared_by: 'Ramesh Sharma',
-                        paper_prepared_date: today,
-                        material_loaded_by: 'Suresh Patel',
-                        material_loaded_date: today
-                    })
-                    .select()
-                    .single();
-                if (error) throw error;
-                setBom(data);
-            }
-            if (logActivity && user?.id) {
-                await logActivity(
-                    user.id,
-                    'update',
-                    `Auto-filled procurement milestones for ${customer.customer_name}`,
-                    '',
-                    customer.id
-                );
-            }
-            await loadBOM();
-        } catch (err) {
-            console.error('handleFillMilestones error:', err);
-        } finally {
-            setActionSaving(false);
-        }
-    };
     const [showPrintModal, setShowPrintModal] = useState(false);
     const printableBomRef = useRef(null);
 
@@ -412,6 +357,7 @@ export default function MaterialIntegrationTab({
         if (!targetCust?.id) return true;
 
         setActionSaving(true);
+        let hadWriteError = false;
 
         try {
             const currentType = state.activeType || activeType;
@@ -448,7 +394,7 @@ export default function MaterialIntegrationTab({
                     })
                     .eq('id', currentBomId);
 
-                if (updateErr) console.warn('Supabase bom update error:', updateErr);
+                if (updateErr) { console.warn('Supabase bom update error:', updateErr); hadWriteError = true; }
 
             } else {
                 const { data: created, error: createErr } = await supabase
@@ -469,6 +415,7 @@ export default function MaterialIntegrationTab({
                     setBom(created);
                 } else if (createErr) {
                     console.warn('Supabase bom create error:', createErr);
+                    hadWriteError = true;
                 }
             }
 
@@ -479,7 +426,7 @@ export default function MaterialIntegrationTab({
                     .delete()
                     .eq('bom_id', currentBomId);
 
-                if (delErr) console.warn('bom_items delete error:', delErr);
+                if (delErr) { console.warn('bom_items delete error:', delErr); hadWriteError = true; }
 
                 const validItems = items.filter(item => item.product_name && item.product_name.trim() !== '');
 
@@ -496,7 +443,7 @@ export default function MaterialIntegrationTab({
                         .from('bom_items')
                         .insert(rowsToInsert);
 
-                    if (insertErr) console.warn('bom_items insert error:', insertErr);
+                    if (insertErr) { console.warn('bom_items insert error:', insertErr); hadWriteError = true; }
                 }
             }
 
@@ -529,7 +476,7 @@ export default function MaterialIntegrationTab({
                 );
             }
 
-            return true;
+            return !hadWriteError;
 
         } catch (err) {
             console.error('saveBOM exception:', err);

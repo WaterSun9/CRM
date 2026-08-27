@@ -15,11 +15,10 @@ import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
-    Eye, Search, Image as ImageIcon, MessageSquare, Sparkles
+    Eye, Search, Image as ImageIcon, MessageSquare
 } from 'lucide-react';
-import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS } from '../constants';
-import { logActivity, formatLogDate, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
-import { generateSampleTabData } from '../mock/demoData';
+import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS } from '../constants';
+import { logActivity, formatLogDate, formatDateToDDMMYYYY, formatINR, toIndianCommas, formatInputValue, parseIndianNumber } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
@@ -50,7 +49,8 @@ import DiscomInspectionTab from './modal-tabs/DiscomInspectionTab';
 import SubsidyStatusTab from './modal-tabs/SubsidyStatusTab';
 import FinalReviewTab from './modal-tabs/FinalReviewTab';
 import HistoryTab from './modal-tabs/HistoryTab';
-import { FilePreviewModal, DocGalleryRemarkRow } from './modal-tabs/shared';
+import CustomerDocumentsTab from './modal-tabs/CustomerDocumentsTab';
+import { FilePreviewModal, DocGalleryRemarkRow, getStageRemarkFromData } from './modal-tabs/shared';
 
 // ─── formatMoney: uses centralized Indian comma system from utils ─────────────
 const fmt = formatINR;
@@ -72,55 +72,24 @@ const formatDateTime = (date) => {
     return `${d} ${m}, ${h}:${minutes} ${ampm}`;
 };
 
-// ─── formatDateToDDMMYYYY: formats "YYYY-MM-DD" to "DD/MM/YYYY" ──────────────
-const formatDateToDDMMYYYY = (dateStr) => {
-    if (!dateStr) return '';
-    const str = String(dateStr);
-    const datePart = str.includes('T') ? str.split('T')[0] : str;
-    const parts = datePart.split('-');
-    if (parts.length === 3) {
-        return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    return str;
-};
-
-// ─── getStageRemarkFromData: robust helper to extract remark ─────────────────
-const getStageRemarkFromData = (stagesRemarksObj, stageName) => {
-    if (!stagesRemarksObj) return '';
-    if (typeof stagesRemarksObj === 'object') {
-        return stagesRemarksObj[stageName] || '';
-    }
-    if (typeof stagesRemarksObj === 'string') {
-        try {
-            const parsed = JSON.parse(stagesRemarksObj);
-            if (typeof parsed === 'object' && parsed) {
-                return parsed[stageName] || '';
-            }
-            return parsed || '';
-        } catch (e) {
-            return stagesRemarksObj;
-        }
-    }
-    return '';
-};
 
 // ─── Subsidy status options ───────────────────────────────────────────────────
 const SUBSIDY_STATUS_OPTIONS = ['Approved', 'Returned', 'Rejected', 'Redeemed', 'Received'];
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
 
 // ─── CustomerDetailModal ──────────────────────────────────────────────────────
-export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab, isDemoMode = false }) {
+export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab }) {
     const [activeTab, setActiveTab] = useState(() => {
         if (defaultTab) return defaultTab;
         
         // Force completed customers to open on the LEADS tab by default
-        if ((customer?.stage || '').trim().toUpperCase() === 'COMPLETED') return 'LEADS';
+        if ((customer?.stage || '').trim().toUpperCase() === STAGE_IDS.COMPLETED) return STAGE_IDS.LEADS;
         
         if (typeof window !== 'undefined') {
             const saved = window.sessionStorage.getItem('watersun_modal_active_tab');
             if (saved) return saved;
         }
-        return customer?.stage || 'LEADS';
+        return customer?.stage || STAGE_IDS.LEADS;
     });
     const [editingSection, setEditingSection] = useState(null);
     const [isFormDirty, setIsFormDirty] = useState(false);
@@ -135,8 +104,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     // Prevent any scenario where the active tab becomes COMPLETED or CUSTOMER_CARD (since they were removed from the nav)
     // We allow LOST PROJECT because there is an explicit "Move to Lost Project" button that needs to open it.
     useEffect(() => {
-        if (activeTab === 'COMPLETED' || activeTab === 'CUSTOMER_CARD') {
-            setActiveTab('LEADS');
+        if (activeTab === STAGE_IDS.COMPLETED || activeTab === 'CUSTOMER_CARD') {
+            setActiveTab(STAGE_IDS.LEADS);
         }
     }, [activeTab]);
 
@@ -173,7 +142,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [uploading, setUploading] = useState(false);
     const [filePreview, setFilePreview] = useState({ doc: null, url: null });
     const isAdmin = user?.userType === 'admin';
-    const isCompleted = customer.stage === 'COMPLETED';
+    const isCompleted = customer.stage === STAGE_IDS.COMPLETED;
     const [adminUnlocked, setAdminUnlocked] = useState(false);
     // Frozen for ALL users when completed. Admin can temporarily unlock.
     const isFrozen = isCompleted && !(isAdmin && adminUnlocked);
@@ -183,8 +152,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const isChannelPartnerManager = user?.userType === 'office2';
     const isChannelPartnerOfficeOrManager = isChannelPartnerOffice || isChannelPartnerManager;
     const isOffice = (user?.userType === 'sales' || user?.userType === 'office' || user?.role?.toLowerCase().includes('office')) && !isChannelPartnerOfficeOrManager;
+    const canDeleteDocs = isAdmin || isOffice;
 
-    const isDiscomOrMeterStage = editData.stage === 'DISCOM SUBMISSION' || editData.stage === 'METER INSTALLATION';
+    const isDiscomOrMeterStage = editData.stage === STAGE_IDS.DISCOM_SUBMISSION || editData.stage === STAGE_IDS.METER_INSTALLATION;
 
     const canUserEdit = (() => {
         if (isAdmin || isChannelPartnerOffice || isChannelPartnerManager || isOffice || isSales) return true;
@@ -200,7 +170,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     })();
 
     // Channel Partner Office and Channel Partner Manager cannot edit Material Integration and Material Delivery (View only)
-    const isStageRestrictedForUser = isChannelPartnerOfficeOrManager && (activeTab === 'MATERIAL INTEGRATION' || activeTab === 'MATERIAL DELIVERY');
+    const isStageRestrictedForUser = isChannelPartnerOfficeOrManager && (activeTab === STAGE_IDS.MATERIAL_INTEGRATION || activeTab === STAGE_IDS.MATERIAL_DELIVERY);
 
     const isEditable = !isFrozen && canUserEdit && !isStageRestrictedForUser;
     // Sales and Office can always add remarks and edit fields
@@ -217,14 +187,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         });
     }, [customer?.id]);
 
-    const handleAutofillSample = () => {
-        const sampleData = generateSampleTabData(activeTab, editData);
-        setEditData(prev => ({ ...prev, ...sampleData }));
-        if (activeTab === 'MATERIAL ORDER' && setEditingSection) {
-            setEditingSection('mat_order');
-        }
-        setSaved(false);
-    };
     const saveBomRef = useRef(null);
     const prevCustomerRef = useRef(customer);
     const [saved, setSaved] = useState(false);
@@ -351,8 +313,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         );
         const gpaStampDoc = documents.find(d => 
             d.doc_type === 'pm_surya_ghar_stamp' || 
-            d.doc_type === 'surya_gpae_stamp' || 
-            d.doc_type === 'gpae_stamp'
+            d.doc_type === 'surya_ghar_stamp' || 
+            d.doc_type === 'ghar_stamp'
         );
 
         let sigUrl = sigDoc ? (urlCacheRef.current[sigDoc.storage_path] || await getViewUrl(sigDoc.storage_path)) : '';
@@ -836,45 +798,45 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const hasNextStage = (() => {
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return false;
-        if (editData.stage === 'COMPLETED' || editData.stage === 'LOST PROJECT' || editData.stage === 'HOLD PROCUREMENT') return false;
+        if (editData.stage === STAGE_IDS.COMPLETED || editData.stage === STAGE_IDS.LOST_PROJECT || editData.stage === 'HOLD PROCUREMENT') return false;
 
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return false;
 
         let nextStage = PRIMARY_STAGES[nextIdx];
-        if (nextStage.id === 'LOAN' && editData.payment_type?.trim().toLowerCase() === 'cash') {
+        if (nextStage.id === STAGE_IDS.LOAN && editData.payment_type?.trim().toLowerCase() === 'cash') {
             nextIdx++;
         }
-        if (nextStage.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') {
+        if (nextStage.id === STAGE_IDS.CASH && editData.payment_type?.trim().toLowerCase() === 'loan') {
             nextIdx++;
         }
-        if (nextIdx < PRIMARY_STAGES.length && (PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT' || PRIMARY_STAGES[nextIdx].id === 'LOST PROJECT')) {
+        if (nextIdx < PRIMARY_STAGES.length && (PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT' || PRIMARY_STAGES[nextIdx].id === STAGE_IDS.LOST_PROJECT)) {
             nextIdx++;
         }
 
-        return nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id !== 'LOST PROJECT' && PRIMARY_STAGES[nextIdx].id !== 'HOLD PROCUREMENT';
+        return nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id !== STAGE_IDS.LOST_PROJECT && PRIMARY_STAGES[nextIdx].id !== 'HOLD PROCUREMENT';
     })();
 
     const nextStageId = (() => {
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return null;
-        if (editData.stage === 'COMPLETED' || editData.stage === 'LOST PROJECT' || editData.stage === 'HOLD PROCUREMENT') return null;
+        if (editData.stage === STAGE_IDS.COMPLETED || editData.stage === STAGE_IDS.LOST_PROJECT || editData.stage === 'HOLD PROCUREMENT') return null;
 
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return null;
 
         let nextStage = PRIMARY_STAGES[nextIdx];
-        if (nextStage.id === 'LOAN' && editData.payment_type?.trim().toLowerCase() === 'cash') {
+        if (nextStage.id === STAGE_IDS.LOAN && editData.payment_type?.trim().toLowerCase() === 'cash') {
             nextIdx++;
         }
-        if (nextStage.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') {
+        if (nextStage.id === STAGE_IDS.CASH && editData.payment_type?.trim().toLowerCase() === 'loan') {
             nextIdx++;
         }
-        if (nextIdx < PRIMARY_STAGES.length && (PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT' || PRIMARY_STAGES[nextIdx].id === 'LOST PROJECT')) {
+        if (nextIdx < PRIMARY_STAGES.length && (PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT' || PRIMARY_STAGES[nextIdx].id === STAGE_IDS.LOST_PROJECT)) {
             nextIdx++;
         }
 
-        if (nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id !== 'LOST PROJECT' && PRIMARY_STAGES[nextIdx].id !== 'HOLD PROCUREMENT') {
+        if (nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id !== STAGE_IDS.LOST_PROJECT && PRIMARY_STAGES[nextIdx].id !== 'HOLD PROCUREMENT') {
             return PRIMARY_STAGES[nextIdx].id;
         }
         return null;
@@ -922,7 +884,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const requireField = (condition, label) => { if (!condition) issues.push(label); };
 
         switch (editData.stage) {
-            case 'LEADS':
+            case STAGE_IDS.LEADS:
                 requireField(editData.customer_name?.trim(), 'Customer Name');
                 requireField(editData.phone_number?.toString().trim(), 'Phone Number');
                 requireField(editData.consumer_no?.toString().trim(), 'Consumer Number');
@@ -935,7 +897,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(editData.sub_divisions?.trim(), 'Sub Division');
                 requireField(editData.payment_type?.trim(), 'Payment Type');
                 break;
-            case 'REGISTRATION':
+            case STAGE_IDS.REGISTRATION:
                 requireField(editData.registration_date, 'Registration Date');
                 requireField(editData.registration_by?.trim(), 'Registration By');
                 requireField(editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim(), 'Feasibility No');
@@ -943,7 +905,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(hasFeasibilityDoc, 'Feasibility Document');
                 requireField(hasSubsidyTokenDoc, 'Subsidy Token Photo');
                 break;
-            case 'MATERIAL ORDER':
+            case STAGE_IDS.MATERIAL_ORDER:
                 requireField(editData.roof_shed, 'Roof / Shed');
                 requireField(editData.dc_cable && Number(parseIndianNumber(editData.dc_cable)) > 0, 'DC Cable Length');
                 requireField(editData.ac_cable && Number(parseIndianNumber(editData.ac_cable)) > 0, 'AC Cable Length');
@@ -951,7 +913,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(String(editData.structure_rear_leg_height || '').trim(), 'Structure Rear Leg Height');
                 requireField(editData.invoice_value && Number(parseIndianNumber(editData.invoice_value)) > 0, 'Invoice Value');
                 break;
-            case 'MATERIAL INTEGRATION':
+            case STAGE_IDS.MATERIAL_INTEGRATION:
                 requireField(editData.inverter_make?.trim(), 'Inverter Make');
                 requireField(editData.inverter_serial_no?.trim(), 'Inverter Serial Number');
                 requireField(
@@ -961,26 +923,26 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     'At Least One Panel Serial Number'
                 );
                 break;
-            case 'MATERIAL DELIVERY':
+            case STAGE_IDS.MATERIAL_DELIVERY:
                 requireField(editData.vendor?.trim(), 'Vendor Allotment');
                 requireField(editData.invoice_no?.trim(), 'Invoice Number');
                 requireField(editData.material_delivery_date, 'Delivery Date');
                 requireField(editData.driver_name?.trim(), 'Driver Name');
                 requireField(editData.driver_phone_number?.toString().trim(), 'Driver Phone Number');
                 break;
-            case 'INSTALLATION STATUS':
+            case STAGE_IDS.INSTALLATION_STATUS:
                 requireField(editData.installation_status === 'Yes', 'Installation Status must be Yes');
                 break;
-            case 'GEO TAG PHOTO':
+            case STAGE_IDS.GEO_TAG_PHOTO:
                 requireField(editData.geo_tag_status === 'Proceed', 'Geo Tag Photo Status must be Proceed');
                 requireField(editData.geo_tag_image, 'Geo Tag Photograph');
                 break;
-            case 'METER INSTALLATION':
+            case STAGE_IDS.METER_INSTALLATION:
                 requireField(editData.meter_installation === 'Yes', 'Meter Installation Status must be Yes');
                 requireField(editData.installation_date, 'Meter Installation Date');
                 requireField(editData.meter_installation_photo, 'Meter Installation Photo');
                 break;
-            case 'DISCOM INSPECTION':
+            case STAGE_IDS.DISCOM_INSPECTION:
                 requireField(editData.discom_inspection === 'Yes', 'Discom Inspection Status must be Yes');
                 break;
             default:
@@ -1012,10 +974,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             [oldStage]: ''
         };
 
-        const sampleData = generateSampleTabData(oldStage || activeTab, editData);
         const updates = {
             ...editData,
-            ...sampleData,
             stage: destStageId,
             stages_remarks: updatedRemarks
         };
@@ -1050,16 +1010,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 const wasSaved = await saveBomRef.current();
                 if (wasSaved === false) {
                     setSaving(false);
+                    alert('Failed to save the Material Integration BOM, so the stage was not advanced. Please try again.');
                     return;
                 }
             } catch (err) {
                 console.error('Error saving BOM during stage advance:', err);
                 setSaving(false);
+                alert('Failed to save the Material Integration BOM, so the stage was not advanced: ' + (err.message || 'Unknown error'));
                 return;
             }
         }
 
-        if (editData.stage === 'MATERIAL INTEGRATION' && !isDemoMode && !String(customer.id).startsWith('demo-')) {
+        if (editData.stage === STAGE_IDS.MATERIAL_INTEGRATION) {
             const { data: bomData } = await supabase
                 .from('bom')
                 .select('paper_prepared_by, paper_prepared_date, material_loaded_by, material_loaded_date')
@@ -1118,16 +1080,16 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             updates.ac_cable = String(parseIndianNumber(updates.ac_cable));
         }
 
-        if (destStageId === 'LOST PROJECT' || destStageId === 'HOLD PROCUREMENT') {
+        if (destStageId === STAGE_IDS.LOST_PROJECT || destStageId === 'HOLD PROCUREMENT') {
             const prevHold = (typeof updates.hold_procurement === 'object' && updates.hold_procurement) ? updates.hold_procurement : {};
             updates.hold_procurement = {
                 ...prevHold,
-                previous_stage: (oldStage !== 'LOST PROJECT' && oldStage !== 'HOLD PROCUREMENT') ? oldStage : (prevHold.previous_stage || 'LEADS'),
+                previous_stage: (oldStage !== STAGE_IDS.LOST_PROJECT && oldStage !== 'HOLD PROCUREMENT') ? oldStage : (prevHold.previous_stage || STAGE_IDS.LEADS),
                 hold_date: new Date().toISOString().split('T')[0]
             };
         }
 
-        if (destStageId === 'METER INSTALLATION') {
+        if (destStageId === STAGE_IDS.METER_INSTALLATION) {
             const currentMeter = updates.meter_installation || {};
             updates.meter_installation = {
                 status: currentMeter.status || 'No',
@@ -1136,7 +1098,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             };
         }
 
-        if (destStageId === 'DISCOM INSPECTION') {
+        if (destStageId === STAGE_IDS.DISCOM_INSPECTION) {
             if (!updates.discom_inspection) {
                 updates.discom_inspection = 'No';
             }
@@ -1162,6 +1124,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         delete updates.updated_at;
 
         setEditingSection(null);
+        setEditData(updates);
         setActiveTab(destStageId);
         
         // Fire and forget in the background to avoid 2-second UI freeze
@@ -1175,7 +1138,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
             await Promise.all(promises);
             fetchLogs();
-        })().catch(err => console.error("Background save error:", err));
+        })().catch(err => {
+            console.error("Background save error:", err);
+            alert("Warning: the stage change may not have saved correctly (" + (err.message || "unknown error") + "). Please refresh and verify before continuing.");
+        });
         setSaving(false);
     };
 
@@ -1455,18 +1421,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {/* Dev / Admin Autofill Sample Data Button */}
-                        {isEditable && (
-                            <button
-                                type="button"
-                                onClick={handleAutofillSample}
-                                title="Autofill mock feature details for this tab to quickly test forms"
-                                className="flex items-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all cursor-pointer shadow-xs active:scale-95"
-                            >
-                                <Sparkles size={12} className="text-amber-400 animate-pulse" />
-                                Autofill Sample Data
-                            </button>
-                        )}
                         {/* Admin unlock/lock toggle for completed cards */}
                         {isCompleted && isAdmin && (
                             <button onClick={() => { setAdminUnlocked(prev => !prev); setEditingSection(null); }}
@@ -1483,9 +1437,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 <div className="flex bg-stone-900 px-6 gap-6 border-t border-white/5 flex-shrink-0 overflow-x-auto scrollbar-none whitespace-nowrap">
                     {[
                         ...PRIMARY_STAGES.filter(s => {
-                            if (s.id === 'LOAN' && editData.payment_type?.trim().toLowerCase() === 'cash') return false;
-                            if (s.id === 'CASH' && editData.payment_type?.trim().toLowerCase() === 'loan') return false;
-                            if (s.id === 'COMPLETED' || s.id === 'LOST PROJECT') return false;
+                            if (s.id === STAGE_IDS.LOAN && editData.payment_type?.trim().toLowerCase() === 'cash') return false;
+                            if (s.id === STAGE_IDS.CASH && editData.payment_type?.trim().toLowerCase() === 'loan') return false;
+                            if (s.id === STAGE_IDS.COMPLETED || s.id === STAGE_IDS.LOST_PROJECT) return false;
                             return true;
                         }).map(s => ({ id: s.id, label: s.label, icon: s.icon })),
                         { id: 'DOCUMENTS', label: 'Documents', icon: FolderOpen },
@@ -1604,139 +1558,21 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     <CustomerModalTabsRouter {...tabProps} />
 
                     {/* ── DOCUMENTS ── */}
-                    {activeTab === 'DOCUMENTS' && (() => {
-                        const filteredDocs = (documents || []).filter(doc => {
-                            if (!docSearchQuery.trim()) return true;
-                            const q = docSearchQuery.trim().toLowerCase();
-                            const docLabel = String(getDocTypeLabel(doc?.doc_type) || '').toLowerCase();
-                            const fileName = String(doc?.file_name || '').toLowerCase();
-                            const remarkText = String(doc?.remark || '').toLowerCase();
-                            return fileName.includes(q) || docLabel.includes(q) || remarkText.includes(q);
-                        });
-
-                        return (
-                            <div className="space-y-4 animate-in fade-in duration-300">
-                                <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-3">
-                                        <div className="flex items-center gap-2.5">
-                                            <div className="p-2 bg-amber-50 rounded-xl text-amber-600">
-                                                <FolderOpen size={18} />
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h3 className="text-xs font-bold text-stone-800 uppercase tracking-wider">
-                                                        Client Documents & Attachments
-                                                    </h3>
-                                                    <span className="bg-stone-100 text-stone-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                                        {documents.length} {documents.length === 1 ? 'file' : 'files'}
-                                                    </span>
-                                                </div>
-                                                <p className="text-[11px] text-stone-400 font-medium mt-0.5">
-                                                    All uploaded identity proofs, site photos, utility documents, stamps, certificates, and remarks.
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {isEditable && (
-                                            <label className="bg-stone-900 hover:bg-stone-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer self-start sm:self-auto">
-                                                <Plus size={14} />
-                                                <span>{uploading ? 'Uploading...' : 'Upload File'}</span>
-                                                <input
-                                                    type="file"
-                                                    accept="image/png,image/jpeg,image/jpg,application/pdf,.png,.jpg,.jpeg,.pdf"
-                                                    onChange={handleFileUpload}
-                                                    disabled={uploading}
-                                                    className="hidden"
-                                                />
-                                            </label>
-                                        )}
-                                    </div>
-
-                                    {/* Search Filter */}
-                                    {documents.length > 0 && (
-                                        <div className="relative">
-                                            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                                            <input
-                                                type="text"
-                                                placeholder="Search documents by name, category, or remark..."
-                                                value={docSearchQuery}
-                                                onChange={e => setDocSearchQuery(e.target.value)}
-                                                className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-medium text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                            />
-                                        </div>
-                                    )}
-
-                                    {documents.length === 0 ? (
-                                        <div className="text-center py-12 bg-stone-50 rounded-2xl border border-dashed border-stone-200">
-                                            <FolderOpen size={36} className="mx-auto text-stone-300 mb-2" />
-                                            <p className="text-xs font-bold text-stone-600">No documents uploaded yet</p>
-                                            <p className="text-[11px] text-stone-400 mt-1">Upload client KYC, photos, or utility documents to see them listed here.</p>
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {filteredDocs.map(doc => {
-                                                const isPdf = doc.file_name?.toLowerCase().endsWith('.pdf') || doc.file_type === 'application/pdf';
-                                                const isImage = doc.file_type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(doc.file_name || '');
-                                                const docLabel = getDocTypeLabel(doc.doc_type);
-
-                                                return (
-                                                    <div key={doc.id} className="bg-stone-50/70 hover:bg-stone-50 border border-stone-200/80 rounded-2xl p-3.5 flex flex-col justify-between gap-2.5 transition-all hover:shadow-xs">
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                                                                <div className={`p-2.5 rounded-xl flex-shrink-0 ${isPdf ? 'bg-red-50 text-red-600' : isImage ? 'bg-blue-50 text-blue-600' : 'bg-stone-200 text-stone-600'}`}>
-                                                                    {isPdf ? <FileText size={18} /> : isImage ? <ImageIcon size={18} /> : <FileText size={18} />}
-                                                                </div>
-                                                                <div className="min-w-0 flex-1">
-                                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                                        <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-white text-stone-700 border border-stone-200">
-                                                                            {docLabel}
-                                                                        </span>
-                                                                        {doc.created_at && (
-                                                                            <span className="text-[10px] text-stone-400 font-medium">
-                                                                                · {formatDateToDDMMYYYY(doc.created_at)}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <p className="text-xs font-bold text-stone-800 truncate mt-1" title={doc.file_name}>
-                                                                        {doc.file_name}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handlePreviewDoc(doc)}
-                                                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 shadow-xs flex items-center gap-1.5 cursor-pointer transition"
-                                                                    title="View Preview & Download"
-                                                                >
-                                                                    <Eye size={13} className="text-stone-500" />
-                                                                    <span>View</span>
-                                                                </button>
-                                                                {isEditable && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleDeleteDoc(doc)}
-                                                                        className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
-                                                                        title="Delete Document"
-                                                                    >
-                                                                        <Trash2 size={14} />
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Document Remark Section */}
-                                                        <DocGalleryRemarkRow doc={doc} onUpdateRemark={handleUpdateDocRemark} isEditable={isEditable} />
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </section>
-                            </div>
-                        );
-                    })()}
+                    {activeTab === "DOCUMENTS" && (
+                        <CustomerDocumentsTab
+                            documents={documents}
+                            isEditable={isEditable}
+                            canDelete={canDeleteDocs}
+                            docSearchQuery={docSearchQuery}
+                            setDocSearchQuery={setDocSearchQuery}
+                            uploading={uploading}
+                            handleFileUpload={handleFileUpload}
+                            getDocTypeLabel={getDocTypeLabel}
+                            handlePreviewDoc={handlePreviewDoc}
+                            handleDeleteDoc={handleDeleteDoc}
+                            handleUpdateDocRemark={handleUpdateDocRemark}
+                        />
+                    )}
 
                     {/* ── NOTES & HISTORY ── */}
                     {activeTab === 'history' && (
@@ -1753,7 +1589,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         />
                     )}
 
-                    {isEditable && activeTab !== 'LOST PROJECT' && activeTab !== 'HOLD PROCUREMENT' && activeTab !== 'DOCUMENTS' && activeTab !== 'history' && customer.stage !== 'COMPLETED' && (
+                    {isEditable && activeTab !== STAGE_IDS.LOST_PROJECT && activeTab !== 'HOLD PROCUREMENT' && activeTab !== 'DOCUMENTS' && activeTab !== 'history' && customer.stage !== STAGE_IDS.COMPLETED && (
                         <div className="mt-8 pt-4 border-t border-stone-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50/70 p-3.5 rounded-2xl border border-stone-200/60">
                             <div className="flex items-center gap-2.5">
                                 <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg flex-shrink-0">
@@ -1766,7 +1602,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setActiveTab('LOST PROJECT')}
+                                onClick={() => setActiveTab(STAGE_IDS.LOST_PROJECT)}
                                 className="px-3.5 py-2 bg-white hover:bg-stone-100 text-stone-700 rounded-xl text-xs font-bold border border-stone-200 transition-colors shadow-2xs self-start sm:self-auto cursor-pointer"
                             >
                                 Move to Lost Project
@@ -1776,7 +1612,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 </div>
 
                 {/* Footer bar - 50/50 split buttons at customer card */}
-                {isEditable && activeTab !== 'LOST PROJECT' && activeTab !== 'HOLD PROCUREMENT' && (
+                {isEditable && activeTab !== STAGE_IDS.LOST_PROJECT && activeTab !== 'HOLD PROCUREMENT' && (
                     <div className="p-4 border-t border-stone-100 bg-white flex-shrink-0 flex gap-3">
                         <button
                             onClick={handleSave}
@@ -1805,7 +1641,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         {hasNextStage && activeTab === customer.stage && (
                             <button
                                 onClick={() => {
-                                    if (nextStageId === 'COMPLETED') {
+                                    if (nextStageId === STAGE_IDS.COMPLETED) {
                                         setShowCompletedConfirm(true);
                                     } else {
                                         handleAdvanceStage();

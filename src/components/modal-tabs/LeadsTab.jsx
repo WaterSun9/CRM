@@ -29,6 +29,7 @@ export default function LeadsTab({
     const handlePreview = onPreview || onFilePreview || onViewDocument;
     const handleDelete = onDelete || onFileDelete || onDeleteDocument;
     const handleUpload = onUpload || onFileUpload;
+    const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
             {/* Customer Info */}
@@ -108,16 +109,16 @@ export default function LeadsTab({
                         <div className="flex flex-col gap-2">
                             {editData.payment_type?.trim().toLowerCase() !== 'cash' && (
                                 <>
-                                    <CheckboxRemarkItem label="Aadhar Card Front" field="adhaar_card_front" value={editData.adhaar_card_front} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} />
-                                    <CheckboxRemarkItem label="Aadhar Card Back" field="adhaar_card_back" value={editData.adhaar_card_back} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} />
-                                    <CheckboxRemarkItem label="PAN Card" field="pan_card" value={editData.pan_card} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} />
-                                    <CheckboxRemarkItem label="Vera Pavti / aakarni" field="index_2" value={editData.index_2} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} />
-                                    <CheckboxRemarkItem label="House Geo Tag Photo" field="house_geo_tag_photo" value={editData.house_geo_tag_photo} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} />
+                                    <CheckboxRemarkItem label="Aadhar Card Front" field="adhaar_card_front" value={editData.adhaar_card_front} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                                    <CheckboxRemarkItem label="Aadhar Card Back" field="adhaar_card_back" value={editData.adhaar_card_back} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                                    <CheckboxRemarkItem label="PAN Card" field="pan_card" value={editData.pan_card} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                                    <CheckboxRemarkItem label="Vera Pavti / aakarni" field="index_2" value={editData.index_2} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                                    <CheckboxRemarkItem label="House Geo Tag Photo" field="house_geo_tag_photo" value={editData.house_geo_tag_photo} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                                 </>
                             )}
-                            <CheckboxRemarkItem label="Light Bill" field="light_bill" value={editData.light_bill} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} />
-                            <CheckboxRemarkItem label="Bank Details" field="bank_details" value={editData.bank_details} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} />
-                            <CheckboxRemarkItem label="Extra Documents" field="extra_docs" value={editData.extra_docs} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} />
+                            <CheckboxRemarkItem label="Light Bill" field="light_bill" value={editData.light_bill} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                            <CheckboxRemarkItem label="Bank Details" field="bank_details" value={editData.bank_details} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                            <CheckboxRemarkItem label="Extra Documents" field="extra_docs" value={editData.extra_docs} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                         </div>
                     ) : (
                         <p className="text-xs text-stone-400 italic">Please select a Payment Type above to display the Document Checklist.</p>

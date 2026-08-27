@@ -19,6 +19,8 @@ export default function MeterInstallationTab({
     onFilePreview,
     onUpdateRemark
 }) {
+    const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
+
     // Admin, Vendor, and Channel Partner Office can edit. Office is view-only.
     const isVendor = user?.userType === 'vendor';
     const isAdmin = user?.userType === 'admin';
@@ -132,6 +134,7 @@ export default function MeterInstallationTab({
                         onDelete={onFileDelete} 
                         onPreview={onFilePreview} 
                         onUpdateRemark={onUpdateRemark}
+                        canDelete={canDeleteDocs}
                     />
                 </div>
             </div>

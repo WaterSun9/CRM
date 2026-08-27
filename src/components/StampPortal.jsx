@@ -35,12 +35,14 @@ function RemarkRow({ customerId, initialRemark, userId, customerName }) {
             const { data: existing } = await supabase.from("admin")
                 .select("discom_submission").eq("id", customerId).single();
             const merged = { ...(existing?.discom_submission || {}), stamp_remark: remark };
-            await supabase.from("admin").update({ discom_submission: merged }).eq("id", customerId);
+            const { error } = await supabase.from("admin").update({ discom_submission: merged }).eq("id", customerId);
+            if (error) throw error;
             await logActivity(userId, "update", customerName + ": Updated stamp remark", "", customerId);
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
         } catch (err) {
             console.error("Save remark failed:", err);
+            alert("Failed to save stamp remark: " + (err.message || "Unknown error"));
         } finally {
             setSaving(false);
         }
@@ -406,9 +408,7 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
     );
 }
 
-import { DEMO_CUSTOMERS } from "../mock/demoData";
-
-export default function StampPortal({ user, onLogout, isDemoMode = false }) {
+export default function StampPortal({ user, onLogout }) {
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
@@ -418,12 +418,6 @@ export default function StampPortal({ user, onLogout, isDemoMode = false }) {
 
     const fetchCustomers = useCallback(async () => {
         setLoading(true);
-        if (isDemoMode) {
-            const demoStampList = DEMO_CUSTOMERS.filter(c => c.discom_submission?.sent_to_stamp_maker === true && !c.discom_submission?.stamp_sent);
-            setCustomers(demoStampList);
-            setLoading(false);
-            return;
-        }
         try {
             const { data, error } = await supabase
                 .from("admin")

@@ -17,6 +17,17 @@ export function getStageRemarkFromData(remarks, stageId) {
     if (typeof remarks === 'object') {
         return remarks[stageId] || '';
     }
+    if (typeof remarks === 'string') {
+        try {
+            const parsed = JSON.parse(remarks);
+            if (typeof parsed === 'object' && parsed) {
+                return parsed[stageId] || '';
+            }
+            return parsed || '';
+        } catch (e) {
+            return remarks;
+        }
+    }
     return '';
 }
 
@@ -37,6 +48,9 @@ export function MetaSelect({ label, field, value, onChange, options = [], isEdit
             <select value={value || ''} onChange={e => onChange(field, e.target.value)}
                 className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300">
                 <option value="">Select...</option>
+                {value && !options.includes(value) && (
+                    <option value={value}>{value}</option>
+                )}
                 {options.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
         </div>
@@ -205,6 +219,9 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
                 <select value={value || ''} onChange={e => onChange(field, e.target.value)}
                     className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300">
                     <option value="">Select...</option>
+                    {value && !options.includes(value) && (
+                        <option value={value}>{value}</option>
+                    )}
                     {options.map(o => <option key={o}>{o}</option>)}
                 </select>
             ) : isMoney || field === 'invoice_value' ? (
@@ -400,7 +417,7 @@ function DocRemarkRow({ doc, onUpdateRemark, isEditing }) {
     return null;
 }
 
-export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onDownload, onUpdateRemark, note }) {
+export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onDownload, onUpdateRemark, note, canDelete = true }) {
     const fieldDocs = documents.filter(d => d.doc_type === field);
     const fileInputRef = React.useRef(null);
     const [replacingDocId, setReplacingDocId] = React.useState(null);
@@ -533,7 +550,7 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
                                         <Upload size={10} /> Change
                                     </button>
                                 )}
-                                {isEditing && onDelete && (
+                                {isEditing && onDelete && canDelete && (
                                     <button onClick={() => handleDeleteClick(doc)} className="text-[9px] font-bold text-red-500 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50 transition-colors flex items-center gap-0.5 cursor-pointer" title="Delete Document">
                                         <Trash2 size={10} /> Delete
                                     </button>
