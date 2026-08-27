@@ -1,1 +1,0 @@
-import{bt as e}from"./index-BptodcCA.js";var t=e(`ChevronDown`,[[`path`,{d:`m6 9 6 6 6-6`,key:`qrunsl`}]]);export{t};
