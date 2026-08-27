@@ -23,6 +23,7 @@ import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import SetPasswordPage from './components/SetPassword';
 import UpdateChecker from './components/UpdateChecker';
+import OfflineBanner from './components/OfflineBanner';
 import { lazy } from 'react';
 
 function lazyWithRetry(componentImport) {
@@ -184,6 +185,7 @@ export default function App() {
     return (
         <>
             {!import.meta.env.DEV && <UpdateChecker />}
+            <OfflineBanner />
             <Suspense fallback={<ScreenLoader />}>
                 {!user ? (
                     <LoginScreen onLogin={setUser} />

@@ -11,6 +11,43 @@ progress · 🔴 needs your action (not something code can fix) · ⏸️ delibe
 
 ---
 
+## 🔴 CRITICAL — Delivery batches were never actually saving to the shared database
+You reported this live. Confirmed via direct testing against the real
+database — two separate bugs stacked on top of each other:
+
+**Bug 1 (fixed in code):** batch creation was generating an id in the
+wrong format — the database column expects a real UUID, but the code
+was making up a plain text string. Every single batch save has been
+failing at the database step since the table was created — it just
+*looked* saved because the screen updates immediately before the actual
+database write happens, and the failure was being silently swallowed.
+The moment the page reloads (or anyone else opens it), the real
+database has nothing, so the batch disappears — exactly what you saw.
+Fixed and confirmed against the live database.
+
+**Bug 2 (needs you to run SQL):** even with the id fixed, the database
+still refused the write with a permissions error. This table almost
+certainly has security rules turned on with no rule actually allowing
+anyone to write to it — a gap I flagged back when the table was first
+created but which never got filled in. Run this in the Supabase SQL
+Editor:
+```sql
+alter table public.delivery_batches enable row level security;
+
+create policy "Authenticated users can read delivery_batches"
+on public.delivery_batches for select
+to authenticated
+using (true);
+
+create policy "Authenticated users can write delivery_batches"
+on public.delivery_batches for all
+to authenticated
+using (true)
+with check (true);
+```
+After running that, try creating a delivery batch again and let me know
+if it now shows up and stays after a refresh.
+
 ## ✅ Latest: two dev-only tools were still live on the deployed site — FIXED
 You caught this on production. Both fixed and verified they're actually
 gone from the shipped code (not just hidden — checked the built JS
@@ -111,9 +148,16 @@ relevant branch (a CPO/Manager only sees their own branch's sub-agents,
 matching how the rest of the app keeps each branch separate). Works in
 both the "Add Lead" form and when editing an existing lead's details.
 
+### ✅ 10.12 — small version DONE
+Added a "You're offline" banner (top of screen, red, appears automatically
+when the connection drops and disappears when it returns) so people at
+least know why saves are failing instead of it looking like the app
+broke. Verified live in the browser (both states). The fuller fix —
+local draft autosave so a dropped connection + reload doesn't lose
+unsaved work — is still available whenever you want it; needs its own
+scoping conversation first (which forms, how the draft gets surfaced).
+
 ### Still open
-- **10.12** — no offline handling anywhere (checked — zero "you're
-  offline" banner, no local draft autosave); noted for later per your call
 - **8.2** — feature flags, deprioritized — you said work on other things
   first, this is last on the list
 

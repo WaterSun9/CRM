@@ -27,6 +27,7 @@ const TrashView = lazyWithRetry(() => import('./TrashView'));
 const ChannelPartnerManagementView = lazyWithRetry(() => import('./ChannelPartnerManagementView'));
 const InstallationPaymentsView = lazyWithRetry(() => import('./InstallationPaymentsView'));
 const DeliveryBatchesView = lazyWithRetry(() => import('./DeliveryBatchesView'));
+import { useGlobalPopup } from './GlobalPopup';
 
 const ViewLoader = () => <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -60,6 +61,7 @@ const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, 
 };
 
 export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
+    const { showAlert } = useGlobalPopup();
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
     
@@ -189,11 +191,11 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             if (allRows.length > 0) {
                 exportAllToCSV(allRows);
             } else {
-                alert('No customer records found to export.');
+                showAlert('No customer records found to export.');
             }
         } catch (err) {
             console.error('Export error:', err);
-            alert('Failed to export data. Please try again.');
+            showAlert('Failed to export data. Please try again.', { type: 'error' });
         } finally {
             setExporting(false);
         }
@@ -482,7 +484,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 syncMetadata(cleanUpdates);
             } else {
                 console.error('Error updating customer in DB:', error);
-                alert('Database Save Error: ' + (error.message || 'Unknown database error'));
+                showAlert('Database Save Error: ' + (error.message || 'Unknown database error'), { type: 'error' });
                 
                 // Rollback on failure
                 const previousCustomer = customers.find(c => c.id === id);
@@ -493,7 +495,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             }
         } catch (err) {
             console.error('Exception updating customer:', err);
-            alert('Database Connection Error: ' + err.message);
+            showAlert('Database Connection Error: ' + err.message, { type: 'error' });
         }
     };
 
@@ -562,7 +564,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
 
         if (error) {
             console.error('Error moving stage:', error);
-            alert('Error moving stage: ' + error.message);
+            showAlert('Error moving stage: ' + error.message, { type: 'error' });
             // Rollback on failure by reloading this stage
             fetchStageCustomers(selectedStage, page);
             return;
@@ -612,7 +614,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         const { data: newCustomer, error } = await supabase.from('admin').insert(insertData).select().single();
         if (error) {
             console.error("Error adding lead to Supabase:", error);
-            alert(`Failed to add lead: ${error.message} (Code: ${error.code})`);
+            showAlert(`Failed to add lead: ${error.message} (Code: ${error.code})`, { type: 'error' });
             throw error;
         } else {
             // Await all attached file uploads so documents are fully recorded in database before completion

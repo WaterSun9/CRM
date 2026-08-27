@@ -7,6 +7,7 @@ import {
 import { supabase } from '../supabase';
 import { PRIMARY_STAGES } from '../constants';
 import { formatINR, toIndianCommas, logActivity, formatInputValue, parseIndianNumber } from '../utils';
+import { useGlobalPopup } from './GlobalPopup';
 
 export default function DeliveryBatchesView({ 
     currentUser, 
@@ -14,6 +15,7 @@ export default function DeliveryBatchesView({
     onRefreshCustomers,
     onOpenCustomerModal
 }) {
+    const { showAlert } = useGlobalPopup();
     const [batches, setBatches] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -138,9 +140,12 @@ export default function DeliveryBatchesView({
         setBatches(updatedBatches);
         localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
         try {
-            // Also attempt syncing with Supabase if table exists
-            await supabase.from('delivery_batches').upsert(updatedBatches);
-        } catch (e) { /* best-effort sync; localStorage above is the source of truth until the table exists */ }
+            const { error } = await supabase.from('delivery_batches').upsert(updatedBatches);
+            if (error) throw error;
+        } catch (e) {
+            console.error('Failed to sync delivery batch to the database:', e);
+            showAlert('This batch is only saved on this device right now — it failed to save to the shared database: ' + (e.message || 'Unknown error') + '. Other users won\'t see it until this is fixed.', { type: 'error' });
+        }
     };
 
     // Open Create Modal
@@ -199,16 +204,22 @@ export default function DeliveryBatchesView({
     const handleSaveBatch = async (e) => {
         if (e) e.preventDefault();
         if (batchForm.selectedProjectIds.length === 0) {
-            alert('Please select at least 1 project to include in this delivery batch.');
+            showAlert('Please select at least 1 project to include in this delivery batch.');
             return;
         }
 
         setSaving(true);
         try {
-            const batchId = editingBatch ? editingBatch.id : `BATCH-${Date.now()}`;
+            // delivery_batches.id is a real `uuid` column — a plain
+            // "BATCH-<timestamp>" string fails every write with a
+            // Postgres 22P02 error (confirmed live), silently swallowed
+            // by saveBatchesState's best-effort catch, so the batch
+            // looked saved locally but never actually persisted.
+            const batchId = editingBatch ? editingBatch.id : crypto.randomUUID();
+            const displayBatchNo = batchForm.batch_no || `BATCH-${Date.now()}`;
             const batchPayload = {
                 id: batchId,
-                batch_no: batchForm.batch_no || batchId,
+                batch_no: displayBatchNo,
                 dispatch_date: batchForm.dispatch_date,
                 driver_name: batchForm.driver_name,
                 driver_phone: batchForm.driver_phone,
@@ -253,7 +264,7 @@ export default function DeliveryBatchesView({
             setShowCreateModal(false);
         } catch (err) {
             console.error('Error saving delivery batch:', err);
-            alert('Failed to save batch: ' + err.message);
+            showAlert('Failed to save batch: ' + err.message, { type: 'error' });
         } finally {
             setSaving(false);
         }
@@ -550,7 +561,7 @@ export default function DeliveryBatchesView({
                                                         await logActivity(currentUser?.id || "admin", "update", `Changed delivery batch ${batch.batch_no || batch.id} status to ${newStatus}`, "");
                                                     } catch (err) {
                                                         setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
-                                                        alert("Failed to update batch status: " + (err.message || "Unknown error"));
+                                                        showAlert("Failed to update batch status: " + (err.message || "Unknown error"), { type: 'error' });
                                                     }
                                                 }}
                                                 className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full outline-none cursor-pointer appearance-none ${
@@ -563,219 +574,219 @@ export default function DeliveryBatchesView({
                                                 <option value="DELIVERED">Delivered</option>
                                             </select>
                                             <span className="text-xs text-stone-400 font-medium">
-                                                Dispatched: <strong className="text-stone-700">{batch.dispatch_date || '–'}</strong>
+                                                 Dispatched: <strong className="text-stone-700">{batch.dispatch_date || '–'}</strong>
                                             </span>
                                         </div>
 
                                         <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-stone-600">
                                             {batch.vehicle_number && (
-                                                <span className="flex items-center gap-1 font-semibold text-stone-900 bg-stone-50 px-2 py-0.5 rounded-md border border-stone-200/60">
-                                                    <Truck size={12} className="text-amber-500" /> {batch.vehicle_number}
-                                                </span>
+                                                 <span className="flex items-center gap-1 font-semibold text-stone-900 bg-stone-50 px-2 py-0.5 rounded-md border border-stone-200/60">
+                                                     <Truck size={12} className="text-amber-500" /> {batch.vehicle_number}
+                                                 </span>
                                             )}
                                             {batch.driver_name && (
-                                                <span className="flex items-center gap-1">
-                                                    <User size={12} className="text-stone-400" /> {batch.driver_name} {batch.driver_phone ? `(${batch.driver_phone})` : ''}
-                                                </span>
+                                                 <span className="flex items-center gap-1">
+                                                     <User size={12} className="text-stone-400" /> {batch.driver_name} {batch.driver_phone ? `(${batch.driver_phone})` : ''}
+                                                 </span>
                                             )}
                                             {batch.vendor && (
-                                                <span className="flex items-center gap-1 font-medium text-stone-500">
-                                                    <Package size={12} className="text-stone-400" /> Vendor: <strong className="text-stone-700">{batch.vendor}</strong>
-                                                </span>
+                                                 <span className="flex items-center gap-1 font-medium text-stone-500">
+                                                     <Package size={12} className="text-stone-400" /> Vendor: <strong className="text-stone-700">{batch.vendor}</strong>
+                                                 </span>
                                             )}
                                             <span className="h-3 w-px bg-stone-300 mx-1"></span>
                                             <div className="flex items-center gap-1.5 font-medium text-stone-500">
-                                                <span className="text-[10px] uppercase font-bold text-stone-400">Car Rent Paid:</span>
-                                                <select
-                                                    value={batch.car_rent_paid || 'No'}
-                                                    onChange={async (e) => {
-                                                        const val = e.target.value;
-                                                        const userIdentifier = currentUser?.name || currentUser?.email || "Admin";
-                                                        const timestamp = new Date().toISOString();
-                                                        const previousBatch = batch;
+                                                 <span className="text-[10px] uppercase font-bold text-stone-400">Car Rent Paid:</span>
+                                                 <select
+                                                     value={batch.car_rent_paid || 'No'}
+                                                     onChange={async (e) => {
+                                                         const val = e.target.value;
+                                                         const userIdentifier = currentUser?.name || currentUser?.email || "Admin";
+                                                         const timestamp = new Date().toISOString();
+                                                         const previousBatch = batch;
 
-                                                        const updates = { 
-                                                            car_rent_paid: val,
-                                                            car_rent_paid_by: val === "Yes" ? userIdentifier : null,
-                                                            car_rent_paid_at: val === "Yes" ? timestamp : null
-                                                        };
-                                                        
-                                                        const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, ...updates } : b);
-                                                        setBatches(updatedBatches);
-                                                        
-                                                        try {
-                                                            const { error } = await supabase.from("delivery_batches").update(updates).eq("id", batch.id);
-                                                            if (error) throw error;
-                                                        } catch (err) {
-                                                            setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
-                                                            alert("Failed to save Car Rent Paid status: " + (err.message || "Unknown error"));
-                                                        }
-                                                    }}
-                                                    className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded cursor-pointer outline-none shadow-xs ${batch.car_rent_paid === 'Yes' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}
-                                                >
-                                                    <option value="No">No</option>
-                                                    <option value="Yes">Yes</option>
-                                                </select>
-                                            </div>
-                                            {batch.car_rent_paid === 'Yes' && batch.car_rent_paid_by && (
-                                                <span className="text-[9px] text-stone-400 italic">
-                                                    (Paid by {batch.car_rent_paid_by} on {batch.car_rent_paid_at ? new Date(batch.car_rent_paid_at).toLocaleDateString('en-IN') : 'Unknown'})
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
+                                                         const updates = { 
+                                                             car_rent_paid: val,
+                                                             car_rent_paid_by: val === "Yes" ? userIdentifier : null,
+                                                             car_rent_paid_at: val === "Yes" ? timestamp : null
+                                                         };
+                                                         
+                                                         const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, ...updates } : b);
+                                                         setBatches(updatedBatches);
+                                                         
+                                                         try {
+                                                             const { error } = await supabase.from("delivery_batches").update(updates).eq("id", batch.id);
+                                                             if (error) throw error;
+                                                         } catch (err) {
+                                                             setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
+                                                             showAlert("Failed to save Car Rent Paid status: " + (err.message || "Unknown error"), { type: 'error' });
+                                                         }
+                                                     }}
+                                                     className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded cursor-pointer outline-none shadow-xs ${batch.car_rent_paid === 'Yes' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}
+                                                 >
+                                                     <option value="No">No</option>
+                                                     <option value="Yes">Yes</option>
+                                                 </select>
+                                             </div>
+                                             {batch.car_rent_paid === 'Yes' && batch.car_rent_paid_by && (
+                                                 <span className="text-[9px] text-stone-400 italic">
+                                                     (Paid by {batch.car_rent_paid_by} on {batch.car_rent_paid_at ? new Date(batch.car_rent_paid_at).toLocaleDateString('en-IN') : 'Unknown'})
+                                                 </span>
+                                             )}
+                                         </div>
+                                     </div>
 
-                                    {/* Action Buttons */}
-                                    <div className="flex items-center gap-2 self-start md:self-auto flex-shrink-0">
-                                        <button
-                                            type="button"
-                                            onClick={() => setPrintingBatch(batch)}
-                                            className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                                            title="Print Combined Delivery Challan / Gate Pass"
-                                        >
-                                            <Printer size={13} /> Print Gate Pass
-                                        </button>
+                                     {/* Action Buttons */}
+                                     <div className="flex items-center gap-2 self-start md:self-auto flex-shrink-0">
+                                         <button
+                                             type="button"
+                                             onClick={() => setPrintingBatch(batch)}
+                                             className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                             title="Print Combined Delivery Challan / Gate Pass"
+                                         >
+                                             <Printer size={13} /> Print Gate Pass
+                                         </button>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => handleOpenEditModal(batch)}
-                                            className="p-1.5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition cursor-pointer"
-                                            title="Edit Batch Logistics"
-                                        >
-                                            <Edit3 size={15} />
-                                        </button>
+                                         <button
+                                             type="button"
+                                             onClick={() => handleOpenEditModal(batch)}
+                                             className="p-1.5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition cursor-pointer"
+                                             title="Edit Batch Logistics"
+                                         >
+                                             <Edit3 size={15} />
+                                         </button>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDeleteBatch(batch.id)}
-                                            className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
-                                            title="Disband Batch"
-                                        >
-                                            <Trash2 size={15} />
-                                        </button>
+                                         <button
+                                             type="button"
+                                             onClick={() => handleDeleteBatch(batch.id)}
+                                             className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
+                                             title="Disband Batch"
+                                         >
+                                             <Trash2 size={15} />
+                                         </button>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => setExpandedBatchId(isExpanded ? null : batch.id)}
-                                            className="ml-1 p-1.5 text-stone-400 hover:text-stone-700 rounded-xl hover:bg-stone-100 transition cursor-pointer"
-                                        >
-                                            {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                                        </button>
-                                    </div>
-                                </div>
+                                         <button
+                                             type="button"
+                                             onClick={() => setExpandedBatchId(isExpanded ? null : batch.id)}
+                                             className="ml-1 p-1.5 text-stone-400 hover:text-stone-700 rounded-xl hover:bg-stone-100 transition cursor-pointer"
+                                         >
+                                             {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                         </button>
+                                     </div>
+                                 </div>
 
-                                {/* Clubbed Manifest Summary Bar */}
-                                <div className="bg-stone-50/70 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-stone-100">
-                                    <div className="flex items-center gap-4 text-stone-600 font-medium">
-                                        <span>Clubbed Sites: <strong className="text-stone-900">{linkedProjects.length} Projects</strong></span>
-                                        <span>Total Capacity: <strong className="text-stone-900">{batchKwp.toFixed(1)} kWp</strong></span>
-                                        <span>Total Modules: <strong className="text-stone-900">{totalModules} Panels</strong></span>
-                                    </div>
+                                 {/* Clubbed Manifest Summary Bar */}
+                                 <div className="bg-stone-50/70 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-stone-100">
+                                     <div className="flex items-center gap-4 text-stone-600 font-medium">
+                                         <span>Clubbed Sites: <strong className="text-stone-900">{linkedProjects.length} Projects</strong></span>
+                                         <span>Total Capacity: <strong className="text-stone-900">{batchKwp.toFixed(1)} kWp</strong></span>
+                                         <span>Total Modules: <strong className="text-stone-900">{totalModules} Panels</strong></span>
+                                     </div>
 
-                                    <div className="flex items-center gap-3">
-                                        <button
-                                            type="button"
-                                            disabled={isAllDelivered}
-                                            onClick={async () => {
-                                                const previousBatch = batch;
-                                                const previousOverrides = { ...localStatusOverrides };
-                                                const newOverrides = { ...localStatusOverrides };
-                                                linkedProjects.forEach(p => newOverrides[p.id] = "DELIVERED");
-                                                setLocalStatusOverrides(newOverrides);
+                                     <div className="flex items-center gap-3">
+                                         <button
+                                             type="button"
+                                             disabled={isAllDelivered}
+                                             onClick={async () => {
+                                                 const previousBatch = batch;
+                                                 const previousOverrides = { ...localStatusOverrides };
+                                                 const newOverrides = { ...localStatusOverrides };
+                                                 linkedProjects.forEach(p => newOverrides[p.id] = "DELIVERED");
+                                                 setLocalStatusOverrides(newOverrides);
 
-                                                const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, status: "DELIVERED" } : b);
-                                                setBatches(updatedBatches);
-                                                
-                                                try {
-                                                    const { error: batchError } = await supabase.from("delivery_batches").update({ status: "DELIVERED" }).eq("id", batch.id);
-                                                    if (batchError) throw batchError;
-                                                    const projectIds = linkedProjects.map(p => p.id);
-                                                    if (projectIds.length > 0) {
-                                                        const { error: adminError } = await supabase.from("admin").update({ delivery_status: "DELIVERED" }).in("id", projectIds);
-                                                        if (adminError) throw adminError;
-                                                    }
-                                                    await logActivity(currentUser?.id || "admin", "update", `Marked delivery batch ${batch.batch_no || batch.id} as DELIVERED (${projectIds.length} projects)`, "");
-                                                    if (onRefreshCustomers) onRefreshCustomers();
-                                                } catch (err) {
-                                                    setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
-                                                    setLocalStatusOverrides(previousOverrides);
-                                                    alert("Failed to mark batch delivered: " + (err.message || "Unknown error"));
-                                                }
-                                            }}
-                                            className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider transition shadow-xs border ${
-                                                isAllDelivered 
-                                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200 cursor-default opacity-80' 
-                                                    : 'bg-stone-100 hover:bg-emerald-50 text-stone-600 hover:text-emerald-700 border-stone-200 hover:border-emerald-200 cursor-pointer'
-                                            }`}
-                                        >
-                                            {isAllDelivered ? '✓ All Delivered' : 'Mark All Delivered'}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setExpandedBatchId(isExpanded ? null : batch.id)}
-                                            className="text-amber-700 hover:text-amber-800 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-                                        >
-                                        {isExpanded ? 'Hide project details' : `View ${linkedProjects.length} drop-off locations`}
-                                        {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                                    </button>
-                                    </div>
-                                </div>
+                                                 const updatedBatches = batches.map(b => b.id === batch.id ? { ...b, status: "DELIVERED" } : b);
+                                                 setBatches(updatedBatches);
+                                                 
+                                                 try {
+                                                     const { error: batchError } = await supabase.from("delivery_batches").update({ status: "DELIVERED" }).eq("id", batch.id);
+                                                     if (batchError) throw batchError;
+                                                     const projectIds = linkedProjects.map(p => p.id);
+                                                     if (projectIds.length > 0) {
+                                                         const { error: adminError } = await supabase.from("admin").update({ delivery_status: "DELIVERED" }).in("id", projectIds);
+                                                         if (adminError) throw adminError;
+                                                     }
+                                                     await logActivity(currentUser?.id || "admin", "update", `Marked delivery batch ${batch.batch_no || batch.id} as DELIVERED (${projectIds.length} projects)`, "");
+                                                     if (onRefreshCustomers) onRefreshCustomers();
+                                                 } catch (err) {
+                                                     setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
+                                                     setLocalStatusOverrides(previousOverrides);
+                                                     showAlert("Failed to mark batch delivered: " + (err.message || "Unknown error"), { type: 'error' });
+                                                 }
+                                             }}
+                                             className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider transition shadow-xs border ${
+                                                 isAllDelivered 
+                                                     ? 'bg-emerald-100 text-emerald-800 border-emerald-200 cursor-default opacity-80' 
+                                                     : 'bg-stone-100 hover:bg-emerald-50 text-stone-600 hover:text-emerald-700 border-stone-200 hover:border-emerald-200 cursor-pointer'
+                                             }`}
+                                         >
+                                             {isAllDelivered ? '✓ All Delivered' : 'Mark All Delivered'}
+                                         </button>
+                                         <button
+                                             type="button"
+                                             onClick={() => setExpandedBatchId(isExpanded ? null : batch.id)}
+                                             className="text-amber-700 hover:text-amber-800 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                                         >
+                                         {isExpanded ? 'Hide project details' : `View ${linkedProjects.length} drop-off locations`}
+                                         {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                     </button>
+                                     </div>
+                                 </div>
 
-                                {/* Expandable Project Drop-Off Table */}
-                                {isExpanded && (
-                                    <div className="p-5 overflow-x-auto animate-in fade-in duration-200">
-                                        <table className="min-w-full text-xs divide-y divide-stone-100">
-                                            <thead>
-                                                <tr className="text-[9px] font-black uppercase tracking-wider text-stone-400 text-left">
-                                                    <th className="pb-2 w-8">#</th>
-                                                    <th className="pb-2">Customer & Contact</th>
-                                                    <th className="pb-2">Village / Sub-Division</th>
-                                                    
-                                                    <th className="pb-2">Current Stage</th>
-                                                    <th className="pb-2">Location Status</th>
-                                                    <th className="pb-2 text-right">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-stone-100 font-medium text-stone-700">
-                                                {linkedProjects.map((proj, idx) => (
-                                                    <tr key={proj.id} className="hover:bg-stone-50/60 transition-colors">
-                                                        <td className="py-2.5 font-bold text-stone-400">{idx + 1}</td>
-                                                        <td className="py-2.5">
-                                                            <p className="font-bold text-stone-900">{proj.customer_name}</p>
-                                                            <p className="text-[10px] text-stone-500">{proj.phone_number || '–'}</p>
-                                                        </td>
-                                                        <td className="py-2.5">
-                                                            <p className="font-semibold text-stone-800">{proj.villages || '–'}</p>
-                                                            <p className="text-[10px] text-stone-400">{proj.sub_divisions || ''}</p>
-                                                        </td>
-                                                        
-                                                        <td className="py-2.5">
-                                                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-stone-100 text-stone-800 border border-stone-200">
-                                                                {PRIMARY_STAGES.find(s => s.id === proj.stage)?.label || proj.stage}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-2.5">
-                                                            <select
-                                                                value={(localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING')}
-                                                                onChange={async (e) => {
-                                                                    const newStat = e.target.value;
-                                                                    const previousStat = localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING';
-                                                                    setLocalStatusOverrides(prev => ({ ...prev, [proj.id]: newStat }));
-                                                                    try {
-                                                                        const { error } = await supabase.from('admin').update({ delivery_status: newStat }).eq('id', proj.id);
-                                                                        if (error) throw error;
-                                                                        if (onRefreshCustomers) onRefreshCustomers();
-                                                                    } catch (err) {
-                                                                        setLocalStatusOverrides(prev => ({ ...prev, [proj.id]: previousStat }));
-                                                                        alert("Failed to update delivery status: " + (err.message || "Unknown error"));
-                                                                    }
-                                                                }}
-                                                                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md outline-none cursor-pointer ${
-                                                                    (localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING') === 'DELIVERED' 
-                                                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
-                                                                        : 'bg-stone-100 text-stone-600 border border-stone-300'
-                                                                }`}
-                                                            >
+                                 {/* Expandable Project Drop-Off Table */}
+                                 {isExpanded && (
+                                     <div className="p-5 overflow-x-auto animate-in fade-in duration-200">
+                                         <table className="min-w-full text-xs divide-y divide-stone-100">
+                                             <thead>
+                                                 <tr className="text-[9px] font-black uppercase tracking-wider text-stone-400 text-left">
+                                                     <th className="pb-2 w-8">#</th>
+                                                     <th className="pb-2">Customer & Contact</th>
+                                                     <th className="pb-2">Village / Sub-Division</th>
+                                                     
+                                                     <th className="pb-2">Current Stage</th>
+                                                     <th className="pb-2">Location Status</th>
+                                                     <th className="pb-2 text-right">Action</th>
+                                                 </tr>
+                                             </thead>
+                                             <tbody className="divide-y divide-stone-100 font-medium text-stone-700">
+                                                 {linkedProjects.map((proj, idx) => (
+                                                     <tr key={proj.id} className="hover:bg-stone-50/60 transition-colors">
+                                                         <td className="py-2.5 font-bold text-stone-400">{idx + 1}</td>
+                                                         <td className="py-2.5">
+                                                             <p className="font-bold text-stone-900">{proj.customer_name}</p>
+                                                             <p className="text-[10px] text-stone-500">{proj.phone_number || '–'}</p>
+                                                         </td>
+                                                         <td className="py-2.5">
+                                                             <p className="font-semibold text-stone-800">{proj.villages || '–'}</p>
+                                                             <p className="text-[10px] text-stone-400">{proj.sub_divisions || ''}</p>
+                                                         </td>
+                                                         
+                                                         <td className="py-2.5">
+                                                             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-stone-100 text-stone-800 border border-stone-200">
+                                                                 {PRIMARY_STAGES.find(s => s.id === proj.stage)?.label || proj.stage}
+                                                             </span>
+                                                         </td>
+                                                         <td className="py-2.5">
+                                                             <select
+                                                                 value={(localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING')}
+                                                                 onChange={async (e) => {
+                                                                     const newStat = e.target.value;
+                                                                     const previousStat = localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING';
+                                                                     setLocalStatusOverrides(prev => ({ ...prev, [proj.id]: newStat }));
+                                                                     try {
+                                                                         const { error } = await supabase.from('admin').update({ delivery_status: newStat }).eq('id', proj.id);
+                                                                         if (error) throw error;
+                                                                         if (onRefreshCustomers) onRefreshCustomers();
+                                                                     } catch (err) {
+                                                                         setLocalStatusOverrides(prev => ({ ...prev, [proj.id]: previousStat }));
+                                                                         showAlert("Failed to update delivery status: " + (err.message || "Unknown error"), { type: 'error' });
+                                                                     }
+                                                                 }}
+                                                                 className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md outline-none cursor-pointer ${
+                                                                     (localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING') === 'DELIVERED' 
+                                                                         ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                                                         : 'bg-stone-100 text-stone-600 border border-stone-300'
+                                                                 }`}
+                                                             >
                                                                 <option value="PENDING">Pending</option>
                                                                 <option value="IN_TRANSIT">In Transit</option>
                                                                 <option value="DELIVERED">Delivered</option>

@@ -10,6 +10,7 @@ import {
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
 import { toIndianCommas, fetchAgent2SubAgents } from '../utils';
+import { useGlobalPopup } from './GlobalPopup';
 
 // Dropdown component for metadata fields (clean single outline)
 function AddLeadMetaSelect({ label, field, value, onChange, options = [] }) {
@@ -211,6 +212,7 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
 }
 
 export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, channel_partners = [], user }) {
+    const { showAlert } = useGlobalPopup();
     const [formData, setFormData] = useState({ ...DEFAULT_LEAD_FORM });
     const [pendingFiles, setPendingFiles] = useState({}); // { [doc_type]: File }
     const [previewDoc, setPreviewDoc] = useState(null); // { doc, url }
@@ -339,7 +341,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             onClose();
         } catch (err) {
             console.error('Error in onSave:', err);
-            alert('Failed to save lead: ' + (err.message || err));
+            showAlert('Failed to save lead: ' + (err.message || err), { type: 'error' });
         } finally {
             setSaving(false);
         }

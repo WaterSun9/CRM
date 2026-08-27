@@ -51,6 +51,7 @@ import FinalReviewTab from './modal-tabs/FinalReviewTab';
 import HistoryTab from './modal-tabs/HistoryTab';
 import CustomerDocumentsTab from './modal-tabs/CustomerDocumentsTab';
 import { FilePreviewModal, DocGalleryRemarkRow, getStageRemarkFromData } from './modal-tabs/shared';
+import { useGlobalPopup } from './GlobalPopup';
 
 // ─── formatMoney: uses centralized Indian comma system from utils ─────────────
 const fmt = formatINR;
@@ -79,6 +80,7 @@ const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', 
 
 // ─── CustomerDetailModal ──────────────────────────────────────────────────────
 export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab }) {
+    const { showAlert } = useGlobalPopup();
     const [activeTab, setActiveTab] = useState(() => {
         if (defaultTab) return defaultTab;
         
@@ -427,7 +429,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
         } catch (err) {
             console.error('Document upload failed:', err);
-            alert('Document upload failed: ' + (err.message || 'Please check your connection and try again.'));
+            showAlert('Document upload failed: ' + (err.message || 'Please check your connection and try again.'), { type: 'error' });
         } finally {
             setUploading(false);
             if (e.target) e.target.value = '';
@@ -881,13 +883,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 const wasSaved = await saveBomRef.current();
                 if (wasSaved === false) {
                     setSaving(false);
-                    alert('Failed to save the Material Integration BOM, so the stage was not advanced. Please try again.');
+                    showAlert('Failed to save the Material Integration BOM, so the stage was not advanced. Please try again.', { type: 'error' });
                     return;
                 }
             } catch (err) {
                 console.error('Error saving BOM during stage advance:', err);
                 setSaving(false);
-                alert('Failed to save the Material Integration BOM, so the stage was not advanced: ' + (err.message || 'Unknown error'));
+                showAlert('Failed to save the Material Integration BOM, so the stage was not advanced: ' + (err.message || 'Unknown error'), { type: 'error' });
                 return;
             }
         }
@@ -1011,7 +1013,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             fetchLogs();
         })().catch(err => {
             console.error("Background save error:", err);
-            alert("Warning: the stage change may not have saved correctly (" + (err.message || "unknown error") + "). Please refresh and verify before continuing.");
+            showAlert("Warning: the stage change may not have saved correctly (" + (err.message || "unknown error") + "). Please refresh and verify before continuing.", { type: 'error' });
         });
         setSaving(false);
     };

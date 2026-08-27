@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, STAGE_IDS, PRIMARY_STAGES } from '../constants';
+import { useGlobalPopup } from './GlobalPopup';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
@@ -31,6 +32,7 @@ const parsePanelSerials = (raw) => {
 };
 
 export default function VendorPortal({ user, onLogout }) {
+    const { showAlert } = useGlobalPopup();
     const [view, setView] = useState('list'); // 'list', 'details'
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -87,8 +89,6 @@ export default function VendorPortal({ user, onLogout }) {
     const [giveUpReason, setGiveUpReason] = useState('');
     const [givingUp, setGivingUp] = useState(false);
 
-    // Custom Alert Popup Modal state (No browser alert popups)
-    const [customAlert, setCustomAlert] = useState(null);
 
     // Fetch BOM for Print (Read-Only)
     const handleOpenBomModal = async (cust) => {
@@ -508,9 +508,8 @@ export default function VendorPortal({ user, onLogout }) {
             }
         } catch (err) {
             console.error('Error uploading geo photo:', err);
-            setCustomAlert({
+            showAlert('Failed to upload photo: ' + (err.message || err), {
                 title: 'Upload Error',
-                message: 'Failed to upload photo: ' + (err.message || err),
                 type: 'error'
             });
         } finally {
@@ -541,9 +540,8 @@ export default function VendorPortal({ user, onLogout }) {
             }
         } catch (err) {
             console.error('Error deleting photo:', err);
-            setCustomAlert({
+            showAlert(err.message || 'Could not delete the selected photo.', {
                 title: 'Delete Failed',
-                message: err.message || 'Could not delete the selected photo.',
                 type: 'error'
             });
         }
@@ -603,9 +601,8 @@ export default function VendorPortal({ user, onLogout }) {
             }
 
             if (missingItems.length > 0) {
-                setCustomAlert({
+                showAlert(`To move forward to Geo Tag Photo, please complete the following:\n\n• ${missingItems.join('\n• ')}`, {
                     title: 'Installation Incomplete',
-                    message: `To move forward to Geo Tag Photo, please complete the following:\n\n• ${missingItems.join('\n• ')}`,
                     type: 'warning'
                 });
                 return;
@@ -624,9 +621,8 @@ export default function VendorPortal({ user, onLogout }) {
             }
 
             if (missingItems.length > 0) {
-                setCustomAlert({
+                showAlert(`To move forward to Discom Submission, please complete the following:\n\n• ${missingItems.join('\n• ')}`, {
                     title: 'Geo Tag Report Incomplete',
-                    message: `To move forward to Discom Submission, please complete the following:\n\n• ${missingItems.join('\n• ')}`,
                     type: 'warning'
                 });
                 return;
@@ -709,9 +705,8 @@ export default function VendorPortal({ user, onLogout }) {
             }
         } catch (err) {
             console.error('Failed to save details:', err);
-            setCustomAlert({
+            showAlert(`Error saving changes: ${err.message || err}`, {
                 title: 'Database Error',
-                message: `Error saving changes: ${err.message || err}`,
                 type: 'error'
             });
         } finally {
@@ -750,9 +745,8 @@ export default function VendorPortal({ user, onLogout }) {
             setView('list');
         } catch (err) {
             console.error('Error giving up project:', err);
-            setCustomAlert({
+            showAlert(`Failed to record give up: ${err.message || err}`, {
                 title: 'Submission Error',
-                message: `Failed to record give up: ${err.message || err}`,
                 type: 'error'
             });
         } finally {
@@ -1840,31 +1834,7 @@ export default function VendorPortal({ user, onLogout }) {
                 </div>
             )}
 
-            {/* Custom Alert Popup Modal (No native browser alert()) */}
-            {customAlert && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200" onClick={() => setCustomAlert(null)}>
-                    <div className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl border border-stone-150 animate-in zoom-in-95 duration-200 text-center space-y-4" onClick={e => e.stopPropagation()}>
-                        <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ${
-                            customAlert.type === 'error' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                            {customAlert.type === 'error' ? <AlertCircle size={24} /> : <AlertTriangle size={24} />}
-                        </div>
-                        <div>
-                            <h4 className="text-sm font-extrabold text-stone-850">{customAlert.title || 'Attention Required'}</h4>
-                            <p className="text-xs text-stone-600 font-medium mt-2 leading-relaxed whitespace-pre-line text-left bg-stone-50 p-3 rounded-xl border border-stone-200/60">
-                                {customAlert.message}
-                            </p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setCustomAlert(null)}
-                            className="w-full py-3 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer active:scale-[0.98]"
-                        >
-                            Understood
-                        </button>
-                    </div>
-                </div>
-            )}
+
 
             {/* Print Styles for Vendor BOM */}
             <style>{`

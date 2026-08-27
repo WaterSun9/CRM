@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, UserPlus, Phone, Mail } from 'lucide-react';
 import { logActivity } from '../utils';
+import { useGlobalPopup } from './GlobalPopup';
 
 export default function ChannelPartnerManagementView({ customers = [], currentUser }) {
+    const { showAlert } = useGlobalPopup();
     const [partners, setPartners] = useState([]);
     const [brands, setBrands] = useState([]);
     const [registrations, setRegistrations] = useState([]);
@@ -146,7 +148,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
         // Check for duplicates
         if ((partners || []).some(p => String(p?.label || '').toLowerCase() === val.toLowerCase())) {
-            alert('This Channel Partner already exists.');
+            showAlert('This Channel Partner already exists.');
             return;
         }
 
@@ -163,7 +165,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Channel Partner: "${val}"`);
         } catch (e) {
             console.error('Error adding partner:', e);
-            alert('Error adding partner: ' + e.message);
+            showAlert('Error adding partner: ' + e.message, { type: 'error' });
         }
     };
 
@@ -174,7 +176,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
         // Check for duplicates
         if ((brands || []).some(b => String(b?.label || '').toLowerCase() === val.toLowerCase())) {
-            alert('This Module Brand already exists.');
+            showAlert('This Module Brand already exists.');
             return;
         }
 
@@ -191,7 +193,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Module Brand: "${val}"`);
         } catch (e) {
             console.error('Error adding brand:', e);
-            alert('Error adding brand: ' + e.message);
+            showAlert('Error adding brand: ' + e.message, { type: 'error' });
         }
     };
 
@@ -202,7 +204,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
         // Check for duplicates
         if ((registrations || []).some(r => String(r?.label || '').toLowerCase() === val.toLowerCase())) {
-            alert('This Registration Staff already exists.');
+            showAlert('This Registration Staff already exists.');
             return;
         }
 
@@ -219,7 +221,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Registration Staff: "${val}"`);
         } catch (e) {
             console.error('Error adding registration staff:', e);
-            alert('Error adding registration staff: ' + e.message);
+            showAlert('Error adding registration staff: ' + e.message, { type: 'error' });
         }
     };
 
@@ -230,7 +232,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
         // Check for duplicates
         if ((integrations || []).some(i => String(i?.label || '').toLowerCase() === val.toLowerCase())) {
-            alert('This Integration Staff member already exists.');
+            showAlert('This Integration Staff member already exists.');
             return;
         }
 
@@ -247,7 +249,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Integration Staff: "${val}"`);
         } catch (e) {
             console.error('Error adding integration staff:', e);
-            alert('Error adding integration staff: ' + e.message);
+            showAlert('Error adding integration staff: ' + e.message, { type: 'error' });
         }
     };
 
@@ -258,7 +260,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
         // Check for duplicates
         if ((inverters || []).some(i => String(i?.label || '').toLowerCase() === val.toLowerCase())) {
-            alert('This Inverter Make already exists.');
+            showAlert('This Inverter Make already exists.');
             return;
         }
 
@@ -275,7 +277,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'create', `Added new Inverter Make: "${val}"`);
         } catch (e) {
             console.error('Error adding inverter make:', e);
-            alert('Error adding inverter make: ' + e.message);
+            showAlert('Error adding inverter make: ' + e.message, { type: 'error' });
         }
     };
 
@@ -284,12 +286,12 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         const name = newVendorName.trim();
         const email = newVendorEmail.trim();
         if (!name || !email) {
-            alert('Please enter both Vendor Name and Email.');
+            showAlert('Please enter both Vendor Name and Email.');
             return;
         }
 
         if ((vendors || []).some(v => String(v?.name || '').toLowerCase() === name.toLowerCase())) {
-            alert('A Vendor with this name already exists.');
+            showAlert('A Vendor with this name already exists.');
             return;
         }
 
@@ -340,7 +342,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             );
         } catch (e) {
             console.error('Error adding vendor:', e);
-            alert('Error adding vendor: ' + e.message);
+            showAlert('Error adding vendor: ' + e.message, { type: 'error' });
         }
     };
 
@@ -349,7 +351,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         const name = editingVendorName.trim();
         const email = editingVendorEmail.trim();
         if (!name || !email) {
-            alert('Vendor Name and Email cannot be empty.');
+            showAlert('Vendor Name and Email cannot be empty.');
             return;
         }
 
@@ -371,7 +373,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'update', `Updated Vendor: "${oldName}" → "${name}" (${email})`);
         } catch (e) {
             console.error('Error updating vendor:', e);
-            alert('Error updating vendor: ' + e.message);
+            showAlert('Error updating vendor: ' + e.message, { type: 'error' });
         }
     };
 
@@ -391,7 +393,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'delete', `Deleted Vendor: "${name}"`);
         } catch (e) {
             console.error('Error deleting vendor:', e);
-            alert('Error deleting vendor: ' + e.message);
+            showAlert('Error deleting vendor: ' + e.message, { type: 'error' });
         }
     };
 
@@ -412,7 +414,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         else if (category === 'inverter_make') listToCheck = inverters;
 
         if (listToCheck.some(x => x.id !== id && x.label.toLowerCase() === trimmed.toLowerCase())) {
-            alert('This entry already exists.');
+            showAlert('This entry already exists.');
             return;
         }
 
@@ -474,7 +476,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             await logActivity(currentUser.id, 'update', `Renamed ${category} from "${oldLabel}" to "${trimmed}"`);
         } catch (e) {
             console.error('Error renaming metadata:', e);
-            alert('Error renaming metadata: ' + e.message);
+            showAlert('Error renaming metadata: ' + e.message, { type: 'error' });
         } finally {
             setEditingId(null);
         }
@@ -532,13 +534,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
             if (cascadeError) {
                 await logActivity(currentUser.id, 'delete', `Deleted ${category}: "${label}" (WARNING: failed to clear from existing customer records: ${cascadeError.message})`);
-                alert(`"${label}" was removed from the dropdown, but clearing it from existing customer records failed: ${cascadeError.message}. Some records may still show the old value.`);
+                showAlert(`"${label}" was removed from the dropdown, but clearing it from existing customer records failed: ${cascadeError.message}. Some records may still show the old value.`, { type: 'error' });
             } else {
                 await logActivity(currentUser.id, 'delete', `Deleted ${category}: "${label}" (cleared from customers)`);
             }
         } catch (e) {
             console.error('Error deleting metadata:', e);
-            alert('Error deleting metadata: ' + e.message);
+            showAlert('Error deleting metadata: ' + e.message, { type: 'error' });
         }
     };
 

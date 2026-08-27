@@ -5,8 +5,10 @@ import {
     Search, CreditCard, CheckCircle2, AlertCircle, Calendar, 
     Building2, Users, Check, Loader2, RefreshCw 
 } from 'lucide-react';
+import { useGlobalPopup } from './GlobalPopup';
 
 export default function InstallationPaymentsView({ onSelectCustomer, currentUser }) {
+    const { showAlert } = useGlobalPopup();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('All'); // 'All', 'Pending', 'Paid'
     const [selectedMonthKey, setSelectedMonthKey] = useState('All');
@@ -192,11 +194,11 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                 );
             } else {
                 console.error("Error updating vendor payment status:", error);
-                alert("Failed to update payment status: " + error.message);
+                showAlert("Failed to update payment status: " + error.message, { type: 'error' });
             }
         } catch (err) {
             console.error("Error changing payment status:", err);
-            alert("Error changing payment status: " + err.message);
+            showAlert("Error changing payment status: " + err.message, { type: 'error' });
         } finally {
             setUpdatingId(null);
         }
@@ -220,7 +222,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         
         const unpaidRecords = filteredRecords.filter(r => (r.vendor_payment_status || 'Pending') !== 'Paid');
         if (unpaidRecords.length === 0) {
-            alert(`All clients for ${selectedVendor} are already marked as Paid!`);
+            showAlert(`All clients for ${selectedVendor} are already marked as Paid!`);
             return;
         }
 
@@ -266,11 +268,11 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                 );
             } else {
                 console.error("Error in Pay All:", error);
-                alert("Failed to pay all: " + error.message);
+                showAlert("Failed to pay all: " + error.message, { type: 'error' });
             }
         } catch (err) {
             console.error("Error in Pay All:", err);
-            alert("Error: " + err.message);
+            showAlert("Error: " + err.message, { type: 'error' });
         } finally {
             setPayingAll(false);
         }

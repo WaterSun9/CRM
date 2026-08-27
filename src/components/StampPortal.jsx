@@ -9,6 +9,7 @@ import {
     uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, logActivity,
 } from "../utils.jsx";
 import { FilePreviewModal } from "./modal-tabs/shared";
+import { useGlobalPopup } from './GlobalPopup';
 
 const uploaderCache = {};
 async function fetchUploaderName(userId) {
@@ -92,7 +93,8 @@ function RemarkRow({ customerId, initialRemark, userId, customerName }) {
     );
 }
 
-function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPreviewDoc, setCustomAlert }) {
+function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPreviewDoc }) {
+    const { showAlert } = useGlobalPopup();
     const fileInputRef = useRef(null);
     const stampDoc = docs.find(d => d.doc_type === "pm_surya_ghar_stamp");
     const isUploaded = !!stampDoc;
@@ -128,9 +130,8 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
                 cust.customer_name + ": Stamp sent to Document Making", "", cust.id);
             onCustomerRemoved(cust.id);
         } catch (err) {
-            setCustomAlert({
+            showAlert(err.message, {
                 title: "Action Failed",
-                message: err.message,
                 type: "error"
             });
         } finally {
@@ -152,9 +153,8 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
             const updatedDocs = await getCustomerDocuments(cust.id);
             onDocsChange(cust.id, updatedDocs || []);
         } catch (err) {
-            setCustomAlert({
+            showAlert(err.message || "Failed to upload stamp document.", {
                 title: "Upload Failed",
-                message: err.message || "Failed to upload stamp document.",
                 type: "error"
             });
         } finally {
@@ -172,9 +172,8 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
             const updatedDocs = await getCustomerDocuments(cust.id);
             onDocsChange(cust.id, updatedDocs || []);
         } catch (err) {
-            setCustomAlert({
+            showAlert(err.message, {
                 title: "Delete Failed",
-                message: err.message,
                 type: "error"
             });
         } finally {
@@ -409,12 +408,12 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
 }
 
 export default function StampPortal({ user, onLogout }) {
+    const { showAlert } = useGlobalPopup();
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [custDocs, setCustDocs] = useState({});
     const [previewDoc, setPreviewDoc] = useState(null);
-    const [customAlert, setCustomAlert] = useState(null);
 
     const fetchCustomers = useCallback(async () => {
         setLoading(true);
@@ -510,17 +509,15 @@ export default function StampPortal({ user, onLogout }) {
             if (url) {
                 setPreviewDoc({ doc, url });
             } else {
-                setCustomAlert({
+                showAlert("Unable to retrieve preview URL for this stamp.", {
                     title: "Preview Unavailable",
-                    message: "Unable to retrieve preview URL for this stamp.",
                     type: "error"
                 });
             }
         } catch (err) {
             console.error("Preview error:", err);
-            setCustomAlert({
+            showAlert(err.message || "Failed to load document preview.", {
                 title: "Preview Error",
-                message: err.message || "Failed to load document preview.",
                 type: "error"
             });
         }
@@ -679,7 +676,6 @@ export default function StampPortal({ user, onLogout }) {
                                 onDocsChange={handleDocsChange}
                                 onCustomerRemoved={handleCustomerRemoved}
                                 onPreviewDoc={handleOpenPreview}
-                                setCustomAlert={setCustomAlert}
                             />
                         ))
                     )}
@@ -696,34 +692,6 @@ export default function StampPortal({ user, onLogout }) {
                 />
             )}
 
-            {customAlert && (
-                <div
-                    className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-xs animate-in fade-in duration-200"
-                    onClick={() => setCustomAlert(null)}
-                >
-                    <div
-                        className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl border border-stone-150 animate-in zoom-in-95 duration-200 text-center space-y-4"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ${
-                            customAlert.type === 'error' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                            {customAlert.type === 'error' ? <AlertCircle size={24} /> : <AlertTriangle size={24} />}
-                        </div>
-                        <div>
-                            <h4 className="text-sm font-extrabold text-stone-850">{customAlert.title || 'Attention'}</h4>
-                            <p className="text-xs text-stone-500 font-medium mt-1.5 leading-relaxed">{customAlert.message}</p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setCustomAlert(null)}
-                            className="w-full py-3 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer active:scale-[0.98]"
-                        >
-                            Understood
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
