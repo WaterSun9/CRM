@@ -92,16 +92,33 @@ serve(async (req) => {
             )
         }
 
-        // Security check: Channel Partner Office can only manage users belonging to their own channel partner
-        if (isCP && ["deactivate", "reactivate", "delete", "update_email"].includes(action)) {
+        // Security check: Channel Partner Office can only manage users belonging to
+        // their own channel partner. Admins skip this entirely (isCP is false for
+        // them), so nothing here affects Admin-initiated actions.
+        //
+        // update_password is included: the UI only ever lists a CPO's own branch,
+        // but the function accepted any user_id, so a crafted call could set an
+        // Admin's password. It is now held to the same rule as delete/update_email.
+        if (isCP && ["deactivate", "reactivate", "delete", "update_email", "update_password"].includes(action)) {
             const targetId = body.user_id;
             if (targetId) {
-                const { data: targetProf } = await adminClient
+                const { data: targetProf, error: targetErr } = await adminClient
                     .from("profiles")
                     .select("channel_partner")
                     .eq("id", targetId)
                     .single();
-                if (targetProf?.channel_partner !== callerProfile.channel_partner) {
+
+                // Branch names are compared the way the rest of the app compares
+                // them — trimmed and case-insensitive. A strict !== would lock a
+                // CPO out of their own users over "Radhe Solar" vs "RADHE SOLAR".
+                const norm = (value: string | null | undefined) => String(value ?? "").trim().toUpperCase();
+                const sameBranch = !targetErr && targetProf
+                    && norm(targetProf.channel_partner) === norm(callerProfile?.channel_partner);
+
+                // A CPO may always act on their own account (e.g. change their password).
+                const isSelf = targetId === caller.id;
+
+                if (!sameBranch && !isSelf) {
                     return new Response(
                         JSON.stringify({ error: "Forbidden: You do not own this sub-partner account" }),
                         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }

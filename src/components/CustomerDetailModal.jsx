@@ -1577,6 +1577,24 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             )}
                         </button>
 
+                        {/* Restored: removed in rd48, leaving hasNextStage / nextStageId /
+                            nextStageLabel / handleAdvanceStage all in place but unreachable,
+                            so no role could advance a customer from the modal. */}
+                        {hasNextStage && activeTab === customer.stage && (
+                            <button
+                                onClick={() => {
+                                    if (nextStageId === STAGE_IDS.COMPLETED) {
+                                        setShowCompletedConfirm(true);
+                                    } else {
+                                        handleAdvanceStage();
+                                    }
+                                }}
+                                disabled={saving}
+                                className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {saving ? 'Saving & Moving...' : `Save & Move to ${nextStageLabel}`}
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

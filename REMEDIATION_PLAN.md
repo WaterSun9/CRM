@@ -11,6 +11,121 @@ progress · 🔴 needs your action (not something code can fix) · ⏸️ delibe
 
 ---
 
+# 🚦 THE RUNWAY — everything still open, most urgent first
+
+Single ranked queue. Work top-down. Verified against the code on
+2026-08-28, not copied from older notes. Items marked **needs you** cannot
+be done from the code side alone.
+
+## 🔴 Blockers — do before a real rollout
+
+**1. Live RLS — ✅ DONE 2026-08-28.** Policies were exported and fixed in
+three steps (`scripts/rls_step1_revoke_anon.sql`, `..._step2_profiles.sql`,
+`..._step3_admin_table.sql`), all run.
+
+What was wrong: RLS was enabled on all 9 tables, but blanket `qual = true`
+policies sat beside the scoped ones — and Postgres OR's permissive policies,
+so the `true` always won. Every authenticated user could read *and update*
+all 3,801 customer rows. Worse, four tables (`profiles`, `documents`, `bom`,
+`bom_items`) granted full access to `anon`, and the anon key ships inside the
+JS bundle — so those were reachable without logging in at all.
+
+Now: anon revoked everywhere; `admin` scoped per role (admin/sales = all,
+CPO+manager = branch, agent+agent2 = own `sub_channel_partner`, vendor = own
+jobs, stamp = records sent to stamp); `profiles` writes limited to self,
+Admin, or a CPO inside their own branch.
+
+Still permissive, deliberately, needing their own pass:
+`profiles_select_policy` and `profiles_insert_policy` (both `true` for
+authenticated), and `metadata` / `vendors` / `delivery_batches` /
+`activity_log` (authenticated-only, unscoped).
+
+**2. Deploy the edge function — ✅ DONE 2026-08-28.** `update_password` is
+now held to the same branch-ownership rule as delete/update_email, and the
+401/403/500 messages say what actually failed. Verified against all five
+role scenarios.
+
+**3. Two people editing one customer silently overwrite each other.** No
+version column, no `updated_at` guard, no conflict detection anywhere. Last
+save wins and the other person's work vanishes with no warning. Real with
+30 users on shared stages.
+
+**4. Delivery batches — the 4th bug still needs SQL.** Three are fixed in
+code; the last one is a database change that has never been applied.
+
+**5. Orphaned auth users — ✅ DONE 2026-08-28.** Cleared. Login is also
+fail-closed now, so a profile-less session is signed out rather than being
+handed the Office Dashboard.
+
+**Root cause, to avoid repeating it:** User Management deletes the profile
+row from the client *first* and calls the edge function afterwards. If that
+second call fails, the auth user survives with no profile. Delete users
+through the app, never from the Supabase table editor.
+
+## 🟠 High — before the user count grows
+
+**6. Deactivation is not enforced mid-session.** `status = 'inactive'` is
+only checked at login, so a user deactivated while working keeps full
+access until they sign out.
+
+**7. One name, entered once, identical everywhere.** Branch and person names
+are matched as strings across `profiles` and `admin`; two spellings mean an
+empty portal with no error. Normalize on write at every entry point. Full
+detail in the section below this one.
+
+**8. Realtime request amplification.** Every client subscribes to all `admin`
+changes and filters client-side. At 30 users each row change fans out 30
+times. Needs server-side filters or coalescing.
+
+**9. Full-table fetches and `select('*')`.** The portals page through entire
+tables and pull every column. Fine at 3,801 rows, not at 4× that.
+
+**10. Delivery-batch operations are not atomic.** Multi-row updates can half-
+apply, leaving batches in an inconsistent state.
+
+## 🟡 Medium — quality and polish
+
+**10b. `Lost Project` stage case mismatch — ✅ FIXED 2026-08-28.** 35 rows
+stored `Lost Project` where the constant is `LOST PROJECT`. Stage matching is
+strict `===`, so those records were invisible in every stage view and every
+stage count. Corrected by SQL.
+
+**11. Custom error page instead of a raw 404.** `public/404.html` exists only
+as the GitHub Pages SPA fallback. A wrong URL should land on a branded page
+with a route back into the app, not a bare 404.
+
+**12. "New version" prompt should follow deployment, not every build.**
+`scripts/write_version.js` stamps a random id (`Date.now()`-random) on every
+build, so any local build — or a rebuild of identical code — makes live users
+see the update banner. Derive the id from the git commit or a hash of the
+built assets so it only changes when something actually shipped.
+
+**13. Unsaved work is still lost on browser refresh or tab close.** The
+in-app prompts cover navigation only. No `beforeunload` guard, no local
+draft recovery. (Discard buttons were deliberately removed everywhere except
+Add Lead — that is a decision, not a gap.)
+
+**14. Uploads are not UUID-named.** Current naming can overwrite an existing
+object.
+
+## ⚪ Low — when there is time
+
+**15. Accessibility pass and clearing the ~50 standing lint warnings.**
+
+**16. The load test that was never run.** 30 concurrent users, 5,000 rows,
+plus a per-role permission matrix.
+
+## ✅ Accepted risks — decided, not oversights
+
+- **Documents are optional at lead creation.** Required only at stage
+  advancement. Confirmed 2026-08-28.
+- **Branch data will be replaced.** Current name mismatches are not being
+  cleaned; new data will be aligned by hand on import.
+- **`system_capacity_kwp` holds `Wp x modules`** (e.g. 32,940), not kWp,
+  matching the existing 3,801 rows. The label still reads kWp.
+
+---
+
 ## ⏭️ One name, entered once, identical everywhere (agreed approach — not yet built)
 Every portal decides what a user can see by **matching name strings**, not ids:
 `admin.channel_partner` vs `profiles.channel_partner`, and
