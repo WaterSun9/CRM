@@ -1,6 +1,18 @@
 import React from 'react';
 
+const parsePanelSerials = (raw) => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map(value => String(value || '').trim()).filter(Boolean);
+    const rawText = String(raw);
+    try {
+        const parsed = JSON.parse(rawText);
+        if (Array.isArray(parsed)) return parsed.map(value => String(value || '').trim()).filter(Boolean);
+    } catch (e) { /* not JSON */ }
+    return rawText.split(/[\n,]/).map(value => value.trim()).filter(Boolean);
+};
+
 export default function BomPrintView({ customer, bom, bomItems, activeType }) {
+    const panelSerials = parsePanelSerials(customer?.panel_serial_no);
     const toIndianCommas = (num) => {
         if (!num) return '';
         const numStr = num.toString();
@@ -144,6 +156,26 @@ export default function BomPrintView({ customer, bom, bomItems, activeType }) {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Section 5: Panel Serial Numbers Grid */}
+                    <div className="mb-5">
+                        <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2 flex items-center justify-between">
+                            <span>5. Solar Panel Serial Numbers Checklist</span>
+                            <span className="text-[10px] font-bold text-stone-600">Total: {panelSerials.length} Panels</span>
+                        </h3>
+                        {panelSerials.length > 0 ? (
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                                {panelSerials.map((serial, idx) => (
+                                    <div key={idx} className="border border-stone-300 p-1.5 rounded flex items-center gap-2">
+                                        <span className="font-bold text-stone-600 w-6 text-center">{idx + 1}.</span>
+                                        <span className="font-mono font-bold text-stone-900">{serial}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-xs text-stone-400 italic py-2">No panel serial numbers recorded.</p>
+                        )}
+                    </div>
                 </div>
 
                 {/* Footer Section Page 1 */}
@@ -205,7 +237,7 @@ export default function BomPrintView({ customer, bom, bomItems, activeType }) {
                     </table>
 
                     <div className="mt-8 pt-4">
-                        <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">5. Verification Signatures</h3>
+                        <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">6. Verification Signatures</h3>
                         <div className="flex gap-8 mt-12">
                             <div className="flex-1 text-center">
                                 <div className="border-b border-stone-400 w-3/4 mx-auto mb-2"></div>

@@ -1940,18 +1940,23 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                             <DetailRow label="Inverter Serial No." value={stageData.inverter_serial_no} />
                                             <DetailRow label="Integration By" value={stageData.integration_by} />
                                             <DetailRow label="Panel Serial Numbers">
-                                                {miPanelSerials.length === 0 ? '–' : (
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        <span className="text-[9px] font-bold text-amber-700 bg-amber-100/70 px-1.5 py-0.5 rounded uppercase">
-                                                            {miPanelSerials.length} Panel{miPanelSerials.length === 1 ? '' : 's'}
-                                                        </span>
-                                                        <span className="font-mono text-[10px] font-semibold text-stone-700 whitespace-pre-line leading-relaxed">
-                                                            {miPanelSerials.join('\n')}
-                                                        </span>
-                                                    </div>
-                                                )}
+                                                <span className="text-[9px] font-bold text-amber-700 bg-amber-100/70 px-1.5 py-0.5 rounded uppercase">
+                                                    Total: {miPanelSerials.length} Panel{miPanelSerials.length === 1 ? '' : 's'}
+                                                </span>
                                             </DetailRow>
                                         </div>
+                                        {miPanelSerials.length > 0 ? (
+                                            <div className="grid grid-cols-2 gap-1.5 pt-1">
+                                                {miPanelSerials.map((serial, idx) => (
+                                                    <div key={idx} className="border border-stone-200 bg-white px-1.5 py-1 rounded-lg flex items-center gap-1.5 min-w-0">
+                                                        <span className="text-[9px] font-bold text-stone-400 w-4 text-center flex-shrink-0">{idx + 1}.</span>
+                                                        <span className="font-mono text-[10px] font-bold text-stone-900 truncate">{serial}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-[10px] text-stone-400 italic pt-1">No panel serial numbers recorded.</p>
+                                        )}
                                     </div>
 
                                     {/* Procurement & Loading Milestones */}
