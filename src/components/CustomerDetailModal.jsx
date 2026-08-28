@@ -78,6 +78,32 @@ const formatDateTime = (date) => {
 const SUBSIDY_STATUS_OPTIONS = ['Approved', 'Returned', 'Rejected', 'Redeemed', 'Received'];
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
 
+const getChangedFields = (draft = {}, saved = {}) => {
+    const changed = new Set();
+    const ignoreKeys = new Set(['id', 'created_at', 'updated_at', 'crn']);
+    const keys = new Set([...Object.keys(saved || {}), ...Object.keys(draft || {})]);
+
+    keys.forEach(key => {
+        if (ignoreKeys.has(key)) return;
+        const draftValue = draft?.[key];
+        const savedValue = saved?.[key];
+        if (typeof draftValue === 'boolean' || typeof savedValue === 'boolean') {
+            if (Boolean(draftValue) !== Boolean(savedValue)) changed.add(key);
+            return;
+        }
+        const draftEmpty = draftValue === undefined || draftValue === null || draftValue === '';
+        const savedEmpty = savedValue === undefined || savedValue === null || savedValue === '';
+        if (draftEmpty && savedEmpty) return;
+        if (typeof draftValue === 'object' || typeof savedValue === 'object') {
+            if (JSON.stringify(draftValue ?? null) !== JSON.stringify(savedValue ?? null)) changed.add(key);
+            return;
+        }
+        if (String(draftValue ?? '').trim() !== String(savedValue ?? '').trim()) changed.add(key);
+    });
+
+    return changed;
+};
+
 // ─── CustomerDetailModal ──────────────────────────────────────────────────────
 export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab }) {
     const { showAlert, showConfirm } = useGlobalPopup();
@@ -96,6 +122,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [editingSection, setEditingSection] = useState(null);
     const [isFormDirty, setIsFormDirty] = useState(false);
     const [editData, setEditData] = useState({ ...customer });
+    const savedDataRef = useRef({ ...customer });
     const [subAgents, setSubAgents] = useState([]);
 
     useEffect(() => {
@@ -122,13 +149,17 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
 
     const handleEditDataChange = (updater) => {
-        setIsFormDirty(true);
-        setEditData(updater);
+        setEditData(previous => {
+            const next = typeof updater === 'function' ? updater(previous) : updater;
+            setIsFormDirty(getChangedFields(next, savedDataRef.current).size > 0);
+            return next;
+        });
     };
 
     // Keep editData in sync with realtime prop updates if the user isn't currently editing
     useEffect(() => {
         if (!isFormDirty) {
+            savedDataRef.current = { ...customer };
             setEditData({ ...customer });
         }
     }, [customer, isFormDirty]);
@@ -180,14 +211,20 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const isEditable = !isFrozen && canUserEdit && !isStageRestrictedForUser;
     // Sales and Office can always add remarks and edit fields
     const canAddRemark = isEditable || !isFrozen;
-    const isInstallationDetailsEditable = isEditable;
+    // CPO Manager can update only the SFDC Photo checklist in Installation
+    // Status. All other installation status/details remain view-only.
+    const isInstallationDetailsEditable = isEditable && !isChannelPartnerManager;
 
     // Fetch full customer record in background if opened from lightweight views (Subsidy, Loan, Installation)
     useEffect(() => {
         if (!customer?.id || String(customer.id).startsWith('demo-')) return;
         supabase.from('admin').select('*').eq('id', customer.id).single().then(({ data }) => {
             if (data) {
-                setEditData(prev => ({ ...data, ...prev }));
+                savedDataRef.current = { ...data, ...savedDataRef.current };
+                setEditData(prev => {
+                    const next = { ...data, ...prev };
+                    return next;
+                });
             }
         });
     }, [customer?.id]);
@@ -508,7 +545,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
         });
 
-        await onUpdate(customer.id, patch);
+        await handleSectionUpdate(customer.id, patch);
         if (changes.length > 0) {
             await logActivity(user.id, 'update', `${customer.customer_name}: Registration checklist update - ${changes.join(' | ')}`, '', customer.id);
         }
@@ -536,7 +573,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
         });
 
-        await onUpdate(customer.id, patch);
+        await handleSectionUpdate(customer.id, patch);
         if (changes.length > 0) {
             await logActivity(user.id, 'update', `${customer.customer_name}: Operational checklist update - ${changes.join(' | ')}`, '', customer.id);
         }
@@ -618,7 +655,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 internal_remarks: updatedInternalRemarks
             }));
 
-            await onUpdate(customer.id, {
+            await handleSectionUpdate(customer.id, {
                 stages_remarks: updatedRemarks,
                 internal_remarks: updatedInternalRemarks
             });
@@ -635,7 +672,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleChange = (field, val) => {
-        setIsFormDirty(true);
         if (field === 'driver_phone_number' || field === 'phone_number') {
             const clean = String(val).replace(/[^0-9]/g, '');
             val = clean.length === 11 && clean.startsWith('0') ? clean.slice(1) : clean.slice(0, 10);
@@ -650,8 +686,24 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     next.system_capacity_kwp = toIndianCommas(totalVal);
                 }
             }
+            setIsFormDirty(getChangedFields(next, savedDataRef.current).size > 0);
             return next;
         });
+    };
+
+    // Child tabs have their own Save buttons. Once one succeeds, merge only
+    // that saved patch into the baseline and keep the popup active solely for
+    // any other fields that are still genuinely unsaved.
+    const handleSectionUpdate = async (id, patch) => {
+        const result = await onUpdate(id, patch);
+        if (result === false) return false;
+        savedDataRef.current = { ...savedDataRef.current, ...patch };
+        setEditData(previous => {
+            const next = { ...previous, ...patch };
+            setIsFormDirty(getChangedFields(next, savedDataRef.current).size > 0);
+            return next;
+        });
+        return result;
     };
 
     const hasNextStage = (() => {
@@ -1154,6 +1206,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             const [updateResult] = await Promise.all(promises);
             if (updateResult === false) throw new Error('The database did not accept the changes.');
 
+            savedDataRef.current = { ...savedDataRef.current, ...updates };
             setEditingSection(null);
             setIsFormDirty(false);
             setSaved(true);
@@ -1174,7 +1227,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const handleAddNote = async () => {
         if (!followUpText.trim()) return;
         const updatedNotes = [...(editData.follow_ups || []), { text: followUpText, author: user.name, date: new Date().toISOString() }];
-        await onUpdate(customer.id, { follow_ups: updatedNotes });
+        await handleSectionUpdate(customer.id, { follow_ups: updatedNotes });
         await logActivity(user.id, 'note', `Note Added: ${followUpText}`, '', customer.id);
         setEditData(prev => ({ ...prev, follow_ups: updatedNotes }));
         setFollowUpText('');
@@ -1244,7 +1297,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     );
 
     const tabProps = {
-        activeTab, customer, editData, setEditData: handleEditDataChange, handleChange, 
+        activeTab, customer: savedDataRef.current, editData, setEditData: handleEditDataChange, handleChange,
         isEditable, editingSection, setEditingSection, channel_partners, subAgents, isAdmin, 
         isOffice, meta, user, isRegChecklistDirty, handleSaveRegChecklist, 
         isOperationalChecklistDirty, handleSaveOperationalChecklist, documents, 
@@ -1261,9 +1314,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         onFileDownload: handleDownloadDoc,
         onDownload: handleDownloadDoc,
         onUpdateRemark: handleUpdateDocRemark, 
-        onUpdate, logActivity, fetchLogs, saving, setSaving, handleAdvanceStage, 
+        onUpdate: handleSectionUpdate, logActivity, fetchLogs, saving, setSaving, handleAdvanceStage,
         saveBomRef, onDirty: () => setIsFormDirty(true), onGenerateAgreement: handleGenerateAgreement,
-        isInstallationDetailsEditable, isSfdcEditable: isEditable
+        isInstallationDetailsEditable,
+        isSfdcEditable: isEditable,
+        onSfdcSaved: () => {
+            if (isChannelPartnerManager) setIsFormDirty(false);
+        }
     };
 
     return (
@@ -1308,7 +1365,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         {isAdmin && <button onClick={() => setShowDeleteConfirm(true)} className="p-2 text-white/30 hover:text-red-400"><Trash2 size={18} /></button>}
                         <button onClick={async () => {
                             if (isFormDirty) {
-                                const shouldSave = await showConfirm('You have unsaved changes. Save them before closing?', { confirmLabel: 'Save & Close', cancelLabel: 'Keep Editing', type: 'success' });
+                                const shouldSave = await showConfirm('You have unsaved changes. Save them before closing?', { title: 'Unsaved changes', confirmLabel: 'Save & Close', cancelLabel: 'Keep Editing', type: 'success' });
                                 if (!shouldSave || !(await handleSave())) return;
                             }
                             onClose();
@@ -1330,8 +1387,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     ].map(tab => (
                         <button key={tab.id} onClick={async () => {
                             if (tab.id !== activeTab && isFormDirty) {
-                                const shouldSave = await showConfirm('You have unsaved changes on this tab. Save them before continuing?', { confirmLabel: 'Save & Continue', cancelLabel: 'Keep Editing', type: 'success' });
-                                if (!shouldSave || !(await handleSave())) return;
+                            const shouldSave = await showConfirm('You have unsaved changes. Save them before continuing?', { title: 'Unsaved changes', confirmLabel: 'Save & Continue', cancelLabel: 'Keep Editing', type: 'success' });
+                            if (!shouldSave || !(await handleSave())) return;
                             }
                             setActiveTab(tab.id); setEditingSection(null);
                         }}

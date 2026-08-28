@@ -3,9 +3,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const ALLOWED_ORIGINS = ["https://watersun9.github.io", "http://localhost:5173", "http://localhost:3000"]
 
+function isAllowedOrigin(origin: string) {
+    return ALLOWED_ORIGINS.includes(origin)
+        || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)
+}
+
 function getCorsHeaders(req: Request) {
     const origin = req.headers.get("Origin") || ""
-    const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+    const allowed = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0]
     return {
         "Access-Control-Allow-Origin": allowed,
         "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -47,20 +52,42 @@ serve(async (req) => {
             )
         }
 
-        const { data: callerProfile } = await adminClient
+        // Capture the error: discarding it made a failed lookup look identical to
+        // "no profile row", so any read failure surfaced as a bare 403.
+        const { data: callerProfile, error: callerProfileErr } = await adminClient
             .from("profiles")
             .select("user_type, role, channel_partner")
             .eq("id", caller.id)
             .maybeSingle()
 
+        if (callerProfileErr) {
+            console.error("Caller profile lookup failed:", callerProfileErr)
+            return new Response(
+                JSON.stringify({
+                    error: "Could not read your profile: " + callerProfileErr.message
+                        + " — this is a server-side lookup failure, not a permission problem."
+                }),
+                { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            )
+        }
+
         const callerRole = (callerProfile?.role || "").toLowerCase();
         const callerType = (callerProfile?.user_type || "").toLowerCase();
-        const isCP = callerType === "channel_partner_office" || callerType === "office2" || callerRole.includes("partner");
-        const isAdmin = callerType === "admin" || callerRole === "admin" || callerRole.includes("admin");
+        // User Management is deliberately limited to the main Admin and main
+        // Channel Partner Office accounts. Managers and ordinary partners must
+        // not gain account-creation rights through broad role-name matching.
+        const isCP = callerType === "channel_partner_office" || callerRole === "channel partner office";
+        const isAdmin = callerType === "admin" || callerRole === "admin";
 
         if (!isAdmin && !isCP) {
+            // Say what was actually seen, so a missing profile is distinguishable
+            // from a wrong role without digging through logs.
+            const detail = !callerProfile
+                ? `no profile row exists for your account (auth id ${caller.id}, ${caller.email})`
+                : `your account is user_type='${callerProfile.user_type}', role='${callerProfile.role}' — only Admin or the main Channel Partner Office account can manage users`;
+            console.error("Access denied:", detail)
             return new Response(
-                JSON.stringify({ error: "Forbidden: Access denied" }),
+                JSON.stringify({ error: "Forbidden: Access denied — " + detail }),
                 { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             )
         }
@@ -268,6 +295,43 @@ serve(async (req) => {
                     JSON.stringify({ error: profileError.message }),
                     { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
                 )
+            }
+
+            // A CPO branch is also a shared partner choice throughout the CRM.
+            // Add the typed branch name to metadata once, so it immediately
+            // appears in Channel Partner/CPO dropdowns as well as the CPO list.
+            if (user_type === "channel_partner_office" && channel_partner) {
+                const branchName = String(channel_partner).trim()
+                const { data: existingBranch, error: branchLookupError } = await adminClient
+                    .from("metadata")
+                    .select("id")
+                    .eq("category", "channel_partner")
+                    .ilike("label", branchName)
+                    .maybeSingle()
+
+                if (branchLookupError) {
+                    await adminClient.from("profiles").delete().eq("id", authUser.user.id)
+                    await adminClient.auth.admin.deleteUser(authUser.user.id)
+                    return new Response(
+                        JSON.stringify({ error: "Could not check the CPO directory: " + branchLookupError.message }),
+                        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                    )
+                }
+
+                if (!existingBranch) {
+                    const { error: branchInsertError } = await adminClient
+                        .from("metadata")
+                        .insert({ category: "channel_partner", label: branchName })
+
+                    if (branchInsertError) {
+                        await adminClient.from("profiles").delete().eq("id", authUser.user.id)
+                        await adminClient.auth.admin.deleteUser(authUser.user.id)
+                        return new Response(
+                            JSON.stringify({ error: "Could not add the CPO name to the shared directory: " + branchInsertError.message }),
+                            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                        )
+                    }
+                }
             }
 
             // Step 3: If user is a vendor, ensure they are present in the vendors directory table

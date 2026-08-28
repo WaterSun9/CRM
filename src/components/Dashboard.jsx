@@ -149,6 +149,9 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     const [metrics, setMetrics] = useState(null);
     const [exporting, setExporting] = useState(false);
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'office2';
+    // Delivery Batches is a head-office function: Admin and Office only. Neither
+    // the CPO nor the CP Manager (office2) under it gets access.
+    const canSeeDeliveryBatches = user?.userType === 'admin' || user?.userType === 'sales';
     const partnerName = (user?.channel_partner || user?.name || ' ').trim();
 
     const handleFullExport = async () => {
@@ -741,7 +744,9 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                     style={{ minHeight: 0, maxHeight: 'calc(100vh - 150px)', WebkitOverflowScrolling: 'touch' }}
                 >
                     <NavBtn view="dashboard" icon={LayoutDashboard} label="Dashboard" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
-                    <NavBtn view="delivery_batches" icon={Truck} label="Delivery Batches" count={deliveryBatchesCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                    {canSeeDeliveryBatches && (
+                        <NavBtn view="delivery_batches" icon={Truck} label="Delivery Batches" count={deliveryBatchesCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                    )}
                     <NavBtn view="subsidy" icon={Tag} label="Subsidy Tags" count={subsidyTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     <NavBtn view="loan_tags" icon={IndianRupee} label="Loan Tags" count={loanTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     <NavBtn view="installation_tags" icon={Wrench} label="Installation Tags" count={installationTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
@@ -766,7 +771,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         </>
                     )}
 
-                    {/* Partner Office — channel_partner_office only */}
+                    {/* Partner Office — main CPO account only */}
                     {user.userType === 'channel_partner_office' && (
                         <>
                             <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-5 pb-2 tracking-widest">Partner Office</div>
@@ -921,7 +926,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 <div className="flex-1 p-4 lg:p-6">
                     <Suspense fallback={<ViewLoader />}>
                     {currentView === 'dashboard' && <DashboardView metrics={metrics} loading={loading} />}
-                    {currentView === 'delivery_batches' && (
+                    {currentView === 'delivery_batches' && canSeeDeliveryBatches && (
                         <DeliveryBatchesView 
                             currentUser={user} 
                             onRefreshCustomers={fetchMetricsAndMeta} 

@@ -372,6 +372,25 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     }, [customers]);
 
     // Handle selecting a customer card
+    // Seeds every editable field from the stored record. Used when opening a
+    // customer and when discarding unsaved changes.
+    const hydrateFieldsFrom = (cust) => {
+        if (!cust) return;
+        setInverterSerialNo(cust.inverter_serial_no || '');
+        setInvoiceNo(cust.invoice_no || '');
+        setDriverName(cust.driver_name || '');
+        setDriverPhone(cust.driver_phone_number || '');
+        setPanelSerials(parsePanelSerials(cust.panel_serial_no));
+
+        setGeoTagStatus(cust.geo_tag_status || 'Pending');
+        setGeoTagImage(!!cust.geo_tag_image);
+
+        setInstallationStatus(cust.installation_status || 'Pending');
+        setInstallationDate(cust.installation_date || '');
+        setVendorNote(cust.vendor_note || '');
+        setVendorQuote(cust.vendor_quote ?? '');
+    };
+
     const handleSelectCustomer = async (cust) => {
         setSelectedCust(cust);
         
@@ -384,23 +403,8 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             setActiveTab('INSTALLATION');
         }
 
-        // Pre-fill Material Delivery Details
-        setInverterSerialNo(cust.inverter_serial_no || '');
-        setInvoiceNo(cust.invoice_no || '');
-        setDriverName(cust.driver_name || '');
-        setDriverPhone(cust.driver_phone_number || '');
-        setPanelSerials(parsePanelSerials(cust.panel_serial_no));
-        
-        // Pre-fill geo tag status
-        setGeoTagStatus(cust.geo_tag_status || 'Pending');
-        setGeoTagImage(!!cust.geo_tag_image);
+        hydrateFieldsFrom(cust);
 
-        // Pre-fill installation status
-        setInstallationStatus(cust.installation_status || 'Pending');
-        setInstallationDate(cust.installation_date || '');
-        setVendorNote(cust.vendor_note || '');
-        setVendorQuote(cust.vendor_quote ?? '');
-        
         setView('details');
         setSaveSuccess(false);
 
@@ -776,7 +780,8 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         const hasChanges = (activeTab === 'INSTALLATION' && isInstallationDirty) || (activeTab === 'GEO' && isGeoTagDirty);
         if (!hasChanges) return true;
         const shouldSave = await showConfirm('You have unsaved changes. Save them before leaving?', {
-            confirmLabel,
+            title: 'Unsaved changes',
+            confirmLabel: 'Save & Leave',
             cancelLabel: 'Keep Editing',
             type: 'success'
         });
@@ -1042,7 +1047,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                             onClick={async () => {
                                 const hasChanges = (activeTab === 'INSTALLATION' && isInstallationDirty) || (activeTab === 'GEO' && isGeoTagDirty);
                                 if (hasChanges) {
-                                    const shouldSave = await showConfirm('You have unsaved changes. Save them before going back?', { confirmLabel: 'Save & Back', cancelLabel: 'Keep Editing', type: 'success' });
+                                    const shouldSave = await showConfirm('You have unsaved changes. Save them before going back?', { title: 'Unsaved changes', confirmLabel: 'Save & Back', cancelLabel: 'Keep Editing', type: 'success' });
                                     if (!shouldSave || !(await handleSaveChanges(null))) return;
                                 }
                                 setView('list');
@@ -1084,7 +1089,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         onClick={async () => {
                                             const hasChanges = (activeTab === 'INSTALLATION' && isInstallationDirty) || (activeTab === 'GEO' && isGeoTagDirty);
                                             if (tab.id !== activeTab && hasChanges) {
-                                                const shouldSave = await showConfirm('You have unsaved changes on this tab. Save them before continuing?', { confirmLabel: 'Save & Continue', cancelLabel: 'Keep Editing', type: 'success' });
+                                                const shouldSave = await showConfirm('You have unsaved changes. Save them before continuing?', { title: 'Unsaved changes', confirmLabel: 'Save & Continue', cancelLabel: 'Keep Editing', type: 'success' });
                                                 if (!shouldSave || !(await handleSaveChanges(null))) return;
                                             }
                                             setActiveTab(tab.id);

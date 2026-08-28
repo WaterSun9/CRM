@@ -67,8 +67,11 @@ const STAGE_FIELDS = {
         ['Warranty Card', 'warranty_card'], ['Insurance Status', 'insurance_status'],
     ],
     [STAGE_IDS.LOST_PROJECT]: [
-        ['Previous Stage', 'hold_procurement.previous_stage'], ['Hold / Lost Date', 'hold_procurement.hold_date'],
-        ['Reason', 'hold_procurement.reason'], ['Comment', 'hold_procurement.comment'], ['History', 'hold_procurement.history'],
+        ['Status', 'hold_procurement.hold_status', 'hold_procurement'],
+        ['Previous Stage', 'hold_procurement.previous_stage'],
+        ['Hold / Lost Date', 'hold_procurement.hold_date'],
+        ['Comment', 'hold_procurement.comment'],
+        ['Last Updated', 'hold_procurement.updated_at'],
     ],
 };
 
@@ -100,9 +103,24 @@ const displayValue = (value) => {
     return String(value);
 };
 
+const parseMaybeJson = (value) => {
+    if (typeof value !== 'string') return value;
+    const text = value.trim();
+    if (!text.startsWith('{') && !text.startsWith('[')) return value;
+    try {
+        const parsed = JSON.parse(text);
+        return parsed && typeof parsed === 'object' ? parsed : value;
+    } catch (e) {
+        return value;
+    }
+};
+
 export default function AgentStageDetails({ stage, customer, bom, bomItems = [], documents = [], onPreview, onDownload }) {
     const fields = STAGE_FIELDS[stage] || [];
     if (!fields.length) return null;
+
+    // hold_procurement is a text column the app writes objects into.
+    customer = { ...customer, hold_procurement: parseMaybeJson(customer?.hold_procurement) };
 
     const rows = fields.map(([label, ...paths]) => {
         const pathMatch = paths.find(path => readPath(customer, path) !== null && readPath(customer, path) !== undefined && readPath(customer, path) !== '');

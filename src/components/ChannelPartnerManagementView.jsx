@@ -862,7 +862,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                 <div className="text-center py-10 bg-stone-50 rounded-2xl border border-stone-100">
                                                     <Building2 className="w-8 h-8 text-stone-300 mx-auto mb-2" />
                                                     <p className="text-xs text-stone-600 font-bold">No Channel Partner Offices registered yet.</p>
-                                                    <p className="text-[10px] text-stone-400 mt-1">To add a new CPO branch, go to User Management and create a user with role "Channel Partner Office".</p>
+                                                    <p className="text-[10px] text-stone-400 mt-1">Create a Channel Partner Office account in User Management. It will appear here automatically.</p>
                                                 </div>
                                             ) : (
                                                 cpos.map(cpo => {

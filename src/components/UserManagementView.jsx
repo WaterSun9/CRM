@@ -214,7 +214,7 @@ function ResetPasswordModal({ user, onClose, onSuccess, currentUser }) {
 
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
 function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }) {
-    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office' || currentUser?.user_type === 'office2' || currentUser?.userType === 'office2';
+    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office';
     const partnerName = (currentUser?.channel_partner || currentUser?.name || '').trim();
     const initialFormState = isCP 
         ? { name: '', email: '', password: '', role: 'Channel Partner Manager', user_type: 'office2', channel_partner: partnerName }
@@ -258,6 +258,19 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
         setError('');
 
         try {
+            // The development role switcher only changes the screen being
+            // previewed; it does not replace Supabase's signed-in identity.
+            // Check that identity before calling the protected Edge Function so
+            // the user gets a useful answer instead of a vague 403 response.
+            const { data: authData, error: authError } = await supabase.auth.getUser();
+            const signedInUser = authData?.user;
+            if (authError || !signedInUser) {
+                throw new Error('User creation needs a real signed-in Admin or CPO account. The development backdoor can preview screens, but it cannot create accounts. Please sign in normally and try again.');
+            }
+            if (currentUser?.id && signedInUser.id !== currentUser.id) {
+                throw new Error(`You are previewing ${currentUser.email || currentUser.name || 'another account'}, but Supabase is signed in as ${signedInUser.email || 'a different account'}. Sign in normally as the Admin or CPO that should create this user.`);
+            }
+
             const finalForm = { ...form, name: uppercaseName, email: cleanEmail, channel_partner: resolvedPartner || null };
 
             // 1. Try Supabase Edge Function
@@ -412,8 +425,8 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                     }}
                                     className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white cursor-pointer font-semibold"
                                 >
-                                    <option value="office2">Manager (office2 — Full Branch Pipeline)</option>
-                                    <option value="agent2">Field Agent (agent2 — Field Sub-Agent)</option>
+                                    <option value="office2">Manager</option>
+                                    <option value="agent2">Channel Partner</option>
                                 </select>
                                 <p className="text-[10px] text-stone-400 mt-1">
                                     Auto-assigned to branch: <span className="font-semibold text-stone-600">{partnerName}</span>
@@ -447,7 +460,25 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                 <label className="block text-xs font-medium text-stone-600 mb-1">
                                     Assigned Channel Partner / Branch Name *
                                 </label>
-                                {isCP ? (
+                                {!isCP && ['channel_partner_office', 'channel_partner_office_manager'].includes(form.user_type) ? (
+                                    /* A CPO *defines* a branch, so this is free text — the name typed
+                                       here is stored on the new CPO's profile and becomes a selectable
+                                       branch for every manager and agent created afterwards. */
+                                    <>
+                                        <input
+                                            type="text"
+                                            value={form.channel_partner || ''}
+                                            onChange={e => set('channel_partner', e.target.value)}
+                                            placeholder="e.g. PRAVINBHAI"
+                                            autoComplete="off"
+                                            className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 font-medium"
+                                        />
+                                        <p className="text-[10px] text-stone-400 mt-1">
+                                            New branch name. Type it exactly as it appears on existing leads —
+                                            it is what managers and field agents will be attached to.
+                                        </p>
+                                    </>
+                                ) : isCP ? (
                                     /* A CPO can only create users inside their own branch, so the
                                        field is filled from their account and shown, not editable. */
                                     <>
@@ -462,6 +493,19 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                             Set automatically to your branch.
                                         </p>
                                     </>
+                                ) : form.user_type === 'channel_partner_office' ? (
+                                    <>
+                                        <input
+                                            type="text"
+                                            value={form.channel_partner || ''}
+                                            onChange={e => set('channel_partner', e.target.value.toUpperCase())}
+                                            className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white font-semibold"
+                                            placeholder="Enter the new CPO / branch name"
+                                        />
+                                        <p className="text-[10px] text-stone-400 mt-1">
+                                            This new CPO name will automatically appear in Operations and future CPO selectors.
+                                        </p>
+                                    </>
                                 ) : (
                                     <>
                                         <select
@@ -470,15 +514,12 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                             className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white cursor-pointer font-medium"
                                         >
                                             <option value="">Select a branch / partner...</option>
-                                            {form.channel_partner && !branchOptions.includes(form.channel_partner) && (
-                                                <option value={form.channel_partner}>{form.channel_partner}</option>
-                                            )}
                                             {branchOptions.map(name => <option key={name} value={name}>{name}</option>)}
                                         </select>
                                         <p className="text-[10px] text-stone-400 mt-1">
                                             {branchOptions.length === 0
                                                 ? 'No branches registered yet — create a Channel Partner Office user first.'
-                                                : 'This user will view and manage records tied to this partner name.'}
+                                                : 'Pick the branch this user works under. To create a new branch, add a Channel Partner Office user instead.'}
                                         </p>
                                     </>
                                 )}
@@ -502,8 +543,8 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
 export default function UserManagementView({ currentUser }) {
     const [profiles, setProfiles] = useState([]);
 
-    // Branch / Partner choices: every registered CPO branch, plus any partner
-    // name already assigned to someone, so existing data stays selectable.
+    // Only real CPO profiles belong in this selector. Customer records and old
+    // free-text assignments can contain thousands of names that are not CPOs.
     const branchOptions = useMemo(() => {
         const names = new Set();
         (profiles || []).forEach(p => {
@@ -511,8 +552,6 @@ export default function UserManagementView({ currentUser }) {
                 const branch = String(p.channel_partner || p.name || '').trim();
                 if (branch) names.add(branch);
             }
-            const assigned = String(p.channel_partner || '').trim();
-            if (assigned) names.add(assigned);
         });
         return [...names].sort((a, b) => a.localeCompare(b));
     }, [profiles]);
@@ -532,7 +571,8 @@ export default function UserManagementView({ currentUser }) {
         setTimeout(() => setToast(null), 4000);
     };
 
-    const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office';
+    const currentUserType = currentUser?.user_type || currentUser?.userType;
+    const isCP = currentUserType === 'channel_partner_office';
     const partnerName = (currentUser?.channel_partner || currentUser?.name || '').trim();
 
     // ─── Robust Fetch Profiles ──────────────────────────────────────────────────
@@ -938,8 +978,8 @@ export default function UserManagementView({ currentUser }) {
                                                     onChange={e => handleRoleChange(profile, e.target.value)}
                                                     className="px-2.5 py-1 bg-white border border-stone-300 rounded-xl text-xs font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer shadow-xs"
                                                 >
-                                                    <option value="office2">CP Manager (office2)</option>
-                                                    <option value="agent2">Field Agent (agent2)</option>
+                                                    <option value="office2">Manager</option>
+                                                    <option value="agent2">Channel Partner</option>
                                                 </select>
                                                 {isUpdating && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />}
                                             </div>
@@ -973,9 +1013,6 @@ export default function UserManagementView({ currentUser }) {
                                                     autoFocus
                                                 >
                                                     <option value="">None</option>
-                                                    {tempPartner && !branchOptions.includes(tempPartner) && (
-                                                        <option value={tempPartner}>{tempPartner}</option>
-                                                    )}
                                                     {branchOptions.map(name => <option key={name} value={name}>{name}</option>)}
                                                 </select>
                                                 <button

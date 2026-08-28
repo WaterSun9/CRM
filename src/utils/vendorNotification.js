@@ -58,6 +58,10 @@ export async function sendVendorLeadNotification({
             } catch {
                 // Keep the original Supabase error message.
             }
+            if (/failed to send a request|failed to fetch|functionsfetcherror/i.test(detail)) {
+                const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'this website';
+                detail = `The vendor email Edge Function could not be reached from ${currentOrigin}. Deploy the latest send-lead-to-vendor function so its CORS settings allow this website.`;
+            }
             throw new Error(detail);
         }
         if (!data?.success) throw new Error(data?.error || 'The email service did not confirm delivery.');

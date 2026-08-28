@@ -24,7 +24,8 @@ export default function InstallationStatusTab({
     onFileUpload,
     onFileDelete,
     onFilePreview,
-    onUpdateRemark
+    onUpdateRemark,
+    onSfdcSaved
 }) {
     const canDeleteDocs = isAdmin || isOffice;
     const [vendors, setVendors] = useState([]);
@@ -133,6 +134,7 @@ export default function InstallationStatusTab({
                                 setSaving(true);
                                 await onUpdate(customer.id, { sfdc_photo: editData.sfdc_photo });
                                 await logActivity(user.id, 'update', `${customer.customer_name}: Updated SFDC Photo status to ${editData.sfdc_photo ? 'Checked' : 'Unchecked'}`, '', customer.id);
+                                onSfdcSaved?.();
                                 setSaving(false);
                                 fetchLogs();
                             }}

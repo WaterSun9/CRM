@@ -112,26 +112,20 @@ export default function App() {
                             await supabase.auth.signOut();
                             setUser(null);
                         } else {
-                            // Fallback if profile row is pending creation
-                            setUser({
-                                id: session.user.id,
-                                email: session.user.email,
-                                name: session.user.email?.split('@')[0] || 'User',
-                                role: 'User',
-                                userType: 'sales',
-                                channel_partner: '',
-                            });
+                            // No profile row: the account is not provisioned. This used to
+                            // fall back to userType 'sales', which routes to the Office
+                            // Dashboard — a missing profile GRANTED access instead of
+                            // denying it. Fail closed, same as the inactive branch above.
+                            console.error('No profile row for authenticated user; signing out.', session.user.id);
+                            await supabase.auth.signOut();
+                            setUser(null);
                         }
                     } catch (fetchErr) {
-                        console.warn('Failed to fetch profile row on startup, using session user:', fetchErr);
-                        setUser({
-                            id: session.user.id,
-                            email: session.user.email,
-                            name: session.user.email?.split('@')[0] || 'User',
-                            role: 'User',
-                            userType: 'sales',
-                            channel_partner: '',
-                        });
+                        // The lookup failed, so the role is unknown — never assume Office.
+                        // The session is left intact (this is usually a transient network
+                        // error), so a retry can succeed without a fresh sign-in.
+                        console.error('Failed to fetch profile row on startup; refusing to assume a role.', fetchErr);
+                        setUser(null);
                     }
                 } else {
                     setUser(null);

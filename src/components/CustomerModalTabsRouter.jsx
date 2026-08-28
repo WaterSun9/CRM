@@ -29,7 +29,9 @@ export default function CustomerModalTabsRouter(props) {
             {activeTab === STAGE_IDS.MATERIAL_INTEGRATION && <MaterialIntegrationTab {...props} />}
             {(activeTab === STAGE_IDS.LOST_PROJECT || activeTab === 'HOLD PROCUREMENT') && <HoldProcurementTab {...props} />}
             {activeTab === STAGE_IDS.MATERIAL_DELIVERY && <MaterialDeliveryTab {...props} />}
-            {activeTab === STAGE_IDS.INSTALLATION_STATUS && <InstallationStatusTab {...props} />}
+            {activeTab === STAGE_IDS.INSTALLATION_STATUS && (
+                <InstallationStatusTab {...props} isEditable={props.isInstallationDetailsEditable} />
+            )}
             {activeTab === STAGE_IDS.GEO_TAG_PHOTO && <GeoTagPhotoTab {...props} />}
             {activeTab === STAGE_IDS.DISCOM_SUBMISSION && <DiscomSubmissionTab {...props} />}
             {activeTab === STAGE_IDS.METER_INSTALLATION && <MeterInstallationTab {...props} />}

@@ -827,13 +827,18 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         const inspectionDirty = displayedStage === STAGE_IDS.DISCOM_INSPECTION && isDiscomInspectionDirty();
         const materialOrderDirty = displayedStage === STAGE_IDS.MATERIAL_ORDER && isMaterialOrderDirty();
         if (!meterDirty && !inspectionDirty && !materialOrderDirty) return true;
-        const shouldSave = await showConfirm('You have unsaved changes. Save them before leaving?', {
+        const shouldSave = await showConfirm('You have unsaved changes on this stage. Save them before leaving?', {
+            title: 'Unsaved changes',
             confirmLabel,
             cancelLabel: 'Keep Editing',
             type: 'success'
         });
         if (!shouldSave) return false;
-        return meterDirty ? handleSaveMeterInstallation(false) : handleSaveDiscomInspection(false);
+        // Previously this fell through to the Discom Inspection save whenever
+        // Material Order was the dirty stage, saving the wrong thing.
+        if (meterDirty) return handleSaveMeterInstallation(false);
+        if (inspectionDirty) return handleSaveDiscomInspection(false);
+        return handleSaveMaterialOrder(false);
     };
 
     const handleForceAdvanceStage = async () => {
@@ -1260,7 +1265,12 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                         (displayedStage === STAGE_IDS.DISCOM_INSPECTION && isDiscomInspectionDirty()) ||
                                                         (displayedStage === STAGE_IDS.MATERIAL_ORDER && isMaterialOrderDirty());
                                                     if (leavingDirtySection) {
-                                                        const shouldSave = await showConfirm('You have unsaved changes on this stage. Save them before continuing?', { confirmLabel: 'Save & Continue', cancelLabel: 'Keep Editing', type: 'success' });
+                                                        const shouldSave = await showConfirm('You have unsaved changes on this stage. Save them before continuing?', {
+                                                            title: 'Unsaved changes',
+                                                            confirmLabel: 'Save & Continue',
+                                                            cancelLabel: 'Keep Editing',
+                                                            type: 'success'
+                                                        });
                                                         if (!shouldSave) return;
                                                         let didSave = false;
                                                         if (displayedStage === STAGE_IDS.METER_INSTALLATION) didSave = await handleSaveMeterInstallation(false);
@@ -2620,4 +2630,3 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         </>
     );
 }
-

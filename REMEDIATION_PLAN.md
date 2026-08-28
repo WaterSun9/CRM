@@ -11,7 +11,47 @@ progress · 🔴 needs your action (not something code can fix) · ⏸️ delibe
 
 ---
 
-## 🔴 Login with no profile row grants Office access (fail-open) — DEFERRED
+## ⏭️ One name, entered once, identical everywhere (agreed approach — not yet built)
+Every portal decides what a user can see by **matching name strings**, not ids:
+`admin.channel_partner` vs `profiles.channel_partner`, and
+`admin.sub_channel_partner` vs `profiles.name`. Matching is case-insensitive
+but **whitespace-sensitive**, so `RAJU BHAI` ≠ `RAJUBHAI`. A single stray
+space or a differently-cased entry means that person logs in to an empty
+portal — no error, just nothing.
+
+**Root cause: two doors with two different rules.**
+- *Add CPO* normalizes: `branch.trim().toUpperCase()`
+  (`ChannelPartnerManagementView.jsx:150`)
+- *User Management* uppercases the person's **name** but stores the **branch
+  exactly as typed** (`UserManagementView.jsx:229`)
+
+That is how `Radhe Solar` came to exist beside leads filed under `RADHE`.
+
+**Agreed design — type a branch name in exactly one place:**
+1. **Single point of entry.** A branch name is typed only when a *CPO* is
+   created. Done: Managers/Agent 2/Agents now pick from a dropdown built from
+   registered CPO branches, and the branch is required on create.
+2. **Normalize on write, everywhere.** Apply the same `.trim().toUpperCase()`
+   to branch and person names at *every* write path, so the two doors agree:
+   - `UserManagementView` → `channel_partner` (currently unnormalized)
+   - `ChannelPartnerManagementView` → already correct, keep as reference
+   - `AddLeadModal` / `AgentPortal.handleSubmitLead` → inherit from the profile,
+     never free text
+   - The inline Branch/Partner editor in the user table
+3. **Never type a name that already exists.** The remaining free-text field is
+   `ChannelPartnerAutocomplete` on admin lead creation — it accepts arbitrary
+   text and can mint a new branch by typo.
+
+**Also keep person names unique.** `MANOJ` currently exists twice (once
+`agent2`, once `channel_partner_office`); duplicate names make name-based
+matching ambiguous in both directions.
+
+**Not doing:** database-side normalization (citext / trigger / generated
+column). Data is being replaced and will be aligned by hand.
+
+---
+
+## ✅ Login with no profile row grants Office access (fail-open) — FIXED
 A session whose `auth.users` row exists but has **no matching
 `public.profiles` row** is not rejected. `src/App.jsx` falls back to
 `userType: 'sales'`, which routes to `<Dashboard>` — the Office view with
@@ -27,14 +67,17 @@ FK cascades `profiles → auth.users`, not the reverse. The `add_user` edge
 function itself is clean — it already rolls back the auth user when the
 profile insert fails.
 
-**Fix (one line, deliberately not applied yet):** in `src/App.jsx`, the
-no-profile branch should `signOut()` and clear the user, exactly like the
-`status === 'inactive'` branch directly above it — never default to
-`sales`.
+**Fixed in `src/App.jsx`.** There were *two* fail-open paths, not one:
+- **No profile row** → now logs the auth id, calls `signOut()` and clears the
+  user, exactly like the `status === 'inactive'` branch above it.
+- **Profile lookup threw** → previously also granted `sales`. Now clears the
+  user without signing out, so the role is never assumed while a transient
+  network error is left recoverable on retry.
 
-**Why deferred:** applying it immediately locks out every existing orphan.
-Clear or re-create those accounts first (Supabase → Authentication →
-Users), then apply. Find them with:
+Neither path can reach the Office Dashboard any more.
+
+**Watch for:** any orphaned auth user is now locked out at login (intended).
+If someone reports being unable to log in, check they have a profile row:
 ```sql
 select u.id, u.email, u.created_at
 from auth.users u
