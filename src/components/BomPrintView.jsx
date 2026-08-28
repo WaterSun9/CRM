@@ -177,19 +177,23 @@ export default function BomPrintView({ customer, bom, bomItems, activeType }) {
                         </thead>
                         <tbody>
                             {(bomItems && bomItems.length > 0) ? (
-                                bomItems.map((item, idx) => (
+                                bomItems.map((item, idx) => {
+                                    const required = String(item.quantity_required ?? item.quantity ?? '').trim();
+                                    const supplied = item.quantity_supplied ?? 0;
+                                    return (
                                     <tr key={idx} className="border-b border-stone-200">
                                         <td className="p-2 border-r border-stone-300 text-center font-bold text-stone-500">{idx + 1}</td>
-                                        <td className="p-2 border-r border-stone-300 font-mono text-stone-600">{item.item_no || '–'}</td>
-                                        <td className="p-2 border-r border-stone-300 font-semibold text-stone-900">{item.description || '–'}</td>
-                                        <td className="p-2 border-r border-stone-300 text-center font-bold text-stone-700">{item.quantity_required ?? '–'}</td>
-                                        <td className="p-2 border-r border-stone-300 text-center font-bold text-stone-700">{item.quantity_supplied ?? '0'}</td>
+                                        <td className="p-2 border-r border-stone-300 font-mono text-stone-600">{item.item_no || item.sr_no || '–'}</td>
+                                        <td className="p-2 border-r border-stone-300 font-semibold text-stone-900">{item.description || item.product_name || '–'}</td>
+                                        <td className="p-2 border-r border-stone-300 text-center font-bold text-stone-700">{required === '' ? '–' : required}</td>
+                                        <td className="p-2 border-r border-stone-300 text-center font-bold text-stone-700">{supplied}</td>
                                         <td className="p-2 border-r border-stone-300 text-center font-bold text-stone-900 bg-stone-50">
-                                            {Number(item.quantity_required || 0) - Number(item.quantity_supplied || 0)}
+                                            {Number(required || 0) - Number(supplied || 0)}
                                         </td>
-                                        <td className="p-2 text-stone-600">{item.remarks || ''}</td>
+                                        <td className="p-2 text-stone-600">{item.remarks || item.note || ''}</td>
                                     </tr>
-                                ))
+                                    );
+                                })
                             ) : (
                                 <tr>
                                     <td colSpan={7} className="p-6 text-center text-stone-400 font-semibold italic border-t border-stone-300">

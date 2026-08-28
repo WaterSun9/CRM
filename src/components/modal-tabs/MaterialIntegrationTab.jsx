@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ClipboardList, Save, Printer, ShoppingBag, User, Clock, AlertCircle, X, Layers, Zap, Copy, Check, ClipboardPaste, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
-import BomPrintView from '../BomPrintView';
+import BomPrintModal from '../BomPrintModal';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, COMMON_BOM_ITEMS } from '../../constants';
+import { loadBomForCustomer, getBomTemplateForType } from '../../utils/bom';
 import { toIndianCommas } from '../../utils';
 
 const parsePanelSerials = (raw) => {
@@ -139,7 +140,6 @@ export default function MaterialIntegrationTab({
     const isSerialsDirty = originalSerialized !== currentSerialized;
 
     const [showPrintModal, setShowPrintModal] = useState(false);
-    const printableBomRef = useRef(null);
 
     // Integration By dropdown options
     const integrationByOptions = (meta['integration_by'] && meta['integration_by'].length > 0)
@@ -150,163 +150,18 @@ export default function MaterialIntegrationTab({
     const roofShedVal = (editData?.roof_shed || customer?.roof_shed || '').toUpperCase();
     const activeType = roofShedVal.includes('SHED') ? 'SHED' : 'ROOF';
 
-    // Helper to get active template
-    const getTemplateForType = (type) => {
-        if (type === 'SHED') return SHED_BOM_TEMPLATE;
-        return ROOF_BOM_TEMPLATE;
-    };
+    const getTemplateForType = getBomTemplateForType;
 
     const loadBOM = async () => {
         if (!customer?.id) return;
-
         try {
-            let bomData = null;
-            let itemData = null;
-
-            // 1. Check if admin record already contains bom_data JSON
-            const rawBomData = editData?.bom_data || customer?.bom_data;
-            if (rawBomData) {
-                try {
-                    const parsed = typeof rawBomData === 'string' ? JSON.parse(rawBomData) : rawBomData;
-                    if (parsed) {
-                        bomData = parsed.bom || parsed;
-                        itemData = parsed.items || (Array.isArray(parsed) ? parsed : null);
-                    }
-                } catch (e) {
-                    console.warn('Error parsing customer.bom_data:', e);
-                }
-            }
-
-            // 2. Try fetching from relational bom and bom_items tables
-            if (!bomData) {
-                try {
-                    const { data, error: bomError } = await supabase
-                        .from('bom')
-                        .select('*')
-                        .eq('admin_id', customer.id)
-                        .maybeSingle();
-
-                    if (!bomError && data) {
-                        bomData = data;
-                        const { data: items } = await supabase
-                            .from('bom_items')
-                            .select('*')
-                            .eq('bom_id', bomData.id)
-                            .order('created_at', { ascending: true });
-                        itemData = items;
-                    }
-                } catch (netErr) {
-                    console.warn('Network loadBOM error, falling back to local:', netErr);
-                }
-            }
-
-            // 3. Fallback to local cached BOM if DB returned nothing
-            if (!bomData) {
-                try {
-                    const localRaw = localStorage.getItem(`watersun_bom_${customer.id}`);
-                    if (localRaw) {
-                        const parsed = JSON.parse(localRaw);
-                        bomData = parsed.bom || parsed;
-                        itemData = parsed.items;
-                    }
-                } catch (e) { /* not valid JSON, fall through to default */ }
-            }
-
-            if (!bomData && (!itemData || itemData.length === 0)) {
-                setBom(null);
-                setPaperPreparedBy('');
-                setPaperPreparedDate('');
-                setMaterialLoadedBy('');
-                setMaterialLoadedDate('');
-
-                const template = getTemplateForType(activeType);
-                setBomItems(template.map((item, idx) => ({
-                    ...item,
-                    sr_no: item.sr_no || idx + 1,
-                    integration_by: '',
-                    note: ''
-                })));
-                return;
-            }
-
+            const { bom: bomData, items } = await loadBomForCustomer({ ...customer, ...editData }, activeType);
             setPaperPreparedBy(bomData?.paper_prepared_by || '');
             setPaperPreparedDate(bomData?.paper_prepared_date || '');
             setMaterialLoadedBy(bomData?.material_loaded_by || '');
             setMaterialLoadedDate(bomData?.material_loaded_date || '');
-
-            const template = getTemplateForType(activeType);
-            const savedItems = itemData || [];
-
-            const getUomForProduct = (prodName, templateList) => {
-                if (!prodName) return 'No.';
-                const found = templateList.find(t => t.product_name?.toLowerCase() === prodName?.toLowerCase());
-                if (found?.uom) return found.uom;
-                const lower = prodName.toLowerCase();
-                if (lower.includes('cable') || lower.includes('wire') || lower.includes('pipe') || lower.includes('strip')) return 'Mtr';
-                if (lower.includes('structure') || lower.includes('clamp') || lower.includes('earthing') || lower.includes('kit') || lower.includes('fastener')) return 'Set';
-                if (lower.includes('bag') || lower.includes('cement')) return 'Bag';
-                if (lower.includes('box') || lower.includes('dcdb') || lower.includes('acdb')) return 'Box';
-                return 'No.';
-            };
-
-            let finalItems = [];
-            if (savedItems && savedItems.length > 0) {
-                // Normalize product name to index standard template items
-                const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                const templateKeys = new Set(template.map(t => norm(t.product_name)));
-                const savedMap = new Map();
-                const extraCustomItems = [];
-
-                savedItems.forEach(item => {
-                    const k = norm(item.product_name);
-                    if (templateKeys.has(k) && !savedMap.has(k)) {
-                        savedMap.set(k, item);
-                    } else {
-                        extraCustomItems.push(item);
-                    }
-                });
-
-                // 1. Populate all standard template items in canonical template order (1..45 or 1..35)
-                const mergedStandardItems = template.map((tItem, idx) => {
-                    const k = norm(tItem.product_name);
-                    const saved = savedMap.get(k);
-                    return {
-                        ...tItem,
-                        id: saved?.id || null,
-                        sr_no: idx + 1,
-                        quantity: saved?.quantity !== undefined && saved?.quantity !== null && String(saved.quantity).trim() !== ''
-                            ? String(saved.quantity)
-                            : (tItem.quantity || ''),
-                        uom: tItem.uom || getUomForProduct(tItem.product_name, template),
-                        integration_by: saved?.integration_by || '',
-                        note: saved?.note || ''
-                    };
-                });
-
-                // 2. Append any extra custom items added by user at the end
-                const mergedCustomItems = extraCustomItems.map((item, cIdx) => ({
-                    id: item.id || null,
-                    sr_no: template.length + cIdx + 1,
-                    product_name: item.product_name || '',
-                    quantity: item.quantity !== undefined && item.quantity !== null ? String(item.quantity) : '',
-                    uom: item.uom || getUomForProduct(item.product_name, template),
-                    integration_by: item.integration_by || '',
-                    note: item.note || ''
-                }));
-
-                finalItems = [...mergedStandardItems, ...mergedCustomItems];
-            } else {
-                finalItems = template.map((item, idx) => ({
-                    ...item,
-                    sr_no: idx + 1,
-                    integration_by: '',
-                    note: ''
-                }));
-            }
-
             setBom(bomData);
-            setBomItems(finalItems);
-
+            setBomItems(items);
         } catch (err) {
             console.error('loadBOM exception:', err);
         }
@@ -500,44 +355,6 @@ export default function MaterialIntegrationTab({
         };
     });
 
-    const handlePrint = () => {
-        const documentBody = printableBomRef.current;
-        if (!documentBody) return;
-
-        const cleanName = String(customer?.customer_name || editData?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanRef = String(customer?.folder_no || customer?.consumer_no || customer?.crn || editData?.folder_no || editData?.consumer_no || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const docTitle = `BOM_Material_Integration_${cleanName}_${cleanRef}`;
-        const prevDocTitle = document.title;
-
-        // Remove any old print portal
-        const existing = document.getElementById('native-print-portal');
-        if (existing) existing.remove();
-
-        // Create top-level print portal directly on document.body
-        const printPortal = document.createElement('div');
-        printPortal.id = 'native-print-portal';
-        printPortal.innerHTML = documentBody.innerHTML;
-        document.body.appendChild(printPortal);
-
-        document.body.classList.add('is-printing-document');
-        document.title = docTitle;
-
-        const cleanup = () => {
-            document.body.classList.remove('is-printing-document');
-            document.title = prevDocTitle;
-            if (document.body.contains(printPortal)) {
-                document.body.removeChild(printPortal);
-            }
-            window.removeEventListener('afterprint', cleanup);
-        };
-
-        window.addEventListener('afterprint', cleanup);
-
-        setTimeout(() => {
-            window.print();
-            setTimeout(cleanup, 2000);
-        }, 100);
-    };
 
     const isEditingMilestones = editingSection === 'procurement_milestones';
     const isEditingBom = editingSection === 'bom_items';
@@ -1141,36 +958,13 @@ export default function MaterialIntegrationTab({
 
             {/* Dedicated Print & PDF Modal */}
             {showPrintModal && (
-                <div className="fixed inset-0 z-[999] bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden">
-                        {/* Header bar */}
-                        <div className="px-6 py-4 bg-stone-900 text-white flex items-center justify-between no-print">
-                            <div className="flex items-center gap-2">
-                                <Printer size={18} className="text-amber-400" />
-                                <h3 className="text-sm font-black uppercase tracking-wider">Print Preview — Material Integration & BOM</h3>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <button
-                                    type="button"
-                                    onClick={handlePrint}
-                                    className="bg-amber-500 hover:bg-amber-400 text-stone-950 px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md"
-                                >
-                                    <Printer size={14} /> Print Document
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPrintModal(false)}
-                                    className="text-stone-400 hover:text-white p-1 rounded-lg transition"
-                                >
-                                    ✕
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Printable Document Body */}
-                        <div ref={printableBomRef} className="flex-1 overflow-y-auto p-8 bg-white text-stone-900 print-document" id="printable-bom"><BomPrintView customer={{ ...customer, ...editData }} bom={bom} bomItems={bomItems} activeType={activeType} /></div>
-                    </div>
-                </div>
+                <BomPrintModal
+                    customer={{ ...customer, ...editData }}
+                    bom={bom}
+                    bomItems={bomItems}
+                    activeType={activeType}
+                    onClose={() => setShowPrintModal(false)}
+                />
             )}
         </div>
     );

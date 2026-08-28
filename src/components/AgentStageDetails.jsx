@@ -17,7 +17,6 @@ const STAGE_FIELDS = {
     ],
     [STAGE_IDS.LOAN]: [
         ['Jansamarth Application No.', 'jansamarth_application_no'], ['Loan Status', 'loan_tag'],
-        ['Sanction Amount', 'loan_sanction_amount'], ['Disbursed Amount', 'loan_disbursed_amount'],
         ['Vendor Feasibility', 'vendor_feasibility'], ['Site Feasibility', 'site_feasibility'],
         ['Digital Certificate', 'digital_certificate'], ['Loan Timeline', 'loan_history'],
     ],
@@ -75,6 +74,19 @@ const STAGE_FIELDS = {
 
 const readPath = (record, path) => path.split('.').reduce((value, key) => value?.[key], record);
 
+// Panel serials are stored as a JSON string, a newline list or a comma list
+// depending on where they were entered. Normalize so the row reads as a list.
+const parsePanelSerials = (raw) => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map(value => String(value || '').trim()).filter(Boolean);
+    const rawText = String(raw);
+    try {
+        const parsed = JSON.parse(rawText);
+        if (Array.isArray(parsed)) return parsed.map(value => String(value || '').trim()).filter(Boolean);
+    } catch (e) { /* not JSON */ }
+    return rawText.split(/[\n,]/).map(value => value.trim()).filter(Boolean);
+};
+
 const displayValue = (value) => {
     if (value === null || value === undefined || value === '') return '–';
     if (typeof value === 'boolean') return value ? 'Yes' : 'No';
@@ -94,7 +106,8 @@ export default function AgentStageDetails({ stage, customer, bom, bomItems = [],
 
     const rows = fields.map(([label, ...paths]) => {
         const pathMatch = paths.find(path => readPath(customer, path) !== null && readPath(customer, path) !== undefined && readPath(customer, path) !== '');
-        const value = pathMatch ? readPath(customer, pathMatch) : null;
+        let value = pathMatch ? readPath(customer, pathMatch) : null;
+        if (pathMatch === 'panel_serial_no') value = parsePanelSerials(value);
         
         // Find matching documents by field name (path)
         const relatedDocs = documents.filter(d => paths.includes(d.doc_type));
@@ -106,11 +119,7 @@ export default function AgentStageDetails({ stage, customer, bom, bomItems = [],
         rows.push(['BOM Type', displayValue(bom?.bom_type), []]);
         rows.push(['Paper Prepared By / Date', displayValue([bom?.paper_prepared_by, bom?.paper_prepared_date].filter(Boolean).join(' — ')), []]);
         rows.push(['Material Loaded By / Date', displayValue([bom?.material_loaded_by, bom?.material_loaded_date].filter(Boolean).join(' — ')), []]);
-        rows.push(['BOM Items', displayValue(bomItems.map(item => ({
-            status: item.item_name || item.description || `Item ${item.sr_no || ''}`,
-            amount: item.quantity,
-            remark: item.specification || item.make || '',
-        }))), []]);
+        rows.push(['BOM Items', bomItems.length ? `${bomItems.length} item${bomItems.length === 1 ? '' : 's'}` : '–', []]);
     }
 
     return (

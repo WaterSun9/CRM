@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
-import BomPrintView from './BomPrintView';
 import { AgreementPreview } from './agreement/AgreementPreview';
 import {
     User, Phone, Mail, MapPin, Zap, Building2, Sun, Home,
@@ -21,7 +20,6 @@ import RegistrationTab from './modal-tabs/RegistrationTab';
 import LoanTab from './modal-tabs/LoanTab';
 import CashTab from './modal-tabs/CashTab';
 import MaterialOrderTab from './modal-tabs/MaterialOrderTab';
-import MaterialIntegrationTab from './modal-tabs/MaterialIntegrationTab';
 import HoldProcurementTab from './modal-tabs/HoldProcurementTab';
 import MaterialDeliveryTab from './modal-tabs/MaterialDeliveryTab';
 import InstallationStatusTab from './modal-tabs/InstallationStatusTab';
@@ -32,6 +30,8 @@ import DiscomInspectionTab from './modal-tabs/DiscomInspectionTab';
 import SubsidyStatusTab from './modal-tabs/SubsidyStatusTab';
 import FinalReviewTab from './modal-tabs/FinalReviewTab';
 import AgentStageDetails from './AgentStageDetails';
+import BomPrintModal from './BomPrintModal';
+import { loadBomForCustomer, getBomTypeForCustomer } from '../utils/bom';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [];
@@ -52,8 +52,21 @@ const parsePanelSerials = (raw) => {
     return parts.length > 0 ? parts : [rawText.trim()];
 };
 
+// Read-only parameter/value row used by the Material Integration cards, in the
+// same label-left / value-right shape the other agent stage panels use.
+function DetailRow({ label, value, children }) {
+    return (
+        <div className="flex items-start justify-between gap-3 py-2">
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide leading-tight">{label}</span>
+            <div className="font-semibold text-stone-900 text-right break-words min-w-0">
+                {children ?? (value === null || value === undefined || value === '' ? '–' : value)}
+            </div>
+        </div>
+    );
+}
+
 export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
-    const { showConfirm } = useGlobalPopup();
+    const { showAlert, showConfirm } = useGlobalPopup();
     const [view, setView] = useState('menu');
     const [activeWorkdeskTab, setActiveWorkdeskTab] = useState(STAGE_IDS.LEADS);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -69,8 +82,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     const [custDocs, setCustDocs] = useState([]);
     const [integrationBom, setIntegrationBom] = useState(null);
     const [integrationBomItems, setIntegrationBomItems] = useState([]);
-    const [showIntegrationPrint, setShowIntegrationPrint] = useState(false);
-    const integrationPrintRef = useRef(null);
+    const [showBomPrint, setShowBomPrint] = useState(false);
     const [showAgreementPopup, setShowAgreementPopup] = useState(false);
     const [agreementData, setAgreementData] = useState({});
     const [loadingDocs, setLoadingDocs] = useState(false);
@@ -253,25 +265,25 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
 
         const loadIntegrationBom = async () => {
-            const { data, error } = await supabase
-                .from('bom')
-                .select('id, bom_type, paper_prepared_by, paper_prepared_date, material_loaded_by, material_loaded_date')
-                .eq('admin_id', selectedCust.id)
-                .maybeSingle();
-            if (error) console.error('Failed to load material integration milestones:', error);
-            setIntegrationBom(data || null);
-
-            if (!data?.id) return;
-            const { data: items, error: itemsError } = await supabase
-                .from('bom_items')
-                .select('*')
-                .eq('bom_id', data.id)
-                .order('created_at', { ascending: true });
-            if (itemsError) console.error('Failed to load BOM items:', itemsError);
-            setIntegrationBomItems(items || []);
+            const merged = { ...selectedCust, ...editData };
+            const { bom, items } = await loadBomForCustomer(merged, getBomTypeForCustomer(merged));
+            setIntegrationBom(bom);
+            setIntegrationBomItems(items);
         };
         loadIntegrationBom();
-    }, [selectedCust?.id, selectedCust?.stage, activeCustomerStage]);
+    }, [selectedCust?.id, selectedCust?.stage, selectedCust?.roof_shed, activeCustomerStage]);
+
+    // Roof vs Shed is derived from the Material Order spec, exactly as the
+    // admin Material Integration tab derives it, so both print the same BOM.
+    // Unsaved edits win over the stored record, matching the admin tab.
+    const stageData = { ...selectedCust, ...editData };
+    const integrationBomType = getBomTypeForCustomer(stageData);
+    const miPanelSerials = parsePanelSerials(stageData.panel_serial_no);
+
+    // Loan payments live as entries inside loan_history, keyed by status —
+    // the same structure the admin Loan tab reads.
+    const loanPaymentFor = (status) => (Array.isArray(stageData.loan_history) ? stageData.loan_history : [])
+        .find(entry => entry.status === status) || {};
 
     const handleUpdateCustomer = async (id, updates) => {
         setSaving(true);
@@ -408,12 +420,30 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     const handlePreviewFile = async (doc) => {
-        const url = await getViewUrl(doc.storage_path);
-        if (url) setPreviewDoc({ doc, url });
+        if (!doc?.storage_path) {
+            showAlert('This document has no stored file to preview.', { title: 'Preview Unavailable', type: 'error' });
+            return;
+        }
+        try {
+            const url = await getViewUrl(doc.storage_path);
+            if (!url) throw new Error('Could not generate a secure link for this document. Please try again.');
+            setPreviewDoc({ doc, url });
+        } catch (err) {
+            console.error('Preview failed:', err);
+            showAlert(err.message || 'Could not open this document.', { title: 'Preview Failed', type: 'error' });
+        }
     };
 
     const handleDownloadDoc = async (doc) => {
+        if (!doc?.storage_path) {
+            showAlert('This document has no stored file to download.', { title: 'Download Unavailable', type: 'error' });
+            return;
+        }
         const url = await getDownloadUrl(doc.storage_path, doc.file_name);
+        if (!url) {
+            showAlert('Could not generate a download link for this document.', { title: 'Download Failed', type: 'error' });
+            return;
+        }
         if (url) {
             const a = document.createElement('a');
             a.href = url;
@@ -725,43 +755,6 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
 
     const isDiscomInspectionDirty = () => selectedCust &&
         (editData.discom_inspection ?? selectedCust.discom_inspection ?? '') !== (selectedCust.discom_inspection || '');
-
-    const handlePrintIntegrationPreview = () => {
-        const documentBody = integrationPrintRef.current;
-        if (!documentBody) return;
-
-        const cleanName = String(selectedCust?.customer_name || editData?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanRef = String(selectedCust?.folder_no || selectedCust?.consumer_no || selectedCust?.crn || editData?.folder_no || editData?.consumer_no || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const docTitle = `BOM_Material_Integration_${cleanName}_${cleanRef}`;
-        const prevDocTitle = document.title;
-
-        const existing = document.getElementById('native-print-portal');
-        if (existing) existing.remove();
-
-        const printPortal = document.createElement('div');
-        printPortal.id = 'native-print-portal';
-        printPortal.innerHTML = documentBody.innerHTML;
-        document.body.appendChild(printPortal);
-
-        document.body.classList.add('is-printing-document');
-        document.title = docTitle;
-
-        const cleanup = () => {
-            document.body.classList.remove('is-printing-document');
-            document.title = prevDocTitle;
-            if (document.body.contains(printPortal)) {
-                document.body.removeChild(printPortal);
-            }
-            window.removeEventListener('afterprint', cleanup);
-        };
-
-        window.addEventListener('afterprint', cleanup);
-
-        setTimeout(() => {
-            window.print();
-            setTimeout(cleanup, 2000);
-        }, 100);
-    };
 
     const handleGenerateAgreementPreview = async () => {
         if (!selectedCust) return;
@@ -1668,6 +1661,40 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                 </div>
                             )}
 
+                            {displayedStage === STAGE_IDS.LOAN && (
+                                <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
+                                    <div className="border-b border-stone-150 pb-2 mb-1 flex items-center justify-between gap-2">
+                                        <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
+                                            <Banknote size={11} /> Loan Payments
+                                        </h5>
+                                        <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wide flex items-center gap-0.5">
+                                            <Eye size={9} /> View
+                                        </span>
+                                    </div>
+                                    <div className="divide-y divide-stone-200/50 text-xs">
+                                        {['Down Payment', '1st Payment', '2nd Payment'].map(label => {
+                                            const entry = loanPaymentFor(label);
+                                            const amount = parseIndianNumber(entry.amount) || 0;
+                                            return (
+                                                <DetailRow key={label} label={label}>
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        <span className="text-sm font-bold text-stone-800">
+                                                            {amount > 0 ? `₹${toIndianCommas(amount)}` : '–'}
+                                                        </span>
+                                                        <span className="text-[10px] font-medium text-stone-400">
+                                                            Date: <span className="font-semibold text-stone-600">{entry.date || '–'}</span>
+                                                        </span>
+                                                        {entry.remark && (
+                                                            <span className="text-[10px] italic text-stone-500">{entry.remark}</span>
+                                                        )}
+                                                    </div>
+                                                </DetailRow>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             {displayedStage === '__REMOVED_CASH_SUMMARY__' && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
@@ -1882,117 +1909,88 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                             )}
 
 
+                            {/* Material Integration is view-only for agents. Same sections
+                                as the admin Material Integration tab — Material Order
+                                reference, Inverter & Equipment, Procurement & Loading
+                                Milestones, BOM — rendered as read-only parameter/value
+                                rows in the portal's own style. */}
                             {displayedStage === STAGE_IDS.MATERIAL_INTEGRATION && (
-                                <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-4">
-                                    <div className="flex items-center justify-between gap-3 border-b border-stone-150 pb-2 mb-1">
-                                        <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
-                                            <Package size={11} /> Material Integration Details
-                                        </h5>
+                                <div className="space-y-4">
+                                    {/* Print action sits at the top of the stage. */}
+                                    <div className="flex items-center justify-between gap-2 bg-white p-3 rounded-2xl border border-stone-200 shadow-sm">
+                                        <span className="bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                            {integrationBomType} BOM
+                                        </span>
                                         <button
                                             type="button"
-                                            onClick={() => setShowIntegrationPrint(true)}
-                                            className="no-print shrink-0 bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition"
+                                            onClick={() => setShowBomPrint(true)}
+                                            className="bg-stone-900 hover:bg-stone-800 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                                         >
-                                            <Printer size={11} /> View & Print BOM
+                                            <Printer size={13} /> Print / Export PDF
                                         </button>
                                     </div>
-                                    <div className="divide-y divide-stone-200/50 text-xs">
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Roof / Shed</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.roof_shed || '–'}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">DC Cable (Mtrs)</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.dc_cable ? `${selectedCust.dc_cable} M` : '–'}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">AC Cable (Mtrs)</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.ac_cable ? `${selectedCust.ac_cable} M` : '–'}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Structure Leg Height</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.structure_front_leg_height ? `${selectedCust.structure_front_leg_height} ft / ${selectedCust.structure_rear_leg_height || '–'} ft` : '–'}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Invoice Value</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.invoice_value ? `₹${toIndianCommas(selectedCust.invoice_value)}` : '–'}</span>
-                                        </div>
-                                    </div>
 
-                                    <div className="flex items-center justify-between py-2 border-t border-stone-200/50 mt-2 pt-3">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Inverter Make</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.inverter_make || '–'}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Inverter Serial No</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.inverter_serial_no || '–'}</span>
-                                        </div>
-                                        <div className="flex flex-col gap-1 py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Panel Serial Numbers</span>
-                                            <div className="font-semibold text-stone-700 bg-stone-100 p-2.5 rounded-lg text-[10px] whitespace-pre-wrap break-all min-h-[40px] border border-stone-200">
-                                                {selectedCust.panel_serial_numbers || '–'}
-                                            </div>
-                                        </div>
-
-                                    <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-3">
+                                    {/* Inverter & Equipment Details */}
+                                    <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                         <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
-                                            <ClipboardList size={11} /> Bill of Materials (View Only)
+                                            <Zap size={11} /> Inverter &amp; Equipment Details
                                         </h5>
-                                        {integrationBomItems.length === 0 ? (
-                                            <p className="text-xs text-stone-400 italic py-2">No BOM items recorded yet.</p>
-                                        ) : (
-                                            <div className="overflow-x-auto border border-stone-200 rounded-xl bg-white">
-                                                <table className="min-w-full divide-y divide-stone-200 text-xs">
-                                                    <thead className="bg-stone-50 text-stone-500 uppercase tracking-wider font-bold text-[9px]">
-                                                        <tr>
-                                                            <th className="px-3 py-2 text-left w-10">#</th>
-                                                            <th className="px-3 py-2 text-left">Product Name</th>
-                                                            <th className="px-3 py-2 text-left w-20">Qty</th>
-                                                            <th className="px-3 py-2 text-left w-16">UOM</th>
-                                                            <th className="px-3 py-2 text-left w-32">Integration By</th>
-                                                            <th className="px-3 py-2 text-left">Note</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-stone-200 bg-white font-medium text-stone-700">
-                                                        {integrationBomItems.map((item, idx) => (
-                                                            <tr key={item.id || `${item.product_name}-${idx}`}>
-                                                                <td className="px-3 py-2 text-stone-400 font-bold">{idx + 1}</td>
-                                                                <td className="px-3 py-2 font-semibold text-stone-800">{item.product_name || ''}</td>
-                                                                <td className="px-3 py-2">{item.quantity || ''}</td>
-                                                                <td className="px-3 py-2 text-stone-500">{item.uom || ''}</td>
-                                                                <td className="px-3 py-2">{item.integration_by || ''}</td>
-                                                                <td className="px-3 py-2 text-stone-500">{item.note || ''}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        )}
+                                        <div className="divide-y divide-stone-200/50 text-xs">
+                                            <DetailRow label="Inverter Make" value={stageData.inverter_make} />
+                                            <DetailRow label="Inverter Serial No." value={stageData.inverter_serial_no} />
+                                            <DetailRow label="Integration By" value={stageData.integration_by} />
+                                            <DetailRow label="Panel Serial Numbers">
+                                                {miPanelSerials.length === 0 ? '–' : (
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <span className="text-[9px] font-bold text-amber-700 bg-amber-100/70 px-1.5 py-0.5 rounded uppercase">
+                                                            {miPanelSerials.length} Panel{miPanelSerials.length === 1 ? '' : 's'}
+                                                        </span>
+                                                        <span className="font-mono text-[10px] font-semibold text-stone-700 whitespace-pre-line leading-relaxed">
+                                                            {miPanelSerials.join('\n')}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </DetailRow>
+                                        </div>
                                     </div>
 
-                                    <section className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-3">
-                                        <h6 className="mb-2 border-b border-amber-200/70 pb-2 text-[9px] font-black uppercase tracking-widest text-amber-800">
-                                            Procurement & Loading Milestones
-                                        </h6>
-                                        <div className="divide-y divide-amber-100 text-xs">
-                                            <div className="flex items-center justify-between gap-3 py-2">
-                                                <span className="text-[10px] font-bold uppercase tracking-wide text-stone-400">Paper Prepared By</span>
-                                                <span className="text-right font-semibold text-stone-900">{integrationBom?.paper_prepared_by || '–'}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between gap-3 py-2">
-                                                <span className="text-[10px] font-bold uppercase tracking-wide text-stone-400">Paper Prepared Date</span>
-                                                <span className="text-right font-semibold text-stone-900">{integrationBom?.paper_prepared_date || '–'}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between gap-3 py-2">
-                                                <span className="text-[10px] font-bold uppercase tracking-wide text-stone-400">Material Loaded By</span>
-                                                <span className="text-right font-semibold text-stone-900">{integrationBom?.material_loaded_by || '–'}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between gap-3 py-2">
-                                                <span className="text-[10px] font-bold uppercase tracking-wide text-stone-400">Material Loaded Date</span>
-                                                <span className="text-right font-semibold text-stone-900">{integrationBom?.material_loaded_date || '–'}</span>
-                                            </div>
+                                    {/* Procurement & Loading Milestones */}
+                                    <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
+                                        <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
+                                            <ClipboardCheck size={11} /> Procurement &amp; Loading Milestones
+                                        </h5>
+                                        <div className="divide-y divide-stone-200/50 text-xs">
+                                            <DetailRow label="Paper Prepared By" value={integrationBom?.paper_prepared_by} />
+                                            <DetailRow label="Paper Prepared Date" value={integrationBom?.paper_prepared_date} />
+                                            <DetailRow label="Material Loaded By" value={integrationBom?.material_loaded_by} />
+                                            <DetailRow label="Material Loaded Date" value={integrationBom?.material_loaded_date} />
                                         </div>
-                                    </section>
+                                    </div>
+
+                                    {/* Bill of Materials */}
+                                    <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
+                                        <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
+                                            <Layers size={11} /> Bill of Materials
+                                        </h5>
+                                        <div className="divide-y divide-stone-200/50 text-xs">
+                                            {integrationBomItems.length === 0 ? (
+                                                <p className="py-3 text-center text-[11px] font-semibold text-stone-400">
+                                                    No BOM checklist items configured yet for this customer.
+                                                </p>
+                                            ) : integrationBomItems.map((item, idx) => (
+                                                <DetailRow
+                                                    key={item.id || `${item.product_name}-${idx}`}
+                                                    label={`${item.sr_no ?? idx + 1}. ${item.product_name || item.description || '–'}`}
+                                                >
+                                                    <span className="whitespace-nowrap">
+                                                        {String(item.quantity ?? '').trim() === ''
+                                                            ? '–'
+                                                            : `${item.quantity}${item.uom ? ` ${item.uom}` : ''}`}
+                                                    </span>
+                                                </DetailRow>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
@@ -2569,27 +2567,33 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                 </div>
             )}
 
-            {/* Vendor-style BOM print preview for Material Integration. */}
-            {showIntegrationPrint && selectedCust && (
-                <div className="fixed inset-0 z-[999] bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-                    <div className="print-only-modal bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden">
-                        <div className="no-print px-5 py-4 bg-stone-900 text-white flex items-center justify-between">
-                            <div className="flex items-center gap-2"><Printer size={16} className="text-amber-400" /><h3 className="text-xs sm:text-sm font-black uppercase tracking-wider">BOM Print Preview — {selectedCust.customer_name}</h3></div>
-                            <div className="flex items-center gap-2">
-                                <button type="button" onClick={handlePrintIntegrationPreview} className="bg-amber-500 hover:bg-amber-400 text-stone-950 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"><Printer size={13} /> Print Document</button>
-                                <button type="button" onClick={() => setShowIntegrationPrint(false)} className="text-stone-400 hover:text-white p-1 rounded-lg"><X size={18} /></button>
-                            </div>
-                        </div>
-                        <div ref={integrationPrintRef} className="flex-1 overflow-y-auto p-8 bg-white text-stone-900 print-document"><BomPrintView customer={{ ...selectedCust, ...editData }} bom={integrationBom} bomItems={integrationBomItems} activeType={integrationBom?.bom_type || ((selectedCust?.roof_shed || editData?.roof_shed || '').toLowerCase().includes('shed') ? 'SHED' : 'ROOF')} /></div>
-                    </div>
-                </div>
-            )}
-
             {showAgreementPopup && (
                 <AgreementPreview
                     data={agreementData}
                     onChange={setAgreementData}
                     onClose={() => setShowAgreementPopup(false)}
+                />
+            )}
+
+            {showBomPrint && selectedCust && (
+                <BomPrintModal
+                    customer={{ ...selectedCust, ...editData }}
+                    bom={integrationBom}
+                    bomItems={integrationBomItems}
+                    activeType={integrationBomType}
+                    onClose={() => setShowBomPrint(false)}
+                />
+            )}
+
+            {/* Document preview — opened by the "View Document" buttons in the
+                stage details panel and the Documents tab. */}
+            {previewDoc?.doc && (
+                <FilePreviewModal
+                    file={previewDoc.doc}
+                    fileUrl={previewDoc.url}
+                    onClose={() => setPreviewDoc(null)}
+                    onDownload={() => handleDownloadDoc(previewDoc.doc)}
+                    onUpdateRemark={handleUpdateDocRemark}
                 />
             )}
         </>
