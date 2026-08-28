@@ -103,7 +103,7 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                 )}
             </div>
 
-            {/* Bottom strip — not clickable (stops propagation via parent) */}
+            {/* Bottom strip - not clickable (stops propagation via parent) */}
             <div className="border-t border-stone-100 bg-stone-50/60 rounded-b-2xl animate-in fade-in duration-300" onClick={e => e.stopPropagation()}>
                 {/* Stage remarks preview */}
                 {currentStageRemark && (

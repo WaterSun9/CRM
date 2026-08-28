@@ -141,7 +141,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         try {
             // A blank scope previously became ilike '%%', which matched every
             // customer in the table. Show nothing instead.
-            const scopeValue = (isAgent2 ? user?.name : (user?.channel_partner || user?.name)) || '';
+            const scopeValue = user?.name || '';
             if (!String(scopeValue).trim()) {
                 setCustomers([]);
                 setLoading(false);
@@ -149,15 +149,11 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             }
             const buildQuery = () => {
                 let q = supabase.from('admin').select('*').is('deleted_at', null).order('created_at', { ascending: false });
-                if (isAgent2) {
-                    // Agent 2 (Sub-Agent) filters strictly by sub_channel_partner
-                    const subFilter = (user.name || '').trim();
-                    q = q.ilike('sub_channel_partner', subFilter);
-                } else {
-                    // Main Channel Partner / Agent
-                    const cpFilter = (user.channel_partner || user.name || '').trim();
-                    q = q.ilike('channel_partner', cpFilter);
-                }
+                // Both Agent Portal roles see only the leads filed under their own
+                // name. Branch-wide visibility belongs to the CPO and the manager,
+                // who use the Dashboard - previously every agent in a branch saw
+                // every other agent's leads.
+                q = q.ilike('sub_channel_partner', (user.name || '').trim());
                 return q;
             };
 
@@ -197,9 +193,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
                 const record = payload.new;
                 const belongsToAgent = record && !record.deleted_at && (
-                    isAgent2
-                        ? (record.sub_channel_partner || '').trim().toLowerCase() === myName
-                        : (record.channel_partner || '').trim().toLowerCase() === partnerName
+                    (record.sub_channel_partner || '').trim().toLowerCase() === myName
                 );
 
                 setCustomers(previous => {
@@ -296,7 +290,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     const integrationBomType = getBomTypeForCustomer(stageData);
     const miPanelSerials = parsePanelSerials(stageData.panel_serial_no);
 
-    // Loan payments live as entries inside loan_history, keyed by status —
+    // Loan payments live as entries inside loan_history, keyed by status -
     // the same structure the admin Loan tab reads.
     const loanPaymentFor = (status) => (Array.isArray(stageData.loan_history) ? stageData.loan_history : [])
         .find(entry => entry.status === status) || {};
@@ -350,7 +344,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     // Submit new lead from AddLeadModal
     const handleSubmitLead = async (formData, attachedFiles = []) => {
         const parentCp = user.channel_partner || user.name;
-        const subCp = isAgent2 ? user.name : (formData.sub_channel_partner || null);
+        const subCp = user.name;
 
         const leadData = {
             ...formData,
@@ -1936,9 +1930,9 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
 
 
                             {/* Material Integration is view-only for agents. Same sections
-                                as the admin Material Integration tab — Material Order
+                                as the admin Material Integration tab - Material Order
                                 reference, Inverter & Equipment, Procurement & Loading
-                                Milestones, BOM — rendered as read-only parameter/value
+                                Milestones, BOM - rendered as read-only parameter/value
                                 rows in the portal's own style. */}
                             {displayedStage === STAGE_IDS.MATERIAL_INTEGRATION && (
                                 <div className="space-y-4">
@@ -2616,7 +2610,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                 />
             )}
 
-            {/* Document preview — opened by the "View Document" buttons in the
+            {/* Document preview - opened by the "View Document" buttons in the
                 stage details panel and the Documents tab. */}
             {previewDoc?.doc && (
                 <FilePreviewModal

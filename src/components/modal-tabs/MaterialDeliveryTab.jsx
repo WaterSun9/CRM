@@ -337,7 +337,7 @@ export default function MaterialDeliveryTab({
                         <div className="px-6 py-4 bg-stone-900 text-white flex items-center justify-between no-print">
                             <div className="flex items-center gap-2">
                                 <Printer size={18} className="text-amber-400" />
-                                <h3 className="text-sm font-black uppercase tracking-wider">Print Preview — Material Delivery Note</h3>
+                                <h3 className="text-sm font-black uppercase tracking-wider">Print Preview - Material Delivery Note</h3>
                             </div>
                             <div className="flex items-center gap-3">
                                 <button
@@ -364,7 +364,7 @@ export default function MaterialDeliveryTab({
                                 <h1 className="text-base font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
                                 <p className="text-[11px] font-semibold text-stone-600">Material Delivery, Equipment Dispatch & Serial Numbers Note</p>
                                 <div className="tag">
-                                    DISPATCH NOTE — {editData?.invoice_no ? `INVOICE #${editData.invoice_no}` : 'PROJECT DISPATCH'}
+                                    DISPATCH NOTE - {editData?.invoice_no ? `INVOICE #${editData.invoice_no}` : 'PROJECT DISPATCH'}
                                 </div>
                             </div>
 

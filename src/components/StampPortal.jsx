@@ -203,7 +203,7 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
                             </p>
                             {sendbackBy && (
                                 <p className="text-[10px] text-rose-600 font-medium mt-0.5">
-                                    — {sendbackBy}
+                                    - {sendbackBy}
                                 </p>
                             )}
                         </div>

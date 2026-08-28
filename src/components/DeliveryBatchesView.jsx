@@ -125,7 +125,7 @@ export default function DeliveryBatchesView({
             } else {
                 console.error('Failed to fetch delivery batches from the database:', error);
                 // Fallback to localStorage, but only ever trust entries with
-                // a real UUID id — older locally-cached batches from before
+                // a real UUID id - older locally-cached batches from before
                 // the id-format fix used a fake string id that was never
                 // actually written to the database, and would break any
                 // future save that tries to upsert alongside them.
@@ -148,17 +148,17 @@ export default function DeliveryBatchesView({
 
     // Save Batches Helper
     // Returns true only if the write to the real shared database actually
-    // succeeded — callers (like handleSaveBatch) must check this before
+    // succeeded - callers (like handleSaveBatch) must check this before
     // doing anything that assumes the batch genuinely exists in the
     // database, such as marking customer records as "already batched".
     //
     // Only `changedBatch` (the one record actually being created/edited)
-    // is sent to Supabase — never the whole local `updatedBatches` list.
+    // is sent to Supabase - never the whole local `updatedBatches` list.
     // Upserting the entire list previously caused
     // "operator does not exist: uuid = text" whenever any older,
     // locally-cached batch (from before the id-format bug was fixed, or
     // loaded from the localStorage fallback) was still sitting in local
-    // state with a non-UUID id — mixing valid and invalid ids in one
+    // state with a non-UUID id - mixing valid and invalid ids in one
     // upsert call trips Postgres before it even gets to check individual
     // rows. `updatedBatches` is still used for the local UI state and
     // localStorage cache, which have no such type constraint.
@@ -172,7 +172,7 @@ export default function DeliveryBatchesView({
         } catch (e) {
             console.error('Failed to sync delivery batch to the database:', e);
             setBatches(previousBatches ?? batches);
-            showAlert('Failed to save this batch to the shared database: ' + (e.message || 'Unknown error') + '. Nothing was saved — please try again.', { type: 'error' });
+            showAlert('Failed to save this batch to the shared database: ' + (e.message || 'Unknown error') + '. Nothing was saved - please try again.', { type: 'error' });
             return false;
         }
     };
@@ -239,14 +239,14 @@ export default function DeliveryBatchesView({
 
         setSaving(true);
         try {
-            // delivery_batches.id is a real `uuid` column — a plain
+            // delivery_batches.id is a real `uuid` column - a plain
             // "BATCH-<timestamp>" string fails every write with a
             // Postgres 22P02 error (confirmed live), silently swallowed
             // by saveBatchesState's best-effort catch, so the batch
             // looked saved locally but never actually persisted.
             const batchId = editingBatch ? editingBatch.id : crypto.randomUUID();
             const displayBatchNo = batchForm.batch_no || `BATCH-${Date.now()}`;
-            // project_ids is a real `uuid[]` column — any non-UUID id in
+            // project_ids is a real `uuid[]` column - any non-UUID id in
             // this list (e.g. a leftover synthetic/demo id) would cause
             // the exact same "operator does not exist: uuid = text" error
             // as the batch id bug above, just for the array column
@@ -281,7 +281,7 @@ export default function DeliveryBatchesView({
 
             const didSave = await saveBatchesState(updatedBatches, previousBatches, batchPayload);
             if (!didSave) {
-                // The batch itself never made it to the database — do not
+                // The batch itself never made it to the database - do not
                 // mark any customer as "already batched" for a batch that
                 // doesn't actually exist.
                 setSaving(false);
@@ -310,7 +310,7 @@ export default function DeliveryBatchesView({
 
             // If editing an existing batch, any customer that was
             // previously assigned but got unchecked in this edit needs
-            // their delivery_batch_id cleared — otherwise they'd stay
+            // their delivery_batch_id cleared - otherwise they'd stay
             // stuck showing as "already in a batch" forever with no way
             // to reassign them, even though they were removed here.
             if (editingBatch) {
@@ -349,7 +349,7 @@ export default function DeliveryBatchesView({
         setBatches(updatedBatches);
         localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
         // Only attempt the real delete for batches that were actually
-        // persisted with a real UUID — a leftover locally-cached batch
+        // persisted with a real UUID - a leftover locally-cached batch
         // from before the id-format fix has no matching row to delete.
         if (batchToDelete && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(batchToDelete.id))) {
             const { error } = await supabase.from('delivery_batches').delete().eq('id', batchToDelete.id);
@@ -357,7 +357,7 @@ export default function DeliveryBatchesView({
                 console.error('Failed to delete delivery batch from the database:', error);
                 setBatches(previousBatches);
                 localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(previousBatches));
-                showAlert('Failed to delete this batch from the shared database: ' + error.message + '. Nothing was changed — please try again.', { type: 'error' });
+                showAlert('Failed to delete this batch from the shared database: ' + error.message + '. Nothing was changed - please try again.', { type: 'error' });
                 return;
             }
         }
@@ -1137,7 +1137,7 @@ export default function DeliveryBatchesView({
                             <div className="flex items-center gap-2">
                                 <Printer size={18} className="text-amber-400" />
                                 <h3 className="text-sm font-black uppercase tracking-wider">
-                                    Master Gate Pass Preview — {printingBatch.batch_no}
+                                    Master Gate Pass Preview - {printingBatch.batch_no}
                                 </h3>
                             </div>
                             <div className="flex items-center gap-3">
@@ -1165,7 +1165,7 @@ export default function DeliveryBatchesView({
                                 <h1 className="text-xl font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
                                 <p className="text-xs font-semibold text-stone-600 mt-0.5">Master Delivery Batch & Security Gate Pass Manifest</p>
                                 <div className="inline-block mt-2 px-3 py-1 bg-stone-100 border border-stone-300 rounded text-[11px] font-black uppercase tracking-widest text-stone-800">
-                                    BATCH DISPATCH MANIFEST — {printingBatch.batch_no}
+                                    BATCH DISPATCH MANIFEST - {printingBatch.batch_no}
                                 </div>
                             </div>
 

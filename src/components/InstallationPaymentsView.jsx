@@ -475,7 +475,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                                             key={r.id} 
                                             className="border-b border-stone-50 hover:bg-stone-50/50 transition-colors"
                                         >
-                                            {/* Customer Details — Clickable to open customer detail modal */}
+                                            {/* Customer Details - Clickable to open customer detail modal */}
                                             <td 
                                                 className="px-5 py-3.5 cursor-pointer group"
                                                 onClick={() => onSelectCustomer(r)}

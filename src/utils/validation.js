@@ -13,9 +13,13 @@ const cleanPhone = (val) => {
     return s;
 };
 
+// NOTE: .passthrough() is essential. Zod objects strip undeclared keys, and this
+// schema declares 12 of the 67 fields the lead form sends — so every other field
+// (sub_channel_partner, stage, roof_shed, folder_no, installation_status, …) was
+// being silently deleted between validation and the database insert.
 export const leadSchema = z.object({
     customer_name: z.string({
-        required_error: "Customer Name is required",
+        error: "Customer Name is required",
     })
     .min(2, "Customer Name must be at least 2 characters")
     .max(100, "Customer Name cannot exceed 100 characters")
@@ -24,69 +28,76 @@ export const leadSchema = z.object({
     phone_number: z.preprocess(
         cleanPhone,
         z.string({
-            required_error: "Phone Number is required",
+            error: "Phone Number is required",
         })
         .regex(/^[0-9]{10}$/, "Phone Number must be exactly 10 digits")
     ),
     
-    email_address: emptyToUndefined(z.string().email("Invalid email format").trim().optional()),
+    // Marked * in the form, so it is enforced here too.
+    email_address: z.string({ error: "Email Address is required" })
+        .trim()
+        .min(1, "Email Address is required")
+        .pipe(z.email("Invalid email format")),
     
     consumer_no: z.string({
-        required_error: "Consumer Number is required",
+        error: "Consumer Number is required",
     })
     .min(3, "Consumer/EB Number must be at least 3 characters")
     .max(30, "Consumer/EB Number cannot exceed 30 characters")
     .trim(),
 
     villages: z.string({
-        required_error: "Villages / Address is required",
+        error: "Villages / Address is required",
     })
     .min(2, "Address must be at least 2 characters")
     .trim(),
 
     channel_partner: z.string({
-        required_error: "Channel Partner Name is required",
+        error: "Channel Partner Name is required",
     })
     .min(1, "Channel Partner Name is required")
     .trim(),
 
     module_brand: z.string({
-        required_error: "Module Brand is required",
+        error: "Module Brand is required",
     })
     .min(1, "Module Brand is required")
     .trim(),
 
     module_wp: z.string({
-        required_error: "Module Wp is required",
+        error: "Module Wp is required",
     })
     .min(1, "Module Wp is required"),
 
     no_of_modules: z.string({
-        required_error: "No of Modules is required",
+        error: "No of Modules is required",
     })
     .min(1, "No of Modules is required"),
 
     system_capacity_kwp: z.string({
-        required_error: "System Capacity is required",
+        error: "System Capacity is required",
     })
     .min(1, "System Capacity is required"),
 
     sub_divisions: z.string({
-        required_error: "Sub Division is required",
+        error: "Sub Division is required",
     })
     .min(1, "Sub Division is required")
     .trim(),
 
+    // Was: `if (!val) return 'Cash'` — an empty Payment Type was silently
+    // rewritten to Cash before the enum saw it, so a lead could be submitted
+    // with none chosen. Empty now stays empty and fails the enum.
     payment_type: z.preprocess(
         (val) => {
-            if (!val) return 'Cash';
+            if (val === null || val === undefined || String(val).trim() === '') return undefined;
             const s = String(val).trim().toUpperCase();
             return s === 'LOAN' ? 'Loan' : 'Cash';
         },
-        z.enum(['Cash', 'Loan', 'CASH', 'LOAN'], {
-            errorMap: () => ({ message: "Payment Type must be either Cash or Loan" })
+        z.enum(['Cash', 'Loan'], {
+            error: () => "Payment Type is required — choose Cash or Loan"
         })
     ),
-});
+}).passthrough();
 
 export const customerSchema = leadSchema.partial();

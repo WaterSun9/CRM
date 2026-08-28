@@ -243,8 +243,8 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
             return;
         }
 
-        // Branch roles are scoped by channel_partner — every query in the app
-        // filters on it — so a blank one creates a user who can see nothing (or
+        // Branch roles are scoped by channel_partner - every query in the app
+        // filters on it - so a blank one creates a user who can see nothing (or
         // everything). A CPO gets theirs filled in automatically; an admin must
         // supply it.
         const BRANCH_SCOPED = ['channel_partner_office', 'channel_partner_office_manager', 'agent', 'office2', 'agent2'];
@@ -294,23 +294,23 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
             } catch (edgeErr) {
                 console.error('Edge function invoke failed:', edgeErr);
                 // The function's own rejections (401/403/400) are answers, not
-                // outages — reporting them as "not deployed" sent debugging the
+                // outages - reporting them as "not deployed" sent debugging the
                 // wrong way. Only a genuine transport failure gets that message.
                 const raw = edgeErr.message || 'Unknown error';
                 const isAuthRejection = /unauthorized|forbidden|invalid or expired|access denied|no token/i.test(raw);
                 if (isAuthRejection) {
                     throw new Error(
-                        raw + ' — your own account was rejected by the account-creation service. '
+                        raw + ' - your own account was rejected by the account-creation service. '
                         + 'Sign out and sign back in; if it persists, your login has no profile row '
                         + 'or lacks Admin / Channel Partner Office permission.'
                     );
                 }
                 if (/^(?!.*(fetch|network|failed to send|load failed|timeout)).*$/i.test(raw)) {
-                    // A specific message came back from the function — surface it as-is.
+                    // A specific message came back from the function - surface it as-is.
                     throw new Error(raw);
                 }
                 throw new Error('Could not reach the account-creation service: ' + raw
-                    + '. This usually means the add_user edge function needs to be deployed or is misconfigured — contact your developer.');
+                    + '. This usually means the add_user edge function needs to be deployed or is misconfigured - contact your developer.');
             }
 
             // If the created user is a vendor, check if present in vendors table; if not, auto-add
@@ -461,7 +461,7 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                     Assigned Channel Partner / Branch Name *
                                 </label>
                                 {!isCP && ['channel_partner_office', 'channel_partner_office_manager'].includes(form.user_type) ? (
-                                    /* A CPO *defines* a branch, so this is free text — the name typed
+                                    /* A CPO *defines* a branch, so this is free text - the name typed
                                        here is stored on the new CPO's profile and becomes a selectable
                                        branch for every manager and agent created afterwards. */
                                     <>
@@ -474,7 +474,7 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                             className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 font-medium"
                                         />
                                         <p className="text-[10px] text-stone-400 mt-1">
-                                            New branch name. Type it exactly as it appears on existing leads —
+                                            New branch name. Type it exactly as it appears on existing leads -
                                             it is what managers and field agents will be attached to.
                                         </p>
                                     </>
@@ -518,7 +518,7 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                         </select>
                                         <p className="text-[10px] text-stone-400 mt-1">
                                             {branchOptions.length === 0
-                                                ? 'No branches registered yet — create a Channel Partner Office user first.'
+                                                ? 'No branches registered yet - create a Channel Partner Office user first.'
                                                 : 'Pick the branch this user works under. To create a new branch, add a Channel Partner Office user instead.'}
                                         </p>
                                     </>

@@ -1,5 +1,5 @@
 import { leadSchema } from '../utils/validation';
-// src/components/AddLeadModal.jsx  —  Watersun Electrical Solutions Pvt Ltd
+// src/components/AddLeadModal.jsx  -  Watersun Electrical Solutions Pvt Ltd
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useRef } from 'react';
@@ -212,7 +212,7 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
 }
 
 export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, channel_partners = [], user }) {
-    const { showAlert, showChoice } = useGlobalPopup();
+    const { showAlert, showConfirm } = useGlobalPopup();
     const [formData, setFormData] = useState({ ...DEFAULT_LEAD_FORM });
     const [pendingFiles, setPendingFiles] = useState({}); // { [doc_type]: File }
     const [previewDoc, setPreviewDoc] = useState(null); // { doc, url }
@@ -221,8 +221,13 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     const [isFormDirty, setIsFormDirty] = useState(false);
 
     const isAgent = user?.userType === 'agent';
+    // Anyone working in the Agent Portal is the sub channel partner for the
+    // leads they add, so the field is theirs and locked - not a dropdown.
     const isAgent2 = user?.userType === 'agent2';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager';
+    const isPortalAgent = isAgent || isAgent2;
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office'
+        || user?.userType === 'channel_partner_office_manager'
+        || user?.userType === 'office2';
     const partnerName = (user?.channel_partner || user?.name || '').trim();
 
     const [subAgentOptions, setSubAgentOptions] = useState([]);
@@ -241,7 +246,10 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             if (isAgent2) {
                 defaults.channel_partner = user?.channel_partner || partnerName || '';
                 defaults.sub_channel_partner = user?.name || '';
-            } else if (isAgent || isChannelPartnerOffice) {
+            } else if (isAgent) {
+                defaults.channel_partner = partnerName || '';
+                defaults.sub_channel_partner = user?.name || '';
+            } else if (isChannelPartnerOffice) {
                 defaults.channel_partner = partnerName || '';
             }
             setFormData(defaults);
@@ -273,16 +281,20 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         }
         setFormData(prev => {
             const next = { ...prev, [field]: processedValue };
-            if (field === 'module_wp' || field === 'no_of_modules') {
-                const wp = parseFloat(String(field === 'module_wp' ? processedValue : next.module_wp).replace(/,/g, ''));
-                const count = parseFloat(String(field === 'no_of_modules' ? processedValue : next.no_of_modules).replace(/,/g, ''));
-                if (!isNaN(wp) && !isNaN(count) && wp > 0 && count > 0) {
-                    const totalVal = Math.round(wp * count);
-                    next.system_capacity_kwp = toIndianCommas(totalVal);
-                }
-            }
             return next;
         });
+    };
+
+    // Module Wp x No of Modules, on demand only. This used to run on every
+    // keystroke in either field, silently overwriting a value typed by hand.
+    const autoCalcCapacity = () => {
+        const wp = parseFloat(String(formData.module_wp || '').replace(/,/g, ''));
+        const count = parseFloat(String(formData.no_of_modules || '').replace(/,/g, ''));
+        if (isNaN(wp) || isNaN(count) || wp <= 0 || count <= 0) {
+            showAlert('Enter Module Wp and No of Modules first.', { title: 'Cannot calculate', type: 'warning' });
+            return;
+        }
+        handleChange('system_capacity_kwp', toIndianCommas(Math.round(wp * count)));
     };
 
     const handleFileAttach = (docType, file) => {
@@ -322,7 +334,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         const finalData = {
             ...formData,
             channel_partner: isAgent2 ? (user?.channel_partner || partnerName || '') : ((isAgent || isChannelPartnerOffice) ? partnerName : (formData.channel_partner || '').trim()),
-            sub_channel_partner: isAgent2 ? user?.name : (formData.sub_channel_partner || '').trim() || null
+            sub_channel_partner: isPortalAgent ? user?.name : (formData.sub_channel_partner || '').trim() || null
         };
 
         // Ensure string fields are strings to pass Zod schema
@@ -370,17 +382,13 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             onClose();
             return;
         }
-        // Always offer a way out: saving can be impossible while required fields
-        // are incomplete, so "Save or Keep Editing" alone left no exit.
-        const choice = await showChoice('This new lead has unsaved changes.', {
+        const shouldDiscard = await showConfirm('This new lead has unsaved changes.', {
             title: 'Close without saving?',
-            confirmLabel: 'Save & Close',
-            discardLabel: 'Discard Lead',
+            confirmLabel: 'Discard Lead',
             cancelLabel: 'Keep Editing',
-            type: 'success'
+            type: 'warning'
         });
-        if (choice === 'confirm') await handleSave();
-        else if (choice === 'discard') onClose();
+        if (shouldDiscard) onClose();
     };
     requestCloseRef.current = handleRequestClose;
 
@@ -555,10 +563,9 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 />
                             )}
 
-                            {/* Agent 2 files leads under their own name, so the field is
-                                shown filled and locked rather than hidden. Everyone else
-                                gets a scoped dropdown of real Agent 2 accounts. */}
-                            {isAgent2 ? (
+                            {/* A Channel Partner files leads under their own name. CPO and
+                                Manager accounts get a dropdown scoped to their CPO. */}
+                            {isPortalAgent ? (
                                 <div className="space-y-1">
                                     <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
                                         Sub Channel Partner Name <span className="text-red-500 font-bold">*</span>
@@ -589,7 +596,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         {subAgentOptions.map(name => <option key={name} value={name}>{name}</option>)}
                                     </select>
                                     {subAgentOptions.length === 0 && (
-                                        <p className="text-[10px] text-stone-400 italic">No Agent 2 sub-agents found for this channel partner yet — add them in User Management first.</p>
+                                        <p className="text-[10px] text-stone-400 italic">No Channel Partners are registered under this CPO yet - add them in User Management first.</p>
                                     )}
                                 </div>
                             )}
@@ -647,14 +654,24 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
                                     System Capacity <span className="text-red-500 font-bold">*</span>
                                 </label>
-                                <input
-                                    type="text"
-                                    value={formData.system_capacity_kwp || ''}
-                                    onChange={e => handleChange('system_capacity_kwp', e.target.value)}
-                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                                    placeholder="e.g. 10,800"
-                                    required
-                                />
+                                <span className="relative block">
+                                    <input
+                                        type="text"
+                                        value={formData.system_capacity_kwp || ''}
+                                        onChange={e => handleChange('system_capacity_kwp', e.target.value)}
+                                        className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 pr-16 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                        placeholder="e.g. 32,940"
+                                        required
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={autoCalcCapacity}
+                                        title="Calculate from Module Wp x No of Modules"
+                                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg bg-amber-500 hover:bg-amber-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white transition cursor-pointer"
+                                    >
+                                        Auto
+                                    </button>
+                                </span>
                             </div>
                         </div>
                     </section>

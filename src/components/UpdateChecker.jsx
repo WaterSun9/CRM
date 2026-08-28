@@ -1,7 +1,7 @@
 // ─── UpdateChecker.jsx ──────────────────────────────────────────────────────
 // GitHub Pages can't set real Cache-Control headers, so a client's browser
 // can keep serving a stale index.html pointing at JS/CSS chunk filenames
-// that no longer exist after the next deploy — the app silently fails to
+// that no longer exist after the next deploy - the app silently fails to
 // load or update. This polls public/version.json (written fresh on every
 // build, fetched with cache disabled) and prompts a reload when the
 // deployed build id no longer matches the one this tab loaded with.

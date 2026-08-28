@@ -126,12 +126,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [subAgents, setSubAgents] = useState([]);
 
     useEffect(() => {
-        const branch = (editData.channel_partner || customer.channel_partner || '').trim();
+        const managerBranch = user?.userType === 'office2' ? user?.channel_partner : '';
+        const branch = (managerBranch || editData.channel_partner || customer.channel_partner || '').trim();
         if (!branch) { setSubAgents([]); return; }
         let cancelled = false;
         fetchAgent2SubAgents(branch).then(names => { if (!cancelled) setSubAgents(names); });
         return () => { cancelled = true; };
-    }, [editData.channel_partner, customer.channel_partner]);
+    }, [editData.channel_partner, customer.channel_partner, user?.userType, user?.channel_partner]);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && activeTab) {
@@ -678,14 +679,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         }
         setEditData(prev => {
             const next = { ...prev, [field]: val };
-            if (field === 'module_wp' || field === 'no_of_modules') {
-                const wp = parseFloat(String(field === 'module_wp' ? val : next.module_wp).replace(/,/g, ''));
-                const count = parseFloat(String(field === 'no_of_modules' ? val : next.no_of_modules).replace(/,/g, ''));
-                if (!isNaN(wp) && !isNaN(count) && wp > 0 && count > 0) {
-                    const totalVal = Math.round(wp * count);
-                    next.system_capacity_kwp = toIndianCommas(totalVal);
-                }
-            }
             setIsFormDirty(getChangedFields(next, savedDataRef.current).size > 0);
             return next;
         });
@@ -1415,7 +1408,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         <div className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-6 border bg-amber-50 border-amber-200">
                             <Unlock className="w-4 h-4 text-amber-600 flex-shrink-0" />
                             <div className="flex-1">
-                                <p className="text-xs font-bold text-amber-700">Admin edit mode — Record unlocked</p>
+                                <p className="text-xs font-bold text-amber-700">Admin edit mode - Record unlocked</p>
                                 <p className="text-[10px] text-amber-500">Click "Re-lock" when done to freeze the record again</p>
                             </div>
                         </div>

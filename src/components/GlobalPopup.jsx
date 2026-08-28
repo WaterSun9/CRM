@@ -32,7 +32,7 @@ export function GlobalPopupProvider({ children }) {
     }, []);
 
     // Save / Discard / Keep Editing. showConfirm only offers save-or-stay, which
-    // traps the user whenever validation makes saving impossible — there was no
+    // traps the user whenever validation makes saving impossible - there was no
     // way out of the Add Lead form once it was dirty.
     const showChoice = useCallback((message, opts = {}) => {
         return new Promise((resolve) => {

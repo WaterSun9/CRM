@@ -1,7 +1,7 @@
 // ─── BomPrintModal.jsx ──────────────────────────────────────────────────────
 // Shared "Print / Export PDF" preview for the Material Integration BOM.
 // Extracted from MaterialIntegrationTab so the admin modal and the Agent
-// Portal render the exact same document, print portal and page rules —
+// Portal render the exact same document, print portal and page rules -
 // previously the print CSS only existed inside VendorPortal, so the portal
 // div was appended without the rules that isolate it from the rest of the app.
 // ────────────────────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ export default function BomPrintModal({ customer, bom, bomItems = [], activeType
                 <div className="px-6 py-4 bg-stone-900 text-white flex items-center justify-between no-print">
                     <div className="flex items-center gap-2">
                         <Printer size={18} className="text-amber-400" />
-                        <h3 className="text-sm font-black uppercase tracking-wider">Print Preview — Material Integration &amp; BOM</h3>
+                        <h3 className="text-sm font-black uppercase tracking-wider">Print Preview - Material Integration &amp; BOM</h3>
                     </div>
                     <div className="flex items-center gap-3">
                         <button

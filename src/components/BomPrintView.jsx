@@ -8,15 +8,16 @@
 
 import React from 'react';
 
-const toIndianCommas = (num) => {
-    if (!num) return '';
-    const numStr = num.toString();
-    const lastThree = numStr.substring(numStr.length - 3);
-    const otherNumbers = numStr.substring(0, numStr.length - 3);
-    if (otherNumbers !== '') {
-        return otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + "," + lastThree;
-    }
-    return lastThree;
+// Indian grouping that keeps the decimal part intact - capacity is a kWp value
+// like 32.94, and the previous substring approach turned that into "32,.94".
+const toIndianCommas = (val) => {
+    const n = Number(String(val).replace(/,/g, ''));
+    if (isNaN(n) || val === '' || val == null) return '';
+    const [intPart, decPart] = n.toString().split('.');
+    const lastThree = intPart.slice(-3);
+    const rest = intPart.slice(0, -3);
+    const formatted = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + (rest ? ',' : '') + lastThree;
+    return decPart !== undefined ? `${formatted}.${decPart}` : formatted;
 };
 
 // Serials are stored as a JSON string, a newline list or a comma list.
@@ -89,7 +90,7 @@ export default function BomPrintView({ customer, bom, bomItems, activeType }) {
             {/* ================= PAGE 1 ================= */}
             <div className="print-page-1 flex flex-col justify-between min-h-[1000px]">
                 <div>
-                    <PageHeader label={`Bill of Materials (BOM) — ${type} Type`} page={1} />
+                    <PageHeader label={`Bill of Materials (BOM) - ${type} Type`} page={1} />
 
                     <div className="mb-4">
                         <SectionTitle>1. Customer &amp; Site Reference</SectionTitle>
@@ -200,7 +201,7 @@ export default function BomPrintView({ customer, bom, bomItems, activeType }) {
             {/* ================= PAGE 2 ================= */}
             <div className="print-page-2 flex flex-col justify-between min-h-[1000px] break-before-page mt-10 pt-10 border-t-2 border-dashed border-stone-300 print:mt-0 print:pt-0 print:border-t-0">
                 <div>
-                    <PageHeader label={`Bill of Materials (BOM) — ${type} Type (Equipment Checklist)`} page={2} />
+                    <PageHeader label={`Bill of Materials (BOM) - ${type} Type (Equipment Checklist)`} page={2} />
 
                     {/* Carry the identifying details onto page 2 so a detached
                         sheet is still traceable to the customer. */}

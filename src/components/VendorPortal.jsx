@@ -1647,7 +1647,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                             <div className="flex items-center gap-2">
                                 <Printer size={16} className="text-amber-400" />
                                 <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider">
-                                    Bill of Materials (BOM) — {targetBomCust.customer_name}
+                                    Bill of Materials (BOM) - {targetBomCust.customer_name}
                                 </h3>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1682,7 +1682,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         <h1 className="text-lg font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
                                         <p className="text-[11px] font-semibold text-stone-600">Solar PV Project Integration & Material Loading Checklist</p>
                                         <div className="inline-block mt-2 px-2.5 py-0.5 bg-stone-100 border border-stone-300 rounded text-[10px] font-black uppercase tracking-widest text-stone-800">
-                                            BILL OF MATERIALS (BOM) — {bomData?.bom_type ? `${bomData.bom_type} TYPE` : 'GENERAL'}
+                                            BILL OF MATERIALS (BOM) - {bomData?.bom_type ? `${bomData.bom_type} TYPE` : 'GENERAL'}
                                         </div>
                                     </div>
 

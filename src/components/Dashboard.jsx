@@ -674,7 +674,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         return !channelPartnerFilter || (c?.channel_partner || '').toLowerCase() === channelPartnerFilter.toLowerCase();
     };
 
-    // Everything downstream — stage counts, the stages grid, dashboard stats
+    // Everything downstream - stage counts, the stages grid, dashboard stats
     // is built from this one channel partner-scoped list
     // Sidebar counts now come straight from the server metrics to avoid downloading all records
     const subsidyTagCount = metrics?.subsidyTagCount || 0;
@@ -704,7 +704,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
 
     // ── Nav button helper ─────────────────────────────────────────────────────
     
-    // ── Role-based routing (agent only — sales/operations now share this shell) ─
+    // ── Role-based routing (agent only - sales/operations now share this shell) ─
 
     const headerTitle =
         currentView === 'dashboard' ? 'Business Dashboard'
@@ -753,13 +753,13 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
 
 
 
-                    {/* Project Stages — identical for every role */}
+                    {/* Project Stages - identical for every role */}
                     <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-4 pb-2 tracking-widest">Project Stages</div>
                     {PRIMARY_STAGES.map(s => (
                         <NavBtn key={s.id} view="stages" stage={s.id} icon={s.icon} label={s.label} count={stageCounts[s.id] || 0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     ))}
 
-                    {/* System — admin only */}
+                    {/* System - admin only */}
                     {user.userType === 'admin' && (
                         <>
                             <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-5 pb-2 tracking-widest">System</div>
@@ -771,7 +771,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         </>
                     )}
 
-                    {/* Partner Office — main CPO account only */}
+                    {/* Partner Office - main CPO account only */}
                     {user.userType === 'channel_partner_office' && (
                         <>
                             <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-5 pb-2 tracking-widest">Partner Office</div>
@@ -856,7 +856,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                             </div>
                         )}
 
-                        {/* Channel Partner filter — applies everywhere for Admin/Office */}
+                        {/* Channel Partner filter - applies everywhere for Admin/Office */}
                         {!isChannelPartnerOffice && (
                             <div className="relative hidden lg:flex items-center gap-1.5" ref={channelPartnerFilterRef}>
                                 <input
@@ -942,7 +942,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                     {currentView === 'activity' && user.userType === 'admin' && <ActivityLogView />}
                     {currentView === 'users' && (user.userType === 'admin' || user.userType === 'channel_partner_office') && <UserManagementView currentUser={user} />}
 
-                    {/* Trash view — admin only */}
+                    {/* Trash view - admin only */}
                     {currentView === 'trash' && user.userType === 'admin' && (
                         <TrashView
                             onRecover={handleRecover}
@@ -951,7 +951,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         />
                     )}
 
-                    {/* Stage grid — identical for every role */}
+                    {/* Stage grid - identical for every role */}
                     {currentView === 'stages' && (
                         (loading && page === 0) ? (
                             <div className="flex items-center justify-center h-64">

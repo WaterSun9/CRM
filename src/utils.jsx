@@ -1,5 +1,5 @@
 // ─── utils.jsx ────────────────────────────────────────────────────────────────
-// Pure utility functions — no UI, no React state.
+// Pure utility functions - no UI, no React state.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase';
@@ -88,7 +88,7 @@ export function exportAllToCSV(customers) {
         return `"${str.replace(/"/g, '""')}"`;
     };
 
-    // Rebuilt against the current live `admin` schema — the previous
+    // Rebuilt against the current live `admin` schema - the previous
     // version of this list dated back to an older column structure and
     // many of those columns (application_number, meter_category,
     // sanctioned_load, bank_name, loan_sanction_amount, etc.) no longer
@@ -594,10 +594,13 @@ export async function fetchAgent2SubAgents(branchName) {
         const { data, error } = await supabase
             .from('profiles')
             .select('name')
-            .eq('user_type', 'agent2')
+            // New Channel Partners use agent2. Older accounts used agent,
+            // so include both while the saved profiles are being aligned.
+            .in('user_type', ['agent2', 'agent'])
             .ilike('channel_partner', clean);
         if (error || !data) return [];
-        return data.map(p => (p.name || '').trim()).filter(Boolean);
+        return [...new Set(data.map(p => (p.name || '').trim()).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b));
     } catch (err) {
         console.error('Error fetching sub-agents:', err);
         return [];

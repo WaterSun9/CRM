@@ -96,7 +96,7 @@ const displayValue = (value) => {
     if (Array.isArray(value)) {
         if (!value.length) return '–';
         return value.map((item, index) => typeof item === 'object'
-            ? `${item.status || item.payment_type || `Entry ${index + 1}`}${item.amount ? ` — ₹${item.amount}` : ''}${item.date ? ` (${item.date})` : ''}${item.remark ? ` — ${item.remark}` : ''}`
+            ? `${item.status || item.payment_type || `Entry ${index + 1}`}${item.amount ? ` - ₹${item.amount}` : ''}${item.date ? ` (${item.date})` : ''}${item.remark ? ` - ${item.remark}` : ''}`
             : String(item)).join('\n');
     }
     if (typeof value === 'object') return Object.entries(value).map(([key, item]) => `${key.replace(/_/g, ' ')}: ${displayValue(item)}`).join('\n');
@@ -135,8 +135,8 @@ export default function AgentStageDetails({ stage, customer, bom, bomItems = [],
 
     if (stage === STAGE_IDS.MATERIAL_INTEGRATION) {
         rows.push(['BOM Type', displayValue(bom?.bom_type), []]);
-        rows.push(['Paper Prepared By / Date', displayValue([bom?.paper_prepared_by, bom?.paper_prepared_date].filter(Boolean).join(' — ')), []]);
-        rows.push(['Material Loaded By / Date', displayValue([bom?.material_loaded_by, bom?.material_loaded_date].filter(Boolean).join(' — ')), []]);
+        rows.push(['Paper Prepared By / Date', displayValue([bom?.paper_prepared_by, bom?.paper_prepared_date].filter(Boolean).join(' - ')), []]);
+        rows.push(['Material Loaded By / Date', displayValue([bom?.material_loaded_by, bom?.material_loaded_date].filter(Boolean).join(' - ')), []]);
         rows.push(['BOM Items', bomItems.length ? `${bomItems.length} item${bomItems.length === 1 ? '' : 's'}` : '–', []]);
     }
 

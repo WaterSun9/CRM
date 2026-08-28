@@ -6,10 +6,10 @@
 //   entries        : array of { status, date, remark, created_at }
 //   onChange       : (newEntries) => void
 //   isEditing      : bool
-//   statusOptions  : string[]   — dropdown values (e.g. ['Pending', 'Approved', 'Rejected'])
-//   statusColors   : { [status]: { bg, text } }  — optional colour map for the read-only pills
-//   title          : string  — singular label for "Add X Entry" button
-//   emptyText      : string  — shown when there are no entries
+//   statusOptions  : string[]   - dropdown values (e.g. ['Pending', 'Approved', 'Rejected'])
+//   statusColors   : { [status]: { bg, text } }  - optional colour map for the read-only pills
+//   title          : string  - singular label for "Add X Entry" button
+//   emptyText      : string  - shown when there are no entries
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { Plus, Trash2 } from 'lucide-react';

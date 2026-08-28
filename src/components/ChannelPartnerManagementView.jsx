@@ -86,7 +86,14 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                 const allProfiles = profilesRes.data;
                 setUserProfilesList(allProfiles);
                 const cpoList = allProfiles.filter(p => p.user_type === 'channel_partner_office' || p.role === 'Channel Partner Office');
-                const agentList = allProfiles.filter(p => p.user_type === 'agent' || p.role === 'Channel Partners');
+                // Keep both the legacy `agent` accounts and the current
+                // `agent2` Channel Partner accounts visible under their CPO.
+                const agentList = allProfiles.filter(p =>
+                    p.user_type === 'agent' ||
+                    p.user_type === 'agent2' ||
+                    p.role === 'Channel Partners' ||
+                    p.role === 'Channel Partner'
+                );
                 setCpos(cpoList);
                 setSubAgents(agentList);
             }

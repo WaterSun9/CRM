@@ -34,6 +34,8 @@ export default function LeadsTab({
     // Agent 2 records always belong to that agent, so the field is filled from
     // their account and locked rather than being an optional free choice.
     const isAgent2 = user?.userType === 'agent2';
+    const isChannelPartnerManager = user?.userType === 'office2';
+    const managerCpoName = (user?.channel_partner || user?.name || '').trim();
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
             {/* Customer Info */}
@@ -72,7 +74,15 @@ export default function LeadsTab({
                     <EditableDetailItem label="Consumer No *" field="consumer_no" value={editData.consumer_no} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
                     <EditableDetailItem label="Villages *" field="villages" value={editData.villages} onChange={handleChange} isEditing={editingSection === 'cus'} />
                     <EditableDetailItem label="Sub Division *" field="sub_divisions" value={editData.sub_divisions} onChange={handleChange} isEditing={editingSection === 'cus'} />
-                    <EditableDetailItem label="Channel Partner Name *" field="channel_partner" value={editData.channel_partner} onChange={handleChange} isEditing={editingSection === 'cus'} channel_partners={channel_partners} isAdmin={isAdmin} />
+                    <EditableDetailItem
+                        label="Channel Partner Name *"
+                        field="channel_partner"
+                        value={isChannelPartnerManager ? managerCpoName : editData.channel_partner}
+                        onChange={handleChange}
+                        isEditing={!isChannelPartnerManager && editingSection === 'cus'}
+                        channel_partners={channel_partners}
+                        isAdmin={isAdmin}
+                    />
                     <EditableDetailItem
                         label={isAgent2 ? 'Sub Channel Partner Name *' : 'Sub Channel Partner Name (optional)'}
                         field="sub_channel_partner"
