@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../supabase";
 import {
-    LogOut, Search, Upload, Trash2, Eye, Loader2, CheckCircle2,
+    LogOut, Search, Upload, Eye, Loader2, CheckCircle2,
     RefreshCw, X, MessageSquare, ChevronDown, ChevronUp, Save, FileText,
     SendHorizonal, User, Sun, AlertTriangle, Check, AlertCircle, FileCheck, Terminal
 } from "lucide-react";
@@ -10,6 +10,7 @@ import {
 } from "../utils.jsx";
 import { FilePreviewModal } from "./modal-tabs/shared";
 import { useGlobalPopup } from './GlobalPopup';
+import { isReturnedDocument } from './modal-tabs/shared';
 
 const uploaderCache = {};
 async function fetchUploaderName(userId) {
@@ -162,25 +163,6 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
         }
     };
 
-    const handleDeleteStamp = async () => {
-        if (!stampDoc) return;
-        setUploading(true);
-        try {
-            await deleteDocument(stampDoc.id, stampDoc.storage_path);
-            await supabase.from("admin").update({ pm_surya_ghar_stamp: false }).eq("id", cust.id);
-            await logActivity(user.id, "update", cust.customer_name + ": Removed PM Surya Ghar Stamp", "", cust.id);
-            const updatedDocs = await getCustomerDocuments(cust.id);
-            onDocsChange(cust.id, updatedDocs || []);
-        } catch (err) {
-            showAlert(err.message, {
-                title: "Delete Failed",
-                type: "error"
-            });
-        } finally {
-            setUploading(false);
-        }
-    };
-
     const partyRows = [
         ["First Party", subDetails.first_party],
         ["Second Party", subDetails.second_party],
@@ -299,22 +281,25 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
                                 >
                                     <Eye size={14} />
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
-                                    title="Change Stamp Document"
-                                >
-                                    <Upload size={14} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleDeleteStamp}
-                                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                                    title="Delete Stamp"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
+                                {/* Once uploaded the stamp is locked. Admin or Office must send
+                                    it back before it can be replaced; there is no delete. */}
+                                {isReturnedDocument(stampDoc) ? (
+                                    <>
+                                        <span className="text-[9px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">Returned</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                                            title="Replace the returned stamp document"
+                                        >
+                                            <Upload size={14} />
+                                        </button>
+                                    </>
+                                ) : (
+                                    <span className="text-[9px] font-semibold text-stone-400 uppercase tracking-wide" title="Admin or Office must send this back before it can be replaced">
+                                        Locked
+                                    </span>
+                                )}
                             </div>
                         </div>
 

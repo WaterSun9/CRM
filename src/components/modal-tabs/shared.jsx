@@ -418,8 +418,11 @@ function DocRemarkRow({ doc, onUpdateRemark, isEditing }) {
     return null;
 }
 
-const RETURNED_DOCUMENT_PREFIX = '[RETURNED]';
-const isReturnedDocument = (doc) => String(doc?.remark || '').trim().toUpperCase().startsWith(RETURNED_DOCUMENT_PREFIX);
+// Recall marker. Admin/Office stamp a document with this to send it back; only
+// then may the uploader replace it. Exported so every portal enforces the same
+// rule instead of re-implementing (or skipping) it.
+export const RETURNED_DOCUMENT_PREFIX = '[RETURNED]';
+export const isReturnedDocument = (doc) => String(doc?.remark || '').trim().toUpperCase().startsWith(RETURNED_DOCUMENT_PREFIX);
 
 export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onDownload, onUpdateRemark, note, canDelete = false, canReplace = canDelete, allowReturnedReplace = !canDelete }) {
     const fieldDocs = documents.filter(d => d.doc_type === field);

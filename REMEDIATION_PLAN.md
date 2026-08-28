@@ -11,6 +11,39 @@ progress · 🔴 needs your action (not something code can fix) · ⏸️ delibe
 
 ---
 
+## 🔴 Login with no profile row grants Office access (fail-open) — DEFERRED
+A session whose `auth.users` row exists but has **no matching
+`public.profiles` row** is not rejected. `src/App.jsx` falls back to
+`userType: 'sales'`, which routes to `<Dashboard>` — the Office view with
+the full customer pipeline. A missing profile therefore *grants* access
+instead of denying it.
+
+Found while debugging "Forbidden: Access denied" on user creation: seven
+orphaned auth users existed, three with real-looking addresses
+(`rr644165@gimail.com` — note the typo'd domain, `gelotsanjay5@gmail.com`,
+`joshipankaj940@gmail.com`). Orphans are created by deleting a profile row
+directly in the Supabase table editor; the auth user survives, since the
+FK cascades `profiles → auth.users`, not the reverse. The `add_user` edge
+function itself is clean — it already rolls back the auth user when the
+profile insert fails.
+
+**Fix (one line, deliberately not applied yet):** in `src/App.jsx`, the
+no-profile branch should `signOut()` and clear the user, exactly like the
+`status === 'inactive'` branch directly above it — never default to
+`sales`.
+
+**Why deferred:** applying it immediately locks out every existing orphan.
+Clear or re-create those accounts first (Supabase → Authentication →
+Users), then apply. Find them with:
+```sql
+select u.id, u.email, u.created_at
+from auth.users u
+left join public.profiles p on p.id = u.id
+where p.id is null;
+```
+
+---
+
 ## ✅ Agent Portal: BOM/Discom now use the EXACT SAME components as Admin
 You asked directly whether true, pixel-for-pixel parity was even
 possible and wanted honesty if not — it was possible, my first pass had

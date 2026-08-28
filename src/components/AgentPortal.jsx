@@ -125,22 +125,38 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     // Metadata
     const [meta, setMeta] = useState({});
 
-    const isAgent2 = user?.userType === 'agent2' || !!(user?.channel_partner && user?.channel_partner !== user?.name && user?.userType !== 'channel_partner_office' && user?.userType !== 'office2');
+    // Scope follows the role that was selected for the account, nothing else.
+    // This used to also infer Agent 2 from "channel_partner !== name", which
+    // silently mis-scoped every Channel Partner working under a branch (their
+    // branch name is not their own name) into sub-agent filtering.
+    const isAgent2 = user?.userType === 'agent2';
+
+    // Agent 2 only ever sees their own sub-agent records, so fall back to their
+    // account name rather than showing a dash.
+    const subChannelPartnerOf = (record) => (record?.sub_channel_partner || (isAgent2 ? user?.name : '') || '–');
 
     // Load agent's customers & metadata
     const fetchCustomers = async () => {
         setLoading(true);
         try {
+            // A blank scope previously became ilike '%%', which matched every
+            // customer in the table. Show nothing instead.
+            const scopeValue = (isAgent2 ? user?.name : (user?.channel_partner || user?.name)) || '';
+            if (!String(scopeValue).trim()) {
+                setCustomers([]);
+                setLoading(false);
+                return;
+            }
             const buildQuery = () => {
                 let q = supabase.from('admin').select('*').is('deleted_at', null).order('created_at', { ascending: false });
                 if (isAgent2) {
                     // Agent 2 (Sub-Agent) filters strictly by sub_channel_partner
                     const subFilter = (user.name || '').trim();
-                    q = q.ilike('sub_channel_partner', `%${subFilter}%`);
+                    q = q.ilike('sub_channel_partner', subFilter);
                 } else {
                     // Main Channel Partner / Agent
                     const cpFilter = (user.channel_partner || user.name || '').trim();
-                    q = q.ilike('channel_partner', `%${cpFilter}%`);
+                    q = q.ilike('channel_partner', cpFilter);
                 }
                 return q;
             };
@@ -868,7 +884,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                         <div className="relative space-y-5">
                             <div className="max-w-xl">
                                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">
-                                    {isAgent2 ? `Field Sub-Agent Workspace · ${user.channel_partner || 'Direct'}` : 'Channel Partner workspace'}
+                                    {isAgent2 ? `Channel Partner workspace · ${user.channel_partner || 'Direct'}` : 'Channel Partner workspace'}
                                 </p>
                                 <h2 className="mt-2 text-2xl font-black tracking-tight">Good to see you, {user.name}.</h2>
                                 <p className="mt-2 max-w-lg text-sm font-medium leading-relaxed text-stone-300">
@@ -1415,7 +1431,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Channel Partner</span>
-                                                <span className="font-semibold text-stone-900">{selectedCust.sub_channel_partner || '–'}</span>
+                                                <span className="font-semibold text-stone-900">{subChannelPartnerOf(selectedCust)}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Module Brand</span>
@@ -1771,7 +1787,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Channel Partner</span>
-                                                <span className="font-semibold text-stone-900">{selectedCust.sub_channel_partner || '–'}</span>
+                                                <span className="font-semibold text-stone-900">{subChannelPartnerOf(selectedCust)}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Module Brand</span>
@@ -2354,7 +2370,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Channel Partner Name</span>
-                                                <span className="font-semibold text-stone-900">{selectedCust.sub_channel_partner || '–'}</span>
+                                                <span className="font-semibold text-stone-900">{subChannelPartnerOf(selectedCust)}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">System Capacity (kWp)</span>

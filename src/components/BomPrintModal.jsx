@@ -104,22 +104,25 @@ export default function BomPrintModal({ customer, bom, bomItems = [], activeType
                         color: #000000 !important;
                         visibility: visible !important;
                     }
-                    body.is-printing-document #native-print-portal,
-                    body.is-printing-document #native-print-portal p,
-                    body.is-printing-document #native-print-portal span,
-                    body.is-printing-document #native-print-portal td,
-                    body.is-printing-document #native-print-portal th,
-                    body.is-printing-document #native-print-portal div {
-                        font-size: 8.5pt !important;
-                    }
-                    body.is-printing-document #native-print-portal h1,
-                    body.is-printing-document #native-print-portal h2,
-                    body.is-printing-document #native-print-portal h3,
-                    body.is-printing-document #native-print-portal h4 {
-                        font-size: 10pt !important;
-                    }
+                    /* No blanket font-size override here: the document sets its
+                       own type scale, and forcing everything to 8.5pt/10pt
+                       flattened the header and section titles on paper. */
                     body.is-printing-document #native-print-portal * {
                         visibility: visible !important;
+                    }
+                    /* Page 2 must start on a new sheet. The markup also carries
+                       break-before-page, but the portal is cloned innerHTML so
+                       this states it explicitly rather than relying on it. */
+                    body.is-printing-document #native-print-portal .print-page-2 {
+                        break-before: page !important;
+                        page-break-before: always !important;
+                        margin-top: 0 !important;
+                        padding-top: 0 !important;
+                        border-top: 0 !important;
+                    }
+                    body.is-printing-document #native-print-portal .print-page-1,
+                    body.is-printing-document #native-print-portal .print-page-2 {
+                        break-inside: auto;
                     }
                     .no-print {
                         display: none !important;

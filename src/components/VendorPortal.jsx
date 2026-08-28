@@ -5,11 +5,12 @@ import {
     User, Phone, Mail, MapPin, Zap, Building2, Sun,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Hash, Folder, Tag, ChevronLeft, Search, ClipboardList, Banknote, Calendar, ClipboardCheck,
-    Camera, Paperclip, Eye, Trash2, Upload, Image as ImageIcon, X,
+    Camera, Paperclip, Eye, Upload, Image as ImageIcon, X,
     Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, Check, Wrench, RefreshCw, Save, Terminal
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, STAGE_IDS, PRIMARY_STAGES } from '../constants';
+import { isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 
 const parsePanelSerials = (raw) => {
@@ -71,6 +72,8 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const [previewDoc, setPreviewDoc] = useState(null);
     const fileInputRef = useRef(null);
+    // Set when replacing a photo that Admin/Office sent back.
+    const replacingPhotoRef = useRef(null);
 
     // BOM Print Modal for Vendor (Read-Only)
     const [showBomModal, setShowBomModal] = useState(false);
@@ -459,6 +462,9 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 type: 'error'
             });
         } finally {
+            const replaced = replacingPhotoRef.current;
+            replacingPhotoRef.current = null;
+            if (replaced) await handlePhotoDelete(replaced);
             setUploadingPhoto(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
@@ -473,7 +479,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
     };
 
-    // Delete photo handler
+    // Removes the returned photo once its replacement has uploaded.
     const handlePhotoDelete = async (doc) => {
         try {
             await deleteDocument(doc);
@@ -1284,24 +1290,26 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                             >
                                                                 <Eye size={13} />
                                                             </button>
-                                                            <button
-                                                                type="button"
-                                                                disabled={!canEditGeoTag}
-                                                                onClick={() => fileInputRef.current?.click()}
-                                                                className="text-blue-600 hover:text-blue-800 p-1 rounded-lg hover:bg-blue-50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                                                title="Change / Replace photo"
-                                                            >
-                                                                <Upload size={13} />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                disabled={!canEditGeoTag}
-                                                                onClick={() => handlePhotoDelete(doc)}
-                                                                className="text-red-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                                                title="Delete photo"
-                                                            >
-                                                                <Trash2 size={13} />
-                                                            </button>
+                                                            {/* An uploaded photo is locked. Admin or Office must send it
+                                                                back before it can be replaced; there is no delete. */}
+                                                            {isReturnedDocument(doc) ? (
+                                                                <>
+                                                                    <span className="text-[9px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">Returned</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={!canEditGeoTag}
+                                                                        onClick={() => { replacingPhotoRef.current = doc; fileInputRef.current?.click(); }}
+                                                                        className="text-blue-600 hover:text-blue-800 p-1 rounded-lg hover:bg-blue-50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                                                        title="Replace the returned photo"
+                                                                    >
+                                                                        <Upload size={13} />
+                                                                    </button>
+                                                                </>
+                                                            ) : (
+                                                                <span className="text-[9px] font-semibold text-stone-400 uppercase tracking-wide" title="Admin or Office must send this back before it can be replaced">
+                                                                    Locked
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 ))}

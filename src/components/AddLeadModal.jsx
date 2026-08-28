@@ -4,7 +4,7 @@ import { leadSchema } from '../utils/validation';
 
 import { useState, useEffect, useRef } from 'react';
 import { 
-    X, Plus, User, ClipboardList, Paperclip, Eye, Trash2, 
+    X, Plus, User, ClipboardList, Paperclip, Eye, 
     Upload, FileText, Image as ImageIcon, Loader2, Banknote, AlertTriangle
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
@@ -200,9 +200,9 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
                             type="button"
                             onClick={handleRemove}
                             className="text-[9px] font-bold text-red-500 hover:text-red-700 px-1.5 py-0.5 rounded hover:bg-red-50 transition-colors flex items-center gap-0.5 cursor-pointer"
-                            title="Remove file"
+                            title="Unstage this file (nothing has been uploaded yet)"
                         >
-                            <Trash2 size={10} /> Delete
+                            <X size={10} /> Remove
                         </button>
                     </div>
                 </div>
@@ -212,7 +212,7 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
 }
 
 export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, channel_partners = [], user }) {
-    const { showAlert, showConfirm } = useGlobalPopup();
+    const { showAlert, showChoice } = useGlobalPopup();
     const [formData, setFormData] = useState({ ...DEFAULT_LEAD_FORM });
     const [pendingFiles, setPendingFiles] = useState({}); // { [doc_type]: File }
     const [previewDoc, setPreviewDoc] = useState(null); // { doc, url }
@@ -250,6 +250,16 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             setIsFormDirty(false);
         }
     }, [isOpen, user, isAgent, isAgent2, isChannelPartnerOffice, partnerName]);
+
+    // Esc closes the form through the same guard. Declared before the early
+    // return below so the hook runs on every render.
+    const requestCloseRef = useRef(null);
+    useEffect(() => {
+        if (!isOpen) return undefined;
+        const onKeyDown = (e) => { if (e.key === 'Escape') requestCloseRef.current?.(); };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -360,13 +370,19 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             onClose();
             return;
         }
-        const shouldSave = await showConfirm('This new lead has unsaved changes. Save it before closing?', {
+        // Always offer a way out: saving can be impossible while required fields
+        // are incomplete, so "Save or Keep Editing" alone left no exit.
+        const choice = await showChoice('This new lead has unsaved changes.', {
+            title: 'Close without saving?',
             confirmLabel: 'Save & Close',
+            discardLabel: 'Discard Lead',
             cancelLabel: 'Keep Editing',
             type: 'success'
         });
-        if (shouldSave) await handleSave();
+        if (choice === 'confirm') await handleSave();
+        else if (choice === 'discard') onClose();
     };
+    requestCloseRef.current = handleRequestClose;
 
     const moduleWpOptions = (meta['module_wp'] && meta['module_wp'].length > 0)
         ? meta['module_wp']
@@ -516,7 +532,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             </div>
 
                             {/* Agents and Channel Partner Office users are always assigned to themselves. */}
-                            {(isAgent || isChannelPartnerOffice) ? (
+                            {(isAgent || isAgent2 || isChannelPartnerOffice) ? (
                                 <div className="space-y-1">
                                     <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
                                         Channel Partner Name <span className="text-red-500 font-bold">*</span>
@@ -539,8 +555,24 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 />
                             )}
 
-                            {/* Auto-filled to the Agent 2 user's own account for Agent 2; a scoped dropdown of real Agent 2 accounts for everyone else, sourced from User Management. */}
-                            {!isAgent2 && (
+                            {/* Agent 2 files leads under their own name, so the field is
+                                shown filled and locked rather than hidden. Everyone else
+                                gets a scoped dropdown of real Agent 2 accounts. */}
+                            {isAgent2 ? (
+                                <div className="space-y-1">
+                                    <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
+                                        Sub Channel Partner Name <span className="text-red-500 font-bold">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={user?.name || ''}
+                                        disabled
+                                        readOnly
+                                        className="w-full bg-stone-100 border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-stone-700 cursor-not-allowed"
+                                    />
+                                    <p className="text-[10px] text-stone-400 italic">Set automatically to your account.</p>
+                                </div>
+                            ) : (
                                 <div className="space-y-1">
                                     <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
                                         Sub Channel Partner Name <span className="normal-case text-stone-400 font-medium">(optional)</span>
