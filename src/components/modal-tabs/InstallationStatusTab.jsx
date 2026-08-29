@@ -3,6 +3,7 @@ import { ClipboardList, Save, Building2, Mail, AlertTriangle, CheckCircle2, User
 import { supabase } from '../../supabase';
 import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
 import { CheckboxRemarkItem } from './shared';
+import { INSTALLATION_TAGS, isFinalTagValue } from '../../constants';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
 
 export default function InstallationStatusTab({
@@ -52,13 +53,13 @@ export default function InstallationStatusTab({
         const newTag = editData.installation_status === tagId ? null : tagId;
         const todayStr = new Date().toISOString().split('T')[0];
         // If user is moving away from "Give Up", reset the approval flag
-        const wasGiveUp = editData.installation_status === 'Give Up';
-        const resetApproval = wasGiveUp && newTag !== 'Give Up';
+        const wasGiveUp = editData.installation_status === 'Giveup';
+        const resetApproval = wasGiveUp && newTag !== 'Giveup';
         setEditData(prev => ({
             ...prev,
             installation_status: newTag,
             // Auto-set installation date when moving to Process or Yes if not already set
-            installation_date: (newTag === 'Process' || newTag === 'Yes') ? (prev.installation_date || todayStr) : prev.installation_date,
+            installation_date: (newTag === 'In process' || newTag === 'Installed') ? (prev.installation_date || todayStr) : prev.installation_date,
             ...(resetApproval ? { vendor_give_up_approved: false, vendor_note: '' } : {})
         }));
     };
@@ -82,9 +83,9 @@ export default function InstallationStatusTab({
         await onUpdate(customer.id, updates);
         
         let logMsg = `${customer.customer_name}: Updated Installation Status to ${editData.installation_status || 'None'}`;
-        if (editData.installation_status === 'Yes') {
+        if (editData.installation_status === 'Installed') {
             logMsg += ` (Date: ${editData.installation_date || 'N/A'}, Installed By Vendor: ${editData.vendor || 'N/A'})`;
-        } else if (editData.installation_status === 'Give Up') {
+        } else if (editData.installation_status === 'Giveup') {
             logMsg += ` (Vendor Give Up - Allotted Vendor: ${editData.vendor || 'None'})`;
         }
         if (parsedQuote !== null) {
@@ -194,7 +195,7 @@ export default function InstallationStatusTab({
                 </div>
 
                 {/* 4 Status Buttons: Give Up, Yes, Process, Pending */}
-                {customer.installation_status === 'Yes' && (
+                {customer.installation_status === 'Installed' && (
                     <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-bold">
                         <CheckCircle2 size={15} className="text-emerald-600" />
                         <span>Installation Completed (Locked to "Yes")</span>
@@ -202,13 +203,14 @@ export default function InstallationStatusTab({
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
                     {[
-                        { id: 'Give Up', label: 'Give Up', activeClass: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/10', dotClass: 'bg-white' },
-                        { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
-                        { id: 'Process', label: 'Process', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
+                        { id: 'Giveup', label: 'Giveup', activeClass: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/10', dotClass: 'bg-white' },
+                        { id: 'Installed', label: 'Installed', isFinal: true, activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
+                        { id: 'In process', label: 'In process', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
                         { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
                     ].map(tag => {
                         const isSelected = editData.installation_status === tag.id;
-                        const isLocked = customer.installation_status === 'Yes';
+                        // Terminal value locks the field — Admin can still change it.
+                        const isLocked = isFinalTagValue(customer.installation_status, INSTALLATION_TAGS) && user?.userType !== 'admin';
                         return (
                             <button
                                 key={tag.id}
@@ -231,7 +233,7 @@ export default function InstallationStatusTab({
                 </div>
 
                 {/* WHEN STATUS IS "GIVE UP" — Admin Reviews & Approves Reason */}
-                {editData.installation_status === 'Give Up' && (
+                {editData.installation_status === 'Giveup' && (
                     <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
                         {/* 1. Vendor Give Up Box */}
                         <div className="p-4 bg-rose-50/70 border border-rose-200/90 rounded-2xl space-y-3.5">
@@ -408,7 +410,7 @@ export default function InstallationStatusTab({
                 )}
 
                 {/* WHEN STATUS IS "PROCESS" — Installation Date & Automatically Grabbed Vendor Name */}
-                {(editData.installation_status === 'Process' || editData.installation_status === 'Yes') && (
+                {(editData.installation_status === 'In process' || editData.installation_status === 'Installed') && (
                     <div className="pt-4 border-t border-stone-100 grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-300">
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1 flex items-center gap-1">

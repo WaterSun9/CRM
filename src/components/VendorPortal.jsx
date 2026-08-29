@@ -9,7 +9,7 @@ import {
     Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, Check, Wrench, RefreshCw, Save, Terminal
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
-import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, STAGE_IDS, PRIMARY_STAGES } from '../constants';
+import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, isFinalTagValue } from '../constants';
 import { isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 
@@ -289,7 +289,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             
             // Client-side filtering to see if deleted_at or Give Up was hiding it
             const activeData = (data || []).filter(r => 
-                r.deleted_at === null && r.installation_status !== 'Give Up'
+                r.deleted_at === null && r.installation_status !== 'Giveup'
             );
 
             console.log('[VendorPortal] Searching names:', searchNames, '| Total found:', (data || []).length, '| Active found:', activeData.length);
@@ -695,7 +695,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             const { error } = await supabase
                 .from('admin')
                 .update({
-                    installation_status: 'Give Up',
+                    installation_status: 'Giveup',
                     vendor_note: giveUpReason || null
                 })
                 .eq('id', selectedCust.id);
@@ -1378,13 +1378,13 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         </label>
                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                             {[
-                                                { id: 'Give Up', label: 'Give Up', activeClass: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/10', dotClass: 'bg-white' },
+                                                { id: 'Giveup', label: 'Giveup', activeClass: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/10', dotClass: 'bg-white' },
                                                 { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
                                                 { id: 'Process', label: 'Process', activeClass: 'bg-teal-600 text-white border-teal-600 shadow-md shadow-teal-600/10', dotClass: 'bg-white' },
                                                 { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
                                             ].map(tag => {
                                                 const isSelected = installationStatus === tag.id;
-                                                const isLocked = selectedCust?.installation_status === 'Yes';
+                                                const isLocked = isFinalTagValue(selectedCust?.installation_status, INSTALLATION_TAGS) && user?.userType !== 'admin';
                                                 return (
                                                     <button
                                                         key={tag.id}
@@ -1392,7 +1392,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                         disabled={isLocked || !canEditInstallation}
                                                         onClick={() => {
                                                             if (isLocked) return;
-                                                            if (tag.id === 'Give Up') {
+                                                            if (tag.id === 'Giveup') {
                                                                 setShowGiveUpModal(true);
                                                             } else {
                                                                 setInstallationStatus(tag.id);
@@ -1466,7 +1466,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                     )}
 
                                     {/* When marked Give Up: Status Banner */}
-                                    {installationStatus === 'Give Up' && (
+                                    {installationStatus === 'Giveup' && (
                                         <div className="p-4 bg-rose-50/80 rounded-2xl border border-rose-200 space-y-2 animate-in slide-in-from-top-2 duration-200">
                                             <div className="flex items-center gap-2 text-rose-800 font-bold text-xs">
                                                 <AlertTriangle size={15} className="text-rose-600" />

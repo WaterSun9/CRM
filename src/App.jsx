@@ -152,6 +152,57 @@ export default function App() {
         return () => subscription.unsubscribe();
     }, []);
 
+    // ── Enforce deactivation mid-session ────────────────────────────────────
+    // `status = 'inactive'` was only checked at login, so someone deactivated
+    // while working kept full access until they happened to sign out. Watch
+    // this user's own profile row and end the session the moment it flips —
+    // and re-check on tab focus, in case the socket dropped.
+    useEffect(() => {
+        if (!user?.id) return undefined;
+
+        const endSession = async (reason) => {
+            console.warn('Session ended:', reason);
+            await supabase.auth.signOut();
+            setUser(null);
+            if (typeof window !== 'undefined') {
+                Object.keys(localStorage).forEach(k => { if (k.startsWith('sb-')) localStorage.removeItem(k); });
+                Object.keys(sessionStorage).forEach(k => { if (k.startsWith('sb-')) sessionStorage.removeItem(k); });
+            }
+        };
+
+        const verifyStillActive = async () => {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('status')
+                .eq('id', user.id)
+                .maybeSingle();
+            // A failed lookup is left alone — it is usually a dropped network,
+            // and signing people out on a blip would be worse than the risk.
+            if (error) return;
+            if (!data || data.status === 'inactive') {
+                await endSession(!data ? 'profile row removed' : 'account deactivated');
+            }
+        };
+
+        const channel = supabase
+            .channel(`profile_status_${user.id}`)
+            .on('postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+                payload => {
+                    if (payload.new?.status === 'inactive') endSession('account deactivated');
+                })
+            .subscribe();
+
+        const onFocus = () => verifyStillActive();
+        window.addEventListener('focus', onFocus);
+        verifyStillActive();
+
+        return () => {
+            window.removeEventListener('focus', onFocus);
+            supabase.removeChannel(channel);
+        };
+    }, [user?.id]);
+
     if (loading) return <ScreenLoader />;
 
     if (isPasswordRecovery) {

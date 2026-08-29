@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { History, Paperclip, IndianRupee, CheckCircle2, Lock, Edit3, X, ClipboardList } from 'lucide-react';
-import { LOAN_TAGS, LOAN_TAG_COLORS } from '../../constants';
+import { LOAN_TAGS, LOAN_TAG_COLORS, isFinalTagValue } from '../../constants';
 import { CheckboxRemarkItem, EditableDetailItem } from './shared';
 import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
 
@@ -118,7 +118,7 @@ export default function LoanTab({
     const currentTag = editData.loan_tag;
     const isFirstPaymentTag = currentTag === '1st Payment';
     const isSecondPaymentTag = currentTag === '2nd Payment';
-    const isAllClearTag = !currentTag || currentTag === 'All Clear';
+    const isAllClearTag = !currentTag || currentTag === 'Total Loan Payment Received';
 
     // Show Payment Breakdown ONLY for 1st Payment, 2nd Payment, or All Clear
     const showPaymentBreakdown = isFirstPaymentTag || isSecondPaymentTag || isAllClearTag;
@@ -299,7 +299,7 @@ export default function LoanTab({
                             </div>
                         </div>
 
-                        {customer.loan_tag === 'All Clear' && (
+                        {customer.loan_tag === 'Total Loan Payment Received' && (
                             <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-bold mb-2">
                                 <CheckCircle2 size={15} className="text-emerald-600" />
                                 <span>Loan Settlement Completed (Locked to "All Clear")</span>
@@ -310,14 +310,15 @@ export default function LoanTab({
                             {LOAN_TAGS.map(tag => {
                                 const isSelected = editData.loan_tag === tag.id;
                                 const colors = LOAN_TAG_COLORS[tag.id] || {};
-                                const isLocked = customer.loan_tag === 'All Clear';
+                                // 'All Clear' no longer exists; the terminal value now comes from the constant.
+                                const isLocked = isFinalTagValue(customer.loan_tag, LOAN_TAGS) && user?.userType !== 'admin';
                                 return (
                                     <button
                                         key={tag.id}
                                         disabled={!isEditable || isLocked}
                                         onClick={() => !isLocked && handleToggleLoanTag(tag.id)}
                                         className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
-                                            isLocked && tag.id !== 'All Clear' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                            isLocked && !tag.isFinal ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                         } ${
                                             isSelected
                                                 ? `${colors.bg} ${colors.text} ${colors.border} shadow-2xs`
@@ -550,7 +551,7 @@ export default function LoanTab({
 
                                 <div className="flex items-center gap-2.5">
                                     <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg font-bold uppercase">
-                                        {isAllClearTag ? 'All Clear' : (currentTag || 'Active')}
+                                        {isAllClearTag ? 'Total Loan Payment Received' : (currentTag || 'Active')}
                                     </span>
 
                                     {isEditable && (

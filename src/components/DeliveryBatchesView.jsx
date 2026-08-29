@@ -26,24 +26,46 @@ export default function DeliveryBatchesView({
     const [allCustomers, setAllCustomers] = useState([]);
     const [localStatusOverrides, setLocalStatusOverrides] = useState({});
 
-    // Fetch all customers for the batch dropdown and manifest
-    const fetchAllCustomers = async () => {
+    // Customers for the batch picker and the manifest.
+    // This used to page through the entire admin table (3,800+ rows, ~78% of
+    // them COMPLETED) on every load, to keep a few hundred. It now fetches only
+    // the stages the picker offers, plus anything already attached to a batch —
+    // widening to everything only if the user actually picks "All Stages".
+    const PICKER_STAGES = ['MATERIAL DELIVERY', 'MATERIAL INTEGRATION', 'MATERIAL ORDER'];
+
+    const fetchAllCustomers = async (includeEveryStage = false) => {
         try {
-            let all = [];
-            let from = 0;
-            const pageSize = 1000;
-            while (true) {
-                const { data, error } = await supabase
-                    .from('admin')
-                    .select('*')
-                    .is('deleted_at', null)
-                    .order('created_at', { ascending: false })
-                    .range(from, from + pageSize - 1);
-                if (error) throw error;
-                if (!data || data.length === 0) break;
-                all = all.concat(data);
-                if (data.length < pageSize) break;
-                from += pageSize;
+            const pageAll = async (build) => {
+                let rows = [];
+                let from = 0;
+                const pageSize = 1000;
+                while (true) {
+                    const { data, error } = await build()
+                        .order('created_at', { ascending: false })
+                        .range(from, from + pageSize - 1);
+                    if (error) throw error;
+                    if (!data || data.length === 0) break;
+                    rows = rows.concat(data);
+                    if (data.length < pageSize) break;
+                    from += pageSize;
+                }
+                return rows;
+            };
+
+            let all;
+            if (includeEveryStage) {
+                all = await pageAll(() => supabase.from('admin').select('*').is('deleted_at', null));
+            } else {
+                // Two explicit queries rather than a hand-built .or() string —
+                // stage values contain spaces, which PostgREST's or() syntax
+                // makes easy to get subtly wrong.
+                const [byStage, batched] = await Promise.all([
+                    pageAll(() => supabase.from('admin').select('*').is('deleted_at', null).in('stage', PICKER_STAGES)),
+                    pageAll(() => supabase.from('admin').select('*').is('deleted_at', null).not('delivery_batch_id', 'is', null)),
+                ]);
+                const byId = new Map();
+                [...byStage, ...batched].forEach(row => byId.set(row.id, row));
+                all = [...byId.values()];
             }
             setAllCustomers(all);
         } catch (e) {
@@ -110,6 +132,12 @@ export default function DeliveryBatchesView({
     }, []);
 
     // Load Batches from Database or LocalStorage
+    // "All Stages" is the only case that needs the whole table — load it on demand.
+    useEffect(() => {
+        if (projectStageFilter === 'ALL') fetchAllCustomers(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [projectStageFilter]);
+
     const fetchBatches = async () => {
         setLoading(true);
         try {
@@ -351,7 +379,20 @@ export default function DeliveryBatchesView({
         // Only attempt the real delete for batches that were actually
         // persisted with a real UUID - a leftover locally-cached batch
         // from before the id-format fix has no matching row to delete.
-        if (batchToDelete && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(batchToDelete.id))) {
+        const isPersistedBatch = batchToDelete
+            && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(batchToDelete.id));
+
+        if (!isPersistedBatch) {
+            // Say so rather than skipping quietly: the batch vanishing from the
+            // screen looked identical to a real delete, so there was no way to
+            // tell "deleted" apart from "there was never anything to delete".
+            showAlert(
+                'This batch only ever existed in your browser — it was never saved to the shared database, so there was nothing to delete there. It has been removed locally.',
+                { title: 'Removed locally', type: 'warning' }
+            );
+        }
+
+        if (isPersistedBatch) {
             const { error } = await supabase.from('delivery_batches').delete().eq('id', batchToDelete.id);
             if (error) {
                 console.error('Failed to delete delivery batch from the database:', error);
@@ -861,8 +902,37 @@ export default function DeliveryBatchesView({
                                                                      const previousStat = localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING';
                                                                      setLocalStatusOverrides(prev => ({ ...prev, [proj.id]: newStat }));
                                                                      try {
-                                                                         const { error } = await supabase.from('admin').update({ delivery_status: newStat }).eq('id', proj.id);
+                                                                         // Back to PENDING means the client leaves the batch entirely:
+                                                                         // clear the link, drop the driver/vehicle details that came
+                                                                         // from the batch, and remove them from project_ids so they
+                                                                         // become available for a new batch again. Updating only
+                                                                         // delivery_status left them stranded — still inside the
+                                                                         // batch and invisible to the customer picker.
+                                                                         const leavingBatch = newStat === 'PENDING';
+                                                                         const patch = leavingBatch
+                                                                             ? {
+                                                                                 delivery_status: 'PENDING',
+                                                                                 delivery_batch_id: null,
+                                                                                 driver_name: null,
+                                                                                 driver_phone_number: null,
+                                                                                 vehicle_number: null,
+                                                                                 material_delivery_date: null,
+                                                                             }
+                                                                             : { delivery_status: newStat };
+
+                                                                         const { error } = await supabase.from('admin').update(patch).eq('id', proj.id);
                                                                          if (error) throw error;
+
+                                                                         if (leavingBatch) {
+                                                                             const remaining = (batch.project_ids || []).filter(id => id !== proj.id);
+                                                                             const { error: batchErr } = await supabase
+                                                                                 .from('delivery_batches')
+                                                                                 .update({ project_ids: remaining })
+                                                                                 .eq('id', batch.id);
+                                                                             if (batchErr) throw batchErr;
+                                                                             await logActivity(currentUser?.id || 'admin', 'update',
+                                                                                 `Removed ${proj.customer_name || proj.id} from delivery batch ${batch.batch_no || batch.id} (set back to Pending)`, '', proj.id);
+                                                                         }
                                                                          await handleRefresh();
                                                                      } catch (err) {
                                                                          setLocalStatusOverrides(prev => ({ ...prev, [proj.id]: previousStat }));

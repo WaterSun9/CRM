@@ -296,7 +296,11 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 schema: 'public', 
                 table: 'admin'
             }, (payload) => {
-                fetchMetricsAndMeta(); 
+                // Coalesced: this used to run a full-table aggregate RPC (plus two
+                // more queries) on EVERY row change, for EVERY connected client.
+                // One person saving a customer meant 30 clients x 3 queries. A
+                // burst of edits now collapses into a single refresh.
+                scheduleMetricsRefresh(); 
                 
                 if (payload.eventType === 'INSERT') {
                     if (payload.new.stage === selectedStage) {
@@ -324,7 +328,10 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             })
             .subscribe();
 
-        return () => supabase.removeChannel(channel);
+        return () => {
+            if (metricsRefreshTimer.current) clearTimeout(metricsRefreshTimer.current);
+            supabase.removeChannel(channel);
+        };
     }, [selectedStage]);
 
     // Sync selectedCustomer state with fresh database values when updates occur
@@ -590,6 +597,16 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             '',
             id
         );
+    };
+
+    // Collapses a burst of realtime events into one metrics refresh.
+    const metricsRefreshTimer = useRef(null);
+    const scheduleMetricsRefresh = () => {
+        if (metricsRefreshTimer.current) clearTimeout(metricsRefreshTimer.current);
+        metricsRefreshTimer.current = setTimeout(() => {
+            metricsRefreshTimer.current = null;
+            fetchMetricsAndMeta();
+        }, 4000);
     };
 
     const handleAddLead = async (data, attachedFiles = []) => {

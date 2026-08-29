@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { History } from 'lucide-react';
-import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../../constants';
+import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, isFinalTagValue } from '../../constants';
 
 export default function SubsidyStatusTab({
     customer,
@@ -90,14 +90,15 @@ export default function SubsidyStatusTab({
                     {SUBSIDY_TAGS.map(tag => {
                         const isSelected = editData.subsidy_tag === tag.id;
                         const colors = SUBSIDY_TAG_COLORS[tag.id] || {};
-                        const isLocked = customer.subsidy_tag === 'Received';
+                        // Terminal value locks the field — Admin can still change it.
+                        const isLocked = isFinalTagValue(customer.subsidy_tag, SUBSIDY_TAGS) && user?.userType !== 'admin';
                         return (
                             <button
                                 key={tag.id}
                                 disabled={!isEditable || isLocked}
                                 onClick={() => !isLocked && handleToggleSubsidyTag(tag.id)}
                                 className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
-                                    isLocked && tag.id !== 'Received' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                    isLocked && !tag.isFinal ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                 } ${
                                     isSelected
                                         ? `${colors.bg} ${colors.text} ${colors.border} shadow-sm shadow-stone-900/5`

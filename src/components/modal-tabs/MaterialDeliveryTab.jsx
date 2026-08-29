@@ -43,6 +43,12 @@ export default function MaterialDeliveryTab({
     editingSection,
     setEditingSection
 }) {
+
+    // Delivery details (status, driver, vehicle, dates) are entered through
+    // Delivery Batches, which also keeps delivery_batches.project_ids in step.
+    // Editing them here would desync the two, so this tab is read-only for
+    // everyone except Admin.
+    const canEditDelivery = isEditable && user?.userType === 'admin';
     const [vendors, setVendors] = useState([]);
     const [sendingInfo, setSendingInfo] = useState(false);
     const [infoSentStatus, setInfoSentStatus] = useState(null);
@@ -249,6 +255,8 @@ export default function MaterialDeliveryTab({
                     </h3>
                     <div className="flex items-center gap-3">
                         <select
+                            disabled={!canEditDelivery}
+                            title={canEditDelivery ? undefined : 'Delivery status is set from Delivery Batches'}
                             value={localDeliveryStatus || editData.delivery_status || 'PENDING'}
                             onChange={async (e) => {
                                 const newStat = e.target.value;
@@ -270,7 +278,7 @@ export default function MaterialDeliveryTab({
                             <option value="IN_TRANSIT">Status: In Transit</option>
                             <option value="DELIVERED">Status: Delivered</option>
                         </select>
-                        {isEditable && (
+                        {canEditDelivery && (
                             <button 
                                 type="button"
                                 onClick={() => {

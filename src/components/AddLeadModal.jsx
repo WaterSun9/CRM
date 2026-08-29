@@ -275,6 +275,13 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         setIsFormDirty(true);
         setValidationErrors([]);
         let processedValue = value;
+        // Consumer No is digits only. It used to be type="number", which
+        // silently accepts "e" (exponent) and then reports the value as an
+        // empty string — so typing a letter produced "must be at least 3
+        // characters" instead of anything about letters.
+        if (field === 'consumer_no') {
+            processedValue = String(value).replace(/[^0-9]/g, '');
+        }
         if (field === 'phone_number') {
             const clean = String(value).replace(/[^0-9]/g, '');
             processedValue = clean.length === 11 && clean.startsWith('0') ? clean.slice(1) : clean.slice(0, 10);
@@ -500,7 +507,8 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     Consumer No <span className="text-red-500 font-bold">*</span>
                                 </label>
                                 <input
-                                    type="number"
+                                    type="text"
+                                    inputMode="numeric"
                                     value={formData.consumer_no || ''}
                                     onChange={e => handleChange('consumer_no', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"

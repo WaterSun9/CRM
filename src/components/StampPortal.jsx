@@ -410,7 +410,12 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                 const { data: page, error } = await supabase
                     .from("admin")
                     .select("*")
-                    // Remove strict stage eq to allow records that were sent to stamp maker but might not be formally in DISCOM SUBMISSION stage
+                    // Stage is deliberately not filtered — a record can be sent to
+                    // the stamp maker without formally sitting in DISCOM SUBMISSION.
+                    // The "sent to stamp" test is done here rather than in JS: this
+                    // used to page through every row in the table (3,800+, of which
+                    // ~78% are COMPLETED) just to keep a handful.
+                    .eq("discom_submission->>sent_to_stamp_maker", "true")
                     .is("deleted_at", null)
                     .order("created_at", { ascending: false })
                     .range(from, from + pageSize - 1);
@@ -421,10 +426,9 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                 from += pageSize;
             }
             // Only show customers sent to stamp maker and not yet finished
-            const active = (data || []).filter(c =>
-                c.discom_submission?.sent_to_stamp_maker === true &&
-                !c.discom_submission?.stamp_sent
-            );
+            // sent_to_stamp_maker is now filtered server-side; "not yet stamped"
+            // stays here because the column is JSON and the flag is often absent.
+            const active = (data || []).filter(c => !c.discom_submission?.stamp_sent);
             setCustomers(active);
             if (active.length > 0) {
                 const results = await Promise.all(

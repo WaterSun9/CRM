@@ -673,6 +673,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleChange = (field, val) => {
+        if (field === 'consumer_no') {
+            val = String(val).replace(/[^0-9]/g, '');
+        }
         if (field === 'driver_phone_number' || field === 'phone_number') {
             const clean = String(val).replace(/[^0-9]/g, '');
             val = clean.length === 11 && clean.startsWith('0') ? clean.slice(1) : clean.slice(0, 10);
@@ -843,7 +846,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(editData.driver_phone_number?.toString().trim(), 'Driver Phone Number');
                 break;
             case STAGE_IDS.INSTALLATION_STATUS:
-                requireField(editData.installation_status === 'Yes', 'Installation Status must be Yes');
+                requireField(editData.installation_status === 'Installed', 'Installation Status must be Installed');
                 break;
             case STAGE_IDS.GEO_TAG_PHOTO:
                 requireField(editData.geo_tag_status === 'Proceed', 'Geo Tag Photo Status must be Proceed');
@@ -1194,12 +1197,27 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         delete updates.id; delete updates.created_at; delete updates.crn; delete updates.updated_at;
         
         try {
-            const promises = [onUpdate(customer.id, updates)];
+            // Send only the fields this editor actually changed. Sending the whole
+            // record meant two people on one customer silently overwrote each
+            // other: the realtime sync stops as soon as your form is dirty, so
+            // your copy goes stale, and saving wrote every stale field back over
+            // a colleague's change. Narrowing the payload means edits to
+            // different fields no longer collide.
+            const changedKeys = getChangedFields(updates, savedDataRef.current);
+            const narrowedUpdates = {};
+            changedKeys.forEach(key => { narrowedUpdates[key] = updates[key]; });
+            // `stage` is set by the advance flow rather than by editing a field,
+            // so carry it whenever it differs from what we loaded.
+            if (updates.stage !== undefined && updates.stage !== savedDataRef.current?.stage) {
+                narrowedUpdates.stage = updates.stage;
+            }
+
+            const promises = [onUpdate(customer.id, narrowedUpdates)];
             if (changeSummary.length > 0) promises.push(logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id));
             const [updateResult] = await Promise.all(promises);
             if (updateResult === false) throw new Error('The database did not accept the changes.');
 
-            savedDataRef.current = { ...savedDataRef.current, ...updates };
+            savedDataRef.current = { ...savedDataRef.current, ...narrowedUpdates };
             setEditingSection(null);
             setIsFormDirty(false);
             setSaved(true);

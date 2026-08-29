@@ -50,8 +50,22 @@ version column, no `updated_at` guard, no conflict detection anywhere. Last
 save wins and the other person's work vanishes with no warning. Real with
 30 users on shared stages.
 
-**4. Delivery batches — the 4th bug still needs SQL.** Three are fixed in
-code; the last one is a database change that has never been applied.
+**4. Delivery batches — ✅ DONE 2026-08-29.** The stranded-customer check
+returned 0, so no cleanup was needed. Three further fixes landed:
+- Setting a client back to PENDING inside a batch now actually removes them:
+  clears `delivery_batch_id`, driver name/phone, vehicle and delivery date,
+  and pulls them out of `delivery_batches.project_ids`. Previously it changed
+  only `delivery_status`, leaving them inside the batch and invisible to the
+  customer picker — the same symptom as the original bug 4, by another route.
+- Verified against the `sync_driver_info_to_admin` trigger: it reads
+  `new.project_ids`, so a removed client is not re-synced and the cleared
+  driver fields stand.
+- Deleting a browser-only batch (non-UUID id) now says so instead of skipping
+  the database delete silently, which looked identical to a real delete.
+
+Material Delivery is also now read-only except for Admin — delivery details
+are entered through Delivery Batches only, so `project_ids` and the customer
+rows cannot drift apart.
 
 **5. Orphaned auth users — ✅ DONE 2026-08-28.** Cleared. Login is also
 fail-closed now, so a profile-less session is signed out rather than being
@@ -64,18 +78,33 @@ through the app, never from the Supabase table editor.
 
 ## 🟠 High — before the user count grows
 
-**6. Deactivation is not enforced mid-session.** `status = 'inactive'` is
-only checked at login, so a user deactivated while working keeps full
-access until they sign out.
+**6. Deactivation is not enforced mid-session — ✅ DONE 2026-08-29.** Three
+layers in `src/App.jsx`: a realtime watch on that user's own profile row
+(`filter: id=eq.<uid>`, a single row, not the table), a re-check on tab
+focus for dropped sockets, and a check on mount. Any of them seeing
+`status = 'inactive'` ends the session and clears the `sb-` storage keys.
+A *failed* lookup deliberately does nothing — that is usually a network
+blip, and signing people out over one would be worse than the exposure.
 
 **7. One name, entered once, identical everywhere.** Branch and person names
 are matched as strings across `profiles` and `admin`; two spellings mean an
 empty portal with no error. Normalize on write at every entry point. Full
 detail in the section below this one.
 
-**8. Realtime request amplification.** Every client subscribes to all `admin`
-changes and filters client-side. At 30 users each row change fans out 30
-times. Needs server-side filters or coalescing.
+**8. Realtime request amplification — ✅ DONE 2026-08-29.** The subscription
+was not the expensive part; the handler was. `Dashboard.jsx` called
+`fetchMetricsAndMeta()` on *every* row change — a full-table aggregate RPC
+plus two more queries — so 30 users watching the Dashboard turned one save
+into 30 clients x 3 queries. Now coalesced behind a 4-second trailing
+debounce; per-row list updates still apply instantly, only the aggregate is
+throttled. The RLS work also cut fan-out on its own, since Supabase Realtime
+respects RLS on `postgres_changes` — clients no longer receive rows they
+cannot see.
+
+**Not done, on purpose:** server-side `filter:` clauses on the agent/vendor
+subscriptions. Those use case-sensitive `eq`, and the branch/name data has
+case inconsistencies, so they would silently drop live updates for anyone
+whose case differs. Safe to add once item 7 (name normalisation) lands.
 
 **9. Full-table fetches and `select('*')`.** The portals page through entire
 tables and pull every column. Fine at 3,801 rows, not at 4× that.
@@ -83,7 +112,67 @@ tables and pull every column. Fine at 3,801 rows, not at 4× that.
 **10. Delivery-batch operations are not atomic.** Multi-row updates can half-
 apply, leaving batches in an inconsistent state.
 
+## 🟠 High — newly raised 2026-08-29
+
+**17. Tag values changed, and the last stages need locking — 🟡 PARTLY DONE
+2026-08-29.**
+
+*Done — new values applied in `src/constants.js`:*
+- `SUBSIDY_TAGS` — Inprocess | Redeemed | Returned | Approved | **Received 🔒**
+- `LOAN_TAGS` — Inprocess | Sanctioned | Returned | Reject | 1st Payment |
+  2nd Payment | **Total Loan Payment Received 🔒**
+- `INSTALLATION_TAGS` — Giveup | In process | Pending | **Installed 🔒**
+
+The terminal value of each set is marked `isFinal: true` in the constant, so
+the lock rule has a single source of truth rather than hard-coded strings.
+Colour maps gained the renamed ids, and kept the old keys, so an
+un-migrated row still renders with a colour instead of falling through.
+
+*Done — data migration written: `scripts/migrate_tag_values.sql`.*
+**This must be run.** Tag counts use `ilike('<column>', '%<tag id>%')`, so a
+row still holding `All Clear`, `Rejected`, `In Progress`, `Processed`, `Yes`,
+`Process` or `Give Up` matches no tag at all and disappears from the tag
+screens silently — the same failure as the `No` installation values. The
+script previews the current spread, applies the mapping in a transaction, and
+verifies nothing is left outside the new sets.
+
+*Done — the lock is built.* Driven by `isFinalTagValue(value, TAGS)` in
+`src/constants.js`, which reads the `isFinal` flag, so no component
+hard-codes a tag string. Applied in SubsidyStatusTab, LoanTab and
+InstallationStatusTab: reaching the terminal value disables that tag's
+buttons for everyone **except Admin**, who can still change it.
+
+Two stale hard-codings fixed along the way: LoanTab locked on `'All Clear'`,
+a value that no longer exists (so loans would never have locked), and
+InstallationStatusTab had no lock at all plus its own inline `Give Up` /
+`Yes` / `Process` button list, now `Giveup` / `Installed` / `In process`.
+The give-up reset check also referenced `'Give Up'`.
+
+*Expected impact once the migration runs, from the live counts:*
+~3,276 installation records lock as `Installed`, ~2,984 subsidy records lock
+as `Received`, and **no loan records lock** — there are no `All Clear` rows
+at all. Note installation `Yes` (3,276) exceeds the COMPLETED count (2,984),
+so some live records lock too.
+
 ## 🟡 Medium — quality and polish
+
+**10d. Consumer No accepted letters — ✅ FIXED 2026-08-29.** The field was
+`type="number"`, which accepts `e` as scientific notation and then reports
+the value as an empty string — so typing a letter produced "must be at least
+3 characters" rather than anything about letters. Now `type="text"` with
+`inputMode="numeric"` and digits stripped in the change handler (covering
+paste and autofill), in both the create form and the edit path. Note existing
+rows holding values like `MG-4471902` keep them, but editing that field will
+strip the letters.
+
+**10c. Lead defaults were being stripped — ✅ FIXED 2026-08-28/29.** The Zod
+schema declared 12 of the 67 fields the lead form sends and silently dropped
+the rest, so `installation_status`, `geo_tag_status`, `stage`, `roof_shed`,
+`sub_channel_partner` and ~50 others never reached the database on lead
+creation. Fixed with `.passthrough()`. Existing rows that landed with the
+column default (`No`) instead of `Pending` were normalised by SQL — which
+also corrected the Installation Tags counts, since `INSTALLATION_TAGS` only
+counts Yes/Process/Pending/Give Up and `No` rows were counted nowhere.
 
 **10b. `Lost Project` stage case mismatch — ✅ FIXED 2026-08-28.** 35 rows
 stored `Lost Project` where the constant is `LOST PROJECT`. Stage matching is

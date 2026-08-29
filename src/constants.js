@@ -31,16 +31,19 @@ export const STAGE_IDS = Object.fromEntries(
     PRIMARY_STAGES.map(s => [s.id.replace(/ /g, "_"), s.id])
 );
 
+// `isFinal: true` marks the terminal value for a tag — reaching it locks the
+// record. Order here is the order shown in the UI.
 export const SUBSIDY_TAGS = [
-    { id: 'Received', label: 'Received', icon: CheckCircle2 },
-    { id: 'In Process', label: 'In Process', icon: Clock },
+    { id: 'Inprocess', label: 'Inprocess', icon: Clock },
     { id: 'Redeemed', label: 'Redeemed', icon: Banknote },
     { id: 'Returned', label: 'Returned', icon: Clock },
     { id: 'Approved', label: 'Approved', icon: CheckCircle2 },
+    { id: 'Received', label: 'Received', icon: CheckCircle2, isFinal: true },
 ];
 
 export const SUBSIDY_TAG_COLORS = {
     'Received':   { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
+    'Inprocess':  { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    dot: 'bg-teal-400' },
     'In Process': { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    dot: 'bg-teal-400' },
     'Redeemed':   { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    dot: 'bg-blue-400' },
     'Returned':   { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-400' },
@@ -49,17 +52,19 @@ export const SUBSIDY_TAG_COLORS = {
 };
 
 export const LOAN_TAGS = [
-    { id: 'Processed', label: 'Processed', icon: Activity },
-    { id: 'In Progress', label: 'In Progress', icon: Clock },
-    { id: '1st Payment', label: '1st Payment', icon: Banknote },
-    { id: '2nd Payment', label: '2nd Payment', icon: Banknote },
+    { id: 'Inprocess', label: 'Inprocess', icon: Clock },
     { id: 'Sanctioned', label: 'Sanctioned', icon: CheckCircle2 },
     { id: 'Returned', label: 'Returned', icon: Clock },
-    { id: 'Rejected', label: 'Rejected', icon: AlertTriangle },
-    { id: 'All Clear', label: 'All Clear', icon: CheckCircle2 },
+    { id: 'Reject', label: 'Reject', icon: AlertTriangle },
+    { id: '1st Payment', label: '1st Payment', icon: Banknote },
+    { id: '2nd Payment', label: '2nd Payment', icon: Banknote },
+    { id: 'Total Loan Payment Received', label: 'Total Loan Payment Received', icon: CheckCircle2, isFinal: true },
 ];
 
 export const LOAN_TAG_COLORS = {
+    'Inprocess':                   { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    dot: 'bg-teal-400' },
+    'Reject':                      { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-400' },
+    'Total Loan Payment Received': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
     'Processed':   { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200',  dot: 'bg-indigo-400' },
     'In Progress': { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    dot: 'bg-teal-400' },
     '1st Payment': { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    dot: 'bg-blue-400' },
@@ -188,13 +193,16 @@ export const COMMON_BOM_ITEMS = ROOF_BOM_TEMPLATE.filter(r =>
 // INSTALLATION STATUS TAGS
 // ════════════════════════════════════════════════════════════
 export const INSTALLATION_TAGS = [
-    { id: 'Yes', label: 'Yes' },
-    { id: 'Process', label: 'Process' },
+    { id: 'Giveup', label: 'Giveup' },
+    { id: 'In process', label: 'In process' },
     { id: 'Pending', label: 'Pending' },
-    { id: 'Give Up', label: 'Give Up' }
+    { id: 'Installed', label: 'Installed', isFinal: true }
 ];
 
 export const INSTALLATION_TAG_COLORS = {
+    'Giveup':     { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    dot: 'bg-rose-400' },
+    'In process': { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    dot: 'bg-teal-400' },
+    'Installed':  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400' },
     'Yes':     { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
     'Process': { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    dot: 'bg-teal-500' },
     'Pending': { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-500' },
@@ -305,3 +313,12 @@ export const OPERATIONAL_CHECKLIST_FIELDS = [
 ];
 
 export const DEFAULT_PAGE_SIZE = 50;
+
+// A tag value is "final" when it is the terminal state of its set. Reaching it
+// locks the field for everyone except Admin. Driven by the isFinal flag on the
+// tag definitions above, so changing which value locks is a one-word edit.
+export const isFinalTagValue = (value, tags = []) => {
+    const v = String(value ?? '').trim().toLowerCase();
+    if (!v) return false;
+    return tags.some(t => t.isFinal && String(t.id).trim().toLowerCase() === v);
+};
