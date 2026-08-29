@@ -1,1 +1,0 @@
-import{Ct as e}from"./index-ABnzFrAr.js";var t=e(`ChevronUp`,[[`path`,{d:`m18 15-6-6-6 6`,key:`153udz`}]]);export{t};
