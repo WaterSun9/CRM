@@ -1,0 +1,1 @@
+import{Ct as e}from"./index-CQqS_os_.js";var t=e(`ChevronRight`,[[`path`,{d:`m9 18 6-6-6-6`,key:`mthhwq`}]]);export{t};
