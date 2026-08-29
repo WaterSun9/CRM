@@ -1,1 +1,0 @@
-import{Ct as e}from"./index-CQqS_os_.js";var t=e(`ChevronDown`,[[`path`,{d:`m6 9 6 6 6-6`,key:`qrunsl`}]]);export{t};
