@@ -4,10 +4,7 @@
 -- metadata updates either succeed together or roll back completely.
 -- ────────────────────────────────────────────────────────────────────────────
 
-begin;
-
 -- Ensure delivery_batches table has RLS policies configured properly
-alter table public.delivery_batches enable row level security;
 
 drop policy if exists "Allow all for authenticated users" on public.delivery_batches;
 drop policy if exists "Authenticated users can write delivery_batches" on public.delivery_batches;
@@ -242,5 +239,3 @@ $$;
 grant execute on function public.save_delivery_batch_atomic(jsonb, text[], text[]) to authenticated, service_role;
 grant execute on function public.delete_delivery_batch_atomic(uuid, text[]) to authenticated, service_role;
 grant execute on function public.update_delivery_batch_status_atomic(uuid, text, text[]) to authenticated, service_role;
-
-commit;

@@ -50,7 +50,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         try {
             const { data, error } = await supabase
                 .from('admin')
-                .select(CUSTOMER_CARD_COLUMNS)
+                .select('*')
                 .is('deleted_at', null)
                 .ilike('installation_status', '%yes%')
                 .order('created_at', { ascending: false });
@@ -62,7 +62,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                 // Fallback: try fetching where installation_status is not null and filter in memory
                 const { data: allData } = await supabase
                     .from('admin')
-                    .select(CUSTOMER_CARD_COLUMNS)
+                    .select('*')
                     .is('deleted_at', null)
                     .not('installation_status', 'is', null);
                 if (allData) {

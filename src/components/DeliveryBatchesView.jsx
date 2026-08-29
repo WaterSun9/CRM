@@ -64,11 +64,11 @@ export default function DeliveryBatchesView({
 
             let all;
             if (includeEveryStage) {
-                all = await pageAll(() => supabase.from('admin').select(DELIVERY_PICKER_COLUMNS).is('deleted_at', null));
+                all = await pageAll(() => supabase.from('admin').select('*').is('deleted_at', null));
             } else {
                 const [byStage, batched] = await Promise.all([
-                    pageAll(() => supabase.from('admin').select(DELIVERY_PICKER_COLUMNS).is('deleted_at', null).in('stage', PICKER_STAGES)),
-                    pageAll(() => supabase.from('admin').select(DELIVERY_PICKER_COLUMNS).is('deleted_at', null).not('delivery_batch_id', 'is', null)),
+                    pageAll(() => supabase.from('admin').select('*').is('deleted_at', null).in('stage', PICKER_STAGES)),
+                    pageAll(() => supabase.from('admin').select('*').is('deleted_at', null).not('delivery_batch_id', 'is', null)),
                 ]);
                 const byId = new Map();
                 [...byStage, ...batched].forEach(row => byId.set(row.id, row));

@@ -251,7 +251,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         const normalizedStage = (stage || STAGE_IDS.LEADS).toUpperCase();
         let query = supabase
             .from('admin')
-            .select(CUSTOMER_CARD_COLUMNS)
+            .select('*')
             .ilike('stage', normalizedStage)
             .order('created_at', { ascending: false })
             .range(pageNum * 50, (pageNum + 1) * 50 - 1);

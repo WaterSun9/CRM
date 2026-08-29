@@ -91,7 +91,7 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
 
             let query = supabase
                 .from('admin')
-                .select(CUSTOMER_CARD_COLUMNS)
+                .select('*')
                 .is('deleted_at', null)
                 .order('created_at', { ascending: false })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);

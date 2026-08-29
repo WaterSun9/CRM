@@ -70,7 +70,7 @@ export default function TrashView({ onRecover, onHardDelete, isAdmin }) {
             while (true) {
                 const { data: page, error } = await supabase
                     .from('admin')
-                    .select(CUSTOMER_CARD_COLUMNS)
+                    .select('*')
                     .not('deleted_at', 'is', null)
                     .order('deleted_at', { ascending: false })
                     .range(from, from + pageSize - 1);
