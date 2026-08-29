@@ -52,6 +52,7 @@ import HistoryTab from './modal-tabs/HistoryTab';
 import CustomerDocumentsTab from './modal-tabs/CustomerDocumentsTab';
 import { FilePreviewModal, DocGalleryRemarkRow, getStageRemarkFromData } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
+import ConflictResolutionModal from './ConflictResolutionModal';
 
 // ─── formatMoney: uses centralized Indian comma system from utils ─────────────
 const fmt = formatINR;
@@ -123,6 +124,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [isFormDirty, setIsFormDirty] = useState(false);
     const [editData, setEditData] = useState({ ...customer });
     const savedDataRef = useRef({ ...customer });
+    const loadedUpdatedAtRef = useRef(customer?.updated_at || null);
+    const [concurrentConflict, setConcurrentConflict] = useState(null);
+    const [remoteUpdateAlert, setRemoteUpdateAlert] = useState(false);
     const [subAgents, setSubAgents] = useState([]);
 
     useEffect(() => {
@@ -157,13 +161,58 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         });
     };
 
+    // Realtime watch for concurrent updates to this specific customer
+    useEffect(() => {
+        if (!customer?.id || String(customer.id).startsWith('demo-')) return;
+        
+        const channel = supabase.channel(`customer_modal_concurrency_${customer.id}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'admin',
+                filter: `id=eq.${customer.id}`
+            }, (payload) => {
+                if (payload.new) {
+                    const serverRecord = payload.new;
+                    if (!isFormDirty) {
+                        loadedUpdatedAtRef.current = serverRecord.updated_at || loadedUpdatedAtRef.current;
+                        savedDataRef.current = { ...serverRecord };
+                        setEditData({ ...serverRecord });
+                        setRemoteUpdateAlert(false);
+                    } else {
+                        // User has active unsaved edits: alert them that a colleague updated the record
+                        setRemoteUpdateAlert(true);
+                    }
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [customer?.id, isFormDirty]);
+
     // Keep editData in sync with realtime prop updates if the user isn't currently editing
     useEffect(() => {
-        if (!isFormDirty) {
+        if (!isFormDirty && customer) {
+            loadedUpdatedAtRef.current = customer.updated_at || loadedUpdatedAtRef.current;
             savedDataRef.current = { ...customer };
             setEditData({ ...customer });
         }
     }, [customer, isFormDirty]);
+
+    // Protect against accidental browser refresh or tab close when form has unsaved edits
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            if (isFormDirty) {
+                e.preventDefault();
+                e.returnValue = '';
+                return '';
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [isFormDirty]);
     const [followUpText, setFollowUpText] = useState('');
     const [saving, setSaving] = useState(false);
     const [sendingInfo, setSendingInfo] = useState(false);
@@ -221,6 +270,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (!customer?.id || String(customer.id).startsWith('demo-')) return;
         supabase.from('admin').select('*').eq('id', customer.id).single().then(({ data }) => {
             if (data) {
+                loadedUpdatedAtRef.current = data.updated_at || loadedUpdatedAtRef.current;
                 savedDataRef.current = { ...data, ...savedDataRef.current };
                 setEditData(prev => {
                     const next = { ...data, ...prev };
@@ -1061,7 +1111,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
 
-    const handleSave = async () => {
+    const handleSave = async (forceOverwrite = false) => {
         setSaving(true);
         if (saveBomRef.current) {
             try {
@@ -1098,6 +1148,50 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             updates.vendor_quote = String(parseIndianNumber(updates.vendor_quote));
         } else if (updates.vendor_quote === '') {
             updates.vendor_quote = null;
+        }
+
+        // Concurrency Conflict Check before writing to database
+        if (!forceOverwrite && customer?.id && !String(customer.id).startsWith('demo-') && loadedUpdatedAtRef.current) {
+            try {
+                const { data: serverRecord, error: checkErr } = await supabase
+                    .from('admin')
+                    .select('*')
+                    .eq('id', customer.id)
+                    .single();
+
+                if (!checkErr && serverRecord && serverRecord.updated_at) {
+                    const serverTime = new Date(serverRecord.updated_at).getTime();
+                    const localTime = new Date(loadedUpdatedAtRef.current).getTime();
+
+                    // If server record was updated since we loaded it (> 1000ms threshold)
+                    if (serverTime > localTime + 1000) {
+                        const localChangedSet = getChangedFields(updates, savedDataRef.current);
+                        const remoteChangedSet = getChangedFields(serverRecord, savedDataRef.current);
+
+                        const localChanges = Array.from(localChangedSet);
+                        const remoteChanges = Array.from(remoteChangedSet);
+
+                        const overlappingFields = localChanges.filter(
+                            k => remoteChangedSet.has(k) && JSON.stringify(serverRecord[k]) !== JSON.stringify(updates[k])
+                        );
+
+                        if (localChanges.length > 0 && remoteChanges.length > 0) {
+                            setSaving(false);
+                            setConcurrentConflict({
+                                serverData: serverRecord,
+                                localUpdates: updates,
+                                localChanges,
+                                remoteChanges,
+                                overlappingFields,
+                                serverUpdatedAt: serverRecord.updated_at
+                            });
+                            return false;
+                        }
+                    }
+                }
+            } catch (concurrencyErr) {
+                console.warn('Concurrency check warning:', concurrencyErr);
+            }
         }
 
         let changeSummary = [];
@@ -1218,6 +1312,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             if (updateResult === false) throw new Error('The database did not accept the changes.');
 
             savedDataRef.current = { ...savedDataRef.current, ...narrowedUpdates };
+            loadedUpdatedAtRef.current = new Date().toISOString();
+            setRemoteUpdateAlert(false);
+            setConcurrentConflict(null);
             setEditingSection(null);
             setIsFormDirty(false);
             setSaved(true);
@@ -1233,6 +1330,33 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleOverwriteConflict = async () => {
+        setConcurrentConflict(null);
+        return await handleSave(true);
+    };
+
+    const handleMergeAndSaveConflict = async () => {
+        if (!concurrentConflict?.serverData) return;
+        const serverRecord = concurrentConflict.serverData;
+        savedDataRef.current = { ...serverRecord };
+        setEditData(prev => ({ ...serverRecord, ...prev }));
+        loadedUpdatedAtRef.current = serverRecord.updated_at;
+        setConcurrentConflict(null);
+        setTimeout(() => handleSave(true), 50);
+    };
+
+    const handleDiscardAndReloadConflict = () => {
+        if (!concurrentConflict?.serverData) return;
+        const serverRecord = concurrentConflict.serverData;
+        savedDataRef.current = { ...serverRecord };
+        setEditData({ ...serverRecord });
+        loadedUpdatedAtRef.current = serverRecord.updated_at;
+        setIsFormDirty(false);
+        setRemoteUpdateAlert(false);
+        setConcurrentConflict(null);
+        showAlert('Reloaded latest data from server. Your unsaved edits were discarded.', { type: 'info' });
     };
 
     const handleAddNote = async () => {
@@ -1337,6 +1461,42 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     return (
         <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-5xl h-[94vh] overflow-hidden flex flex-col border border-stone-100">
+
+                {/* Realtime Remote Conflict Alert Banner */}
+                {remoteUpdateAlert && (
+                    <div className="bg-amber-500 text-white px-6 py-2.5 text-xs font-semibold flex items-center justify-between shadow-inner shrink-0 animate-fadeIn">
+                        <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-200 shrink-0" />
+                            <span>A colleague just saved changes to this customer in another session.</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const { data } = await supabase.from('admin').select('*').eq('id', customer.id).single();
+                                if (data) {
+                                    const localChangedSet = getChangedFields(editData, savedDataRef.current);
+                                    const remoteChangedSet = getChangedFields(data, savedDataRef.current);
+                                    const localChanges = Array.from(localChangedSet);
+                                    const remoteChanges = Array.from(remoteChangedSet);
+                                    const overlappingFields = localChanges.filter(
+                                        k => remoteChangedSet.has(k) && JSON.stringify(data[k]) !== JSON.stringify(editData[k])
+                                    );
+                                    setConcurrentConflict({
+                                        serverData: data,
+                                        localUpdates: editData,
+                                        localChanges,
+                                        remoteChanges,
+                                        overlappingFields,
+                                        serverUpdatedAt: data.updated_at
+                                    });
+                                }
+                            }}
+                            className="px-3 py-1 bg-black/20 hover:bg-black/30 text-white font-bold rounded-lg transition-colors cursor-pointer ml-3"
+                        >
+                            Review Differences
+                        </button>
+                    </div>
+                )}
 
                 {/* Header */}
                 <div className="bg-stone-900 px-6 py-5 flex justify-between items-center flex-shrink-0">
@@ -1728,6 +1888,16 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     onDownload={() => handleDownloadDoc(filePreview.doc)}
                 />
             )}
+
+            {/* Concurrency Conflict Resolution Modal */}
+            <ConflictResolutionModal
+                isOpen={Boolean(concurrentConflict)}
+                conflict={concurrentConflict}
+                onOverwrite={handleOverwriteConflict}
+                onMergeAndSave={handleMergeAndSaveConflict}
+                onDiscardAndReload={handleDiscardAndReloadConflict}
+                onClose={() => setConcurrentConflict(null)}
+            />
         </div>
     );
 }

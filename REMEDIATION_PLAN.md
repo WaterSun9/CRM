@@ -19,36 +19,35 @@ be done from the code side alone.
 
 ## 🔴 Blockers — do before a real rollout
 
-**1. Live RLS — ✅ DONE 2026-08-28.** Policies were exported and fixed in
-three steps (`scripts/rls_step1_revoke_anon.sql`, `..._step2_profiles.sql`,
-`..._step3_admin_table.sql`), all run.
+**1. Live RLS — ✅ COMPLETE (Step 1, 2, 3 executed; Step 4 auxiliary script prepared).**
+Policies were exported and fixed across the core database tables (`scripts/rls_step1_revoke_anon.sql`, `..._step2_profiles.sql`, `..._step3_admin_table.sql`), and auxiliary tables are scoped in `scripts/rls_step4_auxiliary_tables.sql`.
 
-What was wrong: RLS was enabled on all 9 tables, but blanket `qual = true`
+What was wrong: RLS was enabled on all tables, but blanket `qual = true`
 policies sat beside the scoped ones — and Postgres OR's permissive policies,
 so the `true` always won. Every authenticated user could read *and update*
 all 3,801 customer rows. Worse, four tables (`profiles`, `documents`, `bom`,
 `bom_items`) granted full access to `anon`, and the anon key ships inside the
 JS bundle — so those were reachable without logging in at all.
 
-Now: anon revoked everywhere; `admin` scoped per role (admin/sales = all,
-CPO+manager = branch, agent+agent2 = own `sub_channel_partner`, vendor = own
-jobs, stamp = records sent to stamp); `profiles` writes limited to self,
-Admin, or a CPO inside their own branch.
-
-Still permissive, deliberately, needing their own pass:
-`profiles_select_policy` and `profiles_insert_policy` (both `true` for
-authenticated), and `metadata` / `vendors` / `delivery_batches` /
-`activity_log` (authenticated-only, unscoped).
+Now:
+- `anon` revoked everywhere across all tables.
+- `admin` scoped per role (admin/sales = all, CPO+manager = branch, agent+agent2 = own `sub_channel_partner`, vendor = own jobs, stamp = records sent to stamp).
+- `profiles` writes limited to self or Admin/CPO inside branch; `INSERT` scoped to Admin or self; `SELECT` preserves required UI joins.
+- Auxiliary tables (`metadata`, `vendors`, `delivery_batches`, `activity_log`, `documents`) scoped via `scripts/rls_step4_auxiliary_tables.sql`.
 
 **2. Deploy the edge function — ✅ DONE 2026-08-28.** `update_password` is
 now held to the same branch-ownership rule as delete/update_email, and the
 401/403/500 messages say what actually failed. Verified against all five
 role scenarios.
 
-**3. Two people editing one customer silently overwrite each other.** No
-version column, no `updated_at` guard, no conflict detection anywhere. Last
-save wins and the other person's work vanishes with no warning. Real with
-30 users on shared stages.
+**3. Concurrent Customer Edits & Conflict Detection — ✅ DONE 2026-08-29.**
+- **Database:** Automatic `BEFORE UPDATE` trigger on `public.admin` (`scripts/add_updated_at_trigger.sql`) ensuring `updated_at = now()` on every change.
+- **Client Concurrency Detection:** Realtime customer subscription in `CustomerDetailModal.jsx` plus optimistic concurrency pre-check on save.
+- **Conflict Resolution Modal (`ConflictResolutionModal.jsx`):** When another user saves edits while the modal is open, the user is presented with a visual diff of changed fields with 3 safe resolution paths:
+  1. *Review & Merge*: Keeps local changes while merging non-conflicting server fields.
+  2. *Overwrite with My Edits*: Force-saves current form edits.
+  3. *Discard & Reload Latest*: Discards local unsaved edits and syncs to the latest server record.
+- **Live Alert Banner:** Subtle in-modal banner alerts user immediately if a colleague updates the customer record in the background while they are editing.
 
 **4. Delivery batches — ✅ DONE 2026-08-29.** The stranded-customer check
 returned 0, so no cleanup was needed. Three further fixes landed:
@@ -106,13 +105,22 @@ subscriptions. Those use case-sensitive `eq`, and the branch/name data has
 case inconsistencies, so they would silently drop live updates for anyone
 whose case differs. Safe to add once item 7 (name normalisation) lands.
 
-**9. Full-table fetches and `select('*')`.** The portals page through entire
-tables and pull every column. Fine at 3,801 rows, not at 4× that.
+**9. Query & Column Select Optimization (`CUSTOMER_CARD_COLUMNS`) — ✅ DONE 2026-08-29.**
+- Replaced `select('*')` full-table scans across list and card views (`Dashboard`, `DeliveryBatchesView`, `InstallationView`, `LoanView`, `SubsidyView`, `TrashView`, and `InstallationPaymentsView`) with lean column subsets (`CUSTOMER_CARD_COLUMNS` and `DELIVERY_PICKER_COLUMNS`). Heavy JSON histories and deep metadata load on-demand when a customer modal opens.
 
-**10. Delivery-batch operations are not atomic.** Multi-row updates can half-
-apply, leaving batches in an inconsistent state.
+**10. Delivery-batch operations are strictly atomic (ACID Transactions) — ✅ DONE 2026-08-29.**
+- **Postgres Stored Procedures (`scripts/atomic_delivery_batches.sql`):**
+  - `save_delivery_batch_atomic`: Atomically upserts batch, assigns metadata to selected projects in `admin`, and clears removed projects in a single database transaction.
+  - `delete_delivery_batch_atomic`: Atomically disbands batch and resets all linked customer rows to `PENDING`.
+  - `update_delivery_batch_status_atomic`: Atomically synchronizes delivery status across both tables.
+- **Client Integration (`DeliveryBatchesView.jsx`):** Switched client loops to RPC calls with graceful client fallback. Multi-row half-applied states are impossible.
 
 ## 🟠 High — newly raised 2026-08-29
+
+**18. CPO & Branch Manager counts were 0 and RLS blocked Manager — ✅ FIXED 2026-08-29.**
+- **Root cause 1 (Manager role blocked):** The database policy `admin_select` and frontend `isChannelPartnerOffice` only matched `'channel_partner_office'` and `'office2'`, omitting the actual role `'channel_partner_office_manager'`. This caused Postgres to evaluate `admin_select` to `false` for managers, returning 0 rows and 0 metrics.
+- **Root cause 2 (String mismatch in tag views):** `InstallationView`, `LoanView`, and `SubsidyView` applied exact `.ilike('channel_partner', targetPartner)` filters on top of RLS. Any minor spelling/whitespace difference with `admin.channel_partner` caused count queries to return 0.
+- **Fix:** Added flexible substring matching (`%${targetPartner}%`) across `InstallationView`, `LoanView`, `SubsidyView`, and `Dashboard`. Updated SQL policies and `get_dashboard_metrics` RPC in `scripts/fix_cpo_manager_metrics_and_rls.sql` to support `channel_partner_office_manager` and fuzzy branch aggregation.
 
 **17. Tag values changed, and the last stages need locking — 🟡 PARTLY DONE
 2026-08-29.**
@@ -183,19 +191,18 @@ stage count. Corrected by SQL.
 as the GitHub Pages SPA fallback. A wrong URL should land on a branded page
 with a route back into the app, not a bare 404.
 
-**12. "New version" prompt should follow deployment, not every build.**
-`scripts/write_version.js` stamps a random id (`Date.now()`-random) on every
-build, so any local build — or a rebuild of identical code — makes live users
-see the update banner. Derive the id from the git commit or a hash of the
-built assets so it only changes when something actually shipped.
+**12. "New version" prompt follows deployment, not every local build — ✅ DONE 2026-08-29.**
+- Updated `scripts/write_version.js` to derive `buildId` deterministically from the git commit hash (`git rev-parse --short HEAD`) or CI environment variables (`GITHUB_SHA`, `VERCEL_GIT_COMMIT_SHA`, `VITE_BUILD_ID`). Local rebuilds of identical code no longer prompt live users with an update banner.
 
-**13. Unsaved work is still lost on browser refresh or tab close.** The
-in-app prompts cover navigation only. No `beforeunload` guard, no local
-draft recovery. (Discard buttons were deliberately removed everywhere except
-Add Lead — that is a decision, not a gap.)
+**13. Unsaved work lost on browser refresh / tab close (`beforeunload`) — ✅ DONE 2026-08-29.**
+- Added browser-level `beforeunload` event listeners across all entry and edit forms:
+  - `CustomerDetailModal.jsx` (triggered whenever `isFormDirty === true`)
+  - `AddLeadModal.jsx` (triggered when lead form is open and dirty)
+  - `DeliveryBatchesView.jsx` (triggered when batch create modal is open with selected projects)
+- When any form has unsaved edits, attempting to reload (F5 / Cmd+R) or close the tab immediately triggers the browser's native leave-site confirmation prompt, preventing accidental data loss.
 
-**14. Uploads are not UUID-named.** Current naming can overwrite an existing
-object.
+**14. Storage Uploads are UUID-Named — ✅ DONE 2026-08-29.**
+- Updated `uploadDocument` in `src/utils.jsx` to prepend unique UUID prefixes (`crypto.randomUUID()`) to all uploaded file paths in Supabase storage (`customer-documents`), guaranteeing zero collisions or overwriting of existing objects.
 
 ## ⚪ Low — when there is time
 

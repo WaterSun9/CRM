@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from "../supabase";
 import { Trash2, RotateCcw, Eye, AlertTriangle, X } from 'lucide-react';
-import { PRIMARY_STAGES, SUBSIDY_TAGS } from '../constants';
+import { PRIMARY_STAGES, SUBSIDY_TAGS, CUSTOMER_CARD_COLUMNS } from '../constants';
 import { formatINR } from '../utils';
 
 function formatDate(d) {
@@ -70,7 +70,7 @@ export default function TrashView({ onRecover, onHardDelete, isAdmin }) {
             while (true) {
                 const { data: page, error } = await supabase
                     .from('admin')
-                    .select('*')
+                    .select(CUSTOMER_CARD_COLUMNS)
                     .not('deleted_at', 'is', null)
                     .order('deleted_at', { ascending: false })
                     .range(from, from + pageSize - 1);

@@ -5,7 +5,7 @@ import {
     ChevronDown, ChevronUp, Package, X, Check, ArrowRight, FileText, Clock, ExternalLink
 } from 'lucide-react';
 import { supabase } from '../supabase';
-import { PRIMARY_STAGES } from '../constants';
+import { PRIMARY_STAGES, DELIVERY_PICKER_COLUMNS } from '../constants';
 import { formatINR, toIndianCommas, logActivity, formatInputValue, parseIndianNumber } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
@@ -27,25 +27,35 @@ export default function DeliveryBatchesView({
     const [localStatusOverrides, setLocalStatusOverrides] = useState({});
 
     // Customers for the batch picker and the manifest.
-    // This used to page through the entire admin table (3,800+ rows, ~78% of
-    // them COMPLETED) on every load, to keep a few hundred. It now fetches only
-    // the stages the picker offers, plus anything already attached to a batch —
-    // widening to everything only if the user actually picks "All Stages".
-    const PICKER_STAGES = ['MATERIAL DELIVERY', 'MATERIAL INTEGRATION', 'MATERIAL ORDER'];
-
-    const fetchAllCustomers = async (includeEveryStage = false) => {
+    // Queries only required columns via DELIVERY_PICKER_COLUMNS to cut network payload.
+    const fetchAllCustomers = async () => {
         try {
-            const pageAll = async (build) => {
-                let rows = [];
-                let from = 0;
+            const PICKER_STAGES = [
+                'MATERIAL DELIVERY',
+                'MATERIAL_DELIVERY',
+                'Material Delivery',
+                'MATERIAL ORDER',
+                'MATERIAL_ORDER',
+                'Material Order',
+                'HOLD PROCUREMENT',
+                'HOLD_PROCUREMENT',
+                'Hold Procurement',
+            ];
+            const isAdmin = currentUser?.userType === 'admin';
+            const includeEveryStage = false;
+
+            const pageAll = async (buildQuery) => {
                 const pageSize = 1000;
+                let from = 0;
+                const rows = [];
                 while (true) {
-                    const { data, error } = await build()
-                        .order('created_at', { ascending: false })
-                        .range(from, from + pageSize - 1);
-                    if (error) throw error;
+                    const { data, error } = await buildQuery().range(from, from + pageSize - 1);
+                    if (error) {
+                        console.error('pageAll error in DeliveryBatchesView:', error);
+                        break;
+                    }
                     if (!data || data.length === 0) break;
-                    rows = rows.concat(data);
+                    rows.push(...data);
                     if (data.length < pageSize) break;
                     from += pageSize;
                 }
@@ -54,14 +64,11 @@ export default function DeliveryBatchesView({
 
             let all;
             if (includeEveryStage) {
-                all = await pageAll(() => supabase.from('admin').select('*').is('deleted_at', null));
+                all = await pageAll(() => supabase.from('admin').select(DELIVERY_PICKER_COLUMNS).is('deleted_at', null));
             } else {
-                // Two explicit queries rather than a hand-built .or() string —
-                // stage values contain spaces, which PostgREST's or() syntax
-                // makes easy to get subtly wrong.
                 const [byStage, batched] = await Promise.all([
-                    pageAll(() => supabase.from('admin').select('*').is('deleted_at', null).in('stage', PICKER_STAGES)),
-                    pageAll(() => supabase.from('admin').select('*').is('deleted_at', null).not('delivery_batch_id', 'is', null)),
+                    pageAll(() => supabase.from('admin').select(DELIVERY_PICKER_COLUMNS).is('deleted_at', null).in('stage', PICKER_STAGES)),
+                    pageAll(() => supabase.from('admin').select(DELIVERY_PICKER_COLUMNS).is('deleted_at', null).not('delivery_batch_id', 'is', null)),
                 ]);
                 const byId = new Map();
                 [...byStage, ...batched].forEach(row => byId.set(row.id, row));
@@ -246,6 +253,19 @@ export default function DeliveryBatchesView({
         setShowCreateModal(true);
     };
 
+    // Protect against accidental refresh while batch form modal is open
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            if (showCreateModal && batchForm.selectedProjectIds.length > 0) {
+                e.preventDefault();
+                e.returnValue = '';
+                return '';
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [showCreateModal, batchForm.selectedProjectIds.length]);
+
     // Toggle Project Selection in Creation Modal
     const toggleProjectSelection = (projectId) => {
         setBatchForm(prev => {
@@ -307,54 +327,59 @@ export default function DeliveryBatchesView({
                 updatedBatches = [batchPayload, ...batches];
             }
 
-            const didSave = await saveBatchesState(updatedBatches, previousBatches, batchPayload);
-            if (!didSave) {
-                // The batch itself never made it to the database - do not
-                // mark any customer as "already batched" for a batch that
-                // doesn't actually exist.
-                setSaving(false);
-                return;
+            const removedProjectIds = editingBatch
+                ? (editingBatch.project_ids || []).filter(id => !validProjectIds.includes(id))
+                : [];
+
+            // Attempt atomic RPC save (single PostgreSQL transaction)
+            let atomicSuccess = false;
+            try {
+                const { data: rpcData, error: rpcErr } = await supabase.rpc('save_delivery_batch_atomic', {
+                    p_batch: batchPayload,
+                    p_selected_project_ids: validProjectIds,
+                    p_removed_project_ids: removedProjectIds
+                });
+                if (!rpcErr && rpcData?.success) {
+                    atomicSuccess = true;
+                } else if (rpcErr) {
+                    console.warn('save_delivery_batch_atomic RPC fallback:', rpcErr);
+                }
+            } catch (rpcEx) {
+                console.warn('save_delivery_batch_atomic exception:', rpcEx);
             }
 
-            // Bulk update selected projects in admin table with shared delivery metadata
-            const customerUpdates = {
-                delivery_batch_id: batchPayload.batch_no,
-                material_delivery_date: batchPayload.dispatch_date,
-                driver_name: batchPayload.driver_name,
-                driver_phone_number: batchPayload.driver_phone,
-                vehicle_number: batchPayload.vehicle_number,
-                vendor: batchPayload.vendor,
-                delivery_status: 'IN_TRANSIT'
-            };
-
-            for (const projId of batchForm.selectedProjectIds) {
-                if (!String(projId).startsWith('demo-')) {
-                    await supabase
-                        .from('admin')
-                        .update(customerUpdates)
-                        .eq('id', projId);
+            // If atomic RPC is not yet deployed in DB, run standard fallback
+            if (!atomicSuccess) {
+                const didSave = await saveBatchesState(updatedBatches, previousBatches, batchPayload);
+                if (!didSave) {
+                    setSaving(false);
+                    return;
                 }
-            }
 
-            // If editing an existing batch, any customer that was
-            // previously assigned but got unchecked in this edit needs
-            // their delivery_batch_id cleared - otherwise they'd stay
-            // stuck showing as "already in a batch" forever with no way
-            // to reassign them, even though they were removed here.
-            if (editingBatch) {
-                const removedProjectIds = (editingBatch.project_ids || [])
-                    .filter(id => !batchForm.selectedProjectIds.includes(id));
-                for (const projId of removedProjectIds) {
-                    if (!String(projId).startsWith('demo-')) {
-                        await supabase
-                            .from('admin')
-                            .update({ 
-                                delivery_batch_id: null,
-                                delivery_status: 'PENDING'
-                            })
-                            .eq('id', projId);
-                    }
+                // Bulk update selected projects in admin table with shared delivery metadata
+                const customerUpdates = {
+                    delivery_batch_id: batchPayload.batch_no,
+                    material_delivery_date: batchPayload.dispatch_date,
+                    driver_name: batchPayload.driver_name,
+                    driver_phone_number: batchPayload.driver_phone,
+                    vehicle_number: batchPayload.vehicle_number,
+                    vendor: batchPayload.vendor,
+                    delivery_status: 'IN_TRANSIT'
+                };
+
+                if (validProjectIds.length > 0) {
+                    await supabase.from('admin').update(customerUpdates).in('id', validProjectIds);
                 }
+
+                if (removedProjectIds.length > 0) {
+                    await supabase.from('admin').update({ 
+                        delivery_batch_id: null,
+                        delivery_status: 'PENDING'
+                    }).in('id', removedProjectIds);
+                }
+            } else {
+                setBatches(updatedBatches);
+                localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
             }
 
             await handleRefresh();
@@ -393,27 +418,40 @@ export default function DeliveryBatchesView({
         }
 
         if (isPersistedBatch) {
-            const { error } = await supabase.from('delivery_batches').delete().eq('id', batchToDelete.id);
-            if (error) {
-                console.error('Failed to delete delivery batch from the database:', error);
-                setBatches(previousBatches);
-                localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(previousBatches));
-                showAlert('Failed to delete this batch from the shared database: ' + error.message + '. Nothing was changed - please try again.', { type: 'error' });
-                return;
+            let deleteAtomicSuccess = false;
+            try {
+                const { data: rpcData, error: rpcErr } = await supabase.rpc('delete_delivery_batch_atomic', {
+                    p_batch_id: batchToDelete.id,
+                    p_project_ids: batchToDelete.project_ids || []
+                });
+                if (!rpcErr && rpcData?.success) {
+                    deleteAtomicSuccess = true;
+                } else if (rpcErr) {
+                    console.warn('delete_delivery_batch_atomic RPC fallback:', rpcErr);
+                }
+            } catch (delRpcEx) {
+                console.warn('delete_delivery_batch_atomic exception:', delRpcEx);
             }
-        }
 
-        // Clear delivery_batch_id from linked projects
-        if (batchToDelete?.project_ids) {
-            for (const projId of batchToDelete.project_ids) {
-                if (!String(projId).startsWith('demo-')) {
+            if (!deleteAtomicSuccess) {
+                const { error } = await supabase.from('delivery_batches').delete().eq('id', batchToDelete.id);
+                if (error) {
+                    console.error('Failed to delete delivery batch from the database:', error);
+                    setBatches(previousBatches);
+                    localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(previousBatches));
+                    showAlert('Failed to delete this batch from the shared database: ' + error.message + '. Nothing was changed - please try again.', { type: 'error' });
+                    return;
+                }
+
+                // Clear delivery_batch_id from linked projects
+                if (batchToDelete?.project_ids?.length > 0) {
                     await supabase
                         .from('admin')
                         .update({ 
                             delivery_batch_id: null,
                             delivery_status: 'PENDING'
                         })
-                        .eq('id', projId);
+                        .in('id', batchToDelete.project_ids);
                 }
             }
         }
@@ -827,16 +865,33 @@ export default function DeliveryBatchesView({
                                                  setBatches(updatedBatches);
                                                  
                                                  try {
-                                                     const { error: batchError } = await supabase.from("delivery_batches").update({ status: "DELIVERED" }).eq("id", batch.id);
-                                                     if (batchError) throw batchError;
-                                                     const projectIds = linkedProjects.map(p => p.id);
-                                                     if (projectIds.length > 0) {
-                                                         const { error: adminError } = await supabase.from("admin").update({ delivery_status: "DELIVERED" }).in("id", projectIds);
-                                                         if (adminError) throw adminError;
-                                                     }
-                                                     await logActivity(currentUser?.id || "admin", "update", `Marked delivery batch ${batch.batch_no || batch.id} as DELIVERED (${projectIds.length} projects)`, "");
-                                                     await handleRefresh();
-                                                 } catch (err) {
+                                                      const projectIds = linkedProjects.map(p => p.id);
+                                                      let statusAtomicSuccess = false;
+                                                      try {
+                                                          const { data: rpcData, error: rpcErr } = await supabase.rpc('update_delivery_batch_status_atomic', {
+                                                              p_batch_id: batch.id,
+                                                              p_new_status: "DELIVERED",
+                                                              p_project_ids: projectIds
+                                                          });
+                                                          if (!rpcErr && rpcData?.success) {
+                                                              statusAtomicSuccess = true;
+                                                          }
+                                                      } catch (stErr) {
+                                                          console.warn('update_delivery_batch_status_atomic fallback:', stErr);
+                                                      }
+
+                                                      if (!statusAtomicSuccess) {
+                                                          const { error: batchError } = await supabase.from("delivery_batches").update({ status: "DELIVERED" }).eq("id", batch.id);
+                                                          if (batchError) throw batchError;
+                                                          if (projectIds.length > 0) {
+                                                              const { error: adminError } = await supabase.from("admin").update({ delivery_status: "DELIVERED" }).in("id", projectIds);
+                                                              if (adminError) throw adminError;
+                                                          }
+                                                      }
+
+                                                      await logActivity(currentUser?.id || "admin", "update", `Marked delivery batch ${batch.batch_no || batch.id} as DELIVERED (${projectIds.length} projects)`, "");
+                                                      await handleRefresh();
+                                                  } catch (err) {
                                                      setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
                                                      setLocalStatusOverrides(previousOverrides);
                                                      showAlert("Failed to mark batch delivered: " + (err.message || "Unknown error"), { type: 'error' });

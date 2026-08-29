@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, toIndianCommas, normalizeInstallationStatus } from '../utils';
+import { CUSTOMER_CARD_COLUMNS } from '../constants';
 import { 
     Search, CreditCard, CheckCircle2, AlertCircle, Calendar, 
     Building2, Users, Check, Loader2, RefreshCw 
@@ -49,7 +50,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         try {
             const { data, error } = await supabase
                 .from('admin')
-                .select('*')
+                .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
                 .ilike('installation_status', '%yes%')
                 .order('created_at', { ascending: false });
@@ -61,7 +62,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                 // Fallback: try fetching where installation_status is not null and filter in memory
                 const { data: allData } = await supabase
                     .from('admin')
-                    .select('*')
+                    .select(CUSTOMER_CARD_COLUMNS)
                     .is('deleted_at', null)
                     .not('installation_status', 'is', null);
                 if (allData) {

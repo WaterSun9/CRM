@@ -11,7 +11,7 @@
 import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, normalizeInstallationStatus, lazyWithRetry } from '../utils';
-import { PRIMARY_STAGES, STAGE_IDS } from '../constants';
+import { PRIMARY_STAGES, STAGE_IDS, CUSTOMER_CARD_COLUMNS } from '../constants';
 import DashboardView from './DashboardView';
 import CustomerCard from './CustomerCard';
 
@@ -148,7 +148,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     const [hasMore, setHasMore] = useState(true);
     const [metrics, setMetrics] = useState(null);
     const [exporting, setExporting] = useState(false);
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'office2';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'office2' || user?.userType === 'channel_partner_office_manager';
     // Delivery Batches is a head-office function: Admin and Office only. Neither
     // the CPO nor the CP Manager (office2) under it gets access.
     const canSeeDeliveryBatches = user?.userType === 'admin' || user?.userType === 'sales';
@@ -216,11 +216,16 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         ]);
 
         let finalMetrics = {
-            totalProjects: 0, completedCount: 0, liveProjects: 0, loanCount: 0, cashCount: 0, stageCounts: {}, deliveryBatchesCount: 0
+            totalProjects: 0, completedCount: 0, liveProjects: 0, loanCount: 0, cashCount: 0, stageCounts: {}, deliveryBatchesCount: 0,
+            installationTagCount: 0, subsidyTagCount: 0, loanTagCount: 0
         };
 
         if (!metricsRes.error && metricsRes.data) {
-            finalMetrics = { ...metricsRes.data };
+            finalMetrics = { 
+                ...finalMetrics,
+                ...metricsRes.data,
+                loanTagCount: metricsRes.data.loanTagCount ?? metricsRes.data.loanCount ?? 0
+            };
         } else {
             console.error('Metrics fetch error:', metricsRes.error);
         }
@@ -246,15 +251,15 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         const normalizedStage = (stage || STAGE_IDS.LEADS).toUpperCase();
         let query = supabase
             .from('admin')
-            .select('*')
+            .select(CUSTOMER_CARD_COLUMNS)
             .ilike('stage', normalizedStage)
             .order('created_at', { ascending: false })
             .range(pageNum * 50, (pageNum + 1) * 50 - 1);
             
         if (isChannelPartnerOffice) {
-            query = query.ilike('channel_partner', partnerName);
+            query = query.ilike('channel_partner', `%${partnerName}%`);
         } else if (channelPartnerFilter && channelPartnerFilter.trim()) {
-            query = query.ilike('channel_partner', channelPartnerFilter.trim());
+            query = query.ilike('channel_partner', `%${channelPartnerFilter.trim()}%`);
         }
 
         const { data, error } = await query;
@@ -384,9 +389,9 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 query = query.limit(8);
                 
             if (isChannelPartnerOffice) {
-                query = query.ilike('channel_partner', partnerName);
+                query = query.ilike('channel_partner', `%${partnerName}%`);
             } else if (channelPartnerFilter) {
-                query = query.ilike('channel_partner', channelPartnerFilter);
+                query = query.ilike('channel_partner', `%${channelPartnerFilter.trim()}%`);
             }
 
             const { data, error } = await query;

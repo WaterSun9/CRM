@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Wrench, Search, RefreshCw, ChevronDown } from 'lucide-react';
 import { normalizeInstallationStatus } from '../utils';
-import { INSTALLATION_TAGS, INSTALLATION_TAG_COLORS } from '../constants';
+import { INSTALLATION_TAGS, INSTALLATION_TAG_COLORS, CUSTOMER_CARD_COLUMNS } from '../constants';
 import { supabase } from '../supabase';
 
 export { normalizeInstallationStatus };
@@ -43,7 +43,7 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
                 .neq('installation_status', '');
 
             if (targetPartner) {
-                totalQuery = totalQuery.ilike('channel_partner', targetPartner);
+                totalQuery = totalQuery.ilike('channel_partner', `%${targetPartner}%`);
             }
 
             // 2. Parallel Head queries for every tag in INSTALLATION_TAGS
@@ -55,7 +55,7 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
                     .ilike('installation_status', `%${tag.id}%`);
 
                 if (targetPartner) {
-                    tagQuery = tagQuery.ilike('channel_partner', targetPartner);
+                    tagQuery = tagQuery.ilike('channel_partner', `%${targetPartner}%`);
                 }
 
                 const { count, error } = await tagQuery;
@@ -91,13 +91,13 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
 
             let query = supabase
                 .from('admin')
-                .select('*')
+                .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
                 .order('created_at', { ascending: false })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 
             if (targetPartner) {
-                query = query.ilike('channel_partner', targetPartner);
+                query = query.ilike('channel_partner', `%${targetPartner}%`);
             }
 
             if (activeFilter) {

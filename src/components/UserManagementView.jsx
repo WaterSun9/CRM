@@ -794,13 +794,18 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(userId);
         try {
             if (!String(userId).startsWith('dev-')) {
-                const { error: dbErr } = await supabase.from('profiles').delete().eq('id', userId);
-                if (dbErr) throw dbErr;
+                // Delete from Auth via edge function (service role)
                 try {
                     await supabase.functions.invoke('add_user', {
                         body: { action: 'delete', user_id: userId },
                     });
-                } catch (_) { /* edge function sync is best-effort; DB write above is authoritative */ }
+                } catch (edgeEx) {
+                    console.warn('Edge function delete notice:', edgeEx);
+                }
+
+                // Delete profile row
+                const { error: dbErr } = await supabase.from('profiles').delete().eq('id', userId);
+                if (dbErr) throw dbErr;
             }
 
             setProfiles(prev => prev.filter(p => p.id !== userId));

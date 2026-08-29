@@ -269,6 +269,19 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [isOpen]);
 
+    // Protect against accidental browser refresh or tab close when new lead form has unsaved edits
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            if (isOpen && isFormDirty) {
+                e.preventDefault();
+                e.returnValue = '';
+                return '';
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [isOpen, isFormDirty]);
+
     if (!isOpen) return null;
 
     const handleChange = (field, value) => {

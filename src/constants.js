@@ -314,6 +314,11 @@ export const OPERATIONAL_CHECKLIST_FIELDS = [
 
 export const DEFAULT_PAGE_SIZE = 50;
 
+// Optimized Column Selectors for List Views (prevents downloading 67+ full columns)
+export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, consumer_no, crn, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_wp, no_of_modules, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, remarks, stages_remarks, vendor, vendor_status, geo_tag_status, location_link, google_docs, bank_name';
+
+export const DELIVERY_PICKER_COLUMNS = 'id, customer_name, phone_number, consumer_no, crn, stage, channel_partner, sub_channel_partner, system_capacity_kwp, module_wp, no_of_modules, invoice_value, delivery_batch_id, delivery_status, material_delivery_date, driver_name, driver_phone_number, vehicle_number, vendor, created_at, updated_at, deleted_at';
+
 // A tag value is "final" when it is the terminal state of its set. Reaching it
 // locks the field for everyone except Admin. Driven by the isFinal flag on the
 // tag definitions above, so changing which value locks is a one-word edit.

@@ -285,14 +285,59 @@ serve(async (req) => {
             }
 
             // Step 1: create the auth user with the dummy/temp password
-            const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
+            let authUser = null
+            let { data: newAuthUser, error: authError } = await adminClient.auth.admin.createUser({
                 email, password, email_confirm: true
             })
 
-            if (authError) return new Response(
-                JSON.stringify({ error: authError.message }),
-                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            )
+            if (authError) {
+                // If user already exists in auth, check if it's an orphaned auth account (no profile row)
+                const errMsg = (authError.message || "").toLowerCase()
+                if (errMsg.includes("already exists") || errMsg.includes("already registered") || errMsg.includes("unique constraint")) {
+                    const { data: listData } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 })
+                    const existingAuthUser = listData?.users?.find(u => u.email?.toLowerCase() === email?.toLowerCase())
+                    
+                    if (existingAuthUser) {
+                        const { data: existingProfile } = await adminClient
+                            .from("profiles")
+                            .select("id")
+                            .eq("id", existingAuthUser.id)
+                            .maybeSingle()
+
+                        if (existingProfile) {
+                            return new Response(
+                                JSON.stringify({ error: "A user with this email address already exists in the system." }),
+                                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                            )
+                        } else {
+                            // Clean up orphaned auth user leftover from previous deletion
+                            await adminClient.auth.admin.deleteUser(existingAuthUser.id)
+                            const retry = await adminClient.auth.admin.createUser({
+                                email, password, email_confirm: true
+                            })
+                            if (retry.error) {
+                                return new Response(
+                                    JSON.stringify({ error: retry.error.message }),
+                                    { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                                )
+                            }
+                            authUser = retry.data
+                        }
+                    } else {
+                        return new Response(
+                            JSON.stringify({ error: authError.message }),
+                            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                        )
+                    }
+                } else {
+                    return new Response(
+                        JSON.stringify({ error: authError.message }),
+                        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                    )
+                }
+            } else {
+                authUser = newAuthUser
+            }
 
             // Step 2: create their profile row
             const { error: profileError } = await adminClient.from("profiles").insert({

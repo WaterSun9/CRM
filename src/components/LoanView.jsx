@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { IndianRupee, Search, RefreshCw, ChevronDown } from 'lucide-react';
-import { LOAN_TAGS, LOAN_TAG_COLORS } from '../constants';
+import { LOAN_TAGS, LOAN_TAG_COLORS, CUSTOMER_CARD_COLUMNS } from '../constants';
 import { normalizeLoanTag } from '../utils';
 import { supabase } from '../supabase';
 
@@ -40,7 +40,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                 .or('payment_type.ilike.%loan%,loan_tag.not.is.null');
 
             if (targetPartner) {
-                totalQuery = totalQuery.ilike('channel_partner', targetPartner);
+                totalQuery = totalQuery.ilike('channel_partner', `%${targetPartner}%`);
             }
 
             // 2. Parallel Head queries for every specific tag in LOAN_TAGS
@@ -52,7 +52,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                     .ilike('loan_tag', `%${tag.id}%`);
 
                 if (targetPartner) {
-                    tagQuery = tagQuery.ilike('channel_partner', targetPartner);
+                    tagQuery = tagQuery.ilike('channel_partner', `%${targetPartner}%`);
                 }
 
                 const { count, error } = await tagQuery;
@@ -88,13 +88,13 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
 
             let query = supabase
                 .from('admin')
-                .select('*')
+                .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
                 .order('created_at', { ascending: false })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 
             if (targetPartner) {
-                query = query.ilike('channel_partner', targetPartner);
+                query = query.ilike('channel_partner', `%${targetPartner}%`);
             }
 
             if (activeFilter) {

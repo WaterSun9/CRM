@@ -430,7 +430,10 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
         const isImage = file.type && file.type.startsWith('image/');
         const processedFile = isImage ? await compressImage(file) : file;
         const cleanName = processedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const filePath = `${customerId}/${Date.now()}_${cleanName}`;
+        const uuidPrefix = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+            ? crypto.randomUUID() 
+            : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        const filePath = `${customerId}/${uuidPrefix}_${cleanName}`;
 
         // Validate UUID for uploaded_by column
         const isUUID = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
