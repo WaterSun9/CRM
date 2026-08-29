@@ -28,7 +28,7 @@ const parsePanelSerials = (raw) => {
     try {
         const parsed = JSON.parse(rawText);
         if (Array.isArray(parsed)) return parsed.map(value => String(value || '').trim()).filter(Boolean);
-    } catch (e) { /* not JSON */ }
+    } catch { /* not JSON */ }
     return rawText.split(/[\n,]/).map(value => value.trim()).filter(Boolean);
 };
 

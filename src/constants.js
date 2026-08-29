@@ -58,7 +58,7 @@ export const LOAN_TAGS = [
     { id: 'Reject', label: 'Reject', icon: AlertTriangle },
     { id: '1st Payment', label: '1st Payment', icon: Banknote },
     { id: '2nd Payment', label: '2nd Payment', icon: Banknote },
-    { id: 'Total Loan Payment Received', label: 'Total Loan Payment Received', icon: CheckCircle2, isFinal: true },
+    { id: 'Total Loan Payment Received', label: 'Total Received', icon: CheckCircle2, isFinal: true },
 ];
 
 export const LOAN_TAG_COLORS = {
@@ -358,6 +358,111 @@ export const OPERATIONAL_CHECKLIST_FIELDS = [
     { field: 'vendor_feasibility', label: 'Vendor Feasibility' },
     { field: 'site_feasibility', label: 'Site Feasibility' },
 ];
+
+// Every real column on the `admin` table, verified against the live schema on
+// 2026-08-29. Used by sanitizeAdminUpdate() to strip keys that are not real
+// columns before a write.
+//
+// WHY: several save paths write { ...editData }, i.e. the whole customer row.
+// PostgREST rejects the ENTIRE update with 42703 if even one key is not a
+// column, so a single stale key made every save in the Dealer Portal fail
+// ("Could not find the 'file_status' column of 'admin' in the schema cache").
+//
+// KEEP THIS IN SYNC. If you add a column to `admin`, add it here too, or
+// writes to it are dropped (a console warning is logged when that happens).
+export const ADMIN_COLUMNS = new Set([
+    'ac_cable',
+    'adhaar_card_back',
+    'adhaar_card_front',
+    'application_acknowledgment',
+    'application_done_by',
+    'bank_details',
+    'cash_details',
+    'channel_partner',
+    'completed_at',
+    'consumer_no',
+    'created_at',
+    'customer_name',
+    'dc_cable',
+    'dcr_certificate',
+    'deleted_at',
+    'delivery_batch_id',
+    'delivery_status',
+    'digital_certificate',
+    'discom_inspection',
+    'discom_submission',
+    'driver_name',
+    'driver_phone_number',
+    'email_address',
+    'extra_docs',
+    'feasibility_no',
+    'feasibilty_document',
+    'folder_no',
+    'follow_ups',
+    'geo_tag_image',
+    'geo_tag_status',
+    'hold_procurement',
+    'house_geo_tag_photo',
+    'id',
+    'index_2',
+    'installation_date',
+    'installation_note',
+    'installation_status',
+    'insurance_status',
+    'internal_remarks',
+    'inverter_make',
+    'inverter_serial_no',
+    'invoice_no',
+    'invoice_value',
+    'jansamarth_application_no',
+    'light_bill',
+    'loan_history',
+    'loan_registration_date',
+    'loan_tag',
+    'material_delivery_date',
+    'material_order_notes',
+    'meter_installation',
+    'meter_installation_photo',
+    'module_brand',
+    'module_wp',
+    'no_of_modules',
+    'pan_card',
+    'panel',
+    'panel_serial_no',
+    'payment_type',
+    'phone_number',
+    'pm_surya_ghar_stamp',
+    'registration_by',
+    'registration_date',
+    'registration_no',
+    'roof_shed',
+    'sfdc_photo',
+    'signature_pic',
+    'site_feasibility',
+    'stage',
+    'stages_remarks',
+    'stamp',
+    'structure_front_leg_height',
+    'structure_rear_leg_height',
+    'sub_channel_partner',
+    'sub_divisions',
+    'subsidy_history',
+    'subsidy_tag',
+    'subsidy_token_photo',
+    'system_capacity_kwp',
+    'updated_at',
+    'vehicle_number',
+    'vendor',
+    'vendor_feasibility',
+    'vendor_give_up_approved',
+    'vendor_note',
+    'vendor_paid_by',
+    'vendor_paid_date',
+    'vendor_payment_status',
+    'vendor_quote',
+    'villages',
+    'warranty_card'
+]);
 
 export const DEFAULT_PAGE_SIZE = 50;
 

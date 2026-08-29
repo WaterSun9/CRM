@@ -555,10 +555,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
             // Update in bom_items table if integration_by
             if (category === 'integration_by') {
-                await supabase
+                // Unchecked before: a failed cascade left BOM lines pointing at
+                // the old name, which then reads as "not in list" everywhere.
+                const { error: bomSyncError } = await supabase
                     .from('bom_items')
                     .update({ integration_by: trimmed })
                     .eq('integration_by', oldLabel);
+                if (bomSyncError) throw bomSyncError;
             }
 
             // Update state

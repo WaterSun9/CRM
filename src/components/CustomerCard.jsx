@@ -31,7 +31,7 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                     return parsed[customer.stage] || '';
                 }
                 return parsed || '';
-            } catch (e) {
+            } catch {
                 return customer.stages_remarks;
             }
         }

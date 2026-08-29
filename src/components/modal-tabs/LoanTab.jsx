@@ -551,7 +551,7 @@ export default function LoanTab({
 
                                 <div className="flex items-center gap-2.5">
                                     <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg font-bold uppercase">
-                                        {isAllClearTag ? 'Total Loan Payment Received' : (currentTag || 'Active')}
+                                        {isAllClearTag ? 'Total Received' : (currentTag || 'Active')}
                                     </span>
 
                                     {isEditable && (

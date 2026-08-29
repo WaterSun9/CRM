@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabase';
 import { PRIMARY_STAGES, DELIVERY_PICKER_COLUMNS } from '../constants';
-import { formatINR, toIndianCommas, logActivity, formatInputValue, parseIndianNumber } from '../utils';
+import { toIndianCommas, logActivity, formatInputValue, parseIndianNumber } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
 export default function DeliveryBatchesView({ 
@@ -397,15 +397,20 @@ export default function DeliveryBatchesView({
                     delivery_status: 'IN_TRANSIT'
                 };
 
+                // Unchecked before: the batch row saved while the customer links
+                // silently did not, leaving customers stranded outside the batch
+                // that claims them - the original delivery-batch bug class.
                 if (validProjectIds.length > 0) {
-                    await supabase.from('admin').update(customerUpdates).in('id', validProjectIds);
+                    const { error: linkErr } = await supabase.from('admin').update(customerUpdates).in('id', validProjectIds);
+                    if (linkErr) throw linkErr;
                 }
 
                 if (removedProjectIds.length > 0) {
-                    await supabase.from('admin').update({ 
+                    const { error: unlinkErr } = await supabase.from('admin').update({ 
                         delivery_batch_id: null,
                         delivery_status: 'PENDING'
                     }).in('id', removedProjectIds);
+                    if (unlinkErr) throw unlinkErr;
                 }
             } else {
                 setBatches(updatedBatches);
@@ -475,13 +480,16 @@ export default function DeliveryBatchesView({
 
                 // Clear delivery_batch_id from linked projects
                 if (batchToDelete?.project_ids?.length > 0) {
-                    await supabase
+                    // Unchecked before: deleting a batch could leave its customers
+                    // still pointing at a batch row that no longer exists.
+                    const { error: clearErr } = await supabase
                         .from('admin')
                         .update({ 
                             delivery_batch_id: null,
                             delivery_status: 'PENDING'
                         })
                         .in('id', batchToDelete.project_ids);
+                    if (clearErr) throw clearErr;
                 }
             }
         }
@@ -513,7 +521,7 @@ export default function DeliveryBatchesView({
             const y = parsedDate.getFullYear();
             const m = String(parsedDate.getMonth() + 1).padStart(2, '0');
             return `${y}-${m}` === monthFilterStr;
-        } catch (e) {
+        } catch {
             return false;
         }
     };

@@ -24,7 +24,7 @@ export function getStageRemarkFromData(remarks, stageId) {
                 return parsed[stageId] || '';
             }
             return parsed || '';
-        } catch (e) {
+        } catch {
             return remarks;
         }
     }

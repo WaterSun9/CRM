@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { ClipboardList, Save, FileText, Printer, RotateCcw, AlertTriangle, CheckCircle2, SendHorizonal, Loader2 } from 'lucide-react';
-import { supabase } from '../../supabase';
 import { Page1 } from '../agreement/Page1';
 import { CheckboxRemarkItem } from './shared';
 import { formatDateToDDMMYYYY } from '../../utils';
@@ -65,14 +64,14 @@ export default function DiscomSubmissionTab({
         setSendingToStamp(true);
         setActionError(null);
         try {
-            const currentSub = editData.discom_submission || {};
             const merged = {
-                ...currentSub,
+                ...submissionData,
                 sent_to_stamp_maker: true,
                 sent_to_stamp_maker_at: new Date().toISOString(),
                 sent_to_stamp_maker_by: user?.name || user?.email || 'Office',
             };
-            await onUpdate(customer.id, { discom_submission: merged });
+            const ok = await onUpdate(customer.id, { discom_submission: merged });
+            if (ok === false) throw new Error('The database did not accept the change.');
             await logActivity(user.id, 'update',
                 `${customer.customer_name}: Discom details sent to Stamp Maker`, '', customer.id);
             setEditData(prev => ({ ...prev, discom_submission: merged }));
@@ -87,9 +86,9 @@ export default function DiscomSubmissionTab({
         setRecalling(true);
         setActionError(null);
         try {
-            const currentSub = editData.discom_submission || {};
-            const merged = { ...currentSub, sent_to_stamp_maker: false };
-            await onUpdate(customer.id, { discom_submission: merged });
+            const merged = { ...submissionData, sent_to_stamp_maker: false };
+            const ok = await onUpdate(customer.id, { discom_submission: merged });
+            if (ok === false) throw new Error('The database did not accept the change.');
             await logActivity(user.id, 'update',
                 `${customer.customer_name}: Recalled from Stamp Maker`, '', customer.id);
             setEditData(prev => ({ ...prev, discom_submission: merged }));
@@ -110,7 +109,8 @@ export default function DiscomSubmissionTab({
                 stamp_approved_at: new Date().toISOString(),
                 stamp_sendback_remark: null,
             };
-            await onUpdate(customer.id, { discom_submission: merged });
+            const ok = await onUpdate(customer.id, { discom_submission: merged });
+            if (ok === false) throw new Error('The database did not accept the approval.');
             await logActivity(
                 user.id,
                 'update',
@@ -146,9 +146,13 @@ export default function DiscomSubmissionTab({
                 stamp_sendback_by: user?.name || user?.email || 'Office',
                 stamp_sendback_at: new Date().toISOString(),
             };
-            await supabase.from('admin')
-                .update({ discom_submission: merged })
-                .eq('id', customer.id);
+            // Was a direct supabase.update() while the other three stamp actions
+            // go through onUpdate. That bypassed the parent's error handling,
+            // its state sync and the column sanitiser - and its result was never
+            // checked, so a failed send-back still cleared the remark box and
+            // looked like it had worked.
+            const ok = await onUpdate(customer.id, { discom_submission: merged });
+            if (ok === false) throw new Error('The database did not accept the send-back.');
             await logActivity(
                 user.id, 'update',
                 `${customer.customer_name}: Stamp sent back to Stamp Maker — "${sendBackRemark.trim()}"`,

@@ -9,7 +9,7 @@ import { useMemo } from 'react';
 
 import { FolderOpen, Activity, CheckCircle2 } from 'lucide-react';
 import { PRIMARY_STAGES } from '../constants';
-import { formatINR, formatINRCompact, toIndianCommas } from '../utils';
+import { formatINRCompact } from '../utils';
 
 const fmtLakh = formatINRCompact;
 

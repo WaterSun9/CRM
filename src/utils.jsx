@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase';
-import { PRIMARY_STAGES, SUBSIDY_TAGS, LOAN_TAGS } from './constants';
+import { PRIMARY_STAGES, SUBSIDY_TAGS, LOAN_TAGS, ADMIN_COLUMNS } from './constants';
 
 // ─── Activity Logging ─────────────────────────────────────────────────────────
 export async function logActivity(
@@ -65,6 +65,43 @@ export function useMetadata() {
         });
     }, []);
     return meta;
+}
+
+// ─── Safe writes to the `admin` table ────────────────────────────────────────
+
+// Drop any key that is not a real `admin` column. One unknown key makes
+// PostgREST reject the whole update (42703), so a single stale field used to
+// break every save on the record rather than just that field.
+export function sanitizeAdminUpdate(updates) {
+    const clean = {};
+    const dropped = [];
+    Object.keys(updates || {}).forEach(key => {
+        if (ADMIN_COLUMNS.has(key)) clean[key] = updates[key];
+        else dropped.push(key);
+    });
+    if (dropped.length > 0) {
+        console.warn(
+            '[sanitizeAdminUpdate] Dropped key(s) that are not columns on `admin`:',
+            dropped,
+            '- if one of these is a NEW column, add it to ADMIN_COLUMNS in constants.js.'
+        );
+    }
+    return clean;
+}
+
+// Only the fields that actually changed, so a stage advance writes 2 columns
+// instead of re-writing all ~89. Objects/arrays are compared by value.
+export function diffAdminUpdates(original, edited) {
+    const patch = {};
+    Object.keys(edited || {}).forEach(key => {
+        const before = original ? original[key] : undefined;
+        const after = edited[key];
+        const changed = (before && typeof before === 'object') || (after && typeof after === 'object')
+            ? JSON.stringify(before ?? null) !== JSON.stringify(after ?? null)
+            : before !== after;
+        if (changed) patch[key] = after;
+    });
+    return patch;
 }
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────

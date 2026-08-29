@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { PauseCircle, AlertTriangle, CheckCircle2, MessageSquare, CornerUpLeft, Save, Sparkles } from 'lucide-react';
 import { PRIMARY_STAGES, HOLD_STATUS_TAGS } from '../../constants';
 
@@ -40,7 +40,7 @@ export default function HoldProcurementTab({
                         hold_date: parsed.hold_date || today
                     };
                 }
-            } catch (e) {
+            } catch {
                 // If raw string is a status like "Project Win"
                 return {
                     previous_stage: defaultOrigin,
@@ -80,7 +80,7 @@ export default function HoldProcurementTab({
                         hold_date: parsed.hold_date || today
                     };
                 }
-            } catch (e) {
+            } catch {
                 return {
                     previous_stage: defaultOrigin,
                     hold_status: raw,

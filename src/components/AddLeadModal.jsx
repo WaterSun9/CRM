@@ -560,8 +560,11 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 />
                             </div>
 
-                            {/* Agents and Channel Partner Office users are always assigned to themselves. */}
-                            {(isAgent || isAgent2 || isChannelPartnerOffice) ? (
+                            {/* Agents and Channel Partner Office users are always assigned to
+                                themselves. agent2 (a Dealer under a CPO) does not see the field
+                                at all - the value is still enforced on submit from
+                                user.channel_partner, it is just not shown to them. */}
+                            {isAgent2 ? null : (isAgent || isChannelPartnerOffice) ? (
                                 <div className="space-y-1">
                                     <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
                                         Channel Partner Name <span className="text-red-500 font-bold">*</span>

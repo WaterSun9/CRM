@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ShoppingBag, Zap, Ruler, IndianRupee, Layers, CheckCircle2, ShieldAlert, AlertCircle, User, Edit3, X } from 'lucide-react';
 import { SectionHeader, EditableDetailItem } from './shared';
-import { toIndianCommas, parseIndianNumber, formatInputValue } from '../../utils';
+import { parseIndianNumber } from '../../utils';
 
 export default function MaterialOrderTab({
     customer,
@@ -36,18 +36,6 @@ export default function MaterialOrderTab({
             handleChange(field, val);
         } else {
             setEditData(prev => ({ ...prev, [field]: val }));
-        }
-    };
-
-    const handleFillTestData = () => {
-        handleLocalChange('roof_shed', editData.roof_shed || 'Roof');
-        handleLocalChange('dc_cable', editData.dc_cable || '30');
-        handleLocalChange('ac_cable', editData.ac_cable || '25');
-        handleLocalChange('structure_front_leg_height', editData.structure_front_leg_height || '5');
-        handleLocalChange('structure_rear_leg_height', editData.structure_rear_leg_height || '8');
-        handleLocalChange('invoice_value', editData.invoice_value || '1,25,000');
-        if (!editingSection && setEditingSection) {
-            setEditingSection('mat_order');
         }
     };
 

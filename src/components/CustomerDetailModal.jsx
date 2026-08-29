@@ -1,4 +1,3 @@
-import { customerSchema } from '../utils/validation';
 // ─── CustomerDetailModal.jsx ──────────────────────────────────────────────────
 // Full customer detail: 4-tab layout (Overview, Finance & Bank, Checklist,
 // Notes & History). Section-level editing, payments array editor, generic
@@ -10,7 +9,7 @@ import { customerSchema } from '../utils/validation';
 //   • Stage/tag options: edit constants.js
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
@@ -18,7 +17,7 @@ import {
     Eye, Search, Image as ImageIcon, MessageSquare
 } from 'lucide-react';
 import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN } from '../constants';
-import { logActivity, formatLogDate, formatDateToDDMMYYYY, formatINR, toIndianCommas, formatInputValue, parseIndianNumber, fetchAgent2SubAgents } from '../utils';
+import { logActivity, formatDateToDDMMYYYY, formatINR, parseIndianNumber, fetchAgent2SubAgents } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
@@ -127,6 +126,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const loadedUpdatedAtRef = useRef(customer?.updated_at || null);
     const [concurrentConflict, setConcurrentConflict] = useState(null);
     const [remoteUpdateAlert, setRemoteUpdateAlert] = useState(false);
+    // Realtime fires for EVERY update to this row, our own included. Stamp the
+    // time of our own writes so the echo is not reported to the user as
+    // "a colleague updated this record".
+    const lastSelfWriteRef = useRef(0);
     const [subAgents, setSubAgents] = useState([]);
 
     useEffect(() => {
@@ -174,13 +177,20 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }, (payload) => {
                 if (payload.new) {
                     const serverRecord = payload.new;
+                    // Our own save echoes back here. Without this test the user
+                    // was told a colleague had edited the record they had just
+                    // saved themselves.
+                    const isOwnWrite =
+                        (serverRecord.updated_at && serverRecord.updated_at === loadedUpdatedAtRef.current) ||
+                        (Date.now() - lastSelfWriteRef.current) < 5000;
+
                     if (!isFormDirty) {
                         loadedUpdatedAtRef.current = serverRecord.updated_at || loadedUpdatedAtRef.current;
                         savedDataRef.current = { ...serverRecord };
                         setEditData({ ...serverRecord });
                         setRemoteUpdateAlert(false);
-                    } else {
-                        // User has active unsaved edits: alert them that a colleague updated the record
+                    } else if (!isOwnWrite) {
+                        // A colleague changed the record while we have unsaved edits.
                         setRemoteUpdateAlert(true);
                     }
                 }
@@ -502,6 +512,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 const flagColumn = docType ? DOC_TYPE_FLAG_COLUMN[docType] : null;
                 if (flagColumn) {
                     setEditData(prev => ({ ...prev, [flagColumn]: true }));
+                    lastSelfWriteRef.current = Date.now();
                     onUpdate(customer.id, { [flagColumn]: true }).catch(err => {
                         console.error(`Failed to set ${flagColumn} after upload:`, err);
                         showAlert(
@@ -695,7 +706,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 try {
                     const parsed = JSON.parse(customer.stages_remarks);
                     if (typeof parsed === 'object' && parsed) prevObj = parsed;
-                } catch (ex) { /* not valid JSON, fall through to default */ }
+                } catch { /* not valid JSON, fall through to default */ }
             }
             const updatedRemarks = {
                 ...prevObj,
@@ -751,6 +762,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     // that saved patch into the baseline and keep the popup active solely for
     // any other fields that are still genuinely unsaved.
     const handleSectionUpdate = async (id, patch) => {
+        lastSelfWriteRef.current = Date.now();
         const result = await onUpdate(id, patch);
         if (result === false) return false;
         savedDataRef.current = { ...savedDataRef.current, ...patch };
@@ -932,43 +944,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         setShowValidationModal(true);
     };
 
-    const handleBypassValidationAndAdvance = async () => {
-        setShowValidationModal(false);
-        setValidationIssues([]);
-        const destStageId = nextStageId;
-        if (!destStageId) return;
-
-        setSaving(true);
-        const oldStage = editData.stage;
-        let prevObj = {};
-        if (typeof editData.stages_remarks === 'object' && editData.stages_remarks) {
-            prevObj = editData.stages_remarks;
-        }
-        const updatedRemarks = {
-            ...prevObj,
-            [oldStage]: ''
-        };
-
-        const updates = {
-            ...editData,
-            stage: destStageId,
-            stages_remarks: updatedRemarks
-        };
-
-        setEditData(updates);
-        await onUpdate(customer.id, updates);
-        await logActivity(
-            user.id,
-            'update',
-            `${customer.customer_name}: Stage changed to ${destStageId} (Quick Bypass & Auto-fill)`,
-            `Moved from ${oldStage} to ${destStageId}`,
-            customer.id
-        );
-        setActiveTab(destStageId);
-        setSaved(true);
-        setSaving(false);
-    };
-
     const handleAdvanceStage = async (overrideNextStageId) => {
         const destStageId = overrideNextStageId || nextStageId;
         if (!destStageId) return;
@@ -1023,7 +998,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             try {
                 const parsed = JSON.parse(editData.stages_remarks);
                 if (typeof parsed === 'object' && parsed) prevObj = parsed;
-            } catch (e) { /* not valid JSON, fall through to default */ }
+            } catch { /* not valid JSON, fall through to default */ }
         }
         const updatedRemarks = {
             ...prevObj,
@@ -1316,13 +1291,36 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 narrowedUpdates.stage = updates.stage;
             }
 
+            lastSelfWriteRef.current = Date.now();
             const promises = [onUpdate(customer.id, narrowedUpdates)];
             if (changeSummary.length > 0) promises.push(logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id));
             const [updateResult] = await Promise.all(promises);
             if (updateResult === false) throw new Error('The database did not accept the changes.');
 
-            savedDataRef.current = { ...savedDataRef.current, ...narrowedUpdates };
-            loadedUpdatedAtRef.current = new Date().toISOString();
+            // Re-read what the server actually stored, and use ITS updated_at as
+            // the new baseline. Two separate bugs made the conflict dialog fire
+            // on a single editor's own second save:
+            //
+            //  1. The baseline was the CLIENT clock (new Date()), while the DB
+            //     trigger sets updated_at from server now(). Any clock skew over
+            //     1s made the next save look like somebody else's edit.
+            //  2. savedDataRef was patched with what we SENT, but handleUpdateCustomer
+            //     coerces numeric strings ('5' -> 5), so the stored row genuinely
+            //     differed from our baseline and every numeric field showed up as a
+            //     "remote change".
+            const { data: savedRow } = await supabase
+                .from('admin')
+                .select('*')
+                .eq('id', customer.id)
+                .maybeSingle();
+
+            if (savedRow) {
+                savedDataRef.current = { ...savedRow };
+                loadedUpdatedAtRef.current = savedRow.updated_at || new Date().toISOString();
+            } else {
+                savedDataRef.current = { ...savedDataRef.current, ...narrowedUpdates };
+                loadedUpdatedAtRef.current = new Date().toISOString();
+            }
             setRemoteUpdateAlert(false);
             setConcurrentConflict(null);
             setEditingSection(null);

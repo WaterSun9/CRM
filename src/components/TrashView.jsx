@@ -8,7 +8,6 @@ import { useState, useEffect } from 'react';
 import { supabase } from "../supabase";
 import { Trash2, RotateCcw, Eye, AlertTriangle, X } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, CUSTOMER_CARD_COLUMNS } from '../constants';
-import { formatINR } from '../utils';
 
 function formatDate(d) {
     if (!d) return '–';

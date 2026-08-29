@@ -288,7 +288,7 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                             const errJson = await response.error.context.json();
                             if (errJson?.error) errMsg = errJson.error;
                         }
-                    } catch (_) { /* could not parse error body, use default message */ }
+                    } catch { /* could not parse error body, use default message */ }
                     throw new Error(errMsg);
                 }
             } catch (edgeErr) {
@@ -323,12 +323,18 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                         .maybeSingle();
 
                     if (!existingVendor) {
-                        await supabase
+                        // Best-effort, but insert() resolves with { error } rather
+                        // than throwing, so the catch below never saw a failure and
+                        // the vendor silently never reached the directory.
+                        const { error: vendorInsertErr } = await supabase
                             .from('vendors')
                             .insert({
                                 name: finalForm.name,
                                 email: finalForm.email
                             });
+                        if (vendorInsertErr) {
+                            console.warn('User created, but adding them to the Vendors directory failed:', vendorInsertErr.message);
+                        }
                     }
                 } catch (vErr) {
                     console.warn('Vendor table sync warning:', vErr);
@@ -644,19 +650,10 @@ export default function UserManagementView({ currentUser }) {
                 throw new Error(dbError.message || 'Database update failed');
             }
 
-            // 2. Also try Edge Function sync if deployed
-            try {
-                await supabase.functions.invoke('add_user', {
-                    body: { 
-                        action: 'update_role', 
-                        user_id: profile.id, 
-                        user_type: selected.user_type, 
-                        role: selected.role 
-                    },
-                });
-            } catch (edgeErr) {
-                console.warn('Edge function role sync notice:', edgeErr);
-            }
+            // The edge function has no 'update_role' action - this call always
+            // came back 400 "Unknown action" and was swallowed. The profiles
+            // write above is the real change, so the dead call is removed
+            // rather than left firing on every role edit.
 
             // 3. Update local state immediately
             setProfiles(prev => prev.map(p => p.id === profile.id ? { 
@@ -711,20 +708,29 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(profileId);
         try {
             if (!String(profileId).startsWith('dev-')) {
+                // The auth email is the one the user actually signs in with, so
+                // change it FIRST. Previously both writes were unchecked - the
+                // profile error was only logged and functions.invoke resolves
+                // with { error } rather than throwing - yet it still reported
+                // "Email updated successfully". A failed auth update left the
+                // list showing the new address while the login stayed on the
+                // old one, with nothing to indicate it.
+                const { data: fnData, error: fnErr } = await supabase.functions.invoke('add_user', {
+                    body: { action: 'update_email', user_id: profileId, new_email: cleanEmail },
+                });
+                const authFailure = fnErr || fnData?.error;
+                if (authFailure) {
+                    throw new Error(
+                        (fnData?.error || fnErr?.message || 'The login email could not be changed.')
+                        + ' Nothing was changed - they can still sign in with their existing email.'
+                    );
+                }
+
                 const { error: profileDbErr } = await supabase
                     .from('profiles')
                     .update({ email: cleanEmail })
                     .eq('id', profileId);
-
-                if (profileDbErr) console.error('Profile DB email update failed:', profileDbErr);
-
-                try {
-                    await supabase.functions.invoke('add_user', {
-                        body: { action: 'update_email', user_id: profileId, new_email: cleanEmail },
-                    });
-                } catch (edgeErr) {
-                    console.warn('Edge function email update notice:', edgeErr);
-                }
+                if (profileDbErr) throw profileDbErr;
             }
 
             setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, email: cleanEmail } : p));
@@ -748,11 +754,15 @@ export default function UserManagementView({ currentUser }) {
             if (!String(userId).startsWith('dev-')) {
                 const { error: dbErr } = await supabase.from('profiles').update({ status: 'inactive' }).eq('id', userId);
                 if (dbErr) throw dbErr;
-                try {
-                    await supabase.functions.invoke('add_user', {
-                        body: { action: 'deactivate', user_id: userId },
-                    });
-                } catch (_) { /* edge function sync is best-effort; DB write above is authoritative */ }
+                // Best-effort: the profiles.status write above is what the app
+                // enforces. Surfaced in the console because invoke resolves with
+                // { error } rather than throwing, so failures were invisible.
+                const { data: fnData, error: fnErr } = await supabase.functions.invoke('add_user', {
+                    body: { action: 'deactivate', user_id: userId },
+                });
+                if (fnErr || fnData?.error) {
+                    console.warn('Auth deactivate did not apply:', fnData?.error || fnErr?.message);
+                }
             }
 
             setProfiles(prev => prev.map(p => p.id === userId ? { ...p, status: 'inactive' } : p));
@@ -771,11 +781,15 @@ export default function UserManagementView({ currentUser }) {
             if (!String(userId).startsWith('dev-')) {
                 const { error: dbErr } = await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
                 if (dbErr) throw dbErr;
-                try {
-                    await supabase.functions.invoke('add_user', {
-                        body: { action: 'reactivate', user_id: userId },
-                    });
-                } catch (_) { /* edge function sync is best-effort; DB write above is authoritative */ }
+                // Best-effort: the profiles.status write above is what the app
+                // enforces. Surfaced in the console because invoke resolves with
+                // { error } rather than throwing, so failures were invisible.
+                const { data: fnData, error: fnErr } = await supabase.functions.invoke('add_user', {
+                    body: { action: 'reactivate', user_id: userId },
+                });
+                if (fnErr || fnData?.error) {
+                    console.warn('Auth reactivate did not apply:', fnData?.error || fnErr?.message);
+                }
             }
 
             setProfiles(prev => prev.map(p => p.id === userId ? { ...p, status: 'active' } : p));
@@ -794,16 +808,28 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(userId);
         try {
             if (!String(userId).startsWith('dev-')) {
-                // Delete from Auth via edge function (service role)
-                try {
-                    await supabase.functions.invoke('add_user', {
-                        body: { action: 'delete', user_id: userId },
-                    });
-                } catch (edgeEx) {
-                    console.warn('Edge function delete notice:', edgeEx);
+                // Delete from Auth via edge function (service role).
+                //
+                // functions.invoke RESOLVES with { data, error } - it does not
+                // throw on a 4xx/5xx - so the old try/catch never fired and the
+                // error was dropped. The profile row was then deleted anyway,
+                // leaving an orphaned auth.users row: the account vanished from
+                // this list but its email stayed taken, so recreating it failed
+                // with "email exists" and there was no way to fix it in the UI.
+                const { data: fnData, error: fnErr } = await supabase.functions.invoke('add_user', {
+                    body: { action: 'delete', user_id: userId },
+                });
+
+                const authFailure = fnErr || fnData?.error;
+                if (authFailure) {
+                    throw new Error(
+                        (fnData?.error || fnErr?.message || 'The login account could not be deleted.')
+                        + ' The user was NOT deleted, so their email stays usable.'
+                    );
                 }
 
-                // Delete profile row
+                // Auth deletion cascades the profile row via FK; this is a
+                // no-op safety net for older rows without the constraint.
                 const { error: dbErr } = await supabase.from('profiles').delete().eq('id', userId);
                 if (dbErr) throw dbErr;
             }

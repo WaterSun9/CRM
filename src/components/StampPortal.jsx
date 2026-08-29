@@ -115,8 +115,14 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
         setSending(true);
         setShowConfirmSend(false);
         try {
-            const { data: existing } = await supabase
+            // The read must succeed before merging: on failure `existing` was
+            // undefined and the spread below silently dropped every existing
+            // field of discom_submission (who sent it, the agreement parties,
+            // stamp value...) and wrote back a near-empty object.
+            const { data: existing, error: readErr } = await supabase
                 .from("admin").select("discom_submission").eq("id", cust.id).single();
+            if (readErr) throw readErr;
+
             const merged = {
                 ...(existing?.discom_submission || {}),
                 stamp_sent: true,
@@ -124,9 +130,15 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
                 stamp_completed_by: user?.name || "Stamp Maker",
                 stamp_sendback_remark: null,
             };
-            await supabase.from("admin")
+            // Unchecked before. A blocked write (RLS on the stamp role) still
+            // fell through to onCustomerRemoved(), so the record vanished from
+            // the stamp maker's list while stamp_sent was never set - the office
+            // never saw it as stamped and nobody was told.
+            const { error: writeErr } = await supabase.from("admin")
                 .update({ discom_submission: merged })
                 .eq("id", cust.id);
+            if (writeErr) throw writeErr;
+
             await logActivity(user.id, "update",
                 cust.customer_name + ": Stamp sent to Document Making", "", cust.id);
             onCustomerRemoved(cust.id);
@@ -148,7 +160,11 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
         try {
             if (stampDoc) await deleteDocument(stampDoc.id, stampDoc.storage_path);
             await uploadDocument(file, cust.id, "pm_surya_ghar_stamp", user.id);
-            await supabase.from("admin").update({ pm_surya_ghar_stamp: true }).eq("id", cust.id);
+            // Unchecked before: the file uploaded but the checklist flag silently
+            // failed to set, so the office saw no stamp against the customer.
+            const { error: flagErr } = await supabase.from("admin")
+                .update({ pm_surya_ghar_stamp: true }).eq("id", cust.id);
+            if (flagErr) throw flagErr;
             await logActivity(user.id, "update",
                 cust.customer_name + ": " + (stampDoc ? "Changed" : "Uploaded") + " PM Surya Ghar Stamp", "", cust.id);
             const updatedDocs = await getCustomerDocuments(cust.id);
@@ -394,6 +410,13 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
 
 export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
     const { showAlert } = useGlobalPopup();
+    // Completed-work ledger: the stamp maker's own record of what they finished
+    // and when, grouped by month, so monthly payments can be verified from both
+    // sides. Kept separate from the queue, which only holds outstanding work.
+    const [view, setView] = useState('queue'); // 'queue' | 'record'
+    const [completedRecords, setCompletedRecords] = useState([]);
+    const [loadingRecords, setLoadingRecords] = useState(false);
+    const [selectedMonthKey, setSelectedMonthKey] = useState('all');
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
@@ -546,6 +569,59 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
         );
     });
 
+    const fetchCompletedRecords = useCallback(async () => {
+        setLoadingRecords(true);
+        try {
+            const { data, error } = await supabase
+                .from("admin")
+                .select("id, customer_name, consumer_no, villages, discom_submission")
+                .eq("discom_submission->>sent_to_stamp_maker", "true")
+                .eq("discom_submission->>stamp_sent", "true")
+                .is("deleted_at", null);
+            if (error) throw error;
+            const rows = (data || []).map(r => {
+                const sub = r.discom_submission || {};
+                const completedAt = sub.stamp_completed_at ? new Date(sub.stamp_completed_at) : null;
+                const valid = completedAt && !isNaN(completedAt.getTime());
+                return {
+                    id: r.id,
+                    customer_name: r.customer_name,
+                    consumer_no: r.consumer_no,
+                    villages: r.villages,
+                    completedAt: valid ? completedAt : null,
+                    completedBy: sub.stamp_completed_by || '–',
+                    approved: !!sub.stamp_approved,
+                    monthKey: valid ? `${completedAt.getFullYear()}-${String(completedAt.getMonth() + 1).padStart(2, '0')}` : 'unknown',
+                };
+            });
+            rows.sort((a, b) => (b.completedAt?.getTime() || 0) - (a.completedAt?.getTime() || 0));
+            setCompletedRecords(rows);
+        } catch (err) {
+            console.error("Failed to load completed stamp record:", err);
+            showAlert(err.message || "Could not load your completed stamp record.", { title: "Record unavailable", type: "error" });
+        } finally {
+            setLoadingRecords(false);
+        }
+    }, [showAlert]);
+
+    useEffect(() => {
+        if (view === 'record' && completedRecords.length === 0) fetchCompletedRecords();
+    }, [view, completedRecords.length, fetchCompletedRecords]);
+
+    // Month options, newest first
+    const monthOptions = Array.from(new Set(completedRecords.map(r => r.monthKey)))
+        .filter(k => k !== 'unknown')
+        .sort()
+        .reverse()
+        .map(key => {
+            const [y, m] = key.split('-');
+            return { key, label: new Date(Number(y), Number(m) - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' }) };
+        });
+
+    const recordsForMonth = selectedMonthKey === 'all'
+        ? completedRecords
+        : completedRecords.filter(r => r.monthKey === selectedMonthKey);
+
     const totalCount = customers.length;
     const completedCount = customers.filter(c => c.pm_surya_ghar_stamp).length;
     const pendingCount = totalCount - completedCount;
@@ -626,6 +702,105 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                     </div>
                 </div>
 
+                {/* Queue vs Completed Record */}
+                <div className="flex gap-1 bg-stone-100 p-1 rounded-2xl">
+                    {[['queue', 'Pending Queue'], ['record', 'My Record']].map(([key, label]) => (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => setView(key)}
+                            className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                                view === key ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-800'
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+
+                {view === 'record' ? (
+                    <div className="space-y-3">
+                        {/* Month picker */}
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={selectedMonthKey}
+                                onChange={e => setSelectedMonthKey(e.target.value)}
+                                className="flex-1 bg-white border border-stone-200 rounded-xl px-3 py-2.5 text-xs font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer shadow-xs"
+                            >
+                                <option value="all">All months</option>
+                                {monthOptions.map(m => (
+                                    <option key={m.key} value={m.key}>{m.label}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={fetchCompletedRecords}
+                                disabled={loadingRecords}
+                                className="p-2.5 bg-white border border-stone-200 rounded-xl text-stone-400 hover:text-amber-600 disabled:opacity-50 cursor-pointer shadow-xs"
+                                title="Refresh record"
+                            >
+                                <RefreshCw className={`w-4 h-4 ${loadingRecords ? 'animate-spin' : ''}`} />
+                            </button>
+                        </div>
+
+                        {/* Month total - the number monthly payment is based on */}
+                        <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 text-white p-5 rounded-[24px] shadow-lg">
+                            <p className="text-[9px] uppercase tracking-widest text-emerald-100 font-bold">
+                                Stamps completed{selectedMonthKey === 'all' ? ' (all time)' : ''}
+                            </p>
+                            <p className="text-4xl font-black mt-1">{recordsForMonth.length}</p>
+                            <p className="text-[11px] text-emerald-100 mt-1 font-medium">
+                                {selectedMonthKey === 'all'
+                                    ? 'Across every month on record'
+                                    : monthOptions.find(m => m.key === selectedMonthKey)?.label}
+                            </p>
+                        </div>
+
+                        {/* Per-stamp detail */}
+                        {loadingRecords ? (
+                            <div className="flex flex-col items-center justify-center gap-2 py-16 text-stone-400">
+                                <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
+                                <span className="text-xs font-bold">Loading your record...</span>
+                            </div>
+                        ) : recordsForMonth.length === 0 ? (
+                            <div className="bg-white p-8 rounded-2xl border border-stone-100 text-center text-stone-400 shadow-sm space-y-2">
+                                <FileCheck className="w-8 h-8 mx-auto text-stone-300" />
+                                <p className="text-xs font-bold text-stone-600">No stamps completed in this period.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {recordsForMonth.map((r, idx) => (
+                                    <div key={r.id} className="bg-white p-3.5 rounded-2xl border border-stone-100 shadow-sm flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[9px] font-black text-stone-300 tabular-nums">{String(idx + 1).padStart(2, '0')}</span>
+                                                <p className="text-xs font-bold text-stone-850 truncate">{r.customer_name}</p>
+                                            </div>
+                                            <p className="text-[10px] text-stone-400 font-medium mt-0.5 ml-6 truncate">
+                                                {[r.consumer_no, r.villages].filter(Boolean).join(' · ') || '–'}
+                                            </p>
+                                        </div>
+                                        <div className="text-right flex-shrink-0">
+                                            <p className="text-[11px] font-bold text-stone-800">
+                                                {r.completedAt
+                                                    ? r.completedAt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                    : 'Date not recorded'}
+                                            </p>
+                                            <span className={`inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md border ${
+                                                r.approved
+                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                            }`}>
+                                                {r.approved ? 'Approved' : 'Awaiting approval'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                <>
                 {/* Search Bar */}
                 <div className="pt-1">
                     <div className="relative">
@@ -680,6 +855,8 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                         ))
                     )}
                 </div>
+                </>
+                )}
             </main>
 
             {/* Document Preview Modal */}

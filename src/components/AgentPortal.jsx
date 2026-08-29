@@ -9,7 +9,7 @@ import {
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
     Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal
 } from 'lucide-react';
-import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark } from '../utils';
+import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, diffAdminUpdates } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES, STAGE_IDS } from '../constants';
 import AddLeadModal from './AddLeadModal';
@@ -44,7 +44,7 @@ const parsePanelSerials = (raw) => {
         if (Array.isArray(parsed)) {
             return parsed.map(value => String(value || '').trim()).filter(Boolean);
         }
-    } catch (e) { /* not JSON */ }
+    } catch { /* not JSON */ }
     if (rawText.includes('\n')) {
         return rawText.split('\n').map(s => s.trim()).filter(Boolean);
     }
@@ -111,7 +111,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             try {
                 const parsed = JSON.parse(value);
                 if (parsed && typeof parsed === 'object') return parsed;
-            } catch (e) { /* not valid JSON, fall through to default */ }
+            } catch { /* not valid JSON, fall through to default */ }
         }
         return {};
     };
@@ -297,7 +297,10 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
 
     const handleUpdateCustomer = async (id, updates) => {
         setSaving(true);
-        const cleanUpdates = { ...updates };
+        // Strip anything that is not a real `admin` column first. PostgREST
+        // rejects the entire update if one key is unknown, so without this a
+        // single stale field fails the whole save instead of just itself.
+        const cleanUpdates = sanitizeAdminUpdate(updates);
         // PostgreSQL date columns accept a date or NULL, never an empty string.
         Object.keys(cleanUpdates).forEach(key => {
             if ((key === 'date' || key.endsWith('_date')) && cleanUpdates[key] === '') {
@@ -744,17 +747,6 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         return didSave;
     };
 
-    const handleBypassValidationAndAdvance = async () => {
-        setShowValidationModal(false);
-        if (!selectedCust || !validationNextStage) return;
-        const targetStage = validationNextStage.toUpperCase();
-        const didSave = await handleUpdateCustomer(selectedCust.id, {
-            ...editData,
-            stage: targetStage
-        });
-        if (didSave) setActiveCustomerStage(targetStage);
-    };
-
     const isMeterInstallationDirty = () => {
         if (!selectedCust) return false;
         const updates = getMeterInstallationUpdates();
@@ -836,16 +828,26 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     const handleForceAdvanceStage = async () => {
-        let nextStageId = null;
-        if (validationNextStage === 'Material Integration') nextStageId = STAGE_IDS.MATERIAL_INTEGRATION;
-        else if (validationNextStage === 'Installation Status') nextStageId = STAGE_IDS.INSTALLATION_STATUS;
-        else if (validationNextStage === 'Discom Inspection') nextStageId = STAGE_IDS.DISCOM_INSPECTION;
-        else if (validationNextStage === 'Subsidy Status') nextStageId = STAGE_IDS.SUBSIDY_STATUS;
-        
-        if (nextStageId && selectedCust) {
-            await handleUpdateCustomer(selectedCust.id, { stage: nextStageId });
-            setActiveCustomerStage(nextStageId);
+        // Resolve the stage from PRIMARY_STAGES rather than a hardcoded list of
+        // four, so a new validation target can never silently no-op here.
+        const nextStageId = PRIMARY_STAGES.find(st => st.label === validationNextStage)?.id || null;
+
+        if (!nextStageId || !selectedCust) {
+            console.warn('Move Anyway: could not resolve a stage for', validationNextStage);
+            setShowValidationModal(false);
+            return;
         }
+
+        // Carry the user's pending edits across. Previously this wrote only
+        // { stage }, so anything typed before the checklist popup appeared was
+        // silently discarded when they chose "Move Anyway" - the partly-filled
+        // values that triggered the warning were exactly what got lost.
+        const didSave = await handleUpdateCustomer(selectedCust.id, {
+            ...diffAdminUpdates(selectedCust, editData),
+            stage: nextStageId
+        });
+
+        if (didSave) setActiveCustomerStage(nextStageId);
         setShowValidationModal(false);
     };
 
@@ -883,7 +885,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                         <div className="relative space-y-5">
                             <div className="max-w-xl">
                                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">
-                                    {isAgent2 ? `Channel Partner workspace · ${user.channel_partner || 'Direct'}` : 'Channel Partner workspace'}
+                                    {isAgent2 ? 'Dealer workspace' : 'Channel Partner workspace'}
                                 </p>
                                 <h2 className="mt-2 text-2xl font-black tracking-tight">Good to see you, {user.name}.</h2>
                                 <p className="mt-2 max-w-lg text-sm font-medium leading-relaxed text-stone-300">
@@ -1193,7 +1195,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                             <div className="space-y-1">
                                 <div className="flex items-center gap-2">
                                     <span className="text-[8px] font-black uppercase text-amber-600 tracking-widest bg-amber-50 border border-amber-200/60 px-1.5 py-0.5 rounded">
-                                        Channel Partner Workdesk
+                                        {isAgent2 ? 'Dealer Workdesk' : 'Channel Partner Workdesk'}
                                     </span>
                                     <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-white tracking-wider">
                                         {PRIMARY_STAGES.find(s => s.id === selectedCust.stage)?.label || selectedCust.stage}
@@ -1345,7 +1347,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                             <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Email</span><span className="font-semibold text-stone-900">{selectedCust.email || selectedCust.email_address || '–'}</span></div>
                                             <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Consumer No</span><span className="font-semibold text-stone-900">{selectedCust.consumer_no || '–'}</span></div>
                                             <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Location</span><span className="font-semibold text-stone-900">{selectedCust.villages || '–'} {selectedCust.sub_divisions ? `(${selectedCust.sub_divisions})` : ''}</span></div>
-                                            <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Channel Partner</span><span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span></div>
+                                            {!isAgent2 && (<div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Channel Partner</span><span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span></div>)}
                                             <div className="flex items-center justify-between py-2"><span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">System Capacity</span><span className="font-semibold text-stone-900">{selectedCust.system_capacity_kwp ? `${selectedCust.system_capacity_kwp} kWp` : '–'}</span></div>
                                         </div>
                                     </div>
@@ -1429,10 +1431,12 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Division</span>
                                                 <span className="font-semibold text-stone-900">{selectedCust.sub_divisions || '–'}</span>
                                             </div>
+                                            {!isAgent2 && (
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Channel Partner</span>
                                                 <span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span>
                                             </div>
+                                            )}
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Dealer</span>
                                                 <span className="font-semibold text-stone-900">{subChannelPartnerOf(selectedCust)}</span>
@@ -1785,10 +1789,12 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Division</span>
                                                 <span className="font-semibold text-stone-900">{selectedCust.sub_divisions || '–'}</span>
                                             </div>
+                                            {!isAgent2 && (
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Channel Partner</span>
                                                 <span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span>
                                             </div>
+                                            )}
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Dealer</span>
                                                 <span className="font-semibold text-stone-900">{subChannelPartnerOf(selectedCust)}</span>
@@ -2375,10 +2381,12 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Villages</span>
                                                 <span className="font-semibold text-stone-900">{selectedCust.villages || '–'}</span>
                                             </div>
+                                            {!isAgent2 && (
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Channel Partner Name</span>
                                                 <span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span>
                                             </div>
+                                            )}
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Dealer Name</span>
                                                 <span className="font-semibold text-stone-900">{subChannelPartnerOf(selectedCust)}</span>

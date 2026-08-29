@@ -18,7 +18,7 @@ const parsePanelSerials = (raw) => {
             const serials = parsed.map(value => String(value || '').trim()).filter(Boolean);
             return serials.length > 0 ? serials : [''];
         }
-    } catch (e) { /* not valid JSON, fall through to default */ }
+    } catch { /* not valid JSON, fall through to default */ }
 
     if (rawText.includes('\n')) {
         return rawText.split('\n').map(s => s.trim()).filter(Boolean);
@@ -63,23 +63,6 @@ export default function MaterialDeliveryTab({
     }, [editData?.panel_serial_no, customer?.panel_serial_no]);
 
     const filledCount = panelSerials.filter(Boolean).length;
-
-    const handleFillTestData = () => {
-        const randId = Math.floor(10000 + Math.random() * 90000);
-        const today = new Date().toISOString().split('T')[0];
-        
-        const demoVendor = vendors[0] || '';
-
-        setEditData(prev => ({
-            ...prev,
-            vendor: prev.vendor || demoVendor,
-            invoice_no: prev.invoice_no || `INV-${randId}`,
-            material_delivery_date: prev.material_delivery_date || today,
-            vehicle_number: prev.vehicle_number || 'GJ-01-AB-1234',
-            driver_name: prev.driver_name || 'Ramesh Kumar',
-            driver_phone_number: prev.driver_phone_number || '9876543210'
-        }));
-    };
 
     useEffect(() => {
         const fetchVendorsList = async () => {
@@ -264,7 +247,7 @@ export default function MaterialDeliveryTab({
                                 setEditData(p => ({ ...p, delivery_status: newStat }));
                                 try {
                                     await onUpdate(customer.id, { delivery_status: newStat });
-                                } catch(err) { /* best-effort, ignore failure */ }
+                                } catch { /* best-effort, ignore failure */ }
                             }}
                             className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full outline-none cursor-pointer tracking-normal shadow-xs ${
                                 (localDeliveryStatus || editData.delivery_status) === 'DELIVERED' 

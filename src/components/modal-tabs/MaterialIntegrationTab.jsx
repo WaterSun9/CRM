@@ -5,7 +5,6 @@ import { SectionHeader, EditableDetailItem } from './shared';
 import BomPrintModal from '../BomPrintModal';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, COMMON_BOM_ITEMS } from '../../constants';
 import { loadBomForCustomer, getBomTemplateForType } from '../../utils/bom';
-import { toIndianCommas } from '../../utils';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
@@ -21,7 +20,7 @@ const parsePanelSerials = (raw) => {
             const serials = parsed.map(value => String(value || '').trim()).filter(Boolean);
             return serials.length > 0 ? serials : [''];
         }
-    } catch (e) { /* not valid JSON, fall through to default */ }
+    } catch { /* not valid JSON, fall through to default */ }
 
     if (rawText.includes('\n')) {
         return rawText.split('\n').map(s => s.trim()).filter(Boolean);
@@ -141,10 +140,11 @@ export default function MaterialIntegrationTab({
 
     const [showPrintModal, setShowPrintModal] = useState(false);
 
-    // Integration By dropdown options
-    const integrationByOptions = (meta['integration_by'] && meta['integration_by'].length > 0)
-        ? meta['integration_by']
-        : ['testuser 1', 'testuser 2', 'testuser 3', 'testuser 4', 'testuser 5'];
+    // Integration By dropdown options. No placeholder fallback - fabricated
+    // names used to be offered when the list was empty, and anything picked
+    // was saved onto a real customer (the same way "Test Vendor (Solar Tech)"
+    // ended up on live records). An empty list shows an empty list.
+    const integrationByOptions = meta['integration_by'] || [];
 
     // Automatically determine Roof vs Shed from Material Order specification
     const roofShedVal = (editData?.roof_shed || customer?.roof_shed || '').toUpperCase();
@@ -201,7 +201,7 @@ export default function MaterialIntegrationTab({
                     items: next
                 };
                 localStorage.setItem(`watersun_bom_${customer.id}`, JSON.stringify(localData));
-            } catch (e) { /* best-effort, ignore failure */ }
+            } catch { /* best-effort, ignore failure */ }
             return next;
         });
     };
@@ -752,6 +752,11 @@ export default function MaterialIntegrationTab({
                                     <option key={opt} value={opt}>{opt}</option>
                                 ))}
                             </select>
+                            {integrationByOptions.length === 0 && (
+                                <p className="text-[9px] text-amber-700 font-semibold mt-1">
+                                    No Integration Staff registered - add them in Operations → Integration Staff.
+                                </p>
+                            )}
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Paper Prepared Date <span className="text-red-500">*</span></label>
@@ -782,6 +787,11 @@ export default function MaterialIntegrationTab({
                                     <option key={opt} value={opt}>{opt}</option>
                                 ))}
                             </select>
+                            {integrationByOptions.length === 0 && (
+                                <p className="text-[9px] text-amber-700 font-semibold mt-1">
+                                    No Integration Staff registered - add them in Operations → Integration Staff.
+                                </p>
+                            )}
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loaded Date <span className="text-red-500">*</span></label>

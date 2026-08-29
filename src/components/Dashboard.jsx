@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, normalizeInstallationStatus, lazyWithRetry } from '../utils';
+import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, lazyWithRetry, sanitizeAdminUpdate } from '../utils';
 import { PRIMARY_STAGES, STAGE_IDS, CUSTOMER_CARD_COLUMNS } from '../constants';
 import DashboardView from './DashboardView';
 import CustomerCard from './CustomerCard';
@@ -138,7 +138,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 if (data) {
                     setSelectedCustomer(data);
                 }
-            } catch (_) { /* best-effort restore, ignore failure */ }
+            } catch { /* best-effort restore, ignore failure */ }
         };
         restoreOpenedCustomer();
     }, []);
@@ -427,9 +427,12 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         .eq('category', 'channel_partner')
                         .eq('label', partner);
                     if (!existing || existing.length === 0) {
-                        await supabase
+                        // Non-blocking: the lead itself is already saved; this only
+                        // seeds the dropdown for next time.
+                        const { error: metaErr } = await supabase
                             .from('metadata')
                             .insert({ category: 'channel_partner', label: partner });
+                        if (metaErr) console.warn('Could not add "%s" to the channel_partner list:', partner, metaErr.message);
                     }
                 }
             }
@@ -442,9 +445,12 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         .eq('category', 'module_brand')
                         .eq('label', brand);
                     if (!existing || existing.length === 0) {
-                        await supabase
+                        // Non-blocking: the lead itself is already saved; this only
+                        // seeds the dropdown for next time.
+                        const { error: metaErr } = await supabase
                             .from('metadata')
                             .insert({ category: 'module_brand', label: brand });
+                        if (metaErr) console.warn('Could not add "%s" to the module_brand list:', brand, metaErr.message);
                     }
                 }
             }
@@ -454,14 +460,16 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     const handleUpdateCustomer = async (id, updates) => {
-        const cleanUpdates = { ...updates };
-        
-        // Remove read-only or non-existent schema columns
+        // Whitelist against the real schema. This replaced a hand-maintained
+        // list of deletes, which is what let `file_status` slip through and
+        // fail every save on the record (PostgREST rejects the WHOLE update
+        // when one key is not a column).
+        const cleanUpdates = sanitizeAdminUpdate(updates);
+
+        // These ARE real columns, but must never be written from the client.
         delete cleanUpdates.id;
-        delete cleanUpdates.crn;
         delete cleanUpdates.created_at;
         delete cleanUpdates.updated_at;
-        delete cleanUpdates.material_order_date;
         
         // Clean numeric fields
         const numericFields = ['system_capacity_kwp', 'module_wp', 'no_of_modules', 'invoice_value', 'dc_cable', 'ac_cable', 'vendor_quote', 'loan_sanction_amount', 'loan_disbursed_amount', 'subsidy_amount'];
@@ -523,12 +531,22 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: ts } : c));
         setSelectedCustomer(null);
 
-        await supabase.from('admin').update({ deleted_at: ts }).eq('id', id);
+        // Unchecked before: the row vanished from the list optimistically and
+        // reappeared on the next refresh if the write had actually failed.
+        const { error } = await supabase.from('admin').update({ deleted_at: ts }).eq('id', id);
+        if (error) {
+            setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: null } : c));
+            showAlert('The customer was not moved to Trash: ' + error.message, { type: 'error' });
+        }
     };
 
     // Recover from trash
     const handleRecover = async (id) => {
-        await supabase.from('admin').update({ deleted_at: null }).eq('id', id);
+        const { error } = await supabase.from('admin').update({ deleted_at: null }).eq('id', id);
+        if (error) {
+            showAlert('The customer could not be recovered: ' + error.message, { type: 'error' });
+            return;
+        }
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: null } : c));
         logActivity(
             user.id,
@@ -549,7 +567,11 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             '',
             id
         );
-        await supabase.from('admin').delete().eq('id', id);
+        const { error } = await supabase.from('admin').delete().eq('id', id);
+        if (error) {
+            showAlert('The customer was NOT permanently deleted: ' + error.message, { type: 'error' });
+            return;
+        }
         setCustomers(prev => prev.filter(c => c.id !== id));
     };
 
@@ -593,7 +615,12 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...updatedRecord }));
 
         // Update the JSON column to clear the old remark (since RPC only did stage & internal_remarks)
-        await supabase.from('admin').update({ stages_remarks: optimisticUpdates.stages_remarks }).eq('id', id);
+        // Non-blocking: the stage move already succeeded via the RPC above, so a
+        // failure here only leaves the previous stage's remark behind. Warn
+        // rather than throw, but do not let it fail invisibly.
+        const { error: remarkErr } = await supabase.from('admin')
+            .update({ stages_remarks: optimisticUpdates.stages_remarks }).eq('id', id);
+        if (remarkErr) console.warn('Stage moved, but clearing the old stage remark failed:', remarkErr.message);
 
         await logActivity(
             user.id,

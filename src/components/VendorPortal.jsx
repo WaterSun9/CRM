@@ -21,7 +21,7 @@ const parsePanelSerials = (raw) => {
     try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) return parsed.length > 0 ? parsed : [''];
-    } catch (e) { /* not valid JSON, fall through to default */ }
+    } catch { /* not valid JSON, fall through to default */ }
 
     if (raw.includes('\n')) {
         return raw.split('\n').map(s => String(s).trim()).filter(Boolean);
@@ -102,6 +102,12 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 .eq('admin_id', target.id)
                 .maybeSingle();
 
+            // A failed query used to leave `bom` null, which fell through to the
+            // "no BOM yet" branch below and showed a blank template - identical
+            // to a customer who genuinely has no BOM. The vendor had no way to
+            // tell a load failure from an empty materials list.
+            if (bomErr) throw bomErr;
+
             if (bom) {
                 setBomData(bom);
                 const { data: items, error: itemsErr } = await supabase
@@ -109,6 +115,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                     .select('*')
                     .eq('bom_id', bom.id)
                     .order('sr_no', { ascending: true });
+                if (itemsErr) throw itemsErr;
                 setBomItems(items || []);
             } else {
                 const template = (target.roof_shed || '').toLowerCase().includes('shed') ? SHED_BOM_TEMPLATE : ROOF_BOM_TEMPLATE;
@@ -128,6 +135,10 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             }
         } catch (e) {
             console.error('Error fetching BOM for vendor:', e);
+            showAlert(
+                'The Bill of Materials could not be loaded, so a blank template is being shown. Do not treat this as the final materials list - please retry or contact the office.',
+                { title: 'BOM not loaded', type: 'error' }
+            );
             const template = (target.roof_shed || '').toLowerCase().includes('shed') ? SHED_BOM_TEMPLATE : ROOF_BOM_TEMPLATE;
             setBomData({ bom_type: target.roof_shed || 'Roof' });
             setBomItems(template.map((t, idx) => ({
@@ -438,10 +449,14 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 setGeoTagImage(true);
                 
                 const nextGeoStatus = geoTagStatus === 'Pending' ? 'Proceed' : geoTagStatus;
-                await supabase.from('admin').update({ 
+                // Unchecked before: the photo uploaded but the flag/status did
+                // not save, and a missing geo_tag_image blocks the move to
+                // Discom Submission - so the vendor was stuck with no reason given.
+                const { error: geoErr } = await supabase.from('admin').update({ 
                     geo_tag_image: true,
                     geo_tag_status: nextGeoStatus 
                 }).eq('id', selectedCust.id);
+                if (geoErr) throw geoErr;
 
                 if (geoTagStatus === 'Pending') {
                     setGeoTagStatus('Proceed');
@@ -490,7 +505,8 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             const hasOtherGeo = remaining.some(d => d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag');
             if (!hasOtherGeo) {
                 setGeoTagImage(false);
-                await supabase.from('admin').update({ geo_tag_image: false }).eq('id', selectedCust.id);
+                const { error: clearGeoErr } = await supabase.from('admin').update({ geo_tag_image: false }).eq('id', selectedCust.id);
+                if (clearGeoErr) throw clearGeoErr;
             }
         } catch (err) {
             console.error('Error deleting photo:', err);

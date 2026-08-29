@@ -267,7 +267,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                                         </div>
                                         {c.loan_tag ? (
                                             <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex-shrink-0 border ${tagStyle.bg} ${tagStyle.text} ${tagStyle.border}`}>
-                                                {c.loan_tag}
+                                                {LOAN_TAGS.find(t => t.id === c.loan_tag)?.label || c.loan_tag}
                                             </span>
                                         ) : (
                                             <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex-shrink-0 border bg-stone-100 text-stone-500 border-stone-200">

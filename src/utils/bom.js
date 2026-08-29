@@ -129,7 +129,7 @@ export const loadBomForCustomer = async (customer, activeType) => {
                 bomData = parsed.bom || parsed;
                 itemData = parsed.items;
             }
-        } catch (e) { /* not valid JSON, fall through to template */ }
+        } catch { /* not valid JSON, fall through to template */ }
     }
 
     if (!bomData && (!itemData || itemData.length === 0)) {

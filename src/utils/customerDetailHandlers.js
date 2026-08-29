@@ -1,5 +1,3 @@
-import { supabase } from '../supabase';
-import { logActivity, formatDateTime } from '../utils';
 import { SUBSIDY_TAGS, LOAN_TAGS, PRIMARY_STAGES } from '../constants';
 
 export const getStageRemarkFromData = (stagesRemarksObj, stageName) => {
@@ -10,7 +8,7 @@ export const getStageRemarkFromData = (stagesRemarksObj, stageName) => {
             const parsed = JSON.parse(stagesRemarksObj);
             if (typeof parsed === 'object' && parsed) return parsed[stageName] || '';
             return parsed || '';
-        } catch (e) { return stagesRemarksObj; }
+        } catch { return stagesRemarksObj; }
     }
     return '';
 };
