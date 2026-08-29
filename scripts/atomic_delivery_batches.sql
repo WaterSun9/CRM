@@ -6,6 +6,45 @@
 
 begin;
 
+-- Ensure delivery_batches table has RLS policies configured properly
+alter table public.delivery_batches enable row level security;
+
+drop policy if exists "Allow all for authenticated users" on public.delivery_batches;
+drop policy if exists "Authenticated users can write delivery_batches" on public.delivery_batches;
+drop policy if exists "Authenticated users can read delivery_batches" on public.delivery_batches;
+drop policy if exists "delivery_batches_all" on public.delivery_batches;
+drop policy if exists "delivery_batches_select_scoped" on public.delivery_batches;
+drop policy if exists "delivery_batches_insert_scoped" on public.delivery_batches;
+drop policy if exists "delivery_batches_update_scoped" on public.delivery_batches;
+drop policy if exists "delivery_batches_delete_scoped" on public.delivery_batches;
+
+create policy "delivery_batches_select_scoped" on public.delivery_batches
+    for select to authenticated
+    using (
+        get_my_user_type() in ('admin', 'sales')
+    );
+
+create policy "delivery_batches_insert_scoped" on public.delivery_batches
+    for insert to authenticated
+    with check (
+        get_my_user_type() in ('admin', 'sales')
+    );
+
+create policy "delivery_batches_update_scoped" on public.delivery_batches
+    for update to authenticated
+    using (
+        get_my_user_type() in ('admin', 'sales')
+    )
+    with check (
+        get_my_user_type() in ('admin', 'sales')
+    );
+
+create policy "delivery_batches_delete_scoped" on public.delivery_batches
+    for delete to authenticated
+    using (
+        get_my_user_type() in ('admin', 'sales')
+    );
+
 -- 1. Atomic Save Batch (Create or Update)
 create or replace function public.save_delivery_batch_atomic(
     p_batch jsonb,
@@ -15,6 +54,7 @@ create or replace function public.save_delivery_batch_atomic(
 returns jsonb
 language plpgsql
 security definer
+set search_path = public
 as $$
 declare
     v_batch_id uuid;
@@ -25,16 +65,24 @@ declare
     v_vehicle_number text;
     v_vendor text;
     v_status text;
+    v_rent_amount text;
+    v_car_rent_paid text;
+    v_notes text;
+    v_created_at timestamptz;
 begin
     -- Extract batch fields from JSON
     v_batch_id := (p_batch->>'id')::uuid;
     v_batch_no := p_batch->>'batch_no';
     v_dispatch_date := p_batch->>'dispatch_date';
     v_driver_name := p_batch->>'driver_name';
-    v_driver_phone := nullif(p_batch->>'driver_phone', '')::bigint;
+    v_driver_phone := nullif(regexp_replace(coalesce(p_batch->>'driver_phone', ''), '\D', '', 'g'), '')::bigint;
     v_vehicle_number := p_batch->>'vehicle_number';
     v_vendor := p_batch->>'vendor';
     v_status := coalesce(p_batch->>'status', 'IN_TRANSIT');
+    v_rent_amount := p_batch->>'rent_amount';
+    v_car_rent_paid := p_batch->>'car_rent_paid';
+    v_notes := p_batch->>'notes';
+    v_created_at := coalesce((p_batch->>'created_at')::timestamptz, now());
 
     -- Upsert the delivery batch row
     insert into public.delivery_batches (
@@ -60,13 +108,13 @@ begin
         v_driver_name,
         v_driver_phone,
         v_vehicle_number,
-        p_batch->>'rent_amount',
-        p_batch->>'car_rent_paid',
+        v_rent_amount,
+        v_car_rent_paid,
         v_vendor,
-        p_batch->>'notes',
+        v_notes,
         v_status,
         p_selected_project_ids,
-        coalesce((p_batch->>'created_at')::timestamptz, now()),
+        v_created_at,
         now()
     )
     on conflict (id) do update set
@@ -130,6 +178,7 @@ create or replace function public.delete_delivery_batch_atomic(
 returns jsonb
 language plpgsql
 security definer
+set search_path = public
 as $$
 begin
     -- Delete the batch record
@@ -165,6 +214,7 @@ create or replace function public.update_delivery_batch_status_atomic(
 returns jsonb
 language plpgsql
 security definer
+set search_path = public
 as $$
 begin
     -- Update batch table
@@ -187,5 +237,10 @@ begin
     return jsonb_build_object('success', true, 'batch_id', p_batch_id, 'status', p_new_status);
 end;
 $$;
+
+-- Grant execution permissions
+grant execute on function public.save_delivery_batch_atomic(jsonb, text[], text[]) to authenticated, service_role;
+grant execute on function public.delete_delivery_batch_atomic(uuid, text[]) to authenticated, service_role;
+grant execute on function public.update_delivery_batch_status_atomic(uuid, text, text[]) to authenticated, service_role;
 
 commit;

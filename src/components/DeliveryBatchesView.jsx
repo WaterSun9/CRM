@@ -723,9 +723,27 @@ export default function DeliveryBatchesView({
                                                     setBatches(updatedBatches);
                                                     localStorage.setItem("watersun_local_delivery_batches", JSON.stringify(updatedBatches));
                                                     try {
-                                                        const { error } = await supabase.from("delivery_batches").update({ status: newStatus }).eq("id", batch.id);
-                                                        if (error) throw error;
+                                                        const projectIds = linkedProjects.map(p => p.id);
+                                                        let atomicSuccess = false;
+                                                        try {
+                                                            const { data: rpcData, error: rpcErr } = await supabase.rpc('update_delivery_batch_status_atomic', {
+                                                                p_batch_id: batch.id,
+                                                                p_new_status: newStatus,
+                                                                p_project_ids: projectIds
+                                                            });
+                                                            if (!rpcErr && rpcData?.success) atomicSuccess = true;
+                                                        } catch (_) {}
+
+                                                        if (!atomicSuccess) {
+                                                            const { error: bErr } = await supabase.from("delivery_batches").update({ status: newStatus }).eq("id", batch.id);
+                                                            if (bErr) throw bErr;
+                                                            if (projectIds.length > 0) {
+                                                                await supabase.from("admin").update({ delivery_status: newStatus }).in("id", projectIds);
+                                                            }
+                                                        }
+
                                                         await logActivity(currentUser?.id || "admin", "update", `Changed delivery batch ${batch.batch_no || batch.id} status to ${newStatus}`, "");
+                                                        await handleRefresh();
                                                     } catch (err) {
                                                         setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
                                                         showAlert("Failed to update batch status: " + (err.message || "Unknown error"), { type: 'error' });
