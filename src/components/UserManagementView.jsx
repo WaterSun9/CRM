@@ -426,7 +426,7 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                     className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white cursor-pointer font-semibold"
                                 >
                                     <option value="office2">Manager</option>
-                                    <option value="agent2">Channel Partner</option>
+                                    <option value="agent2">Dealer</option>
                                 </select>
                                 <p className="text-[10px] text-stone-400 mt-1">
                                     Auto-assigned to branch: <span className="font-semibold text-stone-600">{partnerName}</span>
@@ -475,7 +475,7 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                         />
                                         <p className="text-[10px] text-stone-400 mt-1">
                                             New branch name. Type it exactly as it appears on existing leads -
-                                            it is what managers and field agents will be attached to.
+                                            it is what managers and dealers will be attached to.
                                         </p>
                                     </>
                                 ) : isCP ? (
@@ -984,7 +984,7 @@ export default function UserManagementView({ currentUser }) {
                                                     className="px-2.5 py-1 bg-white border border-stone-300 rounded-xl text-xs font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer shadow-xs"
                                                 >
                                                     <option value="office2">Manager</option>
-                                                    <option value="agent2">Channel Partner</option>
+                                                    <option value="agent2">Dealer</option>
                                                 </select>
                                                 {isUpdating && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />}
                                             </div>

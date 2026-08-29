@@ -84,7 +84,7 @@ export default function LeadsTab({
                         isAdmin={isAdmin}
                     />
                     <EditableDetailItem
-                        label={isAgent2 ? 'Sub Channel Partner Name *' : 'Sub Channel Partner Name (optional)'}
+                        label={isAgent2 ? 'Dealer Name *' : 'Dealer Name (optional)'}
                         field="sub_channel_partner"
                         value={isAgent2 ? (editData.sub_channel_partner || user?.name || '') : editData.sub_channel_partner}
                         onChange={handleChange}

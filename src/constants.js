@@ -83,7 +83,7 @@ export const APP_ROLES = [
     { id: 'office', label: 'Office', user_type: 'sales', role: 'Office' },
     { id: 'channel_partner_office', label: 'Channel Partner Office', user_type: 'channel_partner_office', role: 'Channel Partner Office' },
     { id: 'office2', label: 'Manager', user_type: 'office2', role: 'Channel Partner Manager' },
-    { id: 'agent2', label: 'Channel Partner', user_type: 'agent2', role: 'Channel Partner' },
+    { id: 'agent2', label: 'Dealer', user_type: 'agent2', role: 'Channel Partner' },
     { id: 'channel_partner', label: 'Channel Partners', user_type: 'agent', role: 'Channel Partners' },
     { id: 'vendor', label: 'Vendors', user_type: 'vendor', role: 'Vendors' },
     { id: 'stamp', label: 'Stamp Guy', user_type: 'stamp', role: 'Stamp' },
@@ -273,6 +273,52 @@ export const DOC_TYPE_LABELS = {
     digital_certificate: 'Digital Certificate'
 };
 
+// Which doc_type actually corresponds to a real boolean column on `admin`.
+//
+// Uploading a document auto-ticks the matching checklist flag. That write used
+// to use the doc_type itself as the column name, so any doc_type that is only
+// an alias (signature, stamp_pic, meter_photo...) or has no column at all
+// (file_status - the column was dropped) made Postgres reject the whole
+// update with "Could not find the '<x>' column of 'admin' in the schema
+// cache". A doc_type absent from this map simply does not set a flag.
+export const DOC_TYPE_FLAG_COLUMN = {
+    application_acknowledgment: 'application_acknowledgment',
+    vendor_feasibility:         'vendor_feasibility',
+    site_feasibility:           'site_feasibility',
+    adhaar_card_front:          'adhaar_card_front',
+    adhaar_card_back:           'adhaar_card_back',
+    pan_card:                   'pan_card',
+    light_bill:                 'light_bill',
+    index_2:                    'index_2',
+    bank_details:               'bank_details',
+    house_geo_tag_photo:        'house_geo_tag_photo',
+    extra_docs:                 'extra_docs',
+    geo_tag_image:              'geo_tag_image',
+    sfdc_photo:                 'sfdc_photo',
+    dcr_certificate:            'dcr_certificate',
+    digital_certificate:        'digital_certificate',
+    subsidy_token_photo:        'subsidy_token_photo',
+    warranty_card:              'warranty_card',
+    insurance_status:           'insurance_status',
+    pm_surya_ghar_stamp:        'pm_surya_ghar_stamp',
+    // Aliases -> the one real column they belong to
+    signature_pic:              'signature_pic',
+    signature:                  'signature_pic',
+    firstPartySignature:        'signature_pic',
+    customer_signature:         'signature_pic',
+    stamp:                      'stamp',
+    stamp_pic:                  'stamp',
+    vendor_stamp:               'stamp',
+    secondPartyStamp:           'stamp',
+    meter_installation_photo:   'meter_installation_photo',
+    meter_photo:                'meter_installation_photo',
+    // The real column carries the original spelling of "feasibilty"
+    feasibilty_document:        'feasibilty_document',
+    feasibility_document:       'feasibilty_document',
+    // Intentionally unmapped (no column exists): file_status,
+    // surya_gpa_stamp, gpa_stamp.
+};
+
 // ════════════════════════════════════════════════════════════
 // ACTIVITY LOG & ACTION COLORS
 // ════════════════════════════════════════════════════════════
@@ -309,15 +355,21 @@ export const OPERATIONAL_CHECKLIST_FIELDS = [
     { field: 'dcr_certificate', label: 'DCR Certificate' },
     { field: 'signature_pic', label: 'Signature Pic' },
     { field: 'pm_surya_ghar_stamp', label: 'PM Surya Ghar Stamp' },
-    { field: 'file_status', label: 'File Status Doc' },
+    { field: 'vendor_feasibility', label: 'Vendor Feasibility' },
+    { field: 'site_feasibility', label: 'Site Feasibility' },
 ];
 
 export const DEFAULT_PAGE_SIZE = 50;
 
 // Optimized Column Selectors for List Views (prevents downloading 67+ full columns)
-export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, consumer_no, crn, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_wp, no_of_modules, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, remarks, stages_remarks, vendor, vendor_status, geo_tag_status, location_link, google_docs, bank_name';
+// Verified against the live `admin` schema on 2026-08-29. Every name here must
+// be a real column - PostgREST rejects the WHOLE query with 42703 otherwise,
+// which is how these views once went completely empty. Six phantom columns
+// (crn, remarks, vendor_status, location_link, google_docs, bank_name) were
+// removed from this list.
+export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, consumer_no, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_wp, no_of_modules, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, stages_remarks, vendor, geo_tag_status';
 
-export const DELIVERY_PICKER_COLUMNS = 'id, customer_name, phone_number, consumer_no, crn, stage, channel_partner, sub_channel_partner, system_capacity_kwp, module_wp, no_of_modules, invoice_value, delivery_batch_id, delivery_status, material_delivery_date, driver_name, driver_phone_number, vehicle_number, vendor, created_at, updated_at, deleted_at';
+export const DELIVERY_PICKER_COLUMNS = 'id, customer_name, phone_number, consumer_no, stage, channel_partner, sub_channel_partner, system_capacity_kwp, module_wp, no_of_modules, invoice_value, delivery_batch_id, delivery_status, material_delivery_date, driver_name, driver_phone_number, vehicle_number, vendor, created_at, updated_at, deleted_at';
 
 // A tag value is "final" when it is the terminal state of its set. Reaching it
 // locks the field for everyone except Admin. Driven by the isFinal flag on the

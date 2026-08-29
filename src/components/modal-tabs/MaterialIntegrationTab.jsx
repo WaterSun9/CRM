@@ -468,10 +468,12 @@ export default function MaterialIntegrationTab({
                     <EditableDetailItem label="Phone Number" field="phone_number" value={customer?.phone_number || editData?.phone_number} isEditing={false} />
                     <EditableDetailItem label="Email Address" field="email" value={customer?.email_address || customer?.email || editData?.email_address || editData?.email} isEditing={false} />
                     <EditableDetailItem label="Consumer No" field="consumer_no" value={customer?.consumer_no || editData?.consumer_no} isEditing={false} />
+                    <EditableDetailItem label="Folder No" field="folder_no" value={customer?.folder_no || editData?.folder_no} isEditing={false} />
+                    <EditableDetailItem label="Feasibility No" field="feasibility_no" value={customer?.registration_no || customer?.feasibility_no || editData?.registration_no || editData?.feasibility_no} isEditing={false} />
                     <EditableDetailItem label="Villages" field="villages" value={customer?.villages || editData?.villages} isEditing={false} />
                     <EditableDetailItem label="Sub Division" field="sub_divisions" value={customer?.sub_divisions || editData?.sub_divisions} isEditing={false} />
                     <EditableDetailItem label="Channel Partner Name" field="channel_partner" value={customer?.channel_partner || editData?.channel_partner} isEditing={false} />
-                    <EditableDetailItem label="Sub Channel Partner Name" field="sub_channel_partner" value={customer?.sub_channel_partner || editData?.sub_channel_partner} isEditing={false} />
+                    <EditableDetailItem label="Dealer Name" field="sub_channel_partner" value={customer?.sub_channel_partner || editData?.sub_channel_partner} isEditing={false} />
                     <EditableDetailItem label="MODULE BRAND" field="module_brand" value={customer?.module_brand || editData?.module_brand} isEditing={false} />
                     <EditableDetailItem label="MODULE WP" field="module_wp" value={customer?.module_wp || editData?.module_wp} isEditing={false} />
                     <EditableDetailItem label="No of Modules" field="no_of_modules" value={customer?.no_of_modules || editData?.no_of_modules} isEditing={false} />
@@ -733,14 +735,23 @@ export default function MaterialIntegrationTab({
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-stone-50 p-2.5 rounded-xl border border-stone-200">
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Paper Prepared By <span className="text-red-500">*</span></label>
-                            <input
-                                type="text"
-                                placeholder="Prepared by name..."
+                            <select
                                 value={paperPreparedBy}
                                 onChange={(e) => { setPaperPreparedBy(e.target.value); onDirty?.(); }}
                                 disabled={!isEditable}
-                                className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
-                            />
+                                className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50 cursor-pointer disabled:cursor-not-allowed"
+                            >
+                                <option value="">Select User...</option>
+                                {/* Keep an already-saved name selectable even if it is no
+                                    longer in the Integration Staff list, otherwise opening
+                                    an older record silently blanks the field. */}
+                                {paperPreparedBy && !integrationByOptions.includes(paperPreparedBy) && (
+                                    <option value={paperPreparedBy}>{paperPreparedBy} (not in list)</option>
+                                )}
+                                {integrationByOptions.map((opt) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                            </select>
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Paper Prepared Date <span className="text-red-500">*</span></label>
@@ -754,14 +765,23 @@ export default function MaterialIntegrationTab({
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loaded By <span className="text-red-500">*</span></label>
-                            <input
-                                type="text"
-                                placeholder="Loaded by name..."
+                            <select
                                 value={materialLoadedBy}
                                 onChange={(e) => { setMaterialLoadedBy(e.target.value); onDirty?.(); }}
                                 disabled={!isEditable}
-                                className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
-                            />
+                                className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50 cursor-pointer disabled:cursor-not-allowed"
+                            >
+                                <option value="">Select User...</option>
+                                {/* Keep an already-saved name selectable even if it is no
+                                    longer in the Integration Staff list, otherwise opening
+                                    an older record silently blanks the field. */}
+                                {materialLoadedBy && !integrationByOptions.includes(materialLoadedBy) && (
+                                    <option value={materialLoadedBy}>{materialLoadedBy} (not in list)</option>
+                                )}
+                                {integrationByOptions.map((opt) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                            </select>
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loaded Date <span className="text-red-500">*</span></label>

@@ -11,6 +11,176 @@ progress · 🔴 needs your action (not something code can fix) · ⏸️ delibe
 
 ---
 
+# ✅ Phase 11 — 2026-08-29 batch (vendor commission, payouts, Dealer rename, export)
+
+**11.1 Vendor commission field removed from the Vendor Portal — ✅ DONE 2026-08-29.**
+`VendorPortal.jsx`: the "Commission Quote (₹)" input, its `vendorQuote`
+state and hydration, the `commissionQuoteAmount` derivation, the
+dirty-check entry, and the `vendor_quote` write in the save payload are
+all gone. The hard validation that blocked Installation → Geo Tag
+("Commission Quote Amount (₹) is required and must be greater than 0")
+was removed with it — vendors now advance on installation status + date
+alone. The Installation Note field expanded to full width. The
+`vendor_quote` column itself is untouched; Admin still sets it from the
+Installation Status tab and it still drives the payouts ledger.
+
+**11.2 Vendor payout status is now a dropdown, and Office can use it — ✅ DONE 2026-08-29.**
+`InstallationPaymentsView.jsx`: the "Mark as Paid" toggle button became a
+Paid / Unpaid `<select>`, writable by `admin` **and** `sales` (Office).
+`Dashboard.jsx` gained an Office-only "Installation Payments" nav entry
+and the view gate was widened to `sales`. Everything else on the page
+stays read-only for Office, and the bulk "Pay All (₹…)" button — which
+previously had no role gate at all, because the whole page was admin-only —
+is now explicitly restricted to `admin`.
+
+**11.3 "Sub Channel Partner" and "Field Agent" renamed to "Dealer" — ✅ DONE 2026-08-29.**
+Display strings only — no schema or stored-role changes, so no migration
+and no data risk.
+- *Sub Channel Partner → Dealer* (13 sites): CSV header in `utils.jsx`,
+  `AddLeadModal.jsx` (×2), `LeadsTab.jsx`, `AgentPortal.jsx` (×3),
+  `VendorPortal.jsx` (×2), `BomPrintView.jsx`, `AgentStageDetails.jsx`,
+  `MaterialIntegrationTab.jsx`, `MaterialOrderTab.jsx`.
+- *Field Agent → Dealer* (7 sites): the Agent Portal header badge now
+  reads **"Dealer Portal"**; `ChannelPartnerManagementView.jsx` (×5 — card
+  titles, drilldown heading, both empty states, team count);
+  `UserManagementView.jsx` helper text.
+- *CPO role option*: the `agent2` role now displays as **"Dealer"** —
+  `APP_ROLES` label in `constants.js` plus the two hardcoded
+  `<option value="agent2">` in `UserManagementView.jsx`.
+- **Deliberately not renamed:** the `channel_partner` lead field and its
+  "Channel Partner Name" labels (per client instruction), the stored
+  `role: 'Channel Partner'` string in `APP_ROLES`, and the
+  `sub_channel_partner` DB column. Renaming either of the last two would
+  break existing rows and the `p.role === 'Channel Partner'` comparisons.
+
+**11.4 CSV export was missing 37 live columns — ✅ FIXED 2026-08-29.**
+`exportAllToCSV` in `utils.jsx` exported 73 columns against a `select('*')`
+query; an audit against every column actually read or written in the app
+found 37 real fields silently absent. All are now appended (existing
+column order is unchanged, so anything parsing the old file positionally
+still works):
+- **Vendor / install:** `vendor_note` (distinct from the already-exported
+  `installation_note`), `vendor_give_up_approved`, `vendor_paid_by`,
+  `vendor_status`, `installed_by`.
+- **Record metadata:** `company_branch`, `project_type`, `bank_name`,
+  `delivery_batch_id`.
+- **Yes/No flags:** `dcr_certificate`, `signature_pic`, `stamp`,
+  `sfdc_photo`, `meter_installation_photo`, `geo_tag_image`.
+- **`discom_submission` flattened into 17 columns** — submitted by, date,
+  first/second/purchased party, stamp value, description, sent-to-maker
+  (+by), stamp sent, approved (+by), completed at (+by), remark,
+  send-back remark (+by).
+- **`stages_remarks`** → one "Stage Remarks" column (stage label: remark,
+  pipe-separated), plus "Agreement Execution Date" pulled from
+  `stages_remarks.discom_agreement_date`.
+- **`loan_history` / `subsidy_history`** → one column each, flattened as
+  `date - status - remark`, pipe-separated.
+- Added `asObj` / `asArr` guards so a jsonb column stored as a JSON
+  *string* on older rows flattens correctly instead of exporting blank,
+  and malformed values return empty rather than throwing mid-export.
+- Boolean flags use the file's existing `Yes` / `No` convention rather
+  than `true` / `false`, so the new columns match the 15 document flags
+  already in the export.
+- **Deliberately excluded:** `bom_data` (a large per-row BOM blob, not a
+  flat field) and the document files themselves — the export carries the
+  Yes/No presence flags for those, which is all a CSV can hold.
+
+Verified: header count and row-value count both 110 and positionally
+aligned; flatteners unit-checked against object, JSON-string, `null`,
+`{}` and malformed inputs; `npx eslint` clean on every touched file;
+`npx vite build` passes.
+
+**11.5 Delivery-batch sync audited and hardened — ✅ DONE 2026-08-29.**
+Client reported "synchronization errors" on delivery batches. Audited the
+work done in commit `680bca8` (rd68-BATCH-DELVIRY-ISUE).
+
+*Verdict: that commit was a genuine improvement, not a regression.* Before
+it, a batch status change updated `delivery_batches.status` only and never
+touched `admin.delivery_status` — a guaranteed permanent desync. It added
+`update_delivery_batch_status_atomic` (security definer, so RLS cannot
+partially block it) plus a non-atomic fallback. Three defects were left
+behind, all now closed:
+
+- **Fallback swallowed a failed write** (`DeliveryBatchesView.jsx`): the
+  `admin` update in the non-atomic branch had no error check, unlike the
+  identical logic in "Mark All Delivered" 150 lines below. Under RLS,
+  `.in("id", projectIds)` silently updates only permitted rows and returns
+  no error. Now checked and thrown. **Latent only** — the RPC is deployed,
+  so this branch does not execute in practice.
+- **`localStatusOverrides` was never cleared** — set optimistically in 4
+  places, reset only on error. After a successful `handleRefresh()` the
+  stale override kept shadowing the freshly-fetched server value for the
+  rest of the session, so a write that silently did not land still showed
+  green until a page reload. This was the live defect and the best match
+  for the reported symptom. `handleRefresh()` now clears it, which is safe
+  because all 5 call sites run post-success.
+- **RPC always returned `success: true`** (`scripts/atomic_delivery_batches.sql`),
+  even when its `UPDATE` matched zero rows — a no-op was indistinguishable
+  from a real write. Now uses `get diagnostics ... row_count`: returns
+  `success:false, error:'batch_not_found'` when no batch matched, and
+  reports `projects_expected` / `projects_updated` / `projects_missing`.
+  Both client call sites `console.warn` on a partial sync.
+  **Needs the SQL re-run** to take effect.
+
+Also noted, deliberately left alone: `DeliveryBatchesView.jsx` line 92 lets
+a `customers` prop override the internal fetch. Dashboard does not pass it,
+so it is dormant — but wiring it up later would make the sync operate on a
+partial customer list.
+
+**Database verified clean 2026-08-29** via
+`scripts/check_delivery_batches_deployment.sql` (new, read-only, 8 blocks).
+All three RPCs deployed as `SECURITY DEFINER` with `search_path=public`
+(proving the post-`680bca8` version is live), all 6 grants present, RLS
+enabled with exactly the 4 scoped policies and no leftover blanket `true`
+policy, all 4 car-rent columns present, driver-info trigger enabled — and
+blocks 5, 6 and 7 all returned zero rows, i.e. **no desync, no stranded
+customers, no missing linked rows**. The defects above were closed as
+hardening, not as repair.
+
+**11.6 Installation Payments, stale status tag, fake vendor, doc-type writes — ✅ DONE 2026-08-29.**
+- *Installation Payments reverted to admin-only.* Office access was added on a
+  misread of the client's instruction (they meant the Commission / Vendor Quote
+  field inside the Installation Status tab, which was already `isAdmin`-gated).
+  Nav entry, view gate and `canEditPayment` all back to `admin`. The
+  button → Paid/Unpaid dropdown was a separate request and stays. The explicit
+  `admin` check on "Pay All" is kept as a backstop - it previously had no role
+  check at all and relied entirely on the page gate.
+- *Stale installation-status filter — real bug.* `InstallationPaymentsView`
+  queried `.ilike('installation_status', '%yes%')`, but the tag was renamed
+  `Yes` → `Installed` in `INSTALLATION_TAGS`. Every newly-installed customer was
+  filtered out **at the database level** and never reached the payouts ledger.
+  Now matches `%yes%` OR `%installed%`. Its fallback path also compared
+  `normalizeInstallationStatus(...) === 'yes'` while that helper returns `'Yes'`
+  — always false; fixed too.
+- *Fabricated "Test Vendor (Solar Tech)" removed.* In `DeliveryBatchesView` it
+  was **unconditionally prepended** to every vendor dropdown (not a fallback),
+  so it was selectable and saved onto `admin.vendor`, then displayed as
+  "Installed By". Also seeded on an empty vendors table in
+  `ChannelPartnerManagementView`, and `vendorNotification.js` defaulted to
+  `'Test Vendor'`. All three now yield an empty list / an explicit error.
+  `scripts/cleanup_fake_vendor.sql` (new) finds and clears any already stored.
+- *`doc_type` written as a column name — the `file_status` bug class.*
+  `CustomerDetailModal.jsx` did `onUpdate(id, { [docType]: true })` after an
+  upload. Several doc types are aliases (`signature`, `stamp_pic`,
+  `meter_photo`, `feasibility_document`) or have no column (`file_status`,
+  `gpa_stamp`), so those rejected the entire update — and it was
+  `.catch(console.error)`, so it failed silently. New `DOC_TYPE_FLAG_COLUMN`
+  map in `constants.js` resolves each doc type to its real column (unmapped
+  types set no flag), and a genuine failure now warns the user instead.
+
+**Root cause of the "file status cannot be found" save failure — ✅ IDENTIFIED,
+no DB change needed.** Deployed HEAD still had `file_status` in
+`DEFAULT_LEAD_FORM` (`models.jsx:52`) and in `OPERATIONAL_CHECKLIST_FIELDS`
+(`constants.js:312`), while the DB column had been dropped and replaced by
+`vendor_feasibility` + `site_feasibility` (both confirmed present). The rename
+existed only in the uncommitted working tree, so the live site kept writing a
+column that no longer exists → PostgREST `PGRST204`, rejecting every save that
+writes the whole record. **Fix is to deploy the working tree**, not to change
+the database. New `scripts/check_admin_columns.sql` diffs all 83 columns the
+app writes against the live `admin` table to catch any future drift.
+
+---
+
 # 🚦 THE RUNWAY — everything still open, most urgent first
 
 Single ranked queue. Work top-down. Verified against the code on

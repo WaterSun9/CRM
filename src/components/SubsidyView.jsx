@@ -104,9 +104,9 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                 query = query.not('subsidy_tag', 'is', null).neq('subsidy_tag', '');
             }
 
-            // Direct Backend Search across name, phone, consumer_no, crn
+            // Direct Backend Search across name, phone, consumer_no
             if (debouncedSearch) {
-                query = query.or(`customer_name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%,consumer_no.ilike.%${debouncedSearch}%,crn.ilike.%${debouncedSearch}%`);
+                query = query.or(`customer_name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%,consumer_no.ilike.%${debouncedSearch}%`);
             }
 
             const { data, error } = await query;
@@ -160,7 +160,7 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                     <Search className="absolute left-3.5 top-3 w-4 h-4 text-stone-400" />
                     <input
                         type="text"
-                        placeholder="Search name, phone, CRN, consumer no..."
+                        placeholder="Search name, phone, consumer no..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                         className="w-full pl-10 pr-4 py-2.5 bg-white border border-stone-200 rounded-2xl text-xs font-semibold text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-300 shadow-2xs transition-all"
@@ -263,7 +263,7 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                                                 {c.customer_name || 'Unnamed Customer'}
                                             </p>
                                             <p className="text-[10px] text-stone-400 font-mono mt-0.5 truncate">
-                                                {[c.crn, c.villages || c.location, c.phone_number].filter(Boolean).join(' · ')}
+                                                {[c.villages, c.phone_number].filter(Boolean).join(' · ')}
                                             </p>
                                         </div>
                                         <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex-shrink-0 border ${tagStyle.bg} ${tagStyle.text} ${tagStyle.border}`}>

@@ -24,6 +24,9 @@ export default function DeliveryBatchesView({
     const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL', 'IN_TRANSIT', 'DELIVERED'
     const [expandedBatchId, setExpandedBatchId] = useState(null);
     const [allCustomers, setAllCustomers] = useState([]);
+    // Drivers directory (Operations -> Manage Drivers). Picking a name here
+    // fills in that driver's phone and vehicle automatically.
+    const [drivers, setDrivers] = useState([]);
     const [localStatusOverrides, setLocalStatusOverrides] = useState({});
 
     // Customers for the batch picker and the manifest.
@@ -80,13 +83,30 @@ export default function DeliveryBatchesView({
         }
     };
 
+    const fetchDrivers = async () => {
+        try {
+            const { data, error } = await supabase.from('drivers').select('*').order('name');
+            if (error) throw error;
+            setDrivers(data || []);
+        } catch (e) {
+            console.error('Error fetching drivers in DeliveryBatchesView:', e);
+            setDrivers([]);
+        }
+    };
+
     useEffect(() => {
         fetchAllCustomers();
+        fetchDrivers();
     }, []);
 
     // Wrap onRefreshCustomers to also update local customers list
     const handleRefresh = async () => {
         await fetchAllCustomers();
+        // The rows we just fetched are authoritative. Drop the optimistic
+        // overrides here or they keep shadowing the real delivery_status for
+        // the rest of the session - which is how a write that silently did
+        // not land still shows as green until the page is reloaded.
+        setLocalStatusOverrides({});
         if (onRefreshCustomers) onRefreshCustomers();
     };
 
@@ -122,17 +142,13 @@ export default function DeliveryBatchesView({
         const fetchVendors = async () => {
             try {
                 const { data } = await supabase.from('vendors').select('name').order('name');
-                const dbVendors = (data || []).map(v => v.name).filter(Boolean);
-                const combined = Array.from(new Set([
-                    'Test Vendor (Solar Tech)',
-                    ...dbVendors
-                ])).filter(Boolean);
-                setVendorsList(combined);
+                // Only real vendors. A placeholder used to be prepended here
+                // unconditionally, which meant a fabricated name could be
+                // picked and saved onto the customer as the allotted vendor.
+                setVendorsList(Array.from(new Set((data || []).map(v => v.name).filter(Boolean))));
             } catch (e) {
                 console.error('Error fetching vendors in batches view:', e);
-                setVendorsList([
-                    'Test Vendor (Solar Tech)'
-                ]);
+                setVendorsList([]);
             }
         };
         fetchVendors();
@@ -284,6 +300,16 @@ export default function DeliveryBatchesView({
             showAlert('Please select at least 1 project to include in this delivery batch.');
             return;
         }
+        // Phone and vehicle are read-only and derived from the picked driver,
+        // so a blank here means that driver's record is incomplete.
+        if (!String(batchForm.driver_name || '').trim()) {
+            showAlert('Please select a driver for this batch.');
+            return;
+        }
+        if (!String(batchForm.driver_phone || '').trim() || !String(batchForm.vehicle_number || '').trim()) {
+            showAlert(`Driver "${batchForm.driver_name}" is missing a phone number or vehicle number. Add them in Operations → Drivers first.`);
+            return;
+        }
 
         setSaving(true);
         try {
@@ -311,6 +337,10 @@ export default function DeliveryBatchesView({
                 driver_name: batchForm.driver_name,
                 driver_phone: batchForm.driver_phone ? Number(String(batchForm.driver_phone).replace(/\D/g, '')) || null : null,
                 vehicle_number: batchForm.vehicle_number,
+                rent_amount: batchForm.rent_amount || '',
+                car_rent_paid: batchForm.car_rent_paid || 'No',
+                car_rent_paid_by: editingBatch?.car_rent_paid_by || null,
+                car_rent_paid_at: editingBatch?.car_rent_paid_at || null,
                 vendor: batchForm.vendor,
                 notes: batchForm.notes,
                 status: batchForm.status,
@@ -731,14 +761,25 @@ export default function DeliveryBatchesView({
                                                                 p_new_status: newStatus,
                                                                 p_project_ids: projectIds
                                                             });
-                                                            if (!rpcErr && rpcData?.success) atomicSuccess = true;
-                                                        } catch (_) {}
+                                                            if (!rpcErr && rpcData?.success) {
+                                                                atomicSuccess = true;
+                                                                if (rpcData.projects_missing > 0) {
+                                                                    console.warn(`Delivery batch ${batch.batch_no || batch.id}: ${rpcData.projects_missing} of ${rpcData.projects_expected} linked projects were not updated (deleted or missing).`);
+                                                                }
+                                                            }
+                                                        } catch (rpcThrow) {
+                                                            // Atomic RPC unavailable - fall through to the
+                                                            // non-atomic path below, but say so, since this
+                                                            // silently gives up the all-or-nothing guarantee.
+                                                            console.warn('update_delivery_batch_status_atomic unavailable, falling back to non-atomic update:', rpcThrow?.message || rpcThrow);
+                                                        }
 
                                                         if (!atomicSuccess) {
                                                             const { error: bErr } = await supabase.from("delivery_batches").update({ status: newStatus }).eq("id", batch.id);
                                                             if (bErr) throw bErr;
                                                             if (projectIds.length > 0) {
-                                                                await supabase.from("admin").update({ delivery_status: newStatus }).in("id", projectIds);
+                                                                const { error: aErr } = await supabase.from("admin").update({ delivery_status: newStatus }).in("id", projectIds);
+                                                                if (aErr) throw aErr;
                                                             }
                                                         }
 
@@ -893,6 +934,9 @@ export default function DeliveryBatchesView({
                                                           });
                                                           if (!rpcErr && rpcData?.success) {
                                                               statusAtomicSuccess = true;
+                                                              if (rpcData.projects_missing > 0) {
+                                                                  console.warn(`Delivery batch ${batch.batch_no || batch.id}: ${rpcData.projects_missing} of ${rpcData.projects_expected} linked projects were not updated (deleted or missing).`);
+                                                              }
                                                           }
                                                       } catch (stErr) {
                                                           console.warn('update_delivery_batch_status_atomic fallback:', stErr);
@@ -1108,44 +1152,61 @@ export default function DeliveryBatchesView({
 
                                     <div>
                                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">
-                                            Vehicle / Truck Registration Number <span className="text-red-500">*</span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            required
-                                            value={batchForm.vehicle_number}
-                                            onChange={e => setBatchForm(p => ({ ...p, vehicle_number: e.target.value }))}
-                                            placeholder="e.g. GJ-01-AB-1234"
-                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-bold text-stone-800 outline-none focus:border-amber-400"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">
                                             Driver Name <span className="text-red-500">*</span>
                                         </label>
-                                        <input
-                                            type="text"
+                                        <select
                                             required
                                             value={batchForm.driver_name}
-                                            onChange={e => setBatchForm(p => ({ ...p, driver_name: e.target.value }))}
-                                            placeholder="e.g. Ramesh Kumar"
-                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 outline-none focus:border-amber-400"
-                                        />
+                                            onChange={e => {
+                                                const picked = drivers.find(d => d.name === e.target.value);
+                                                setBatchForm(p => ({
+                                                    ...p,
+                                                    driver_name: e.target.value,
+                                                    driver_phone: picked ? String(picked.phone || '').replace(/\D/g, '') : '',
+                                                    vehicle_number: picked ? (picked.vehicle_number || '') : '',
+                                                }));
+                                            }}
+                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 outline-none focus:border-amber-400 cursor-pointer"
+                                        >
+                                            <option value="">Select a driver...</option>
+                                            {drivers.map(d => (
+                                                <option key={d.id} value={d.name}>{d.name}</option>
+                                            ))}
+                                        </select>
+                                        {drivers.length === 0 && (
+                                            <p className="text-[9px] text-amber-700 font-semibold mt-1">
+                                                No drivers registered yet - add them in Operations → Drivers.
+                                            </p>
+                                        )}
                                     </div>
 
                                     <div>
                                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">
-                                            Driver Phone Number <span className="text-red-500">*</span>
+                                            Driver Phone Number
                                         </label>
                                         <input
                                             type="tel"
-                                            required
+                                            readOnly
                                             value={batchForm.driver_phone}
-                                            onChange={e => setBatchForm(p => ({ ...p, driver_phone: e.target.value.replace(/\D/g, '') }))}
-                                            placeholder="e.g. 9876543210"
-                                            className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 outline-none focus:border-amber-400"
+                                            placeholder="Fills in from the selected driver"
+                                            className="w-full bg-stone-100 border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-600 outline-none cursor-not-allowed"
                                         />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">
+                                            Vehicle / Truck Registration Number
+                                        </label>
+                                        <input
+                                            type="text"
+                                            readOnly
+                                            value={batchForm.vehicle_number}
+                                            placeholder="Fills in from the selected driver"
+                                            className="w-full bg-stone-100 border border-stone-200 rounded-xl px-3 py-2 text-xs font-bold text-stone-600 outline-none cursor-not-allowed"
+                                        />
+                                        <p className="text-[9px] text-stone-400 font-medium mt-1">
+                                            Phone and vehicle come from the driver's record. To change them, edit the driver in Operations → Drivers.
+                                        </p>
                                     </div>
 
                                     <div>

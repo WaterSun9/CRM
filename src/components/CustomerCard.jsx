@@ -58,7 +58,7 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                 <div className="grid grid-cols-2 gap-y-1.5 mb-3">
                     <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
                         <Zap size={11} className="text-amber-500 flex-shrink-0" />
-                        <span>{customer.system_capacity_kwp ? `${customer.system_capacity_kwp} kWp` : '–'} {customer.project_type || ''}</span>
+                        <span>{customer.system_capacity_kwp ? `${customer.system_capacity_kwp} kWp` : '–'}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
                         <MapPin size={11} className="text-stone-300 flex-shrink-0" />
@@ -74,12 +74,6 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                             <span>{customer.phone_number}</span>
                         </div>
                     )}
-                    {customer.company_branch && (
-                        <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium col-span-2">
-                            <Building2 size={11} className="text-stone-300 flex-shrink-0" />
-                            <span>{customer.company_branch}</span>
-                        </div>
-                    )}
                     {customer.vendor && (
                         <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium col-span-2">
                             <Package size={11} className="text-stone-300 flex-shrink-0" />
@@ -93,14 +87,6 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                         </div>
                     )}
                 </div>
-                {customer.google_docs && (
-                    <div className="mb-3" onClick={e => e.stopPropagation()}>
-                        <a href={customer.google_docs} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-2 py-1 rounded-full font-medium transition-colors">
-                            <FolderOpen className="w-3 h-3" /> Docs
-                        </a>
-                    </div>
-                )}
             </div>
 
             {/* Bottom strip - not clickable (stops propagation via parent) */}

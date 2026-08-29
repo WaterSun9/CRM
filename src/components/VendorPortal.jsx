@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, formatInputValue, parseIndianNumber, updateDocumentRemark } from '../utils';
+import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, updateDocumentRemark } from '../utils';
 import { 
     User, Phone, Mail, MapPin, Zap, Building2, Sun,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
@@ -55,7 +55,6 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     const [installationStatus, setInstallationStatus] = useState('Pending');
     const [installationDate, setInstallationDate] = useState('');
     const [vendorNote, setVendorNote] = useState('');
-    const [vendorQuote, setVendorQuote] = useState('');
     
     // Material Delivery State
     const [inverterSerialNo, setInverterSerialNo] = useState('');
@@ -167,7 +166,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         if (!documentBody) return;
 
         const cleanName = String(targetBomCust?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanRef = String(targetBomCust?.folder_no || targetBomCust?.consumer_no || targetBomCust?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanRef = String(targetBomCust?.folder_no || targetBomCust?.consumer_no || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
         const docTitle = `BOM_Vendor_Dispatch_${cleanName}_${cleanRef}`;
         const prevDocTitle = document.title;
 
@@ -388,7 +387,6 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         setInstallationStatus(cust.installation_status || 'Pending');
         setInstallationDate(cust.installation_date || '');
         setVendorNote(cust.vendor_note || '');
-        setVendorQuote(cust.vendor_quote ?? '');
     };
 
     const handleSelectCustomer = async (cust) => {
@@ -515,14 +513,12 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
     };
 
-    const commissionQuoteAmount = vendorQuote !== '' && vendorQuote !== null && vendorQuote !== undefined ? parseIndianNumber(vendorQuote) : null;
     const canMoveToGeoTag = installationStatus === 'Yes';
 
     const isInstallationDirty = Boolean(
         String(installationStatus || 'Pending').trim() !== String(selectedCust?.installation_status || 'Pending').trim() ||
         String(installationDate || '').trim() !== String(selectedCust?.installation_date || '').trim() ||
-        String(vendorNote || '').trim() !== String(selectedCust?.vendor_note || '').trim() ||
-        String(vendorQuote || '').trim() !== String(selectedCust?.vendor_quote ?? '').trim()
+        String(vendorNote || '').trim() !== String(selectedCust?.vendor_note || '').trim()
     );
 
     const isDeliveryDirty = Boolean(
@@ -564,10 +560,6 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             if (!effectiveInstallDate) {
                 missingItems.push('Installation Date must be selected.');
             }
-            const quoteNum = parseIndianNumber(vendorQuote);
-            if (vendorQuote === '' || vendorQuote === null || vendorQuote === undefined || !Number.isFinite(quoteNum) || quoteNum <= 0) {
-                missingItems.push('Commission Quote Amount (₹) is required and must be greater than 0.');
-            }
 
             if (missingItems.length > 0) {
                 showAlert(`To move forward to Geo Tag Photo, please complete the following:\n\n• ${missingItems.join('\n• ')}`, {
@@ -606,7 +598,6 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                     installation_status: installationStatus,
                     installation_date: effectiveInstallDate,
                     vendor_note: vendorNote || null,
-                    vendor_quote: commissionQuoteAmount,
                 }
                 : {
                     geo_tag_status: geoTagStatus,
@@ -1156,7 +1147,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-stone-400">Customer & Site Reference <span className="ml-1 font-semibold normal-case tracking-normal">(View Only)</span></p>
                                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                                                     {[
-                                                        ['Customer Name', selectedCust.customer_name], ['Phone Number', selectedCust.phone_number], ['Email Address', selectedCust.email], ['Consumer No', selectedCust.consumer_no], ['Villages', selectedCust.villages], ['Sub Division', selectedCust.sub_divisions], ['Channel Partner Name', selectedCust.channel_partner], ['Sub Channel Partner Name', selectedCust.sub_channel_partner], ['Module Brand', selectedCust.module_brand], ['Module WP', selectedCust.module_wp], ['No of Modules', selectedCust.no_of_modules], ['System Capacity (kWp)', selectedCust.system_capacity_kwp ? toIndianCommas(selectedCust.system_capacity_kwp) : '–'],
+                                                        ['Customer Name', selectedCust.customer_name], ['Phone Number', selectedCust.phone_number], ['Email Address', selectedCust.email], ['Consumer No', selectedCust.consumer_no], ['Villages', selectedCust.villages], ['Sub Division', selectedCust.sub_divisions], ['Channel Partner Name', selectedCust.channel_partner], ['Dealer Name', selectedCust.sub_channel_partner], ['Module Brand', selectedCust.module_brand], ['Module WP', selectedCust.module_wp], ['No of Modules', selectedCust.no_of_modules], ['System Capacity (kWp)', selectedCust.system_capacity_kwp ? toIndianCommas(selectedCust.system_capacity_kwp) : '–'],
                                                     ].map(([label, value]) => <div key={label}><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">{label}</p><p className="font-semibold text-stone-900 break-words">{value || '–'}</p></div>)}
                                                 </div>
                                             </div>
@@ -1417,19 +1408,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="block text-[9px] font-bold text-stone-500 uppercase tracking-wider">Commission Quote (₹)</label>
-                                            <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                value={vendorQuote === '' ? '' : formatInputValue(vendorQuote)}
-                                                onChange={event => setVendorQuote(formatInputValue(event.target.value))}
-                                                disabled={!canEditInstallation}
-                                                placeholder="Enter installation commission quote"
-                                                className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                            />
-                                        </div>
+                                    <div className="grid grid-cols-1 gap-3">
                                         <div className="space-y-1">
                                             <label className="block text-[9px] font-bold text-stone-500 uppercase tracking-wider">Installation Note</label>
                                             <textarea
@@ -1712,7 +1691,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 <tr className="border-b border-stone-200">
                                                     <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Channel Partner Name:</td>
                                                     <td className="p-1.5 font-bold text-stone-900">{targetBomCust.channel_partner || '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Sub Channel Partner Name:</td>
+                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Dealer Name:</td>
                                                     <td className="p-1.5 font-bold text-stone-900">{targetBomCust.sub_channel_partner || '–'}</td>
                                                 </tr>
                                                 <tr className="border-b border-stone-200">

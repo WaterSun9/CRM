@@ -589,7 +589,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             {isPortalAgent ? (
                                 <div className="space-y-1">
                                     <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
-                                        Sub Channel Partner Name <span className="text-red-500 font-bold">*</span>
+                                        Dealer Name <span className="text-red-500 font-bold">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -603,7 +603,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             ) : (
                                 <div className="space-y-1">
                                     <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
-                                        Sub Channel Partner Name <span className="normal-case text-stone-400 font-medium">(optional)</span>
+                                        Dealer Name <span className="normal-case text-stone-400 font-medium">(optional)</span>
                                     </label>
                                     <select
                                         value={formData.sub_channel_partner || ''}

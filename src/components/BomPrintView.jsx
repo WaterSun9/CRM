@@ -110,7 +110,7 @@ export default function BomPrintView({ customer, bom, bomItems, activeType }) {
                                 </tr>
                                 <tr>
                                     <Cell label="Channel Partner Name:" value={dash(customer?.channel_partner)} />
-                                    <Cell label="Sub Channel Partner Name:" value={dash(customer?.sub_channel_partner)} />
+                                    <Cell label="Dealer Name:" value={dash(customer?.sub_channel_partner)} />
                                 </tr>
                                 <tr>
                                     <Cell label="MODULE BRAND:" value={dash(customer?.module_brand)} />

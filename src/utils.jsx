@@ -97,9 +97,34 @@ export function exportAllToCSV(customers) {
     // in a modal tab).
     const yn = (val) => val === true ? 'Yes' : val === false ? 'No' : (val || '');
 
+    // Some jsonb columns come back as a JSON string on older rows - normalise
+    // both shapes before flattening so nothing silently exports as blank.
+    const asObj = (val) => {
+        if (!val) return {};
+        if (typeof val === 'object') return val;
+        try { return JSON.parse(val) || {}; } catch { return {}; }
+    };
+    const asArr = (val) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+            try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+        }
+        return [];
+    };
+    // stages_remarks is a { STAGE_ID: 'remark' } map - flatten to one cell
+    const flattenStageRemarks = (val) => Object.entries(asObj(val))
+        .filter(([key, text]) => key !== 'discom_agreement_date' && String(text || '').trim())
+        .map(([key, text]) => `${PRIMARY_STAGES.find(st => st.id === key)?.label || key}: ${text}`)
+        .join(' | ');
+    // loan_history / subsidy_history are [{ status, date, remark }] - flatten to one cell
+    const flattenHistory = (val) => asArr(val)
+        .map(e => [e?.date, e?.status, e?.remark].filter(Boolean).join(' - '))
+        .filter(Boolean)
+        .join(' | ');
+
     const headers = [
         'Export Date',
-        'CRN',
         'Customer Name',
         'Phone Number',
         'Email Address',
@@ -107,7 +132,7 @@ export function exportAllToCSV(customers) {
         'Villages / Address',
         'Sub Division',
         'Channel Partner',
-        'Sub Channel Partner',
+        'Dealer',
         'Current Stage',
         'Payment Type',
         'System Capacity (kWp)',
@@ -167,11 +192,41 @@ export function exportAllToCSV(customers) {
         'Warranty Card',
         'Insurance Status',
         'Hold Procurement',
-        'Google Docs / Drive Link',
-        'Location Link',
         'Internal Remarks',
+        'Stage Remarks',
         'Created At',
-        'Updated At'
+        'Updated At',
+        // ── Previously missing columns ──────────────────────────────────
+        'Vendor Note / Give-up Reason',
+        'Vendor Give-Up Approved',
+        'Vendor Paid By',
+        'Delivery Batch No',
+        'DCR Certificate',
+        'Signature Pic',
+        'Stamp',
+        'SFDC Photo',
+        'Meter Installation Photo',
+        'Geo Tag Image',
+        'Discom Submitted By',
+        'Discom Submission Date',
+        'Agreement First Party',
+        'Agreement Second Party',
+        'Agreement Purchased Party',
+        'Agreement Execution Date',
+        'Stamp Value',
+        'Stamp Description',
+        'Sent to Stamp Maker',
+        'Sent to Stamp Maker By',
+        'Stamp Sent',
+        'Stamp Approved',
+        'Stamp Approved By',
+        'Stamp Completed At',
+        'Stamp Completed By',
+        'Stamp Remark',
+        'Stamp Send-back Remark',
+        'Stamp Send-back By',
+        'Loan History',
+        'Subsidy History'
     ];
 
     const rows = customers.map(c => {
@@ -181,10 +236,11 @@ export function exportAllToCSV(customers) {
         const panelSerials = Array.isArray(c.panel_serial_no)
             ? c.panel_serial_no.filter(Boolean).join('; ')
             : (c.panel_serial_no || '');
+        const ds = asObj(c.discom_submission);
+        const sr = asObj(c.stages_remarks);
 
         return [
             currentTimestampStr,
-            c.crn || '',
             c.customer_name || '',
             c.phone_number || '',
             c.email_address || '',
@@ -252,11 +308,41 @@ export function exportAllToCSV(customers) {
             yn(c.warranty_card),
             yn(c.insurance_status),
             c.hold_procurement || '',
-            c.google_docs || '',
-            c.location_link || '',
             c.internal_remarks || '',
+            flattenStageRemarks(c.stages_remarks),
             c.created_at ? new Date(c.created_at).toLocaleDateString('en-IN') : '',
-            c.updated_at ? new Date(c.updated_at).toLocaleDateString('en-IN') : ''
+            c.updated_at ? new Date(c.updated_at).toLocaleDateString('en-IN') : '',
+            // ── Previously missing columns ──────────────────────────────
+            c.vendor_note || '',
+            yn(c.vendor_give_up_approved),
+            c.vendor_paid_by || '',
+            c.delivery_batch_id || '',
+            yn(c.dcr_certificate),
+            yn(c.signature_pic),
+            yn(c.stamp),
+            yn(c.sfdc_photo),
+            yn(c.meter_installation_photo),
+            yn(c.geo_tag_image),
+            ds.submitted_by || '',
+            ds.date || '',
+            ds.first_party || '',
+            ds.second_party || '',
+            ds.purchased_party || '',
+            sr.discom_agreement_date || '',
+            ds.stamp_value || '',
+            ds.stamp_description || '',
+            yn(ds.sent_to_stamp_maker),
+            ds.sent_to_stamp_maker_by || '',
+            yn(ds.stamp_sent),
+            yn(ds.stamp_approved),
+            ds.stamp_approved_by || '',
+            ds.stamp_completed_at || '',
+            ds.stamp_completed_by || '',
+            ds.stamp_remark || '',
+            ds.stamp_sendback_remark || '',
+            ds.stamp_sendback_by || '',
+            flattenHistory(c.loan_history),
+            flattenHistory(c.subsidy_history)
         ].map(escapeCSV).join(',');
     });
 

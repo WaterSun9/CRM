@@ -240,10 +240,12 @@ export default function MaterialOrderTab({
                     <EditableDetailItem label="Phone Number" field="phone_number" value={customer.phone_number} isEditing={false} />
                     <EditableDetailItem label="Email Address" field="email" value={customer.email_address || customer.email} isEditing={false} />
                     <EditableDetailItem label="Consumer No" field="consumer_no" value={customer.consumer_no} isEditing={false} />
+                    <EditableDetailItem label="Folder No" field="folder_no" value={customer.folder_no || editData?.folder_no} isEditing={false} />
+                    <EditableDetailItem label="Feasibility No" field="feasibility_no" value={customer.registration_no || customer.feasibility_no || editData?.registration_no || editData?.feasibility_no} isEditing={false} />
                     <EditableDetailItem label="Villages" field="villages" value={customer.villages} isEditing={false} />
                     <EditableDetailItem label="Sub Division" field="sub_divisions" value={customer.sub_divisions} isEditing={false} />
                     <EditableDetailItem label="Channel Partner Name" field="channel_partner" value={customer.channel_partner} isEditing={false} />
-                    <EditableDetailItem label="Sub Channel Partner Name" field="sub_channel_partner" value={customer.sub_channel_partner} isEditing={false} />
+                    <EditableDetailItem label="Dealer Name" field="sub_channel_partner" value={customer.sub_channel_partner} isEditing={false} />
                     <EditableDetailItem label="MODULE BRAND" field="module_brand" value={customer.module_brand} isEditing={false} />
                     <EditableDetailItem label="MODULE WP" field="module_wp" value={customer.module_wp} isEditing={false} />
                     <EditableDetailItem label="No of Modules" field="no_of_modules" value={customer.no_of_modules} isEditing={false} />

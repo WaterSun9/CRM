@@ -2,7 +2,7 @@
 // Main admin layout: sidebar + header + view router.
 // Features:
 //   • Trash sidebar item + soft-delete/recover/hard-delete
-//   • Global search across ALL stages (name, phone, CRN) with results overlay
+//   • Global search across ALL stages (name, phone, consumer no) with results overlay
 //   • Stage counts exclude deleted records
 //   • Sales/Operations roles share the same shell, but see SalesView's card UI
 //     for the "stages" view and lose Activity Log / User Management / Trash

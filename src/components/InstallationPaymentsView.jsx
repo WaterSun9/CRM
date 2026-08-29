@@ -44,7 +44,9 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         };
     };
 
-    // Fast lightweight fetch strictly for completed installation status ("Yes")
+    // Completed installations. The tag was renamed "Yes" -> "Installed"
+    // (INSTALLATION_TAGS), so filtering on %yes% alone silently dropped every
+    // newly-installed customer out of this ledger. Match both.
     const fetchInstallations = useCallback(async () => {
         setLoading(true);
         try {
@@ -52,7 +54,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                 .from('admin')
                 .select('*')
                 .is('deleted_at', null)
-                .ilike('installation_status', '%yes%')
+                .or('installation_status.ilike.%yes%,installation_status.ilike.%installed%')
                 .order('created_at', { ascending: false });
 
             if (!error && data) {
@@ -66,9 +68,9 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                     .is('deleted_at', null)
                     .not('installation_status', 'is', null);
                 if (allData) {
-                    const matched = allData.filter(c => 
-                        normalizeInstallationStatus(c.installation_status) === 'yes' || 
-                        String(c.installation_status || '').trim().toLowerCase() === 'yes'
+                    const matched = allData.filter(c =>
+                        normalizeInstallationStatus(c.installation_status) === 'Yes' ||
+                        ['yes', 'installed'].includes(String(c.installation_status || '').trim().toLowerCase())
                     );
                     setInstallations(matched);
                 } else {
@@ -121,9 +123,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
             const matchesSearch = !q || (
                 String(r.customer_name || '').toLowerCase().includes(q) ||
                 String(r.vendor || '').toLowerCase().includes(q) ||
-                String(r.installed_by || '').toLowerCase().includes(q) ||
                 String(r.phone_number || '').includes(q) ||
-                String(r.crn || '').toLowerCase().includes(q) ||
                 String(r.consumer_no || '').toLowerCase().includes(q)
             );
 
@@ -364,7 +364,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
 
                     {/* Pay All Button for This Vendor */}
                     <div className="flex items-center gap-2 flex-shrink-0">
-                        {pendingAmount > 0 ? (
+                        {currentUser?.userType !== 'admin' ? null : pendingAmount > 0 ? (
                             <button
                                 type="button"
                                 disabled={payingAll}
@@ -394,7 +394,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                         <Search className="absolute left-3 top-2.5 text-stone-400 w-4 h-4 pointer-events-none" />
                         <input
                             type="text"
-                            placeholder="Search by customer, vendor, CRN, phone or consumer no..."
+                            placeholder="Search by customer, vendor, phone or consumer no..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             className="pl-9 pr-4 py-2 bg-white border border-stone-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 w-full font-medium"
@@ -470,6 +470,8 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                                 {filteredRecords.map((r) => {
                                     const isPaid = (r.vendor_payment_status || 'Pending') === 'Paid';
                                     const isUpdating = updatingId === r.id;
+                                    // Installation Payments is an admin-only page.
+                                    const canEditPayment = currentUser?.userType === 'admin';
 
                                     return (
                                         <tr 
@@ -535,32 +537,31 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
 
                                             {/* Payment Action / Status */}
                                             <td className="px-5 py-3.5">
-                                                {currentUser?.userType === 'admin' ? (
-                                                    <button
-                                                        type="button"
-                                                        disabled={isUpdating}
-                                                        onClick={() => handleStatusChange(r, isPaid ? 'Pending' : 'Paid')}
-                                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
-                                                            isPaid 
-                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200' 
-                                                                : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200'
-                                                        }`}
-                                                        title={isPaid ? 'Click to mark as Unpaid' : 'Click to mark as Paid'}
-                                                    >
+                                                {canEditPayment ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <select
+                                                            value={isPaid ? 'Paid' : 'Pending'}
+                                                            disabled={isUpdating}
+                                                            onChange={(e) => {
+                                                                const next = e.target.value;
+                                                                if (next !== (isPaid ? 'Paid' : 'Pending')) handleStatusChange(r, next);
+                                                            }}
+                                                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                                                                isPaid
+                                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                                                            }`}
+                                                            title={isPaid ? `Paid${r.vendor_paid_date ? ` on ${r.vendor_paid_date}` : ''}` : 'Unpaid'}
+                                                        >
+                                                            <option value="Pending">Unpaid</option>
+                                                            <option value="Paid">Paid</option>
+                                                        </select>
                                                         {isUpdating ? (
-                                                            <Loader2 size={12} className="animate-spin" />
-                                                        ) : isPaid ? (
-                                                            <>
-                                                                <Check size={12} className="stroke-[3] text-emerald-600" />
-                                                                <span>Paid {r.vendor_paid_date ? `(${r.vendor_paid_date})` : ''}</span>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                                                <span>Mark as Paid</span>
-                                                            </>
-                                                        )}
-                                                    </button>
+                                                            <Loader2 size={12} className="animate-spin text-stone-400" />
+                                                        ) : isPaid && r.vendor_paid_date ? (
+                                                            <span className="text-[10px] font-semibold text-stone-400">{r.vendor_paid_date}</span>
+                                                        ) : null}
+                                                    </div>
                                                 ) : (
                                                     <span className={`px-2.5 py-1 rounded-xl text-xs font-bold border inline-flex items-center gap-1.5 ${
                                                         isPaid 

@@ -213,6 +213,10 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+    v_batch_rows   int := 0;
+    v_project_rows int := 0;
+    v_expected     int := coalesce(array_length(p_project_ids, 1), 0);
 begin
     -- Update batch table
     update public.delivery_batches
@@ -220,18 +224,41 @@ begin
         status = p_new_status,
         updated_at = now()
     where id = p_batch_id;
+    get diagnostics v_batch_rows = row_count;
+
+    -- No batch matched the id. Previously this still returned success:true,
+    -- so a no-op was indistinguishable from a real write. Report the failure
+    -- instead and let the caller surface it.
+    if v_batch_rows = 0 then
+        return jsonb_build_object(
+            'success',  false,
+            'error',    'batch_not_found',
+            'batch_id', p_batch_id
+        );
+    end if;
 
     -- Update linked admin customer rows if status is DELIVERED or IN_TRANSIT
-    if array_length(p_project_ids, 1) > 0 then
+    if v_expected > 0 then
         update public.admin
         set
             delivery_status = p_new_status,
             updated_at = now()
         where id::text = any(p_project_ids)
           and deleted_at is null;
+        get diagnostics v_project_rows = row_count;
     end if;
 
-    return jsonb_build_object('success', true, 'batch_id', p_batch_id, 'status', p_new_status);
+    -- projects_missing > 0 means the batch lists ids that are soft-deleted or
+    -- gone. Not fatal, so success stays true, but the caller can now see it
+    -- instead of assuming every linked customer was synced.
+    return jsonb_build_object(
+        'success',           true,
+        'batch_id',          p_batch_id,
+        'status',            p_new_status,
+        'projects_expected', v_expected,
+        'projects_updated',  v_project_rows,
+        'projects_missing',  v_expected - v_project_rows
+    );
 end;
 $$;
 

@@ -17,7 +17,7 @@ import {
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
     Eye, Search, Image as ImageIcon, MessageSquare
 } from 'lucide-react';
-import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS } from '../constants';
+import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN } from '../constants';
 import { logActivity, formatLogDate, formatDateToDDMMYYYY, formatINR, toIndianCommas, formatInputValue, parseIndianNumber, fetchAgent2SubAgents } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
@@ -495,10 +495,20 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 getViewUrl(newDoc.storage_path).then(url => {
                     if (url) urlCacheRef.current[newDoc.storage_path] = url;
                 });
-                // Automatically mark checklist field as true and persist
-                if (docType) {
-                    setEditData(prev => ({ ...prev, [docType]: true }));
-                    onUpdate(customer.id, { [docType]: true }).catch(console.error);
+                // Automatically mark checklist field as true and persist.
+                // Resolve the doc_type to its real column first - writing the
+                // raw doc_type made Postgres reject the whole update whenever
+                // the type was an alias or had no column.
+                const flagColumn = docType ? DOC_TYPE_FLAG_COLUMN[docType] : null;
+                if (flagColumn) {
+                    setEditData(prev => ({ ...prev, [flagColumn]: true }));
+                    onUpdate(customer.id, { [flagColumn]: true }).catch(err => {
+                        console.error(`Failed to set ${flagColumn} after upload:`, err);
+                        showAlert(
+                            `The document uploaded, but its checklist tick could not be saved. Please tick "${DOC_TYPE_LABELS[docType] || docType}" manually.`,
+                            { title: 'Checklist not updated', type: 'warning' }
+                        );
+                    });
                 }
                 logActivity(
                     user.id,
@@ -1503,25 +1513,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     <div>
                         <div className="flex items-center gap-3">
                             <h2 className="text-xl font-bold text-white">{customer.customer_name}</h2>
-                            {/* <span className="text-[9px] bg-white/10 text-stone-400 px-2 py-0.5 rounded font-bold uppercase tracking-widest">{customer.crn || 'NO-CRN'}</span> */}
                             {isCompleted && (
                                 <span className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-widest ${isFrozen ? 'bg-stone-700 text-stone-400' : 'bg-amber-500/20 text-amber-400'}`}>
                                     {isFrozen ? <><Lock size={9} /> Frozen</> : <><Unlock size={9} /> Unlocked</>}
                                 </span>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                            {customer.location_link && (
-                                <a href={customer.location_link} target="_blank" rel="noreferrer"
-                                    className="flex items-center gap-1.5 bg-blue-500 text-white px-2.5 py-1 rounded-lg text-[9px] font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20">
-                                    <MapPin size={10} /> VIEW MAPS
-                                </a>
-                            )}
-                            {customer.google_docs && (
-                                <a href={customer.google_docs} target="_blank" rel="noreferrer"
-                                    className="flex items-center gap-1.5 bg-emerald-500 text-white px-2.5 py-1 rounded-lg text-[9px] font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20">
-                                    <FolderOpen size={10} /> GOOGLE DRIVE
-                                </a>
                             )}
                         </div>
                     </div>

@@ -16,7 +16,10 @@ export async function sendVendorLeadNotification({
     vendorName
 }) {
     const cust = customer || {};
-    const targetVendor = vendorName || cust.vendor || 'Test Vendor';
+    const targetVendor = (vendorName || cust.vendor || '').trim();
+    if (!targetVendor) {
+        throw new Error('No vendor is allotted to this customer, so no notification can be sent.');
+    }
     let recipient = ''; // no fallback
 
     // Lookup real vendor email from database

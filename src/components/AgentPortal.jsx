@@ -860,7 +860,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                     </div>
                     <div>
                         <h1 className="text-xs font-black tracking-widest text-stone-900 uppercase">Watersun</h1>
-                        <p className="text-[8px] font-bold text-amber-600 uppercase tracking-widest -mt-0.5">{isAgent2 ? 'Sub-Agent Portal' : 'Channel Partner Portal'}</p>
+                        <p className="text-[8px] font-bold text-amber-600 uppercase tracking-widest -mt-0.5">{isAgent2 ? 'Dealer Portal' : 'Channel Partner Portal'}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -888,7 +888,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                 <h2 className="mt-2 text-2xl font-black tracking-tight">Good to see you, {user.name}.</h2>
                                 <p className="mt-2 max-w-lg text-sm font-medium leading-relaxed text-stone-300">
                                     {isAgent2 
-                                        ? 'A focused view of your field leads, sub-agent pipeline, and customer work that needs attention today.'
+                                        ? 'A focused view of your field leads, partner pipeline, and customer work that needs attention today.'
                                         : 'A focused view of your pipeline, pending hand-offs, and the customer work that needs attention today.'
                                     }
                                 </p>
@@ -1434,7 +1434,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 <span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Channel Partner</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Dealer</span>
                                                 <span className="font-semibold text-stone-900">{subChannelPartnerOf(selectedCust)}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
@@ -1790,7 +1790,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 <span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Channel Partner</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Dealer</span>
                                                 <span className="font-semibold text-stone-900">{subChannelPartnerOf(selectedCust)}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
@@ -2090,8 +2090,8 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                             <span className="font-semibold text-stone-900">{selectedCust.installation_date || '–'}</span>
                                         </div>
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Installed By (Person in Charge)</span>
-                                            <span className="font-semibold text-stone-900">{selectedCust.installed_by || '–'}</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Installed By (Allotted Vendor)</span>
+                                            <span className="font-semibold text-stone-900">{selectedCust.vendor || 'No vendor allotted'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -2122,10 +2122,17 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                     </h5>
                                     <div className="divide-y divide-stone-200/50 text-xs">
                                         <div className="flex items-center justify-between py-2">
-                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">File Status</span>
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Vendor Feasibility</span>
                                             <div className="flex items-center gap-2">
-                                                {selectedCust.file_status && <a href={getViewUrl(selectedCust.file_status)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
-                                                {renderStatusBadge(selectedCust.file_status ? 'Yes' : 'Pending', 'Pending')}
+                                                {selectedCust.vendor_feasibility && <a href={getViewUrl(selectedCust.vendor_feasibility)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
+                                                {renderStatusBadge(selectedCust.vendor_feasibility ? 'Yes' : 'Pending', 'Pending')}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between py-2">
+                                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Site Feasibility</span>
+                                            <div className="flex items-center gap-2">
+                                                {selectedCust.site_feasibility && <a href={getViewUrl(selectedCust.site_feasibility)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
+                                                {renderStatusBadge(selectedCust.site_feasibility ? 'Yes' : 'Pending', 'Pending')}
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between py-2">
@@ -2373,7 +2380,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 <span className="font-semibold text-stone-900">{selectedCust.channel_partner || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Sub Channel Partner Name</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Dealer Name</span>
                                                 <span className="font-semibold text-stone-900">{subChannelPartnerOf(selectedCust)}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
@@ -2494,8 +2501,8 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 <span className="font-semibold text-stone-900">{selectedCust.installation_date || '–'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
-                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Installed By</span>
-                                                <span className="font-semibold text-stone-900">{selectedCust.installed_by || '–'}</span>
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Installed By (Allotted Vendor)</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.vendor || 'No vendor allotted'}</span>
                                             </div>
                                             <div className="flex items-center justify-between py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Geo Tag Photo</span>

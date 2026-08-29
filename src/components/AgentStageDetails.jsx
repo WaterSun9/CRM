@@ -5,7 +5,7 @@ const STAGE_FIELDS = {
     [STAGE_IDS.LEADS]: [
         ['Customer Name', 'customer_name'], ['Phone Number', 'phone_number'], ['Email', 'email_address'],
         ['Consumer No', 'consumer_no'], ['Village / Address', 'villages'], ['Sub Division', 'sub_divisions'],
-        ['Channel Partner', 'channel_partner'], ['Sub Channel Partner', 'sub_channel_partner'],
+        ['Channel Partner', 'channel_partner'], ['Dealer', 'sub_channel_partner'],
         ['Module Brand', 'module_brand'], ['Module WP', 'module_wp'], ['No. of Modules', 'no_of_modules'],
         ['System Capacity', 'system_capacity_kwp'], ['Payment Type', 'payment_type'],
     ],

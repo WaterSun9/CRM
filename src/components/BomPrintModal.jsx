@@ -18,7 +18,7 @@ export default function BomPrintModal({ customer, bom, bomItems = [], activeType
         if (!documentBody) return;
 
         const cleanName = String(customer?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanRef = String(customer?.folder_no || customer?.consumer_no || customer?.crn || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const cleanRef = String(customer?.folder_no || customer?.consumer_no || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
         const docTitle = `BOM_Material_Integration_${cleanName}_${cleanRef}`;
         const prevDocTitle = document.title;
 

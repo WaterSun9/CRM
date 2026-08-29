@@ -181,22 +181,35 @@ export default function DiscomSubmissionTab({
                     <ClipboardList className="w-4 h-4 text-amber-500" /> Utility File Checklist
                 </h4>
                 <div className="flex flex-col gap-2">
-                    <CheckboxRemarkItem label="File Status" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                    <CheckboxRemarkItem label="Vendor Feasibility" field="vendor_feasibility" value={editData.vendor_feasibility} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                    <CheckboxRemarkItem label="Site Feasibility" field="site_feasibility" value={editData.site_feasibility} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                     <CheckboxRemarkItem label="DCR Certificate" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
-                    <CheckboxRemarkItem label="Signiture" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                    <CheckboxRemarkItem label="Signature" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                 </div>
-                {isEditable && (editData.file_status !== customer.file_status || editData.dcr_certificate !== customer.dcr_certificate || editData.signature_pic !== customer.signature_pic) && (
+                {isEditable && (
+                    editData.vendor_feasibility !== customer.vendor_feasibility ||
+                    editData.site_feasibility !== customer.site_feasibility ||
+                    editData.dcr_certificate !== customer.dcr_certificate || 
+                    editData.signature_pic !== customer.signature_pic
+                ) && (
                     <div className="flex justify-end pt-2">
                         <button
                             type="button"
                             onClick={async () => {
                                 setSaving(true);
                                 await onUpdate(customer.id, {
-                                    file_status: editData.file_status,
+                                    vendor_feasibility: editData.vendor_feasibility,
+                                    site_feasibility: editData.site_feasibility,
                                     dcr_certificate: editData.dcr_certificate,
                                     signature_pic: editData.signature_pic
                                 });
-                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Utility File Checklist (File Status: ${editData.file_status ? 'Uploaded' : 'Pending'}, DCR: ${editData.dcr_certificate ? 'Uploaded' : 'Pending'}, Signature: ${editData.signature_pic ? 'Uploaded' : 'Pending'})`, '', customer.id);
+                                await logActivity(
+                                    user.id, 
+                                    'update', 
+                                    `${customer.customer_name}: Updated Utility File Checklist (Vendor Feasibility: ${editData.vendor_feasibility ? 'Uploaded' : 'Pending'}, Site Feasibility: ${editData.site_feasibility ? 'Uploaded' : 'Pending'}, DCR: ${editData.dcr_certificate ? 'Uploaded' : 'Pending'}, Signature: ${editData.signature_pic ? 'Uploaded' : 'Pending'})`, 
+                                    '', 
+                                    customer.id
+                                );
                                 setSaving(false);
                                 fetchLogs();
                             }}

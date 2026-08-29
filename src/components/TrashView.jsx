@@ -32,14 +32,10 @@ function TrashDetailDrawer({ customer, onClose }) {
                 </div>
                 <div className="p-6 space-y-3">
                     {[
-                        // ['CRN',              customer.crn],
                         ['Phone',            customer.phone_number],
                         ['Email',            customer.email_address],
-                        ['Location',         customer.location],
-                        ['Branch',           customer.company_branch],
                         ['Channel Partner',  customer.channel_partner],
                         ['Capacity',         customer.system_capacity_kwp ? `${customer.system_capacity_kwp} kWp` : null],
-                        ['Project Type',     customer.project_type],
                         ['Stage at Deletion',PRIMARY_STAGES.find(s => s.id === customer.stage)?.label || customer.stage],
                         ['Subsidy Status',   tagInfo?.label],
                     ].map(([label, val]) => val ? (
@@ -122,12 +118,11 @@ export default function TrashView({ onRecover, onHardDelete, isAdmin }) {
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                             <p className="font-bold text-stone-600">{c.customer_name}</p>
-                            {/* <span className="text-[9px] bg-stone-100 text-stone-400 px-2 py-0.5 rounded font-bold uppercase">{c.crn || 'NO-CRN'}</span> */}
                             <span className="text-[9px] bg-red-50 text-red-400 px-2 py-0.5 rounded font-bold uppercase">Deleted</span>
                         </div>
                         <p className="text-xs text-stone-400">
                             {PRIMARY_STAGES.find(s => s.id === c.stage)?.label || c.stage || '–'} ·{' '}
-                            {c.location || 'No location'} · Deleted {formatDate(c.deleted_at)}
+                            {c.villages || 'No location'} · Deleted {formatDate(c.deleted_at)}
                         </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">

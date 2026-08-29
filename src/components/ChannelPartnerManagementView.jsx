@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, UserPlus, Phone, Mail } from 'lucide-react';
+import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, UserPlus, Phone, Mail, Truck } from 'lucide-react';
 import { logActivity } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
@@ -32,6 +32,16 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [editingVendorName, setEditingVendorName] = useState('');
     const [editingVendorEmail, setEditingVendorEmail] = useState('');
     const [performanceStats, setPerformanceStats] = useState([]);
+
+    // Drivers directory - name, phone and vehicle are entered together and
+    // feed the Delivery Batch driver picker.
+    const [drivers, setDrivers] = useState([]);
+    const [newDriverName, setNewDriverName] = useState('');
+    const [newDriverPhone, setNewDriverPhone] = useState('');
+    const [newDriverVehicle, setNewDriverVehicle] = useState('');
+    const [editingDriverName, setEditingDriverName] = useState('');
+    const [editingDriverPhone, setEditingDriverPhone] = useState('');
+    const [editingDriverVehicle, setEditingDriverVehicle] = useState('');
 
     const fetchAllAdminChannelPartners = async () => {
         let all = [];
@@ -128,24 +138,108 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const fetchVendors = async () => {
         try {
             const { data, error } = await supabase.from('vendors').select('*').order('name');
-            if (!error && data && data.length > 0) {
-                setVendors(data);
-            } else {
-                setVendors([
-                    { id: 'v1', name: 'Test Vendor (Solar Tech)', phone: '9876500001', address: 'Watersun Solar Facility, Gujarat' },
-                ]);
-            }
+            if (error) throw error;
+            // An empty directory shows as empty. It used to be seeded with a
+            // fabricated vendor, which then leaked into the vendor dropdowns
+            // and could be saved onto a real customer.
+            setVendors(data || []);
         } catch (e) {
             console.error('Error fetching vendors:', e);
-            setVendors([
-                { id: 'v1', name: 'Test Vendor (Solar Tech)', phone: '9876500001', address: 'Watersun Solar Facility, Gujarat' },
-            ]);
+            setVendors([]);
+        }
+    };
+
+    const fetchDrivers = async () => {
+        try {
+            const { data, error } = await supabase.from('drivers').select('*').order('name');
+            if (error) throw error;
+            setDrivers(data || []);
+        } catch (e) {
+            console.error('Error fetching drivers:', e);
+            setDrivers([]);
+        }
+    };
+
+    // ─── Drivers: add / edit / delete ─────────────────────────────────────────
+    const handleAddDriver = async () => {
+        const name = newDriverName.trim();
+        const phone = newDriverPhone.trim();
+        const vehicle = newDriverVehicle.trim();
+
+        if (!name || !phone || !vehicle) {
+            showAlert('Please enter Driver Name, Phone Number and Vehicle Number - all three are required.');
+            return;
+        }
+        if ((drivers || []).some(d => String(d?.name || '').toLowerCase() === name.toLowerCase())) {
+            showAlert('A Driver with this name already exists.');
+            return;
+        }
+
+        try {
+            const { data, error } = await supabase
+                .from('drivers')
+                .insert({ name, phone, vehicle_number: vehicle })
+                .select();
+            if (error) throw error;
+
+            setDrivers(prev => [...prev, ...(data || [])].sort((a, b) => String(a.name).localeCompare(String(b.name))));
+            setNewDriverName('');
+            setNewDriverPhone('');
+            setNewDriverVehicle('');
+            await logActivity(currentUser.id, 'create', `Added new Driver: "${name}" (${phone}, ${vehicle})`);
+        } catch (e) {
+            console.error('Error adding driver:', e);
+            showAlert('Failed to add driver: ' + e.message, { type: 'error' });
+        }
+    };
+
+    const handleEditDriver = async (id) => {
+        const name = editingDriverName.trim();
+        const phone = editingDriverPhone.trim();
+        const vehicle = editingDriverVehicle.trim();
+
+        if (!name || !phone || !vehicle) {
+            showAlert('Driver Name, Phone Number and Vehicle Number are all required.');
+            return;
+        }
+        if ((drivers || []).some(d => d.id !== id && String(d?.name || '').toLowerCase() === name.toLowerCase())) {
+            showAlert('Another Driver with this name already exists.');
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('drivers')
+                .update({ name, phone, vehicle_number: vehicle, updated_at: new Date().toISOString() })
+                .eq('id', id);
+            if (error) throw error;
+
+            setDrivers(prev => prev.map(d => d.id === id ? { ...d, name, phone, vehicle_number: vehicle } : d));
+            setEditingId(null);
+            await logActivity(currentUser.id, 'update', `Updated Driver: "${name}" (${phone}, ${vehicle})`);
+        } catch (e) {
+            console.error('Error updating driver:', e);
+            showAlert('Failed to update driver: ' + e.message, { type: 'error' });
+        }
+    };
+
+    const handleDeleteDriver = async (id, name) => {
+        if (!window.confirm(`Delete driver "${name}"?\n\nDelivery batches already saved with this driver keep their details - only future batches lose the option.`)) return;
+        try {
+            const { error } = await supabase.from('drivers').delete().eq('id', id);
+            if (error) throw error;
+            setDrivers(prev => prev.filter(d => d.id !== id));
+            await logActivity(currentUser.id, 'delete', `Deleted Driver: "${name}"`);
+        } catch (e) {
+            console.error('Error deleting driver:', e);
+            showAlert('Failed to delete driver: ' + e.message, { type: 'error' });
         }
     };
 
     useEffect(() => {
         fetchMetadata();
         fetchVendors();
+        fetchDrivers();
     }, []);
 
     // Add new Channel Partner
@@ -592,7 +686,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                             <Building2 className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-700 transition-colors duration-305">CPO Offices & Sub-Agents</h3>
+                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-700 transition-colors duration-305">CPO Offices & Dealers</h3>
                                             <p className="text-[11px] text-stone-400 font-medium mt-0.5">{cpos.length} registered office branches</p>
                                         </div>
                                     </div>
@@ -714,6 +808,25 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                         Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
                                     </span>
                                 </button>
+
+                                {/* Drivers Card */}
+                                <button
+                                    onClick={() => setActiveManageCategory('driver')}
+                                    className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex flex-col justify-between h-44 hover:shadow-md hover:border-stone-300 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                                >
+                                    <div className="space-y-3.5 w-full">
+                                        <div className="p-2.5 bg-stone-50 group-hover:bg-amber-100/70 rounded-xl w-fit transition-colors duration-305">
+                                            <Truck className="w-5 h-5 text-stone-600 group-hover:text-amber-600 transition-colors duration-305" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-600 transition-colors duration-305">Drivers</h3>
+                                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">{drivers.length} registered drivers</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1 transition-colors duration-305">
+                                        Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
+                                    </span>
+                                </button>
                             </div>
                         </div>
 
@@ -774,7 +887,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                             <Building2 size={20} />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-bold tracking-tight">Channel Partner Offices & Sub-Agents</h3>
+                                            <h3 className="text-sm font-bold tracking-tight">Channel Partner Offices & Dealers</h3>
                                             <p className="text-[10px] text-stone-400 mt-0.5 uppercase font-bold tracking-wider">{cpos.length} Registered CPO Branches</p>
                                         </div>
                                     </div>
@@ -792,7 +905,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                 {/* Modal Body */}
                                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                                     {selectedCpo ? (
-                                        // Drilldown: Sub-Agents under Selected CPO
+                                        // Drilldown: Field Agents under Selected CPO
                                         <div className="space-y-4">
                                             <button
                                                 onClick={() => setSelectedCpo(null)}
@@ -815,7 +928,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
                                             <div>
                                                 <h5 className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-2">
-                                                    Sub-Agents Registered Under this CPO
+                                                    Dealers Registered Under this CPO
                                                 </h5>
                                                 {(() => {
                                                     const partnerKey = (selectedCpo.channel_partner || selectedCpo.name || '').trim().toLowerCase();
@@ -828,8 +941,8 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                         return (
                                                             <div className="text-center py-8 bg-stone-50/50 rounded-2xl border border-stone-100">
                                                                 <Users className="w-8 h-8 text-stone-300 mx-auto mb-2" />
-                                                                <p className="text-xs text-stone-500 font-medium">No sub-agents added by this CPO yet.</p>
-                                                                <p className="text-[10px] text-stone-400 mt-0.5">When this CPO logs in and adds sub-agents, they will appear here.</p>
+                                                                <p className="text-xs text-stone-500 font-medium">No dealers added by this CPO yet.</p>
+                                                                <p className="text-[10px] text-stone-400 mt-0.5">When this CPO logs in and adds dealers, they will appear here.</p>
                                                             </div>
                                                         );
                                                     }
@@ -903,7 +1016,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
                                                             <div className="flex items-center gap-3 self-end sm:self-center">
                                                                 <div className="text-right">
-                                                                    <span className="text-xs font-extrabold text-stone-900 block">{teamCount} Sub-Agents</span>
+                                                                    <span className="text-xs font-extrabold text-stone-900 block">{teamCount} Dealers</span>
                                                                     <span className="text-[10px] font-semibold text-amber-700">{leadsCount} Leads</span>
                                                                 </div>
                                                                 <div className="p-1.5 rounded-lg bg-stone-200/70 group-hover:bg-amber-200 text-stone-600 group-hover:text-amber-900 transition-colors">
@@ -968,9 +1081,14 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     title = 'Manage Vendors Allotment';
                     list = vendors;
                     placeholder = 'Enter vendor name...';
+                } else if (activeManageCategory === 'driver') {
+                    title = 'Manage Drivers';
+                    list = drivers;
+                    placeholder = 'Enter driver name...';
                 }
 
                 const isVendorCat = activeManageCategory === 'vendor';
+                const isDriverCat = activeManageCategory === 'driver';
 
                 return (
                     <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -994,7 +1112,44 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                             </div>
 
                             {/* Add Section */}
-                            {isVendorCat ? (
+                            {isDriverCat ? (
+                                <div className="p-4 border-b border-stone-100 bg-stone-50/50 space-y-2">
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <input
+                                            type="text"
+                                            placeholder="Driver Name..."
+                                            value={newDriverName}
+                                            onChange={e => setNewDriverName(e.target.value)}
+                                            className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm focus:border-amber-400 outline-none transition"
+                                        />
+                                        <input
+                                            type="tel"
+                                            inputMode="numeric"
+                                            placeholder="Phone Number..."
+                                            value={newDriverPhone}
+                                            onChange={e => setNewDriverPhone(e.target.value.replace(/[^0-9+\-\s]/g, ''))}
+                                            className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm focus:border-amber-400 outline-none transition"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <input
+                                            type="text"
+                                            placeholder="Vehicle Number..."
+                                            value={newDriverVehicle}
+                                            onChange={e => setNewDriverVehicle(e.target.value.toUpperCase())}
+                                            onKeyDown={e => e.key === 'Enter' && handleAddDriver()}
+                                            className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm focus:border-amber-400 outline-none transition uppercase"
+                                        />
+                                        <button
+                                            onClick={handleAddDriver}
+                                            className="flex items-center justify-center gap-1.5 bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-md sm:w-32"
+                                        >
+                                            <Plus className="w-4 h-4" /> Add
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-stone-400 font-medium">All three fields are required. The name appears in the Delivery Batch driver list, and picking it fills in the phone and vehicle automatically.</p>
+                                </div>
+                            ) : isVendorCat ? (
                                 <div className="p-4 border-b border-stone-100 bg-stone-50/50 flex flex-col sm:flex-row gap-2">
                                     <input
                                         type="text"
@@ -1044,7 +1199,34 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                         return (
                                             <div key={item.id} className="flex justify-between items-center bg-stone-50 px-4 py-2.5 rounded-xl border border-stone-100 hover:bg-stone-100/50 transition-colors">
                                                 {isEditing ? (
-                                                    isVendorCat ? (
+                                                    isDriverCat ? (
+                                                        <div className="flex-1 flex flex-col sm:flex-row gap-2 max-w-lg">
+                                                            <input
+                                                                type="text"
+                                                                value={editingDriverName}
+                                                                onChange={e => setEditingDriverName(e.target.value)}
+                                                                className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-bold text-stone-800"
+                                                                placeholder="Name"
+                                                                autoFocus
+                                                            />
+                                                            <input
+                                                                type="tel"
+                                                                inputMode="numeric"
+                                                                value={editingDriverPhone}
+                                                                onChange={e => setEditingDriverPhone(e.target.value.replace(/[^0-9+\-\s]/g, ''))}
+                                                                className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium text-stone-700"
+                                                                placeholder="Phone"
+                                                            />
+                                                            <input
+                                                                type="text"
+                                                                value={editingDriverVehicle}
+                                                                onChange={e => setEditingDriverVehicle(e.target.value.toUpperCase())}
+                                                                onKeyDown={e => e.key === 'Enter' && handleEditDriver(item.id)}
+                                                                className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium text-stone-700 uppercase"
+                                                                placeholder="Vehicle"
+                                                            />
+                                                        </div>
+                                                    ) : isVendorCat ? (
                                                         <div className="flex-1 flex gap-2 max-w-md">
                                                             <input
                                                                 type="text"
@@ -1072,7 +1254,15 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                         />
                                                     )
                                                 ) : (
-                                                    isVendorCat ? (
+                                                    isDriverCat ? (
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <span className="text-xs font-bold text-stone-850 tracking-tight">{item.name}</span>
+                                                            <span className="text-[10px] text-stone-400 font-medium flex items-center gap-2.5">
+                                                                <span className="flex items-center gap-1"><Phone size={9} /> {item.phone || '–'}</span>
+                                                                <span className="flex items-center gap-1"><Truck size={9} /> {item.vehicle_number || '–'}</span>
+                                                            </span>
+                                                        </div>
+                                                    ) : isVendorCat ? (
                                                         <div className="flex flex-col gap-0.5">
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-xs font-bold text-stone-850 tracking-tight">{item.name}</span>
@@ -1096,7 +1286,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                 <div className="flex items-center gap-2">
                                                     {isEditing ? (
                                                         <button
-                                                            onClick={() => isVendorCat ? handleEditVendor(item.id, item.name, item.email) : handleEditMetadata(item.id, item.label, editingLabel, activeManageCategory)}
+                                                            onClick={() => isDriverCat ? handleEditDriver(item.id) : isVendorCat ? handleEditVendor(item.id, item.name, item.email) : handleEditMetadata(item.id, item.label, editingLabel, activeManageCategory)}
                                                             className="text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded-lg transition"
                                                             title="Save changes"
                                                         >
@@ -1106,7 +1296,11 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                         <button
                                                             onClick={() => {
                                                                 setEditingId(item.id);
-                                                                if (isVendorCat) {
+                                                                if (isDriverCat) {
+                                                                    setEditingDriverName(item.name || '');
+                                                                    setEditingDriverPhone(item.phone || '');
+                                                                    setEditingDriverVehicle(item.vehicle_number || '');
+                                                                } else if (isVendorCat) {
                                                                     setEditingVendorName(item.name);
                                                                     setEditingVendorEmail(item.email);
                                                                 } else {
@@ -1121,7 +1315,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                     )}
 
                                                     <button
-                                                        onClick={() => isVendorCat ? handleDeleteVendor(item.id, item.name) : handleDeleteMetadata(item.id, activeManageCategory, item.label)}
+                                                        onClick={() => isDriverCat ? handleDeleteDriver(item.id, item.name) : isVendorCat ? handleDeleteVendor(item.id, item.name) : handleDeleteMetadata(item.id, activeManageCategory, item.label)}
                                                         className="text-stone-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
                                                         title="Delete entry"
                                                     >
