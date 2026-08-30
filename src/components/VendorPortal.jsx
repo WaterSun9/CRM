@@ -224,27 +224,27 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         ].filter(Boolean).map(s => String(s).trim().toLowerCase());
     }, [user?.channel_partner, user?.name, user?.title, user?.email]);
 
+    // Ownership must mean exactly what the RLS policy means:
+    //   lower(trim(admin.vendor)) = lower(trim(get_my_name()))
+    //
+    // This used to match on substrings in BOTH directions, plus hardcoded demo
+    // special-cases ('deeproot', 'test vendor'/'solar tech'), plus a catch-all:
+    //   (target.includes('vendor') && custVendor.length > 0)
+    // Because userIdentifiers includes the account's EMAIL, any vendor signed in
+    // as something like vendor@company.com matched EVERY record that had any
+    // vendor assigned - other vendors' jobs included. Writes to those records
+    // were then refused by RLS with 0 rows and no error, so they also looked
+    // saved and were not.
     const isRecordAssignedToVendor = useCallback((record) => {
         const custVendor = (record?.vendor || '').trim().toLowerCase();
         if (!custVendor) return false;
+
         const allTargets = [
             ...userIdentifiers,
             ...(registeredVendorNamesRef.current || [])
         ].filter(Boolean);
 
-        return allTargets.some(id => {
-            const target = String(id).trim().toLowerCase();
-            return (
-                custVendor === target || 
-                custVendor.includes(target) || 
-                target.includes(custVendor) ||
-                (target.includes('deeproot') && custVendor.includes('vendor')) ||
-                (target.includes('vendor') && custVendor.includes('deeproot')) ||
-                (target.includes('test vendor') && custVendor.includes('solar tech')) ||
-                (target.includes('solar tech') && custVendor.includes('test vendor')) ||
-                (target.includes('vendor') && custVendor.length > 0)
-            );
-        });
+        return allTargets.some(id => custVendor === String(id).trim().toLowerCase());
     }, [userIdentifiers]);
 
     const fetchCustomers = useCallback(async ({ silent = false } = {}) => {
@@ -434,13 +434,22 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
 
         setUploadingPhoto(true);
         try {
-            // Delete previous geo tag photos so the new photo replaces them cleanly
-            const existingGeo = (documents || []).filter(d => d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag');
-            for (const oldDoc of existingGeo) {
-                await deleteDocument(oldDoc);
-            }
-
+            // Upload FIRST. Deleting the previous photo before the upload meant
+            // a vendor on a flaky mobile connection lost the original with
+            // nothing to fall back on.
             const newDoc = await uploadDocument(file, selectedCust.id, 'geo_tag_image', user?.id);
+
+            if (newDoc) {
+                const existingGeo = (documents || []).filter(d =>
+                    (d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag') && d.id !== newDoc.id);
+                for (const oldDoc of existingGeo) {
+                    try {
+                        await deleteDocument(oldDoc);
+                    } catch (delErr) {
+                        console.warn('New geo tag photo saved, but removing the old one failed:', delErr);
+                    }
+                }
+            }
             if (newDoc) {
                 setDocuments(prev => [
                     newDoc,

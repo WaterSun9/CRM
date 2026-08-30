@@ -717,8 +717,19 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
                                     Payment Type Selection <span className="text-red-500 font-bold">*</span>
                                 </label>
+                                {/* The saved value is title-cased by the Zod schema ('Cash'
+                                    / 'Loan') while these options come from metadata, which
+                                    is uppercase. A <select> whose value matches no <option>
+                                    renders BLANK - which is why a chosen Payment Type looked
+                                    like it had disappeared. Match case-insensitively, and
+                                    keep any unrecognised stored value visible. */}
+                                {(() => {
+                                    const ptOptions = meta['payment_type'] || ['CASH', 'LOAN'];
+                                    const stored = String(formData.payment_type || '').trim();
+                                    const matched = ptOptions.find(o => String(o).trim().toLowerCase() === stored.toLowerCase());
+                                    return (
                                 <select
-                                    value={formData.payment_type || ''}
+                                    value={matched ?? stored}
                                     onChange={(e) => {
                                         const val = e.target.value;
                                         handleChange('payment_type', val);
@@ -727,10 +738,15 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     required
                                 >
                                     <option value="">Select Payment Type...</option>
-                                    {(meta['payment_type'] || ['CASH', 'LOAN']).map((opt) => (
+                                    {stored && !matched && (
+                                        <option value={stored}>{stored}</option>
+                                    )}
+                                    {ptOptions.map((opt) => (
                                         <option key={opt} value={opt}>{opt}</option>
                                     ))}
                                 </select>
+                                    );
+                                })()}
                             </div>
 
                             {/* Checklist items only visible if payment_type is selected */}

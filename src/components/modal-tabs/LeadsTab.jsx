@@ -79,7 +79,12 @@ export default function LeadsTab({
                         field="channel_partner"
                         value={isChannelPartnerManager ? managerCpoName : editData.channel_partner}
                         onChange={handleChange}
-                        isEditing={!isChannelPartnerManager && editingSection === 'cus'}
+                        /* Admin only. channel_partner IS the branch scope in RLS,
+                           so a CPO editing this free-text field could hand the
+                           record to another branch - losing it from their own
+                           view - or trip the policy's WITH CHECK and fail the
+                           entire record save, not just this field. */
+                        isEditing={isAdmin && editingSection === 'cus'}
                         channel_partners={channel_partners}
                         isAdmin={isAdmin}
                     />
@@ -110,16 +115,29 @@ export default function LeadsTab({
                     <div className="pb-3 border-b border-stone-100">
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Payment Type Selection <span className="text-red-500">*</span></label>
                         {isEditable ? (
+                            (() => {
+                                // Stored values are title-cased ('Cash'/'Loan') but these
+                                // options come from metadata in another case, so the select
+                                // rendered blank for a value that was actually saved.
+                                const ptOptions = meta['payment_type'] || [];
+                                const stored = String(editData.payment_type || '').trim();
+                                const matched = ptOptions.find(o => String(o).trim().toLowerCase() === stored.toLowerCase());
+                                return (
                             <select
-                                value={editData.payment_type || ''}
+                                value={matched ?? stored}
                                 onChange={(e) => handleChange('payment_type', e.target.value)}
                                 className="w-full md:w-1/3 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700"
                             >
                                 <option value="">Select Payment Type...</option>
-                                {(meta['payment_type'] || []).map((opt) => (
+                                {stored && !matched && (
+                                    <option value={stored}>{stored}</option>
+                                )}
+                                {ptOptions.map((opt) => (
                                     <option key={opt} value={opt}>{opt}</option>
                                 ))}
                             </select>
+                                );
+                            })()
                         ) : (
                             <p className="text-xs font-bold text-stone-700">{editData.payment_type || "Not Specified"}</p>
                         )}

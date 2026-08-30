@@ -99,24 +99,40 @@ export const loadBomForCustomer = async (customer, activeType) => {
         }
     }
 
+    // Set when the BOM could not be read. Callers must NOT treat the blank
+    // template below as "this customer has no BOM" when this is set - that is
+    // how a real Bill of Materials appeared to vanish.
+    let loadError = null;
+
     if (!bomData) {
         try {
-            const { data, error } = await supabase
+            // Was .maybeSingle(), which ERRORS when more than one bom row shares
+            // an admin_id. A duplicate row therefore made the BOM permanently
+            // unreadable, and the swallowed error fell through to a blank
+            // template. Take the earliest row instead, and say so.
+            const { data: rows, error } = await supabase
                 .from('bom')
                 .select('*')
                 .eq('admin_id', customer.id)
-                .maybeSingle();
+                .order('created_at', { ascending: true });
 
-            if (!error && data) {
-                bomData = data;
-                const { data: items } = await supabase
+            if (error) {
+                loadError = error;
+            } else if (rows && rows.length > 0) {
+                if (rows.length > 1) {
+                    console.warn(`Customer ${customer.id} has ${rows.length} bom rows; using the earliest. Run scripts/fix_duplicate_bom_rows.sql.`);
+                }
+                bomData = rows[0];
+                const { data: items, error: itemsError } = await supabase
                     .from('bom_items')
                     .select('*')
                     .eq('bom_id', bomData.id)
                     .order('created_at', { ascending: true });
+                if (itemsError) loadError = itemsError;
                 itemData = items;
             }
         } catch (netErr) {
+            loadError = netErr;
             console.warn('Network loadBOM error, falling back to local:', netErr);
         }
     }
@@ -133,8 +149,8 @@ export const loadBomForCustomer = async (customer, activeType) => {
     }
 
     if (!bomData && (!itemData || itemData.length === 0)) {
-        return { bom: null, items: mergeAgainstTemplate(null, template) };
+        return { bom: null, items: mergeAgainstTemplate(null, template), loadError };
     }
 
-    return { bom: bomData, items: mergeAgainstTemplate(itemData, template) };
+    return { bom: bomData, items: mergeAgainstTemplate(itemData, template), loadError };
 };

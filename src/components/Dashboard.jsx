@@ -11,7 +11,7 @@
 import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, lazyWithRetry, sanitizeAdminUpdate } from '../utils';
-import { PRIMARY_STAGES, STAGE_IDS, CUSTOMER_CARD_COLUMNS } from '../constants';
+import { PRIMARY_STAGES, STAGE_IDS, CUSTOMER_CARD_COLUMNS, ADMIN_NUMERIC_COLUMNS } from '../constants';
 import DashboardView from './DashboardView';
 import CustomerCard from './CustomerCard';
 
@@ -307,15 +307,31 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 // burst of edits now collapses into a single refresh.
                 scheduleMetricsRefresh(); 
                 
+                // Realtime delivered every row change to every client and this
+                // handler tested only `stage`. A CPO or Manager sitting on a
+                // stage could therefore receive - and open - another branch's
+                // customer. Every other portal re-tests ownership on the payload
+                // (AgentPortal, VendorPortal, StampPortal); this one did not.
+                const isVisibleToMe = (row) => {
+                    if (!row) return false;
+                    if (row.deleted_at) return false;
+                    if (user?.userType === 'admin' || user?.userType === 'sales') return true;
+                    if (isChannelPartnerOffice) {
+                        return String(row.channel_partner || '').trim().toLowerCase()
+                            === String(partnerName || '').trim().toLowerCase();
+                    }
+                    return false;
+                };
+
                 if (payload.eventType === 'INSERT') {
-                    if (payload.new.stage === selectedStage) {
+                    if (payload.new.stage === selectedStage && isVisibleToMe(payload.new)) {
                         setCustomers(prev => {
                             if (prev.some(c => c.id === payload.new.id)) return prev;
                             return [payload.new, ...prev];
                         });
                     }
                 } else if (payload.eventType === 'UPDATE') {
-                    const isInStage = payload.new.stage === selectedStage;
+                    const isInStage = payload.new.stage === selectedStage && isVisibleToMe(payload.new);
                     setCustomers(prev => {
                         const exists = prev.some(c => c.id === payload.new.id);
                         if (exists && isInStage) {
@@ -337,7 +353,10 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             if (metricsRefreshTimer.current) clearTimeout(metricsRefreshTimer.current);
             supabase.removeChannel(channel);
         };
-    }, [selectedStage]);
+        // user identity is stable for a session, but it is now read inside the
+        // handler (isVisibleToMe), so it belongs in the deps rather than being
+        // captured in a stale closure.
+    }, [selectedStage, user?.userType, isChannelPartnerOffice, partnerName]);
 
     // Sync selectedCustomer state with fresh database values when updates occur
     useEffect(() => {
@@ -377,6 +396,10 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             let query = supabase
                 .from('admin')
                 .select('id, customer_name, phone_number, consumer_no, stage')
+                // Was missing, unlike every other view. Trashed records were
+                // returned by global search and opened FULLY EDITABLE, since
+                // isFrozen keys off stage only, never deleted_at.
+                .is('deleted_at', null)
                 
 ;
                 
@@ -472,14 +495,26 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         delete cleanUpdates.updated_at;
         
         // Clean numeric fields
-        const numericFields = ['system_capacity_kwp', 'module_wp', 'no_of_modules', 'invoice_value', 'dc_cable', 'ac_cable', 'vendor_quote', 'loan_sanction_amount', 'loan_disbursed_amount', 'subsidy_amount'];
-        for (const field of numericFields) {
+        // Date columns reject '' exactly as numeric columns do. AgentPortal has
+        // had this guard since forever; this path never got it, so clearing any
+        // date (Registration Date, Delivery Date, Installation Date...) made
+        // Postgres reject the WHOLE update and every other edit in that save
+        // was lost with "Your changes were not saved".
+        Object.keys(cleanUpdates).forEach(key => {
+            if ((key === 'date' || key.endsWith('_date')) && cleanUpdates[key] === '') {
+                cleanUpdates[key] = null;
+            }
+        });
+
+        for (const field of ADMIN_NUMERIC_COLUMNS) {
             if (cleanUpdates[field] !== undefined) {
                 if (cleanUpdates[field] === '' || cleanUpdates[field] === null) {
                     cleanUpdates[field] = null;
                 } else {
+                    // parseIndianNumber returns '' for unparseable input, NOT NaN,
+                    // so isNaN() was always false and '' reached the numeric column.
                     const parsed = parseIndianNumber(cleanUpdates[field]);
-                    cleanUpdates[field] = isNaN(parsed) ? null : parsed;
+                    cleanUpdates[field] = (parsed === '' || Number.isNaN(parsed)) ? null : parsed;
                 }
             }
         }
@@ -499,13 +534,40 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         }
 
 
+        // Every key was stripped (nothing changed, or nothing was a real column).
+        // update({}) is rejected by PostgREST, which the caller then reported as
+        // "The database did not accept the changes".
+        if (Object.keys(cleanUpdates).length === 0) {
+            console.warn('handleUpdateCustomer: nothing to write after sanitising; skipping the update.');
+            return true;
+        }
+
         // 2. Background Database Save
         try {
-            const { error } = await supabase.from('admin').update(cleanUpdates).eq('id', id);
-            
-            if (!error) {
+            // .select('id') so we can tell "saved" from "matched no rows".
+            // An RLS-filtered UPDATE returns error: null with 0 rows changed, so
+            // "no error" was NOT proof of a save - the user saw success and the
+            // data was never written.
+            const { data: changed, error } = await supabase
+                .from('admin').update(cleanUpdates).eq('id', id).select('id');
+
+            if (!error && changed && changed.length > 0) {
                 syncMetadata(cleanUpdates);
                 return true;
+            } else if (!error) {
+                console.error('Update matched no rows for id', id, '- refused by RLS, or the record no longer exists.');
+                showAlert(
+                    'Your changes were not saved: the database did not accept the update. '
+                    + 'This usually means your account does not have permission to edit this record, '
+                    + 'or it has been deleted. Please refresh and check before editing again.',
+                    { type: 'error' }
+                );
+                const previousCustomer = customers.find(c => c.id === id);
+                if (previousCustomer) {
+                    setCustomers(prev => prev.map(c => c.id === id ? previousCustomer : c));
+                    if (selectedCustomer?.id === id) setSelectedCustomer(previousCustomer);
+                }
+                return false;
             } else {
                 console.error('Error updating customer in DB:', error);
                 showAlert('Database Save Error: ' + (error.message || 'Unknown database error'), { type: 'error' });
@@ -579,6 +641,42 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         const customer = customers.find(c => c.id === id);
         if (!customer) return;
         const oldStage = customer.stage;
+
+        // The customer-card stage picker wrote the new stage straight to the
+        // database with no checks, so a lead could be pushed to Registration
+        // with a blank Phone Number. The modal's "Move to next stage" button
+        // has always enforced this list (getMissingStageRequirements in
+        // CustomerDetailModal); this is the same list on the card path.
+        // Backward moves, Hold Procurement and Lost Project stay unblocked.
+        const movingForwardFromLeads =
+            oldStage === STAGE_IDS.LEADS &&
+            newStage !== STAGE_IDS.LEADS &&
+            newStage !== 'HOLD PROCUREMENT' &&
+            newStage !== STAGE_IDS.LOST_PROJECT;
+
+        if (movingForwardFromLeads) {
+            const missing = [];
+            const need = (condition, label) => { if (!condition) missing.push(label); };
+            need(customer.customer_name?.trim(), 'Customer Name');
+            need(customer.phone_number?.toString().trim(), 'Phone Number');
+            need(customer.consumer_no?.toString().trim(), 'Consumer Number');
+            need(customer.villages?.trim(), 'Village / Address');
+            need(customer.channel_partner?.trim(), 'Channel Partner Name');
+            need(customer.module_brand?.trim(), 'Module Brand');
+            need(customer.module_wp?.toString().trim(), 'Module WP');
+            need(customer.no_of_modules?.toString().trim(), 'Number of Modules');
+            need(customer.system_capacity_kwp, 'System Capacity');
+            need(customer.sub_divisions?.trim(), 'Sub Division');
+            need(customer.payment_type?.trim(), 'Payment Type');
+
+            if (missing.length > 0) {
+                showAlert(
+                    `This lead is not ready to move to ${newStage}. Please complete:\n\n• ${missing.join('\n• ')}\n\nOpen the customer to fill these in.`,
+                    { title: 'Lead details incomplete', type: 'warning' }
+                );
+                return;
+            }
+        }
 
         // Extract old remark before clearing it from the JSON mapping
         const oldRemark = (typeof customer.stages_remarks === 'object' && customer.stages_remarks ? customer.stages_remarks[oldStage] : '') || '';

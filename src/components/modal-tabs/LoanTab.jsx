@@ -197,7 +197,7 @@ export default function LoanTab({
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="p-1">
-                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Jansamarth Application No</p>
+                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Jansamarth Application No <span className="text-red-500 font-bold">*</span></p>
                                 {isEditingAppDetails ? (
                                     <input 
                                         type="text" 

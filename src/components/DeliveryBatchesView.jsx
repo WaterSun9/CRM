@@ -214,15 +214,26 @@ export default function DeliveryBatchesView({
     // rows. `updatedBatches` is still used for the local UI state and
     // localStorage cache, which have no such type constraint.
     const saveBatchesState = async (updatedBatches, previousBatches, changedBatch) => {
+        // React state updates optimistically for responsiveness, but the
+        // localStorage cache must NOT be written until the database has accepted
+        // it. It used to be written first and never rolled back, so a batch that
+        // failed to save stayed in the cache - and fetchBatches falls back to
+        // that cache whenever the database read fails, resurrecting a batch that
+        // never existed as though it were real.
         setBatches(updatedBatches);
-        localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
         try {
             const { error } = await supabase.from('delivery_batches').upsert([changedBatch]);
             if (error) throw error;
+            localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
             return true;
         } catch (e) {
             console.error('Failed to sync delivery batch to the database:', e);
-            setBatches(previousBatches ?? batches);
+            const reverted = previousBatches ?? batches;
+            setBatches(reverted);
+            // Keep the cache consistent with what actually persisted.
+            try {
+                localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(reverted));
+            } catch { /* cache is best-effort */ }
             showAlert('Failed to save this batch to the shared database: ' + (e.message || 'Unknown error') + '. Nothing was saved - please try again.', { type: 'error' });
             return false;
         }

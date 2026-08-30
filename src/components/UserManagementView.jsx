@@ -568,6 +568,19 @@ export default function UserManagementView({ currentUser }) {
     const [toast, setToast] = useState(null); // { type: 'success' | 'error', message }
     const [editingEmailId, setEditingEmailId] = useState(null);
     const [tempEmail, setTempEmail] = useState('');
+    const [editingNameId, setEditingNameId] = useState(null);
+    const [tempName, setTempName] = useState('');
+    // DISABLED for the launch (2026-08-30).
+    // profiles.name is what RLS matches on (admin.sub_channel_partner for
+    // agent/agent2, admin.vendor for vendors), so a rename has to rewrite the
+    // name across every linked customer record. The cascade below is written
+    // and error-checked, but it is a large multi-row write on live data and a
+    // half-applied rename would silently hide records from that user.
+    //
+    // Proper fix is the UUID migration - see MIGRATION_PLAN_uuid_identity.md.
+    // After that, renaming is a single profiles.name update and this can be
+    // switched on permanently.
+    const ALLOW_NAME_EDIT = false;
     const [editingPartnerId, setEditingPartnerId] = useState(null);
     const [tempPartner, setTempPartner] = useState('');
     const [pwdResetUser, setPwdResetUser] = useState(null);
@@ -740,6 +753,74 @@ export default function UserManagementView({ currentUser }) {
         } catch (err) {
             console.error('Failed to update email:', err);
             showToast('error', err.message || 'Failed to update email');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    // ─── Update User Name ───────────────────────────────────────────────────────
+    // profiles.name is not just a label: RLS matches get_my_name() against
+    // admin.sub_channel_partner for agent/agent2 and against admin.vendor for
+    // vendors. Renaming without cascading would leave the user unable to see
+    // their own records, so the rename carries through to those columns too.
+    const handleUpdateName = async (profileId, newName) => {
+        const cleanName = (newName || '').trim();
+        const profile = profiles.find(p => p.id === profileId);
+        const oldName = (profile?.name || '').trim();
+
+        if (!cleanName) {
+            showToast('error', 'Name cannot be empty.');
+            return;
+        }
+        if (cleanName === oldName) {
+            setEditingNameId(null);
+            return;
+        }
+
+        setActionLoading(profileId);
+        try {
+            if (!String(profileId).startsWith('dev-')) {
+                const { error: nameErr } = await supabase
+                    .from('profiles')
+                    .update({ name: cleanName })
+                    .eq('id', profileId);
+                if (nameErr) throw nameErr;
+
+                const type = profile?.user_type;
+
+                // Dealer / Channel Partner: their leads are scoped by name.
+                if ((type === 'agent' || type === 'agent2') && oldName) {
+                    const { error: leadErr } = await supabase
+                        .from('admin')
+                        .update({ sub_channel_partner: cleanName })
+                        .ilike('sub_channel_partner', oldName);
+                    if (leadErr) throw leadErr;
+                }
+
+                // Vendor: their jobs are scoped by name, and the vendors
+                // directory holds the same name.
+                if (type === 'vendor' && oldName) {
+                    const { error: jobErr } = await supabase
+                        .from('admin')
+                        .update({ vendor: cleanName })
+                        .ilike('vendor', oldName);
+                    if (jobErr) throw jobErr;
+
+                    const { error: dirErr } = await supabase
+                        .from('vendors')
+                        .update({ name: cleanName })
+                        .ilike('name', oldName);
+                    if (dirErr) console.warn('Vendor directory name not updated:', dirErr.message);
+                }
+            }
+
+            setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, name: cleanName } : p));
+            showToast('success', 'Name updated successfully');
+            setEditingNameId(null);
+            logActivity(currentUser?.id || 'admin', 'update', `Renamed user "${oldName}" to "${cleanName}"`, '');
+        } catch (err) {
+            console.error('Failed to update name:', err);
+            showToast('error', `Failed to update name: ${err.message}`);
         } finally {
             setActionLoading(null);
         }
@@ -939,7 +1020,56 @@ export default function UserManagementView({ currentUser }) {
                                                 {profile.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}
                                             </div>
                                             <div className="min-w-0">
-                                                <p className={`text-xs font-bold ${isInactive ? 'text-stone-400' : 'text-stone-900'}`}>{profile.name || 'Unnamed'}</p>
+                                                {ALLOW_NAME_EDIT && editingNameId === profile.id ? (
+                                                    <div className="flex items-center gap-1.5 max-w-xs animate-in fade-in duration-150">
+                                                        <input
+                                                            type="text"
+                                                            value={tempName}
+                                                            autoFocus
+                                                            onChange={e => setTempName(e.target.value)}
+                                                            onKeyDown={e => {
+                                                                if (e.key === 'Enter') handleUpdateName(profile.id, tempName);
+                                                                if (e.key === 'Escape') setEditingNameId(null);
+                                                            }}
+                                                            className="flex-1 min-w-0 px-2 py-1 border border-amber-300 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                                            placeholder="Full name"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            disabled={isUpdating}
+                                                            onClick={() => handleUpdateName(profile.id, tempName)}
+                                                            className="text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-1 rounded-md transition disabled:opacity-50 cursor-pointer"
+                                                            title="Save name"
+                                                        >
+                                                            <Check className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEditingNameId(null)}
+                                                            className="text-stone-400 hover:text-stone-600 p-1 rounded-md transition cursor-pointer"
+                                                            title="Cancel"
+                                                        >
+                                                            <X className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-1.5 group/name">
+                                                        <p className={`text-xs font-bold ${isInactive ? 'text-stone-400' : 'text-stone-900'}`}>{profile.name || 'Unnamed'}</p>
+                                                        {ALLOW_NAME_EDIT && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditingNameId(profile.id);
+                                                                setTempName(profile.name || '');
+                                                            }}
+                                                            className="opacity-0 group-hover/name:opacity-100 text-stone-300 hover:text-amber-600 transition-all p-0.5 rounded cursor-pointer"
+                                                            title="Edit name"
+                                                        >
+                                                            <Edit2 className="w-3 h-3" />
+                                                        </button>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 {editingEmailId === profile.id ? (
                                                     <div className="flex items-center gap-1.5 mt-1 max-w-xs animate-in fade-in duration-150">
                                                         <input

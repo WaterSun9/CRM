@@ -40,8 +40,12 @@ const STAGE_FIELDS = {
     ],
     [STAGE_IDS.INSTALLATION_STATUS]: [
         ['Installation Status', 'installation_status'], ['Installation Date', 'installation_date'],
-        ['Assigned Vendor', 'vendor'], ['Vendor Quote', 'vendor_quote'], ['Vendor Note / Give-up Reason', 'vendor_note'],
-        ['Give-up Approved', 'vendor_give_up_approved'], ['Vendor Paid Date', 'vendor_paid_date'],
+        // Vendor Quote and Vendor Paid Date are deliberately NOT here: the
+        // commission is admin-only (MaterialDeliveryTab gates it on
+        // user?.userType === 'admin'), and this component renders inside the
+        // Dealer / Channel Partner portal.
+        ['Assigned Vendor', 'vendor'], ['Vendor Note / Give-up Reason', 'vendor_note'],
+        ['Give-up Approved', 'vendor_give_up_approved'],
         ['Installation Note', 'installation_note'], ['Material Delivery Date', 'material_delivery_date'],
     ],
     [STAGE_IDS.GEO_TAG_PHOTO]: [

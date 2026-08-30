@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User, Edit3 } from 'lucide-react';
+import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User, Edit3, IndianRupee, Calendar } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
+import { formatInputValue } from '../../utils';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
@@ -279,6 +280,63 @@ export default function MaterialDeliveryTab({
                     </div>
                 </div>
                 
+                {/* Vendor Commercials & Payout (Admin Only).
+                    Moved here from Installation Status - the commission and the
+                    payout status belong with the delivery record. */}
+                {user?.userType === 'admin' && (
+                    <div className="pt-4 mt-4 border-t border-stone-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                                <IndianRupee size={11} /> Commission / Vendor Quote (₹)
+                            </label>
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                disabled={!isEditable}
+                                placeholder="Enter vendor quote..."
+                                value={editData.vendor_quote !== undefined && editData.vendor_quote !== null && editData.vendor_quote !== '' ? formatInputValue(editData.vendor_quote) : ''}
+                                onChange={e => setEditData(prev => ({ ...prev, vendor_quote: formatInputValue(e.target.value) }))}
+                                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                                <Calendar size={11} /> Vendor Payment Status
+                            </label>
+                            <select
+                                disabled={!isEditable}
+                                value={(editData.vendor_payment_status || 'Pending') === 'Paid' ? 'Paid' : 'Pending'}
+                                onChange={e => {
+                                    const isPaid = e.target.value === 'Paid';
+                                    // Mirror the Installation Payments ledger: the paid
+                                    // date and who marked it are set together, and both
+                                    // are cleared when it goes back to Unpaid.
+                                    setEditData(prev => ({
+                                        ...prev,
+                                        vendor_payment_status: isPaid ? 'Paid' : 'Pending',
+                                        vendor_paid_date: isPaid ? new Date().toISOString().split('T')[0] : null,
+                                        vendor_paid_by: isPaid ? (user?.name || 'Admin') : null,
+                                    }));
+                                }}
+                                className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-amber-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
+                                    (editData.vendor_payment_status || 'Pending') === 'Paid'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}
+                            >
+                                <option value="Pending">Unpaid</option>
+                                <option value="Paid">Paid</option>
+                            </select>
+                            {editData.vendor_paid_date && (
+                                <p className="text-[9px] text-stone-400 font-semibold mt-1">
+                                    Paid on {editData.vendor_paid_date}
+                                    {editData.vendor_paid_by ? ` by ${editData.vendor_paid_by}` : ''}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* 5 Delivery Metadata Cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                     <EditableDetailItem 

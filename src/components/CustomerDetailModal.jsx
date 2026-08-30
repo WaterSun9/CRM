@@ -126,6 +126,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const loadedUpdatedAtRef = useRef(customer?.updated_at || null);
     const [concurrentConflict, setConcurrentConflict] = useState(null);
     const [remoteUpdateAlert, setRemoteUpdateAlert] = useState(false);
+    // TEMPORARILY DISABLED for the launch (2026-08-30).
+    // The "a colleague just saved changes" banner was firing for single editors.
+    // Three causes were fixed (client-clock baseline, pre-coercion baseline, and
+    // realtime echoing our own writes) but that work is not yet proven in
+    // production, so the banner stays hidden rather than alarming users.
+    // The realtime SYNC below still runs - only the banner is suppressed.
+    // Flip to true to re-enable once the fixes have been verified live.
+    const SHOW_REMOTE_UPDATE_ALERT = false;
     // Realtime fires for EVERY update to this row, our own included. Stamp the
     // time of our own writes so the echo is not reported to the user as
     // "a colleague updated this record".
@@ -482,20 +490,26 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
         setUploading(true);
         try {
-            // Delete old document if replacing or if field already had a document
-            if (replacingDocId) {
-                const oldDoc = documents.find(d => d.id === replacingDocId);
-                if (oldDoc) {
-                    deleteDocument(oldDoc.id, oldDoc.storage_path);
-                }
-            } else if (docType) {
-                const existingDocs = documents.filter(d => d.doc_type === docType);
-                for (const oldDoc of existingDocs) {
-                    deleteDocument(oldDoc.id, oldDoc.storage_path);
+            // Upload FIRST, delete the old one only once the new file exists.
+            // Previously the old document was deleted before the upload - and
+            // not even awaited - so a failed upload left the customer with no
+            // document at all and nothing to recover.
+            const newDoc = await uploadDocument(file, customer.id, docType, user?.id);
+
+            if (newDoc) {
+                const supersededDocs = replacingDocId
+                    ? documents.filter(d => d.id === replacingDocId)
+                    : (docType ? documents.filter(d => d.doc_type === docType && d.id !== newDoc.id) : []);
+                for (const oldDoc of supersededDocs) {
+                    try {
+                        await deleteDocument(oldDoc.id, oldDoc.storage_path);
+                    } catch (delErr) {
+                        // The new file is safely stored; a stale old row is a
+                        // tidiness problem, not a data-loss one.
+                        console.warn('New document saved, but removing the previous one failed:', delErr);
+                    }
                 }
             }
-
-            const newDoc = await uploadDocument(file, customer.id, docType, user?.id);
             if (newDoc) {
                 setDocuments(prev => [
                     newDoc,
@@ -889,6 +903,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(hasApplicationAcknowledgment, 'Application Acknowledgment');
                 break;
             case STAGE_IDS.LOAN:
+                requireField(editData.jansamarth_application_no?.toString().trim(), 'Jansamarth Application No');
                 requireField(hasVendorFeasibility, 'Vendor Feasibility');
                 requireField(hasSiteFeasibility, 'Site Feasibility');
                 break;
@@ -1073,25 +1088,40 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         delete updates.crn;
         delete updates.updated_at;
 
+        // Send only what actually changed, plus the stage and its remarks.
+        // This used to spread the whole record (~89 columns), so advancing a
+        // stage wrote every stale field over whatever a colleague had just
+        // saved.
+        const changedKeys = getChangedFields(updates, savedDataRef.current);
+        const narrowed = {};
+        changedKeys.forEach(key => { narrowed[key] = updates[key]; });
+        narrowed.stage = destStageId;
+        narrowed.stages_remarks = updatedRemarks;
+
         setEditingSection(null);
         setEditData(updates);
-        setActiveTab(destStageId);
-        
-        // Fire and forget in the background to avoid 2-second UI freeze
-        (async () => {
-            const promises = [
-                onUpdate(customer.id, updates),
-                logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${destStageId}`, '', customer.id)
-            ];
+
+        // onUpdate RESOLVES with false on failure - it does not reject - so the
+        // old .catch() could never fire and the modal moved the customer into
+        // the new stage even when the write had failed. Await the result and
+        // only advance the UI once the database has accepted it.
+        lastSelfWriteRef.current = Date.now();
+        try {
+            const ok = await onUpdate(customer.id, narrowed);
+            if (ok === false) throw new Error('The database did not accept the stage change.');
+
+            savedDataRef.current = { ...savedDataRef.current, ...narrowed };
+            setActiveTab(destStageId);
+
+            void logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${destStageId}`, '', customer.id);
             if (changeSummary.length > 0) {
-                promises.push(logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id));
+                void logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id);
             }
-            await Promise.all(promises);
-            fetchLogs();
-        })().catch(err => {
-            console.error("Background save error:", err);
-            showAlert("Warning: the stage change may not have saved correctly (" + (err.message || "unknown error") + "). Please refresh and verify before continuing.", { type: 'error' });
-        });
+            void fetchLogs();
+        } catch (err) {
+            console.error('Stage advance failed:', err);
+            showAlert(`The stage was NOT changed.\n\n${err.message || 'Unknown error'}`, { type: 'error' });
+        }
         setSaving(false);
     };
 
@@ -1154,19 +1184,27 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         const remoteChangedSet = getChangedFields(serverRecord, savedDataRef.current);
 
                         const localChanges = Array.from(localChangedSet);
-                        const remoteChanges = Array.from(remoteChangedSet);
 
                         const overlappingFields = localChanges.filter(
                             k => remoteChangedSet.has(k) && JSON.stringify(serverRecord[k]) !== JSON.stringify(updates[k])
                         );
 
-                        if (localChanges.length > 0 && remoteChanges.length > 0) {
+                        // A conflict only exists when we and the server changed the
+                        // SAME field to DIFFERENT values - that is `overlappingFields`,
+                        // which was already computed above and then ignored.
+                        //
+                        // The old test (both sides differ from the baseline) fired
+                        // whenever the baseline was stale, because BOTH sides then
+                        // differ from it even when they are identical to each other.
+                        // That is why the dialog listed fields whose two values were
+                        // the same: STAGE "REGISTRATION" vs "REGISTRATION".
+                        if (overlappingFields.length > 0) {
                             setSaving(false);
                             setConcurrentConflict({
                                 serverData: serverRecord,
                                 localUpdates: updates,
-                                localChanges,
-                                remoteChanges,
+                                localChanges: overlappingFields,
+                                remoteChanges: overlappingFields,
                                 overlappingFields,
                                 serverUpdatedAt: serverRecord.updated_at
                             });
@@ -1289,6 +1327,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             // so carry it whenever it differs from what we loaded.
             if (updates.stage !== undefined && updates.stage !== savedDataRef.current?.stage) {
                 narrowedUpdates.stage = updates.stage;
+            }
+
+            // Nothing actually changed - there is nothing to send. Writing an
+            // empty object makes PostgREST reject the request, which surfaced as
+            // "The database did not accept the changes" on a save where the user
+            // had changed nothing (or only fields that are not real columns).
+            if (Object.keys(narrowedUpdates).length === 0) {
+                setEditingSection(null);
+                setIsFormDirty(false);
+                setSaved(true);
+                setSaving(false);
+                return true;
             }
 
             lastSelfWriteRef.current = Date.now();
@@ -1470,8 +1520,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-5xl h-[94vh] overflow-hidden flex flex-col border border-stone-100">
 
-                {/* Realtime Remote Conflict Alert Banner */}
-                {remoteUpdateAlert && (
+                {/* Realtime Remote Conflict Alert Banner - see SHOW_REMOTE_UPDATE_ALERT */}
+                {SHOW_REMOTE_UPDATE_ALERT && remoteUpdateAlert && (
                     <div className="bg-amber-500 text-white px-6 py-2.5 text-xs font-semibold flex items-center justify-between shadow-inner shrink-0 animate-fadeIn">
                         <div className="flex items-center gap-2">
                             <AlertTriangle className="w-4 h-4 text-amber-200 shrink-0" />
@@ -1485,15 +1535,23 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     const localChangedSet = getChangedFields(editData, savedDataRef.current);
                                     const remoteChangedSet = getChangedFields(data, savedDataRef.current);
                                     const localChanges = Array.from(localChangedSet);
-                                    const remoteChanges = Array.from(remoteChangedSet);
+                                    // Same rule as the save path: only fields we and the
+                                    // server both changed, to DIFFERENT values, are a
+                                    // real conflict. Everything else can just sync.
                                     const overlappingFields = localChanges.filter(
                                         k => remoteChangedSet.has(k) && JSON.stringify(data[k]) !== JSON.stringify(editData[k])
                                     );
+                                    if (overlappingFields.length === 0) {
+                                        savedDataRef.current = { ...data };
+                                        loadedUpdatedAtRef.current = data.updated_at || loadedUpdatedAtRef.current;
+                                        setRemoteUpdateAlert(false);
+                                        return;
+                                    }
                                     setConcurrentConflict({
                                         serverData: data,
                                         localUpdates: editData,
-                                        localChanges,
-                                        remoteChanges,
+                                        localChanges: overlappingFields,
+                                        remoteChanges: overlappingFields,
                                         overlappingFields,
                                         serverUpdatedAt: data.updated_at
                                     });

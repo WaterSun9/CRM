@@ -464,6 +464,29 @@ export const ADMIN_COLUMNS = new Set([
     'warranty_card'
 ]);
 
+// Numeric / integer columns on `admin`, verified against the live schema on
+// 2026-08-30. An empty string sent to any of these is rejected by Postgres
+// ("invalid input syntax for type numeric"), so callers must convert '' to null.
+//
+// The previous hand-written list was missing phone_number, folder_no,
+// driver_phone_number and both structure leg heights - so simply CLEARING any
+// of those fields made the whole save fail. It also listed three columns
+// (loan_sanction_amount, loan_disbursed_amount, subsidy_amount) that do not exist.
+export const ADMIN_NUMERIC_COLUMNS = [
+    'ac_cable',
+    'dc_cable',
+    'driver_phone_number',
+    'folder_no',
+    'invoice_value',
+    'module_wp',
+    'no_of_modules',
+    'phone_number',
+    'structure_front_leg_height',
+    'structure_rear_leg_height',
+    'system_capacity_kwp',
+    'vendor_quote',
+];
+
 export const DEFAULT_PAGE_SIZE = 50;
 
 // Optimized Column Selectors for List Views (prevents downloading 67+ full columns)

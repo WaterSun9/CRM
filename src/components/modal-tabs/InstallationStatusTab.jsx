@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ClipboardList, Save, Building2, Mail, AlertTriangle, CheckCircle2, User, Calendar, FileText, Truck, IndianRupee } from 'lucide-react';
 import { supabase } from '../../supabase';
-import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
+
 import { CheckboxRemarkItem } from './shared';
 import { INSTALLATION_TAGS, isFinalTagValue } from '../../constants';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
@@ -66,16 +66,11 @@ export default function InstallationStatusTab({
 
     const handleSaveInstallationDetails = async () => {
         setSaving(true);
-        const parsedQuote = editData.vendor_quote !== undefined && editData.vendor_quote !== '' && editData.vendor_quote !== null
-            ? parseIndianNumber(editData.vendor_quote)
-            : null;
 
         const updates = {
             installation_status: editData.installation_status || null,
             installation_date: editData.installation_date || null,
             vendor: editData.vendor || null,
-            vendor_quote: parsedQuote,
-            vendor_paid_date: editData.vendor_paid_date || null,
             installation_note: editData.installation_note || null,
             vendor_note: editData.vendor_note || null,
             vendor_give_up_approved: editData.vendor_give_up_approved ?? customer.vendor_give_up_approved ?? false
@@ -87,12 +82,6 @@ export default function InstallationStatusTab({
             logMsg += ` (Date: ${editData.installation_date || 'N/A'}, Installed By Vendor: ${editData.vendor || 'N/A'})`;
         } else if (editData.installation_status === 'Giveup') {
             logMsg += ` (Vendor Give Up - Allotted Vendor: ${editData.vendor || 'None'})`;
-        }
-        if (parsedQuote !== null) {
-            logMsg += ` (Vendor Quote: ₹${toIndianCommas(parsedQuote)})`;
-        }
-        if (editData.vendor_paid_date) {
-            logMsg += ` (Vendor Paid Date: ${editData.vendor_paid_date})`;
         }
         if (editData.installation_note) {
             logMsg += ` [Note: ${editData.installation_note}]`;
@@ -164,8 +153,6 @@ export default function InstallationStatusTab({
                         (editData.installation_status !== customer.installation_status) ||
                         (editData.installation_date !== customer.installation_date) ||
                         (editData.vendor !== customer.vendor) ||
-                        (editData.vendor_quote !== customer.vendor_quote) ||
-                        (editData.vendor_paid_date !== customer.vendor_paid_date) ||
                         (editData.installation_note !== customer.installation_note) ||
                         (editData.vendor_note !== customer.vendor_note)
                     ) && (
@@ -432,60 +419,6 @@ export default function InstallationStatusTab({
                                 <Building2 size={13} className="text-amber-600 flex-shrink-0" />
                                 <span>{currentVendor || 'No vendor allotted yet'}</span>
                             </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Vendor Commercials & Payout Details (Admin Only) */}
-                {isAdmin && (
-                    <div className="pt-4 border-t border-stone-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1 flex items-center gap-1">
-                                <IndianRupee size={11} /> Commission / Vendor Quote (₹)
-                            </label>
-                            <input
-                                type="text"
-                                inputMode="decimal"
-                                disabled={!isEditable}
-                                placeholder="Enter vendor quote..."
-                                value={editData.vendor_quote !== undefined && editData.vendor_quote !== null && editData.vendor_quote !== '' ? formatInputValue(editData.vendor_quote) : ''}
-                                onChange={e => setEditData(prev => ({ ...prev, vendor_quote: formatInputValue(e.target.value) }))}
-                                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
-                            />
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1 flex items-center gap-1">
-                                <Calendar size={11} /> Vendor Paid
-                            </label>
-                            {editData.vendor_paid_date ? (
-                                <div className="flex items-center gap-2">
-                                    <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl px-3 py-2 text-xs font-bold">
-                                        <CheckCircle2 size={13} className="text-emerald-600" />
-                                        Paid — {editData.vendor_paid_date}
-                                    </span>
-                                    {isEditable && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setEditData(prev => ({ ...prev, vendor_paid_date: null }))}
-                                            className="text-[9px] font-bold text-stone-400 hover:text-rose-600 underline cursor-pointer transition-colors"
-                                        >
-                                            Undo
-                                        </button>
-                                    )}
-                                </div>
-                            ) : (
-                                <button
-                                    type="button"
-                                    disabled={!isEditable}
-                                    onClick={() => {
-                                        const today = new Date().toISOString().split('T')[0];
-                                        setEditData(prev => ({ ...prev, vendor_paid_date: today }));
-                                    }}
-                                    className="w-full bg-stone-50 hover:bg-emerald-50 border border-stone-200 hover:border-emerald-300 rounded-xl px-3 py-2 text-xs font-bold text-stone-500 hover:text-emerald-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-stone-50 disabled:hover:border-stone-200 disabled:hover:text-stone-500"
-                                >
-                                    <IndianRupee size={12} /> Mark as Paid
-                                </button>
-                            )}
                         </div>
                     </div>
                 )}

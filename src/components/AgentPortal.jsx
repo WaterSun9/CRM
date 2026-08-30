@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, diffAdminUpdates } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
-import { PRIMARY_STAGES, STAGE_IDS } from '../constants';
+import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS } from '../constants';
 import AddLeadModal from './AddLeadModal';
 import { FilePreviewModal, CheckboxRemarkItem } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
@@ -305,6 +305,17 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         Object.keys(cleanUpdates).forEach(key => {
             if ((key === 'date' || key.endsWith('_date')) && cleanUpdates[key] === '') {
                 cleanUpdates[key] = null;
+            }
+        });
+        // Numeric columns reject '' the same way date columns do. Clearing a
+        // phone number or folder number here used to fail the entire save.
+        ADMIN_NUMERIC_COLUMNS.forEach(field => {
+            if (cleanUpdates[field] === '' || cleanUpdates[field] === null) {
+                cleanUpdates[field] = null;
+            } else if (cleanUpdates[field] !== undefined) {
+                // parseIndianNumber returns '' for unparseable input, not NaN.
+                const parsed = parseIndianNumber(cleanUpdates[field]);
+                cleanUpdates[field] = (parsed === '' || Number.isNaN(parsed)) ? null : parsed;
             }
         });
         try {

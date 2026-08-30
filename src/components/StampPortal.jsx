@@ -34,8 +34,14 @@ function RemarkRow({ customerId, initialRemark, userId, customerName }) {
     const handleSave = async () => {
         setSaving(true);
         try {
-            const { data: existing } = await supabase.from("admin")
+            // The read error was discarded here. On failure `existing` is null and
+            // the spread below produced { stamp_remark } alone - overwriting the
+            // ENTIRE discom_submission JSON (agreement parties, stamp value,
+            // stamp_sent, who completed it). Same bug that was already fixed in
+            // handleSendToDocumentMaking; this copy was missed.
+            const { data: existing, error: readErr } = await supabase.from("admin")
                 .select("discom_submission").eq("id", customerId).single();
+            if (readErr) throw readErr;
             const merged = { ...(existing?.discom_submission || {}), stamp_remark: remark };
             const { error } = await supabase.from("admin").update({ discom_submission: merged }).eq("id", customerId);
             if (error) throw error;
@@ -158,8 +164,16 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
         e.target.value = "";
         setUploading(true);
         try {
-            if (stampDoc) await deleteDocument(stampDoc.id, stampDoc.storage_path);
-            await uploadDocument(file, cust.id, "pm_surya_ghar_stamp", user.id);
+            // Upload FIRST - deleting the old stamp before the new one existed
+            // meant a failed upload left the customer with no stamp document.
+            const newStampDoc = await uploadDocument(file, cust.id, "pm_surya_ghar_stamp", user.id);
+            if (stampDoc && newStampDoc && stampDoc.id !== newStampDoc.id) {
+                try {
+                    await deleteDocument(stampDoc.id, stampDoc.storage_path);
+                } catch (delErr) {
+                    console.warn('New stamp saved, but removing the previous one failed:', delErr);
+                }
+            }
             // Unchecked before: the file uploaded but the checklist flag silently
             // failed to set, so the office saw no stamp against the customer.
             const { error: flagErr } = await supabase.from("admin")
@@ -451,7 +465,16 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
             // Only show customers sent to stamp maker and not yet finished
             // sent_to_stamp_maker is now filtered server-side; "not yet stamped"
             // stays here because the column is JSON and the flag is often absent.
-            const active = (data || []).filter(c => !c.discom_submission?.stamp_sent);
+            // Only work assigned to this stamp maker. Records sent before
+            // assignment existed have no assigned_stamp_maker, so they stay
+            // visible to everyone rather than disappearing from the queue.
+            const myName = String(user?.name || '').trim().toLowerCase();
+            const active = (data || []).filter(c => {
+                const sub = c.discom_submission || {};
+                if (sub.stamp_sent) return false;
+                const assigned = String(sub.assigned_stamp_maker || '').trim().toLowerCase();
+                return !assigned || assigned === myName;
+            });
             setCustomers(active);
             if (active.length > 0) {
                 const results = await Promise.all(
@@ -466,7 +489,7 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [user?.name]);
 
     useEffect(() => {
         fetchCustomers();
@@ -579,7 +602,15 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                 .eq("discom_submission->>stamp_sent", "true")
                 .is("deleted_at", null);
             if (error) throw error;
-            const rows = (data || []).map(r => {
+            const myName = String(user?.name || '').trim().toLowerCase();
+            const rows = (data || [])
+                .filter(r => {
+                    const assigned = String(r.discom_submission?.assigned_stamp_maker || '').trim().toLowerCase();
+                    const completedBy = String(r.discom_submission?.stamp_completed_by || '').trim().toLowerCase();
+                    // Mine if it was assigned to me, or if I completed it.
+                    return (!assigned && !completedBy) || assigned === myName || completedBy === myName;
+                })
+                .map(r => {
                 const sub = r.discom_submission || {};
                 const completedAt = sub.stamp_completed_at ? new Date(sub.stamp_completed_at) : null;
                 const valid = completedAt && !isNaN(completedAt.getTime());
@@ -602,7 +633,7 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
         } finally {
             setLoadingRecords(false);
         }
-    }, [showAlert]);
+    }, [showAlert, user?.name]);
 
     useEffect(() => {
         if (view === 'record' && completedRecords.length === 0) fetchCompletedRecords();

@@ -5,6 +5,7 @@ import { SectionHeader, EditableDetailItem } from './shared';
 import BomPrintModal from '../BomPrintModal';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, COMMON_BOM_ITEMS } from '../../constants';
 import { loadBomForCustomer, getBomTemplateForType } from '../../utils/bom';
+import { useGlobalPopup } from '../GlobalPopup';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
@@ -49,6 +50,14 @@ export default function MaterialIntegrationTab({
     saveBomRef,
     onDirty
 }) {
+    const { showAlert } = useGlobalPopup();
+    // The BOM is fetched after the first paint, so these fields rendered as "–"
+    // for a moment before the real values arrived - which read as data loss.
+    const [loadingBom, setLoadingBom] = useState(true);
+    // True when the BOM could not be read. The tab then shows the blank
+    // template, and saving would replace the real bom_items with template
+    // defaults - so saveBOM refuses while this is set.
+    const bomLoadFailedRef = useRef(false);
     const [bom, setBom] = useState(null);
     const [bomItems, setBomItems] = useState([]);
     const [paperPreparedBy, setPaperPreparedBy] = useState('');
@@ -154,8 +163,17 @@ export default function MaterialIntegrationTab({
 
     const loadBOM = async () => {
         if (!customer?.id) return;
+        setLoadingBom(true);
+        bomLoadFailedRef.current = false;
         try {
-            const { bom: bomData, items } = await loadBomForCustomer({ ...customer, ...editData }, activeType);
+            const { bom: bomData, items, loadError } = await loadBomForCustomer({ ...customer, ...editData }, activeType);
+            bomLoadFailedRef.current = !!loadError;
+            if (loadError) {
+                showAlert(
+                    'The Bill of Materials could not be loaded, so a blank template is shown. Do NOT save over it - your existing BOM is still in the database. Please reload and try again.',
+                    { title: 'BOM not loaded', type: 'error' }
+                );
+            }
             setPaperPreparedBy(bomData?.paper_prepared_by || '');
             setPaperPreparedDate(bomData?.paper_prepared_date || '');
             setMaterialLoadedBy(bomData?.material_loaded_by || '');
@@ -164,6 +182,8 @@ export default function MaterialIntegrationTab({
             setBomItems(items);
         } catch (err) {
             console.error('loadBOM exception:', err);
+        } finally {
+            setLoadingBom(false);
         }
     };
 
@@ -212,6 +232,18 @@ export default function MaterialIntegrationTab({
         const targetCust = state.customer || customer;
         if (!targetCust?.id) return true;
 
+        // The BOM on screen is a blank template because the read failed, not
+        // because this customer has no BOM. Saving it would delete the real
+        // bom_items and insert template defaults - and CustomerDetailModal
+        // calls this on EVERY save while the tab is mounted, so editing any
+        // unrelated field was enough to wipe it. Refuse instead.
+        if (bomLoadFailedRef.current) {
+            throw new Error(
+                'The Bill of Materials could not be loaded, so it was not saved over. '
+                + 'Close and reopen this customer, then try again.'
+            );
+        }
+
         setActionSaving(true);
         let hadWriteError = false;
 
@@ -221,25 +253,40 @@ export default function MaterialIntegrationTab({
             const prepDate = state.paperPreparedDate || null;
             const loadBy = state.materialLoadedBy || null;
             const loadDate = state.materialLoadedDate || null;
-            let currentBomId = state.bom?.id;
+            // A localStorage fallback stores a fabricated id ("bom-<uuid>"), which
+            // is not a real row. Using it made .update().eq('id', ...) match ZERO
+            // rows - no error, no rows changed - so the milestones silently never
+            // saved, and the fake id kept coming back from localStorage.
+            const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const rawBomId = state.bom?.id;
+            let currentBomId = UUID_RE.test(String(rawBomId || '')) ? rawBomId : null;
+            if (rawBomId && !currentBomId) {
+                console.warn('Ignoring non-UUID bom id from local cache:', rawBomId);
+            }
             const items = state.bomItems || [];
 
             // 1. Check if a bom record exists for this customer if we don't have an ID
             if (!currentBomId) {
-                const { data: existing } = await supabase
+                // The error was not captured here. A failed read left `existing`
+                // undefined, so the code below INSERTED a second bom row for the
+                // same customer - and once two rows share an admin_id the BOM can
+                // never be read back, which is how Material Integration data
+                // "disappeared". Never insert because a read failed.
+                const { data: existingRows, error: existingErr } = await supabase
                     .from('bom')
                     .select('id')
                     .eq('admin_id', targetCust.id)
-                    .maybeSingle();
+                    .order('created_at', { ascending: true });
 
-                if (existing?.id) {
-                    currentBomId = existing.id;
+                if (existingErr) throw existingErr;
+                if (existingRows && existingRows.length > 0) {
+                    currentBomId = existingRows[0].id;
                 }
             }
 
             // 2. Update or Insert the parent bom record
             if (currentBomId) {
-                const { error: updateErr } = await supabase
+                const { data: updatedRows, error: updateErr } = await supabase
                     .from('bom')
                     .update({
                         bom_type: currentType,
@@ -248,11 +295,37 @@ export default function MaterialIntegrationTab({
                         material_loaded_by: loadBy,
                         material_loaded_date: loadDate
                     })
-                    .eq('id', currentBomId);
+                    .eq('id', currentBomId)
+                    .select('id');
 
-                if (updateErr) { console.warn('Supabase bom update error:', updateErr); hadWriteError = true; }
+                if (updateErr) {
+                    console.error('Supabase bom update error:', updateErr);
+                    hadWriteError = true;
+                } else if (updatedRows && updatedRows.length > 0) {
+                    // Keep local `bom` current - it was only ever set on load or
+                    // insert, so after an update it held stale milestone values.
+                    setBom(prev => ({
+                        ...(prev || {}),
+                        id: currentBomId,
+                        bom_type: currentType,
+                        paper_prepared_by: prepBy,
+                        paper_prepared_date: prepDate,
+                        material_loaded_by: loadBy,
+                        material_loaded_date: loadDate,
+                    }));
+                } else if (!updatedRows || updatedRows.length === 0) {
+                    // Matched nothing: the id we held does not exist. Fall back to
+                    // creating a row rather than reporting a save that never happened.
+                    console.warn('bom update matched no rows for id', currentBomId, '- creating a new row instead.');
+                    currentBomId = null;
+                }
 
-            } else {
+            }
+
+            // Not an `else`: the update above can null currentBomId when it
+            // matched nothing, and that must create the row in THIS save rather
+            // than silently doing nothing until the next one.
+            if (!currentBomId) {
                 const { data: created, error: createErr } = await supabase
                     .from('bom')
                     .insert({
@@ -275,14 +348,40 @@ export default function MaterialIntegrationTab({
                 }
             }
 
-            // 3. Persist bom_items rows
+            // 3. Persist bom_items rows.
+            //
+            // This is a delete-then-insert with no transaction. Previously, if
+            // the DELETE succeeded and the INSERT then failed for ANY reason
+            // (a bad value, RLS, a dropped connection), the old rows were
+            // already gone and the new ones never arrived - the BOM lines were
+            // destroyed. The save reported "not saved", which was true, but the
+            // data had already been deleted.
+            //
+            // Now: snapshot first, abort if the delete fails, and restore the
+            // snapshot if the insert fails, so a failed save leaves the BOM
+            // exactly as it was.
             if (currentBomId) {
+                const { data: previousItems, error: snapshotErr } = await supabase
+                    .from('bom_items')
+                    .select('*')
+                    .eq('bom_id', currentBomId);
+
+                if (snapshotErr) {
+                    console.error('Could not snapshot bom_items; refusing to overwrite:', snapshotErr);
+                    throw new Error('Could not read the existing BOM lines, so they were not overwritten. Please retry.');
+                }
+
                 const { error: delErr } = await supabase
                     .from('bom_items')
                     .delete()
                     .eq('bom_id', currentBomId);
 
-                if (delErr) { console.warn('bom_items delete error:', delErr); hadWriteError = true; }
+                if (delErr) {
+                    // Nothing was removed - stop before inserting, or the BOM
+                    // would end up with both the old and the new rows.
+                    console.error('bom_items delete error:', delErr);
+                    throw new Error('The existing BOM lines could not be replaced. Nothing was changed.');
+                }
 
                 const validItems = items.filter(item => item.product_name && item.product_name.trim() !== '');
 
@@ -299,7 +398,24 @@ export default function MaterialIntegrationTab({
                         .from('bom_items')
                         .insert(rowsToInsert);
 
-                    if (insertErr) { console.warn('bom_items insert error:', insertErr); hadWriteError = true; }
+                    if (insertErr) {
+                        console.error('bom_items insert error, restoring previous lines:', insertErr);
+                        hadWriteError = true;
+                        // Put back exactly what was there before.
+                        if (previousItems && previousItems.length > 0) {
+                            const { error: restoreErr } = await supabase
+                                .from('bom_items')
+                                .insert(previousItems);
+                            if (restoreErr) {
+                                console.error('CRITICAL: could not restore bom_items after a failed save:', restoreErr);
+                                throw new Error(
+                                    'The BOM could not be saved and the previous lines could not be restored. '
+                                    + 'Do not close this window - copy your BOM before reloading.'
+                                );
+                            }
+                        }
+                        throw new Error('The BOM lines were not saved. Your previous BOM has been restored.');
+                    }
                 }
             }
 
@@ -307,7 +423,9 @@ export default function MaterialIntegrationTab({
             try {
                 const localBomData = {
                     bom: {
-                        id: currentBomId || `bom-${targetCust.id}`,
+                        // null, never a fabricated id - a fake id here is what made
+                        // later saves target a row that does not exist.
+                        id: currentBomId || null,
                         admin_id: targetCust.id,
                         bom_type: currentType,
                         paper_prepared_by: prepBy,
@@ -808,19 +926,19 @@ export default function MaterialIntegrationTab({
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-stone-50/70 p-2.5 rounded-xl border border-stone-200/60">
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Paper Prepared By <span className="text-red-500">*</span></label>
-                            <p className="text-xs font-bold text-stone-700">{paperPreparedBy || "–"}</p>
+                            <p className="text-xs font-bold text-stone-700">{loadingBom ? <span className="inline-block w-16 h-3 bg-stone-200 rounded animate-pulse align-middle" /> : (paperPreparedBy || "–")}</p>
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Paper Prepared Date <span className="text-red-500">*</span></label>
-                            <p className="text-xs font-bold text-stone-700">{paperPreparedDate || "–"}</p>
+                            <p className="text-xs font-bold text-stone-700">{loadingBom ? <span className="inline-block w-16 h-3 bg-stone-200 rounded animate-pulse align-middle" /> : (paperPreparedDate || "–")}</p>
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Material Loaded By <span className="text-red-500">*</span></label>
-                            <p className="text-xs font-bold text-stone-700">{materialLoadedBy || "–"}</p>
+                            <p className="text-xs font-bold text-stone-700">{loadingBom ? <span className="inline-block w-16 h-3 bg-stone-200 rounded animate-pulse align-middle" /> : (materialLoadedBy || "–")}</p>
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-0.5">Material Loaded Date <span className="text-red-500">*</span></label>
-                            <p className="text-xs font-bold text-stone-700">{materialLoadedDate || "–"}</p>
+                            <p className="text-xs font-bold text-stone-700">{loadingBom ? <span className="inline-block w-16 h-3 bg-stone-200 rounded animate-pulse align-middle" /> : (materialLoadedDate || "–")}</p>
                         </div>
                     </div>
                 )}
@@ -990,7 +1108,18 @@ export default function MaterialIntegrationTab({
             {showPrintModal && (
                 <BomPrintModal
                     customer={{ ...customer, ...editData }}
-                    bom={bom}
+                    /* The four milestones live in their own state, and `bom` is
+                       only refreshed on load/insert - never after an update. So
+                       printing showed stale or blank values for Paper Prepared
+                       By / Material Loaded By and their dates. Overlay the live
+                       values so the printout matches what is on screen. */
+                    bom={{
+                        ...(bom || {}),
+                        paper_prepared_by: paperPreparedBy,
+                        paper_prepared_date: paperPreparedDate,
+                        material_loaded_by: materialLoadedBy,
+                        material_loaded_date: materialLoadedDate,
+                    }}
                     bomItems={bomItems}
                     activeType={activeType}
                     onClose={() => setShowPrintModal(false)}

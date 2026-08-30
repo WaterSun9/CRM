@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, UserPlus, Phone, Mail, Truck } from 'lucide-react';
+import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, UserPlus, Phone, Mail, Truck, Stamp, IndianRupee } from 'lucide-react';
 import { logActivity } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
@@ -42,6 +42,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [editingDriverName, setEditingDriverName] = useState('');
     const [editingDriverPhone, setEditingDriverPhone] = useState('');
     const [editingDriverVehicle, setEditingDriverVehicle] = useState('');
+
+    // Stamp makers report - read only. Counts and cost come from data already
+    // written by the stamp flow (discom_submission), nothing new is stored.
+    const [stampProfiles, setStampProfiles] = useState([]);
+    const [stampRecords, setStampRecords] = useState([]);
+    const [loadingStampReport, setLoadingStampReport] = useState(false);
+    const [stampMonthKey, setStampMonthKey] = useState('all');
 
     const fetchAllAdminChannelPartners = async () => {
         let all = [];
@@ -236,10 +243,45 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         }
     };
 
+    const fetchStampReport = async () => {
+        setLoadingStampReport(true);
+        try {
+            const [profRes, recRes] = await Promise.all([
+                supabase.from('profiles').select('id, name, email, status').eq('user_type', 'stamp').order('name'),
+                supabase.from('admin')
+                    .select('id, customer_name, discom_submission')
+                    .eq('discom_submission->>stamp_sent', 'true')
+                    .is('deleted_at', null),
+            ]);
+            if (profRes.error) throw profRes.error;
+            if (recRes.error) throw recRes.error;
+
+            setStampProfiles(profRes.data || []);
+            setStampRecords((recRes.data || []).map(r => {
+                const sub = r.discom_submission || {};
+                const at = sub.stamp_completed_at ? new Date(sub.stamp_completed_at) : null;
+                const valid = at && !isNaN(at.getTime());
+                return {
+                    id: r.id,
+                    by: String(sub.stamp_completed_by || '').trim(),
+                    value: Number(sub.stamp_value) || 0,
+                    approved: !!sub.stamp_approved,
+                    monthKey: valid ? `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}` : 'unknown',
+                };
+            }));
+        } catch (e) {
+            console.error('Error loading stamp report:', e);
+            showAlert('Could not load the stamp makers report: ' + e.message, { type: 'error' });
+        } finally {
+            setLoadingStampReport(false);
+        }
+    };
+
     useEffect(() => {
         fetchMetadata();
         fetchVendors();
         fetchDrivers();
+        fetchStampReport();
     }, []);
 
     // Add new Channel Partner
@@ -469,6 +511,21 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
             if (error) throw error;
 
+            // admin.vendor stores the vendor's NAME, and it is what the vendor's
+            // own RLS matches on (lower(trim(vendor)) = lower(trim(get_my_name()))).
+            // Renaming the directory entry without this left every existing job
+            // on the old name: the vendor stopped seeing their own work, and
+            // sendVendorLeadNotification - which looks the vendor up by
+            // vendors.name ilike admin.vendor - failed with "No email address is
+            // saved for vendor X".
+            if (name !== oldName && oldName) {
+                const { error: jobErr } = await supabase
+                    .from('admin')
+                    .update({ vendor: name })
+                    .ilike('vendor', oldName);
+                if (jobErr) throw jobErr;
+            }
+
             setVendors(prev => prev.map(v => v.id === id ? { ...v, name, email } : v));
             setEditingId(null);
             await logActivity(currentUser.id, 'update', `Updated Vendor: "${oldName}" → "${name}" (${email})`);
@@ -586,62 +643,57 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         }
     };
 
-    // Delete metadata entry
+    // Delete metadata entry.
+    //
+    // This used to CASCADE A NULL over every matching customer -
+    // `admin.update({ channel_partner: null }).eq('channel_partner', label)` -
+    // so removing a dropdown option silently erased that field on real records.
+    // For channel_partner that is unrecoverable AND breaks partner-scoped RLS,
+    // because a record with a null channel_partner is invisible to the branch
+    // that owns it.
+    //
+    // Deleting an option now removes the OPTION only. Existing records keep
+    // their value; every dropdown already renders an unrecognised stored value
+    // rather than blanking, so nothing is lost or hidden.
     const handleDeleteMetadata = async (id, category, label) => {
-        if (!window.confirm(`Are you sure you want to delete "${label}"?`)) return;
+        const TARGET = {
+            channel_partner: { table: 'admin', column: 'channel_partner', noun: 'customer records' },
+            module_brand:    { table: 'admin', column: 'module_brand',    noun: 'customer records' },
+            registration_by: { table: 'admin', column: 'registration_by', noun: 'customer records' },
+            inverter_make:   { table: 'admin', column: 'inverter_make',   noun: 'customer records' },
+            integration_by:  { table: 'bom_items', column: 'integration_by', noun: 'BOM lines' },
+        }[category];
 
         try {
-            const { error } = await supabase
-                .from('metadata')
-                .delete()
-                .eq('id', id);
+            let inUse = 0;
+            if (TARGET) {
+                const { count, error: countErr } = await supabase
+                    .from(TARGET.table)
+                    .select('id', { count: 'exact', head: true })
+                    .eq(TARGET.column, label);
+                if (countErr) throw countErr;
+                inUse = count || 0;
+            }
 
+            const warning = inUse > 0
+                ? `"${label}" is still used by ${inUse} ${TARGET.noun}.\n\n`
+                  + `Those records will KEEP the value "${label}" - nothing is erased. `
+                  + `It just stops being offered in the dropdown for new entries.\n\nRemove it from the list?`
+                : `Remove "${label}" from the list?`;
+
+            if (!window.confirm(warning)) return;
+
+            const { error } = await supabase.from('metadata').delete().eq('id', id);
             if (error) throw error;
 
-            let cascadeError = null;
-            if (category === 'channel_partner') {
-                setPartners(prev => prev.filter(p => p.id !== id));
-                const { error: cErr } = await supabase
-                    .from('admin')
-                    .update({ channel_partner: null })
-                    .eq('channel_partner', label);
-                cascadeError = cErr;
-            } else if (category === 'module_brand') {
-                setBrands(prev => prev.filter(b => b.id !== id));
-                const { error: cErr } = await supabase
-                    .from('admin')
-                    .update({ module_brand: null })
-                    .eq('module_brand', label);
-                cascadeError = cErr;
-            } else if (category === 'registration_by') {
-                setRegistrations(prev => prev.filter(r => r.id !== id));
-                const { error: cErr } = await supabase
-                    .from('admin')
-                    .update({ registration_by: null })
-                    .eq('registration_by', label);
-                cascadeError = cErr;
-            } else if (category === 'integration_by') {
-                setIntegrations(prev => prev.filter(i => i.id !== id));
-                const { error: cErr } = await supabase
-                    .from('bom_items')
-                    .update({ integration_by: null })
-                    .eq('integration_by', label);
-                cascadeError = cErr;
-            } else if (category === 'inverter_make') {
-                setInverters(prev => prev.filter(i => i.id !== id));
-                const { error: cErr } = await supabase
-                    .from('admin')
-                    .update({ inverter_make: null })
-                    .eq('inverter_make', label);
-                cascadeError = cErr;
-            }
+            if (category === 'channel_partner')      setPartners(prev => prev.filter(p => p.id !== id));
+            else if (category === 'module_brand')    setBrands(prev => prev.filter(b => b.id !== id));
+            else if (category === 'registration_by') setRegistrations(prev => prev.filter(r => r.id !== id));
+            else if (category === 'integration_by')  setIntegrations(prev => prev.filter(i => i.id !== id));
+            else if (category === 'inverter_make')   setInverters(prev => prev.filter(i => i.id !== id));
 
-            if (cascadeError) {
-                await logActivity(currentUser.id, 'delete', `Deleted ${category}: "${label}" (WARNING: failed to clear from existing customer records: ${cascadeError.message})`);
-                showAlert(`"${label}" was removed from the dropdown, but clearing it from existing customer records failed: ${cascadeError.message}. Some records may still show the old value.`, { type: 'error' });
-            } else {
-                await logActivity(currentUser.id, 'delete', `Deleted ${category}: "${label}" (cleared from customers)`);
-            }
+            await logActivity(currentUser.id, 'delete',
+                `Removed ${category} option: "${label}"${inUse > 0 ? ` (${inUse} ${TARGET.noun} keep the value)` : ''}`);
         } catch (e) {
             console.error('Error deleting metadata:', e);
             showAlert('Error deleting metadata: ' + e.message, { type: 'error' });
@@ -809,6 +861,25 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                     </div>
                                     <span className="text-[11px] font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1 transition-colors duration-305">
                                         Open Manager <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
+                                    </span>
+                                </button>
+
+                                {/* Stamp Makers Card */}
+                                <button
+                                    onClick={() => setActiveManageCategory('stamp_report')}
+                                    className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex flex-col justify-between h-44 hover:shadow-md hover:border-stone-300 hover:bg-stone-50/50 active:scale-[0.98] transition-all text-left focus:outline-none w-full group"
+                                >
+                                    <div className="space-y-3.5 w-full">
+                                        <div className="p-2.5 bg-stone-50 group-hover:bg-amber-100/70 rounded-xl w-fit transition-colors duration-305">
+                                            <Stamp className="w-5 h-5 text-stone-600 group-hover:text-amber-600 transition-colors duration-305" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-extrabold text-stone-800 text-xs group-hover:text-amber-600 transition-colors duration-305">Stamp Makers</h3>
+                                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">{stampProfiles.length} people · {stampRecords.length} stamps done</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[11px] font-bold text-stone-600 group-hover:text-amber-650 flex items-center gap-1 transition-colors duration-305">
+                                        View Report <span className="transition-transform group-hover:translate-x-1.5 duration-305">→</span>
                                     </span>
                                 </button>
 
@@ -1331,6 +1402,106 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                 ) : (
                                     <p className="text-xs text-stone-400 italic text-center py-8">No entries found in this directory.</p>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* Stamp Makers report - read only */}
+            {activeManageCategory === 'stamp_report' && (() => {
+                const monthKeys = Array.from(new Set(stampRecords.map(r => r.monthKey)))
+                    .filter(k => k !== 'unknown').sort().reverse();
+                const scoped = stampMonthKey === 'all'
+                    ? stampRecords
+                    : stampRecords.filter(r => r.monthKey === stampMonthKey);
+
+                // Group by who completed it. Names not matching a Stamp Guy
+                // account still show, so nothing is silently left out of a payout.
+                const byPerson = new Map();
+                stampProfiles.forEach(p => byPerson.set(p.name.trim().toLowerCase(), { name: p.name, status: p.status, count: 0, value: 0, approved: 0 }));
+                scoped.forEach(r => {
+                    const key = r.by.toLowerCase();
+                    if (!key) return;
+                    if (!byPerson.has(key)) byPerson.set(key, { name: r.by, status: 'no account', count: 0, value: 0, approved: 0 });
+                    const row = byPerson.get(key);
+                    row.count += 1;
+                    row.value += r.value;
+                    if (r.approved) row.approved += 1;
+                });
+                const rows = Array.from(byPerson.values()).sort((a, b) => b.count - a.count);
+                const totalCount = rows.reduce((s, r) => s + r.count, 0);
+                const totalValue = rows.reduce((s, r) => s + r.value, 0);
+
+                return (
+                    <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl overflow-hidden border border-stone-100 flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
+                            <div className="bg-stone-900 px-6 py-5 flex justify-between items-center text-white">
+                                <div>
+                                    <h3 className="text-sm font-bold tracking-tight">Stamp Makers</h3>
+                                    <p className="text-[10px] text-stone-400 mt-1 uppercase font-bold tracking-wider">
+                                        {rows.length} people · {totalCount} stamps · ₹{totalValue.toLocaleString('en-IN')}
+                                    </p>
+                                </div>
+                                <button onClick={() => setActiveManageCategory(null)} className="text-stone-400 hover:text-white p-2 hover:bg-stone-800 rounded-xl transition">
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            <div className="p-4 border-b border-stone-100 bg-stone-50/50 flex items-center gap-2">
+                                <select
+                                    value={stampMonthKey}
+                                    onChange={e => setStampMonthKey(e.target.value)}
+                                    className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm font-bold text-stone-800 outline-none focus:border-amber-400 cursor-pointer"
+                                >
+                                    <option value="all">All months</option>
+                                    {monthKeys.map(k => {
+                                        const [y, m] = k.split('-');
+                                        return <option key={k} value={k}>{new Date(Number(y), Number(m) - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' })}</option>;
+                                    })}
+                                </select>
+                                <button onClick={fetchStampReport} disabled={loadingStampReport}
+                                    className="px-3 py-2 bg-white border border-stone-200 rounded-xl text-xs font-bold text-stone-600 hover:text-amber-600 disabled:opacity-50 cursor-pointer">
+                                    {loadingStampReport ? 'Loading…' : 'Refresh'}
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                                {rows.length === 0 ? (
+                                    <p className="text-xs text-stone-400 italic text-center py-8">No stamp makers or completed stamps yet.</p>
+                                ) : rows.map(r => (
+                                    <div key={r.name} className="flex justify-between items-center bg-stone-50 px-4 py-3 rounded-xl border border-stone-100">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-bold text-stone-850 truncate">{r.name}</span>
+                                                {r.status === 'no account' && (
+                                                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">⚠ No Stamp account</span>
+                                                )}
+                                                {r.status === 'inactive' && (
+                                                    <span className="text-[9px] font-bold text-stone-500 bg-stone-100 border border-stone-200 px-1.5 py-0.5 rounded-md">Deactivated</span>
+                                                )}
+                                            </div>
+                                            <span className="text-[10px] text-stone-400 font-medium">
+                                                {r.approved} of {r.count} approved
+                                            </span>
+                                        </div>
+                                        <div className="text-right flex-shrink-0 pl-3">
+                                            <p className="text-sm font-black text-stone-900">{r.count}</p>
+                                            <p className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5 justify-end">
+                                                <IndianRupee size={9} />{r.value.toLocaleString('en-IN')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="px-6 py-3 border-t border-stone-100 bg-stone-50/60 flex justify-between items-center">
+                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                                    {stampMonthKey === 'all' ? 'All months' : 'Selected month'} total
+                                </span>
+                                <span className="text-sm font-black text-stone-900">
+                                    {totalCount} stamps · ₹{totalValue.toLocaleString('en-IN')}
+                                </span>
                             </div>
                         </div>
                     </div>

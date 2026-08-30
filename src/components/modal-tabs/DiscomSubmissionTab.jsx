@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../supabase';
 import { ClipboardList, Save, FileText, Printer, RotateCcw, AlertTriangle, CheckCircle2, SendHorizonal, Loader2 } from 'lucide-react';
 import { Page1 } from '../agreement/Page1';
 import { CheckboxRemarkItem } from './shared';
@@ -39,6 +40,13 @@ export default function DiscomSubmissionTab({
     const [sendingBack, setSendingBack] = useState(false);
     const [sendBackDone, setSendBackDone] = useState(false);
     const [sendingToStamp, setSendingToStamp] = useState(false);
+    // Stamp makers come from the actual login accounts (profiles.user_type =
+    // 'stamp'), not a separate name list - a separate list drifts from the real
+    // accounts, which is how a fabricated vendor ended up on live customers.
+    const [stampMakers, setStampMakers] = useState([]);
+    const [selectedStampMaker, setSelectedStampMaker] = useState('');
+    const [reassigning, setReassigning] = useState(false);
+    const [reassignConfirm, setReassignConfirm] = useState(null); // { from, to }
     const [recalling, setRecalling] = useState(false);
     const [showConfirmSend, setShowConfirmSend] = useState(false);
     const [showConfirmRecall, setShowConfirmRecall] = useState(false);
@@ -59,16 +67,42 @@ export default function DiscomSubmissionTab({
         user?.userType === 'admin' || 
         user?.userType === 'channel_partner_office';
 
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id, name')
+                .eq('user_type', 'stamp')
+                .neq('status', 'inactive')
+                .order('name');
+            if (error) {
+                console.warn('Could not load stamp makers:', error.message);
+                return;
+            }
+            if (!cancelled) setStampMakers(data || []);
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    // Preselect whoever it was already assigned to, so re-sending keeps them.
+    useEffect(() => {
+        setSelectedStampMaker(submissionData.assigned_stamp_maker || '');
+    }, [submissionData.assigned_stamp_maker]);
+
     /* Send details to stamp maker */
     const handleSendToStampMaker = async () => {
         setSendingToStamp(true);
         setActionError(null);
         try {
+            const chosen = stampMakers.find(m => m.name === selectedStampMaker);
             const merged = {
                 ...submissionData,
                 sent_to_stamp_maker: true,
                 sent_to_stamp_maker_at: new Date().toISOString(),
                 sent_to_stamp_maker_by: user?.name || user?.email || 'Office',
+                assigned_stamp_maker: selectedStampMaker || null,
+                assigned_stamp_maker_id: chosen?.id || null,
             };
             const ok = await onUpdate(customer.id, { discom_submission: merged });
             if (ok === false) throw new Error('The database did not accept the change.');
@@ -80,13 +114,46 @@ export default function DiscomSubmissionTab({
         finally { setSendingToStamp(false); }
     };
 
+    /* Hand an already-sent record to a different stamp maker */
+    const handleReassignStampMaker = async (name) => {
+        setReassigning(true);
+        setActionError(null);
+        try {
+            const chosen = stampMakers.find(m => m.name === name);
+            const merged = {
+                ...submissionData,
+                assigned_stamp_maker: name || null,
+                assigned_stamp_maker_id: chosen?.id || null,
+                assigned_stamp_maker_by: user?.name || user?.email || 'Office',
+                assigned_stamp_maker_at: new Date().toISOString(),
+            };
+            const ok = await onUpdate(customer.id, { discom_submission: merged });
+            if (ok === false) throw new Error('The database did not accept the change.');
+            setEditData(prev => ({ ...prev, discom_submission: merged }));
+            setSelectedStampMaker(name || '');
+            const fromLabel = submissionData.assigned_stamp_maker || 'nobody';
+            await logActivity(user.id, 'update',
+                `${customer.customer_name}: Stamp reassigned from ${fromLabel} to ${name || 'nobody (unassigned)'}`, '', customer.id);
+            fetchLogs();
+        } catch (err) {
+            setActionError('Failed to reassign: ' + err.message);
+        } finally {
+            setReassigning(false);
+        }
+    };
+
     /* Recall — pull back from stamp maker */
     const handleRecall = async () => {
         setShowConfirmRecall(false);
         setRecalling(true);
         setActionError(null);
         try {
-            const merged = { ...submissionData, sent_to_stamp_maker: false };
+            const merged = {
+                ...submissionData,
+                sent_to_stamp_maker: false,
+                recalled_by: user?.name || user?.email || 'Office',
+                recalled_at: new Date().toISOString(),
+            };
             const ok = await onUpdate(customer.id, { discom_submission: merged });
             if (ok === false) throw new Error('The database did not accept the change.');
             await logActivity(user.id, 'update',
@@ -358,6 +425,35 @@ export default function DiscomSubmissionTab({
                                         </span>
                                     )}
                                 </div>
+
+                                {/* Who it is with, and the ability to hand it to
+                                    someone else. Previously the picker only existed
+                                    before sending, so an already-sent record showed
+                                    no assignment at all and could not be reassigned. */}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider">Stamp Maker</span>
+                                    {isEditable && !isStampSent ? (
+                                        <select
+                                            value={selectedStampMaker}
+                                            disabled={reassigning}
+                                            onChange={e => setReassignConfirm({
+                                                from: submissionData.assigned_stamp_maker || '',
+                                                to: e.target.value,
+                                            })}
+                                            className="bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-[11px] font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-sky-400 cursor-pointer disabled:opacity-50"
+                                        >
+                                            <option value="">Unassigned</option>
+                                            {stampMakers.map(m => (
+                                                <option key={m.id} value={m.name}>{m.name}</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <span className="text-[11px] font-bold text-stone-800">
+                                            {submissionData.assigned_stamp_maker || 'Anyone (unassigned)'}
+                                        </span>
+                                    )}
+                                    {reassigning && <Loader2 className="w-3 h-3 animate-spin text-sky-500" />}
+                                </div>
                                 {isEditable && !isStampSent && (
                                     <button
                                         type="button"
@@ -369,6 +465,39 @@ export default function DiscomSubmissionTab({
                                     </button>
                                 )}
                             </div>
+
+                            {/* Who did what, in order. Everything here is already
+                                recorded on discom_submission by the actions above. */}
+                            {(() => {
+                                const fmt = (iso) => {
+                                    if (!iso) return '';
+                                    const d = new Date(iso);
+                                    return isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                                };
+                                const trail = [
+                                    ['Sent to stamp', submissionData.sent_to_stamp_maker_by, submissionData.sent_to_stamp_maker_at],
+                                    ['Assigned', submissionData.assigned_stamp_maker_by && `${submissionData.assigned_stamp_maker_by} → ${submissionData.assigned_stamp_maker}`, submissionData.assigned_stamp_maker_at],
+                                    ['Stamp uploaded', submissionData.stamp_completed_by, submissionData.stamp_completed_at],
+                                    ['Sent back', submissionData.stamp_sendback_by, submissionData.stamp_sendback_at],
+                                    ['Approved', submissionData.stamp_approved_by, submissionData.stamp_approved_at],
+                                    ['Recalled', submissionData.recalled_by, submissionData.recalled_at],
+                                ].filter(([, who]) => who);
+
+                                if (trail.length === 0) return null;
+                                return (
+                                    <div className="border-t border-stone-100 pt-2.5 space-y-1">
+                                        <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wider">History</p>
+                                        {trail.map(([label, who, at]) => (
+                                            <div key={label} className="flex items-baseline justify-between gap-3 text-[10px]">
+                                                <span className="font-bold text-stone-600 flex-shrink-0">{label}</span>
+                                                <span className="text-stone-500 font-medium text-right truncate">
+                                                    {who}{at ? ` · ${fmt(at)}` : ''}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
 
                             <div className="border-t border-stone-100 pt-3 space-y-3">
                                 <CheckboxRemarkItem
@@ -531,11 +660,34 @@ export default function DiscomSubmissionTab({
                         /* Not yet sent */
                         isEditable && (
                             <div className="flex items-center justify-between gap-3 flex-wrap">
-                                <p className="text-[11px] text-stone-400 font-medium">
-                                    Fill in the details above, then send to the stamp maker.
-                                </p>
+                                <div className="min-w-[200px] flex-1">
+                                    <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">
+                                        Send to which Stamp Maker <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={selectedStampMaker}
+                                        onChange={e => setSelectedStampMaker(e.target.value)}
+                                        className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-sky-400 cursor-pointer"
+                                    >
+                                        <option value="">Select a stamp maker...</option>
+                                        {stampMakers.map(m => (
+                                            <option key={m.id} value={m.name}>{m.name}</option>
+                                        ))}
+                                    </select>
+                                    {stampMakers.length === 0 && (
+                                        <p className="text-[9px] text-amber-700 font-semibold mt-1">
+                                            No Stamp Guy accounts found - create one in User Management.
+                                        </p>
+                                    )}
+                                </div>
                                 <button
-                                    onClick={() => setShowConfirmSend(true)}
+                                    onClick={() => {
+                                        if (!selectedStampMaker) {
+                                            setActionError('Please choose which stamp maker to send this to.');
+                                            return;
+                                        }
+                                        setShowConfirmSend(true);
+                                    }}
                                     disabled={sendingToStamp}
                                     className="flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-sky-600/15 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
                                 >
@@ -547,6 +699,59 @@ export default function DiscomSubmissionTab({
                     )}
                 </div>
             </div>
+
+            {reassignConfirm && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <SendHorizonal className="w-5 h-5 text-amber-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-stone-800">Reassign this stamp?</h3>
+                                <p className="text-xs text-stone-500 font-medium mt-0.5">Please confirm the handover.</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 mb-5 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3">
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wider">From</p>
+                                <p className="text-sm font-bold text-stone-700 truncate">{reassignConfirm.from || 'Unassigned'}</p>
+                            </div>
+                            <span className="text-stone-300 font-black text-lg flex-shrink-0">→</span>
+                            <div className="min-w-0 flex-1 text-right">
+                                <p className="text-[9px] font-bold text-stone-400 uppercase tracking-wider">To</p>
+                                <p className="text-sm font-bold text-amber-700 truncate">{reassignConfirm.to || 'Unassigned'}</p>
+                            </div>
+                        </div>
+
+                        <p className="text-sm text-stone-600 mb-6 font-medium">
+                            {reassignConfirm.to
+                                ? `This customer will move into ${reassignConfirm.to}'s stamp queue${reassignConfirm.from ? ` and leave ${reassignConfirm.from}'s` : ''}.`
+                                : 'This will leave the stamp unassigned, so it stays visible to every stamp maker.'}
+                        </p>
+
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setReassignConfirm(null)}
+                                className="px-4 py-2 text-sm font-bold text-stone-600 hover:text-stone-800 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const target = reassignConfirm.to;
+                                    setReassignConfirm(null);
+                                    handleReassignStampMaker(target);
+                                }}
+                                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-xl transition-colors shadow-md cursor-pointer"
+                            >
+                                Yes, Reassign
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {showConfirmSend && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm">
