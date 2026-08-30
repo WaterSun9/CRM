@@ -205,14 +205,20 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     // ── Data fetching ──────────────────────────────────────────────────────────
-    const fetchMetricsAndMeta = async () => {
+    // `skipMeta` lets the realtime path refresh only the numbers. The metadata
+    // table is nearly static (dropdown lists), but it was refetched on EVERY
+    // realtime event - so one person saving a customer meant 30 connected
+    // clients each running 3 queries. Metadata is now fetched on mount and when
+    // the branch filter changes, not on every write anywhere in the system.
+    const fetchMetricsAndMeta = async (skipMeta = false) => {
         const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
         const [metricsRes, metaRes, batchesRes] = await Promise.all([
             supabase.rpc('get_dashboard_metrics', { 
                 p_channel_partner: targetPartner 
             }),
-            supabase.from('metadata').select('category, label'),
-            supabase.from('delivery_batches').select('*', { count: 'exact', head: true }).neq('status', 'DELIVERED')
+            skipMeta ? Promise.resolve({ data: null, error: null })
+                     : supabase.from('metadata').select('category, label'),
+            supabase.from('delivery_batches').select('id', { count: 'exact', head: true }).neq('status', 'DELIVERED')
         ]);
 
         let finalMetrics = {
@@ -251,7 +257,11 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         const normalizedStage = (stage || STAGE_IDS.LEADS).toUpperCase();
         let query = supabase
             .from('admin')
-            .select('*')
+            // Was select('*') - ~90 columns for 50 cards that render 10 fields.
+            // CUSTOMER_CARD_COLUMNS already existed for this and was imported
+            // but never used. The detail modal fetches the full row on open, so
+            // nothing downstream loses data.
+            .select(CUSTOMER_CARD_COLUMNS)
             .ilike('stage', normalizedStage)
             .order('created_at', { ascending: false })
             .range(pageNum * 50, (pageNum + 1) * 50 - 1);
@@ -292,6 +302,28 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         setPage(0);
         fetchMetricsAndMeta();
         fetchStageCustomers(selectedStage, 0);
+    }, [selectedStage, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
+
+    // Refresh when the operator returns to the tab. This is what actually keeps
+    // the grid current for most people - they switch away, come back, and see
+    // fresh data - and it costs nothing while the tab is in the background,
+    // unlike a live subscription that fires for every write in the system.
+    // Throttled so rapid tab switching cannot hammer the database.
+    const lastFocusFetch = useRef(0);
+    useEffect(() => {
+        const onFocus = () => {
+            if (document.visibilityState !== 'visible') return;
+            if (Date.now() - lastFocusFetch.current < 10000) return;
+            lastFocusFetch.current = Date.now();
+            fetchStageCustomers(selectedStage, 0);
+            fetchMetricsAndMeta(true);
+        };
+        window.addEventListener('focus', onFocus);
+        document.addEventListener('visibilitychange', onFocus);
+        return () => {
+            window.removeEventListener('focus', onFocus);
+            document.removeEventListener('visibilitychange', onFocus);
+        };
     }, [selectedStage, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
 
     useEffect(() => {
@@ -731,12 +763,20 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
 
     // Collapses a burst of realtime events into one metrics refresh.
     const metricsRefreshTimer = useRef(null);
+    const lastMetricsAt = useRef(0);
     const scheduleMetricsRefresh = () => {
-        if (metricsRefreshTimer.current) clearTimeout(metricsRefreshTimer.current);
+        if (metricsRefreshTimer.current) return; // already queued - do not reset the timer
+        // Under load this fired for every write from every client. The window is
+        // wider now, it does NOT restart on each event (so a steady stream of
+        // edits still refreshes on a fixed cadence rather than never), and it
+        // skips the metadata query entirely.
+        const sinceLast = Date.now() - lastMetricsAt.current;
+        const wait = Math.max(8000, 15000 - sinceLast);
         metricsRefreshTimer.current = setTimeout(() => {
             metricsRefreshTimer.current = null;
-            fetchMetricsAndMeta();
-        }, 4000);
+            lastMetricsAt.current = Date.now();
+            fetchMetricsAndMeta(true);
+        }, wait);
     };
 
     const handleAddLead = async (data, attachedFiles = []) => {

@@ -446,7 +446,10 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
             while (true) {
                 const { data: page, error } = await supabase
                     .from("admin")
-                    .select("*")
+                    // Only what the queue renders. It was select("*"), so every
+                    // stamp maker pulled ~90 columns per record - including the
+                    // vendor commission - for the whole queue.
+                    .select("id, customer_name, phone_number, consumer_no, folder_no, villages, stage, pm_surya_ghar_stamp, discom_submission, deleted_at, created_at")
                     // Stage is deliberately not filtered — a record can be sent to
                     // the stamp maker without formally sitting in DISCOM SUBMISSION.
                     // The "sent to stamp" test is done here rather than in JS: this

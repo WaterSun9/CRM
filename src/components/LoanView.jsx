@@ -88,7 +88,10 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
 
             let query = supabase
                 .from('admin')
-                .select('*')
+                // Was select('*'): ~90 columns per row for a card that renders a
+                // handful. CUSTOMER_CARD_COLUMNS was already imported here
+                // and unused. The detail modal fetches the full record on open.
+                .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
                 .order('created_at', { ascending: false })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);

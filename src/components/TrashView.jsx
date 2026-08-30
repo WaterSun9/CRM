@@ -65,7 +65,10 @@ export default function TrashView({ onRecover, onHardDelete, isAdmin }) {
             while (true) {
                 const { data: page, error } = await supabase
                     .from('admin')
-                    .select('*')
+                    // Was select('*'): ~90 columns per row for a card that renders a
+                // handful. CUSTOMER_CARD_COLUMNS was already imported here
+                // and unused. The detail modal fetches the full record on open.
+                .select(`${CUSTOMER_CARD_COLUMNS}, email_address`)
                     .not('deleted_at', 'is', null)
                     .order('deleted_at', { ascending: false })
                     .range(from, from + pageSize - 1);
