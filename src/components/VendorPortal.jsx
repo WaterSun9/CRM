@@ -767,10 +767,17 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     const canEditGeoTag = selectedStage === STAGE_IDS.GEO_TAG_PHOTO;
 
     // Stats calculations
-    const materialDeliveryCount = customers.filter(c => {
-        const s = normalizeStage(c.stage);
-        return s === STAGE_IDS.MATERIAL_DELIVERY || (s !== STAGE_IDS.INSTALLATION_STATUS && s !== STAGE_IDS.GEO_TAG_PHOTO);
-    }).length;
+    // Material Delivery only. This used to be a catch-all - "anything that is not
+    // Installation or Geo Tag" - so a record already at Discom Submission was
+    // counted and listed here, and the tab read 4 when the vendor had 3 delivery
+    // jobs. Opening one of those showed a finished job with dead buttons.
+    //
+    // A record whose stage is past Geo Tag is no longer the vendor's work, so it
+    // is no longer listed. It stays reachable by search, which deliberately
+    // ignores the tab filter.
+    const materialDeliveryCount = customers.filter(
+        c => normalizeStage(c.stage) === STAGE_IDS.MATERIAL_DELIVERY
+    ).length;
     const installationCount = customers.filter(c => normalizeStage(c.stage) === STAGE_IDS.INSTALLATION_STATUS).length;
     const geoTagCount = customers.filter(c => normalizeStage(c.stage) === STAGE_IDS.GEO_TAG_PHOTO).length;
 
@@ -796,7 +803,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         // When not searching, filter by active tab stage
         const s = normalizeStage(c.stage);
         if (activeTab === 'DELIVERY') {
-            return s === STAGE_IDS.MATERIAL_DELIVERY || (s !== STAGE_IDS.INSTALLATION_STATUS && s !== STAGE_IDS.GEO_TAG_PHOTO);
+            return s === STAGE_IDS.MATERIAL_DELIVERY;
         } else if (activeTab === 'INSTALLATION') {
             return s === STAGE_IDS.INSTALLATION_STATUS;
         } else {

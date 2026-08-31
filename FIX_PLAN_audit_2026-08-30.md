@@ -186,3 +186,35 @@ Doing it properly means introducing semantic Tailwind theme tokens
 than a find-and-replace — a blind swap would wreck contrast on the dark
 surfaces and the amber-on-white badges. Worth doing as its own pass with visual
 checks per portal; not worth risking mid-launch.
+
+---
+
+## 🕓 Deferred — next round / next client
+
+**Lock user renaming (names as identity keys)**
+Names are the join key across the system: `admin.vendor` and
+`admin.sub_channel_partner` store them as text, and vendor / dealer RLS matches
+them against the profile name. Renaming a user therefore has to rewrite several
+tables at once to stay consistent.
+
+Current state (2026-08-31), deliberately left as-is:
+- **Operations → Vendors**: the name is read-only. It used to be editable, and
+  renaming there rewrote `admin.vendor` but not `profiles.name`, so the vendor
+  stopped seeing their own jobs. That path is closed.
+- **User Management**: renaming is still allowed, and it cascades correctly to
+  `profiles.name`, `admin.vendor`, `admin.sub_channel_partner` and
+  `vendors.name`. Verified working - it is the one controlled place to do it.
+
+The remaining risk is that the cascade is a multi-statement client-side
+sequence: a failure partway leaves the tables disagreeing. The real fix is the
+UUID identity migration (see `MIGRATION_PLAN_uuid_identity.md`), which the
+client has said is not needed for this deployment. Until then, renaming stays
+possible in exactly one place rather than being locked outright.
+
+**Channel Partner list: entries without logins**
+Most channel partners have no account - 54 partner names appear on leads, only
+13 have a login. The Operations add form is kept for this reason, and old
+partners who have left remain in the list so their historical leads stay
+filterable. New CP/CPO accounts auto-register their branch. Both paths write
+uppercase. Do not rebuild this list from User Management: measured 2026-08-31,
+that would delete 54 of 63 entries and orphan 3,094 leads from the dropdown.
