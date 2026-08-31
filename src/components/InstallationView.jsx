@@ -8,6 +8,16 @@ export { normalizeInstallationStatus };
 
 const PAGE_SIZE = 50;
 
+// Legacy rows hold 'Yes' where the tag is now 'Installed' (and 'Process' where it
+// is 'In process'). Filtering on the tag id alone silently omits them, which is
+// what hid every installed customer from the payouts ledger.
+const statusFilterFor = (tagId) => {
+    const alias = { 'Installed': 'yes', 'In process': 'process' }[tagId];
+    return alias
+        ? `installation_status.ilike.%${tagId}%,installation_status.ilike.%${alias}%`
+        : null;
+};
+
 export default function InstallationView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
     const [activeFilter, setActiveFilter] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -52,7 +62,11 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
                     .from('admin')
                     .select('*', { count: 'exact', head: true })
                     .is('deleted_at', null)
-                    .ilike('installation_status', `%${tag.id}%`);
+                    ;
+                const tagOr = statusFilterFor(tag.id);
+                tagQuery = tagOr
+                    ? tagQuery.or(tagOr)
+                    : tagQuery.ilike('installation_status', `%${tag.id}%`);
 
                 if (targetPartner) {
                     tagQuery = tagQuery.ilike('channel_partner', `%${targetPartner}%`);
@@ -104,7 +118,10 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
             }
 
             if (activeFilter) {
-                query = query.ilike('installation_status', `%${activeFilter}%`);
+                const filterOr = statusFilterFor(activeFilter);
+                query = filterOr
+                    ? query.or(filterOr)
+                    : query.ilike('installation_status', `%${activeFilter}%`);
             } else {
                 query = query.not('installation_status', 'is', null).neq('installation_status', '');
             }

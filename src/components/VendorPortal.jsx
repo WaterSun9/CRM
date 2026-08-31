@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, updateDocumentRemark } from '../utils';
+import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, updateDocumentRemark, normalizeInstallationStatus } from '../utils';
 import { 
     User, Phone, Mail, MapPin, Zap, Building2, Sun,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
@@ -332,7 +332,9 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 const record = payload.new;
                 const isVisibleToVendor = record && !record.deleted_at &&
                     isRecordAssignedToVendor(record) &&
-                    record.installation_status !== "Give Up";
+                    // Tag id is 'Giveup' (no space) - "Give Up" never matched, so
+                    // given-up records kept arriving through realtime.
+                    normalizeInstallationStatus(record.installation_status) !== 'Give Up';
 
                 setCustomers(previous => {
                     if (payload.eventType === 'DELETE' || !isVisibleToVendor) {
@@ -538,7 +540,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
     };
 
-    const canMoveToGeoTag = installationStatus === 'Yes';
+    const canMoveToGeoTag = normalizeInstallationStatus(installationStatus) === 'Yes';
 
     const isInstallationDirty = Boolean(
         String(installationStatus || 'Pending').trim() !== String(selectedCust?.installation_status || 'Pending').trim() ||
@@ -574,12 +576,12 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
 
         const todayStr = new Date().toISOString().split('T')[0];
-        const effectiveInstallDate = installationDate || (installationStatus === 'Yes' ? todayStr : null);
+        const effectiveInstallDate = installationDate || (normalizeInstallationStatus(installationStatus) === 'Yes' ? todayStr : null);
 
         // Comprehensive Logical Validation when advancing from Installation to Geo Tag
         if (nextStage === STAGE_IDS.GEO_TAG_PHOTO) {
             const missingItems = [];
-            if (installationStatus !== 'Yes') {
+            if (normalizeInstallationStatus(installationStatus) !== 'Yes') {
                 missingItems.push('Physical Installation Status must be marked "Yes".');
             }
             if (!effectiveInstallDate) {
@@ -1014,7 +1016,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
 
                                 const isInstallation = cust.stage === STAGE_IDS.INSTALLATION_STATUS;
                                 const statusValue = isInstallation ? (cust.installation_status || 'Pending') : (cust.geo_tag_status || 'Pending');
-                                const isComplete = isInstallation ? statusValue === 'Yes' : statusValue === 'Proceed';
+                                const isComplete = isInstallation ? normalizeInstallationStatus(statusValue) === 'Yes' : statusValue === 'Proceed';
 
                                 return (
                                     <div 
@@ -1395,11 +1397,13 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                             {[
                                                 { id: 'Giveup', label: 'Giveup', activeClass: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-600/10', dotClass: 'bg-white' },
-                                                { id: 'Yes', label: 'Yes', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
-                                                { id: 'Process', label: 'Process', activeClass: 'bg-teal-600 text-white border-teal-600 shadow-md shadow-teal-600/10', dotClass: 'bg-white' },
+                                                { id: 'Installed', label: 'Installed', activeClass: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-600/10', dotClass: 'bg-white' },
+                                                { id: 'In process', label: 'In process', activeClass: 'bg-teal-600 text-white border-teal-600 shadow-md shadow-teal-600/10', dotClass: 'bg-white' },
                                                 { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
                                             ].map(tag => {
-                                                const isSelected = installationStatus === tag.id;
+                                                // Legacy rows hold 'Yes'/'Process'; normalise so an
+                                                // existing record still shows its state as selected.
+                                                const isSelected = normalizeInstallationStatus(installationStatus) === normalizeInstallationStatus(tag.id);
                                                 const isLocked = isFinalTagValue(selectedCust?.installation_status, INSTALLATION_TAGS) && user?.userType !== 'admin';
                                                 return (
                                                     <button
@@ -1412,13 +1416,13 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                                 setShowGiveUpModal(true);
                                                             } else {
                                                                 setInstallationStatus(tag.id);
-                                                                if (tag.id === 'Yes' && !installationDate) {
+                                                                if (tag.id === 'Installed' && !installationDate) {
                                                                     setInstallationDate(new Date().toISOString().split('T')[0]);
                                                                 }
                                                             }
                                                         }}
                                                         className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
-                                                            isLocked && tag.id !== 'Yes' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                                            isLocked && tag.id !== 'Installed' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                         } ${
                                                             isSelected
                                                                 ? tag.activeClass
@@ -1448,7 +1452,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                     </div>
 
                                     {/* When marked Yes: Installation Date */}
-                                    {installationStatus === 'Yes' && (
+                                    {normalizeInstallationStatus(installationStatus) === 'Yes' && (
                                         <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-100 space-y-3 animate-in slide-in-from-top-2 duration-200">
                                             <div className="flex items-center gap-2 text-emerald-800">
                                                 <CheckCircle2 size={16} />
@@ -1495,7 +1499,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                     )}
 
                                     <div className="pt-2">
-                                        {installationStatus === 'Yes' ? (
+                                        {normalizeInstallationStatus(installationStatus) === 'Yes' ? (
                                             <div className="space-y-2">
                                                 <button
                                                     type="button"

@@ -52,6 +52,7 @@ import CustomerDocumentsTab from './modal-tabs/CustomerDocumentsTab';
 import { FilePreviewModal, DocGalleryRemarkRow, getStageRemarkFromData } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import ConflictResolutionModal from './ConflictResolutionModal';
+import { normalizeInstallationStatus } from '../utils';
 
 // ─── formatMoney: uses centralized Indian comma system from utils ─────────────
 const fmt = formatINR;
@@ -933,7 +934,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(editData.driver_phone_number?.toString().trim(), 'Driver Phone Number');
                 break;
             case STAGE_IDS.INSTALLATION_STATUS:
-                requireField(editData.installation_status === 'Installed', 'Installation Status must be Installed');
+                // Exact match blocked records the vendor had set to the legacy
+                // value 'Yes' - the admin could not advance them at all.
+                requireField(normalizeInstallationStatus(editData.installation_status) === 'Yes', 'Installation Status must be Installed');
                 break;
             case STAGE_IDS.GEO_TAG_PHOTO:
                 requireField(editData.geo_tag_status === 'Proceed', 'Geo Tag Photo Status must be Proceed');

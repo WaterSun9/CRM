@@ -243,11 +243,22 @@ export default function BomPrintView({ customer, bom, bomItems, activeType }) {
                         </tbody>
                     </table>
 
+                    {/* The names were recorded but never printed - only the labels
+                        and a blank line appeared, so whoever received the sheet
+                        could not tell who prepared or loaded it. */}
                     <div className="grid grid-cols-3 gap-8 mt-6">
-                        {['Prepared By', 'Loaded By', 'Authorized / Received By'].map(label => (
+                        {[
+                            ['Prepared By', bom?.paper_prepared_by, bom?.paper_prepared_date],
+                            ['Loaded By', bom?.material_loaded_by, bom?.material_loaded_date],
+                            ['Authorized / Received By', null, null],
+                        ].map(([label, name, date]) => (
                             <div key={label} className="text-center">
                                 <div className="border-t border-stone-400 pt-1.5">
                                     <span className="text-[10px] font-black uppercase tracking-wider text-stone-800">{label}</span>
+                                    <p className="text-[11px] font-bold text-stone-900 mt-0.5 min-h-[14px]">{dash(name)}</p>
+                                    {date && (
+                                        <p className="text-[9px] font-semibold text-stone-500">{date}</p>
+                                    )}
                                 </div>
                             </div>
                         ))}
