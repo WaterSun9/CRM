@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User, Edit3, IndianRupee, Calendar } from 'lucide-react';
-import { supabase } from '../../supabase';
-import { SectionHeader, EditableDetailItem } from './shared';
+import { SectionHeader, EditableDetailItem, fetchVendorNames } from './shared';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
 import { formatInputValue } from '../../utils';
 
@@ -66,17 +65,11 @@ export default function MaterialDeliveryTab({
     const filledCount = panelSerials.filter(Boolean).length;
 
     useEffect(() => {
-        const fetchVendorsList = async () => {
-            try {
-                const { data } = await supabase.from('vendors').select('name').order('name');
-                const dbVendors = (data || []).map(v => v.name).filter(Boolean);
-                setVendors(dbVendors);
-            } catch (e) {
-                console.error('Error fetching vendors in modal:', e);
-                setVendors([]);
-            }
-        };
-        fetchVendorsList();
+        // Cached in shared.jsx - this tab re-mounts on every open, and the
+        // vendor list does not change between them.
+        let cancelled = false;
+        fetchVendorNames().then(names => { if (!cancelled) setVendors(names); });
+        return () => { cancelled = true; };
     }, []);
 
     const handlePrint = () => {

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ClipboardList, Save, Building2, Mail, AlertTriangle, CheckCircle2, User, Calendar, FileText, Truck, IndianRupee } from 'lucide-react';
-import { supabase } from '../../supabase';
 
-import { CheckboxRemarkItem } from './shared';
+import { CheckboxRemarkItem, fetchVendorNames } from './shared';
 import { INSTALLATION_TAGS, isFinalTagValue } from '../../constants';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
 
@@ -36,17 +35,11 @@ export default function InstallationStatusTab({
     const [vendorConfirm, setVendorConfirm] = useState({ isOpen: false, vendorName: '' });
 
     useEffect(() => {
-        const fetchVendorsList = async () => {
-            try {
-                const { data } = await supabase.from('vendors').select('name').order('name');
-                const dbVendors = (data || []).map(v => v.name).filter(Boolean);
-                setVendors(dbVendors);
-            } catch (e) {
-                console.error('Error fetching vendors in installation tab:', e);
-                setVendors([]);
-            }
-        };
-        fetchVendorsList();
+        // Cached in shared.jsx - this tab re-mounts on every open, and the
+        // vendor list does not change between them.
+        let cancelled = false;
+        fetchVendorNames().then(names => { if (!cancelled) setVendors(names); });
+        return () => { cancelled = true; };
     }, []);
 
     const handleToggleInstallationTag = (tagId) => {

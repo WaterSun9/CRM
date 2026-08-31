@@ -88,10 +88,37 @@ localStorage written before the DB, never rolled back, then read back as truth.
 | 16 | RLS | The `stamp` SELECT clause is the only one missing `deleted_at is null`. |
 | 17 | Several | Dead role strings: `'dealer'`, `'office'`, `'channel_partner_office_manager'` are tested but are not real `user_type` values. |
 
+## ❌ Cancelled
+**UUID identity migration** — client says not needed. `MIGRATION_PLAN_uuid_identity.md`
+is kept for reference only; do not action it.
+
+Consequence: people stay matched by NAME, so the constraints that made the plan
+worth doing remain permanent facts of the system —
+- Renaming a Dealer or Vendor must cascade to `admin.sub_channel_partner` /
+  `admin.vendor`, or that person stops seeing their own records.
+- `ALLOW_NAME_EDIT = false` in `UserManagementView.jsx` therefore stays OFF.
+  Renames are done in SQL, as one transaction (recipe in the migration plan).
+- Two people cannot share a name: name-based RLS would show them each other's records.
+
 ## ⏸️ Deferred deliberately
-- UUID identity migration — `MIGRATION_PLAN_uuid_identity.md`
-- Name editing stays off (`ALLOW_NAME_EDIT = false`) until that lands
-- Remote-update banner stays off (`SHOW_REMOTE_UPDATE_ALERT = false`)
+- Remote-update banner stays off (`SHOW_REMOTE_UPDATE_ALERT = false`) until the
+  three concurrency fixes are proven in production.
+- Offline handling (remediation 10.12) — paused by the client.
+- "One name, entered once" (remediation 7) — paused by the client.
+
+## ⏭️ Added to the list
+**Template readiness — a reusable base for future clients** (remediation Phase 8,
+still 🟡 partial). What it needs, concretely:
+- Branding is now isolated in `BrandMark.jsx` + `src/assets/` — swapping a logo is
+  one component and two files. Good starting point.
+- Still hardcoded to this client: company name in the agreement pages
+  (`components/agreement/*` - "WATERSUN ELECTRICAL SOLUTIONS PRIVATE LIMITED",
+  the Radhanpur address), `index.html` title/meta, the 404 copy, and the
+  PM Surya Ghar / DISCOM stage names, which are India-solar-specific.
+- Stage pipeline (`PRIMARY_STAGES`) and the tag sets are constants, so they are
+  configurable in principle - but 14 stages are referenced by id across the app.
+- Decide first whether "template" means a fork per client or one deployment with
+  a tenant column. That choice drives everything else and has not been made.
 
 ---
 

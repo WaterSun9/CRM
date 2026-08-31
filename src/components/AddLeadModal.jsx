@@ -226,7 +226,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     const isAgent2 = user?.userType === 'agent2';
     const isPortalAgent = isAgent || isAgent2;
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office'
-        || user?.userType === 'channel_partner_office_manager'
+       
         || user?.userType === 'office2';
     const partnerName = (user?.channel_partner || user?.name || '').trim();
 

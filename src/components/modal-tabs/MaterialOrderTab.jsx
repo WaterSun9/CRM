@@ -19,10 +19,13 @@ export default function MaterialOrderTab({
     saving,
     setSaving
 }) {
-    // Channel Partner / Agent / Channel Partner Office can edit; Office has view-only access
-    const isAgent = user?.userType === 'agent' || user?.userType === 'dealer';
+    // Channel Partner / Dealer / Channel Partner Office can edit; Office is view-only.
+    // 'dealer' was never a real user_type - the Dealer role IS `agent2`
+    // (constants.js APP_ROLES), so this test never matched and actual Dealers
+    // silently had no Material Order edit while the legacy `agent` role did.
+    const isAgent = user?.userType === 'agent' || user?.userType === 'agent2';
     const isAdmin = user?.userType === 'admin';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office';
     const canEdit = isAgent || isChannelPartnerOffice || (isAdmin && isEditable);
 
     const [validationError, setValidationError] = useState('');

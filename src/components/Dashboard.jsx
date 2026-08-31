@@ -149,7 +149,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     const [hasMore, setHasMore] = useState(true);
     const [metrics, setMetrics] = useState(null);
     const [exporting, setExporting] = useState(false);
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'office2' || user?.userType === 'channel_partner_office_manager';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'office2';
     // Delivery Batches is a head-office function: Admin and Office only. Neither
     // the CPO nor the CP Manager (office2) under it gets access.
     const canSeeDeliveryBatches = user?.userType === 'admin' || user?.userType === 'sales';
@@ -263,7 +263,11 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             // but never used. The detail modal fetches the full row on open, so
             // nothing downstream loses data.
             .select(CUSTOMER_CARD_COLUMNS)
-            .ilike('stage', normalizedStage)
+            // .eq not .ilike: normalizedStage is already uppercased above, and
+            // all 3,828 stage values in the table are clean uppercase - so this
+            // matches exactly the same rows. ILIKE cannot use an index and
+            // forced a case-folding comparison over every row on each switch.
+            .eq('stage', normalizedStage)
             .order('created_at', { ascending: false })
             .range(pageNum * 50, (pageNum + 1) * 50 - 1);
             

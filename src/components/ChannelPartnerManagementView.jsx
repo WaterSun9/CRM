@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, UserPlus, Phone, Mail, Truck, Stamp, IndianRupee } from 'lucide-react';
+import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, ChevronDown, UserPlus, Phone, Mail, Truck, Stamp, IndianRupee } from 'lucide-react';
 import { logActivity } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
@@ -21,14 +21,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [newIntegration, setNewIntegration] = useState('');
     const [newInverter, setNewInverter] = useState('');
     const [activeManageCategory, setActiveManageCategory] = useState(null);
+    const [showPerformers, setShowPerformers] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [editingLabel, setEditingLabel] = useState('');
     const [loading, setLoading] = useState(true);
 
     const [vendors, setVendors] = useState([]);
     const [userProfilesList, setUserProfilesList] = useState([]);
-    const [newVendorName, setNewVendorName] = useState('');
-    const [newVendorEmail, setNewVendorEmail] = useState('');
     const [editingVendorName, setEditingVendorName] = useState('');
     const [editingVendorEmail, setEditingVendorEmail] = useState('');
     const [performanceStats, setPerformanceStats] = useState([]);
@@ -286,7 +285,10 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
     // Add new Channel Partner
     const handleAddPartner = async () => {
-        const val = newPartner.trim();
+        // Stored uppercase so the list cannot drift into "Perfect" / "PERFECT"
+        // pairs again. Leads are unaffected: admin.channel_partner is free text
+        // and every comparison against it is case-insensitive.
+        const val = newPartner.trim().toUpperCase();
         if (!val) return;
 
         // Check for duplicates
@@ -425,80 +427,25 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     };
 
     // Add new Vendor with User Management verification
-    const handleAddVendor = async () => {
-        const name = newVendorName.trim();
-        const email = newVendorEmail.trim();
-        if (!name || !email) {
-            showAlert('Please enter both Vendor Name and Email.');
-            return;
-        }
-
-        if ((vendors || []).some(v => String(v?.name || '').toLowerCase() === name.toLowerCase())) {
-            showAlert('A Vendor with this name already exists.');
-            return;
-        }
-
-        // ─── Step: Verify email in User Management ────────────────────────
-        let isPresentInUserManagement = userProfilesList.some(p => String(p.email || '').toLowerCase() === email.toLowerCase());
-        
-        // Also check DB live if not in local state
-        if (!isPresentInUserManagement) {
-            try {
-                const { data: matchedProfile } = await supabase
-                    .from('profiles')
-                    .select('id, email')
-                    .ilike('email', email)
-                    .maybeSingle();
-                if (matchedProfile?.id) {
-                    isPresentInUserManagement = true;
-                }
-            } catch (err) {
-                console.warn('Profile check error:', err);
-            }
-        }
-
-        if (!isPresentInUserManagement) {
-            const proceed = window.confirm(
-                `⚠️ Email Verification Notice:\n\n` +
-                `The email "${email}" was NOT found in User Management.\n\n` +
-                `For this vendor to log in to the Vendor Portal, an account with role "Vendors" must be created in User Management.\n\n` +
-                `Click OK to add to directory anyway, or Cancel to go register them in User Management first.`
-            );
-            if (!proceed) return;
-        }
-
-        try {
-            const { data, error } = await supabase
-                .from('vendors')
-                .insert({ name, email })
-                .select();
-
-            if (error) throw error;
-
-            setVendors(prev => [...prev, ...data]);
-            setNewVendorName('');
-            setNewVendorEmail('');
-            await logActivity(
-                currentUser.id,
-                'create',
-                `Added new Vendor: "${name}" (${email})${isPresentInUserManagement ? ' [Verified in User Management]' : ' [Pending User Account]'}`
-            );
-        } catch (e) {
-            console.error('Error adding vendor:', e);
-            showAlert('Error adding vendor: ' + e.message, { type: 'error' });
-        }
-    };
+    // handleAddVendor removed: vendors are created in User Management, which
+    // already inserts the directory row for a new vendor login. This version
+    // inserted a vendors row with no account behind it - it even offered to
+    // "add to directory anyway" when the email matched no profile, which is how
+    // entries flagged "No Login in User Mgmt" were created in the first place.
 
     // Edit/Rename Vendor
     const handleEditVendor = async (id, oldName, oldEmail) => {
-        const name = editingVendorName.trim();
+        // The name is displayed read-only above, so oldName is the only name
+        // this function can ever write. Kept explicit rather than reading the
+        // editing state, so a future UI change cannot quietly re-enable renames.
+        const name = oldName;
         const email = editingVendorEmail.trim();
-        if (!name || !email) {
-            showAlert('Vendor Name and Email cannot be empty.');
+        if (!email) {
+            showAlert('Vendor Email cannot be empty.');
             return;
         }
 
-        if (name === oldName && email === oldEmail) {
+        if (email === oldEmail) {
             setEditingId(null);
             return;
         }
@@ -506,28 +453,60 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         try {
             const { error } = await supabase
                 .from('vendors')
-                .update({ name, email })
+                .update({ email })
                 .eq('id', id);
 
             if (error) throw error;
 
-            // admin.vendor stores the vendor's NAME, and it is what the vendor's
-            // own RLS matches on (lower(trim(vendor)) = lower(trim(get_my_name()))).
-            // Renaming the directory entry without this left every existing job
-            // on the old name: the vendor stopped seeing their own work, and
-            // sendVendorLeadNotification - which looks the vendor up by
-            // vendors.name ilike admin.vendor - failed with "No email address is
-            // saved for vendor X".
-            if (name !== oldName && oldName) {
-                const { error: jobErr } = await supabase
-                    .from('admin')
-                    .update({ vendor: name })
-                    .ilike('vendor', oldName);
-                if (jobErr) throw jobErr;
+            // No rename branch here any more: the name field is read-only, so
+            // admin.vendor can never fall out of step with the login name.
+
+            // Keep the login in step with the directory. This list shows
+            // "No Login in User Mgmt" by matching vendors.email to
+            // profiles.email, so changing the address here without changing the
+            // login flagged a working vendor as having no account - which is
+            // exactly how V2 ended up badged after its email was edited.
+            //
+            // The auth email is what they actually sign in with, so it goes
+            // first: if it cannot be changed we stop and say so, rather than
+            // leaving the directory pointing at an address that cannot log in.
+            let loginNote = '';
+            if (email.toLowerCase() !== String(oldEmail || '').trim().toLowerCase() && oldEmail) {
+                const { data: linked } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .ilike('email', String(oldEmail).trim())
+                    .limit(1);
+
+                if (linked && linked.length > 0) {
+                    const profileId = linked[0].id;
+                    const { data: fnData, error: fnErr } = await supabase.functions.invoke('add_user', {
+                        body: { action: 'update_email', user_id: profileId, new_email: email.toLowerCase() },
+                    });
+                    if (fnErr || fnData?.error) {
+                        throw new Error(
+                            (fnData?.error || fnErr?.message || 'The login email could not be changed.')
+                            + ' The vendor directory was updated, but this vendor must still sign in with '
+                            + oldEmail + '. Fix the login in User Management.'
+                        );
+                    }
+                    const { error: pErr } = await supabase
+                        .from('profiles')
+                        .update({ email: email.toLowerCase() })
+                        .eq('id', profileId);
+                    if (pErr) throw pErr;
+                    loginNote = ' Their login email was updated to match.';
+                }
             }
 
             setVendors(prev => prev.map(v => v.id === id ? { ...v, name, email } : v));
+            setUserProfilesList(prev => prev.map(p =>
+                String(p.email || '').toLowerCase() === String(oldEmail || '').toLowerCase()
+                    ? { ...p, email: email.toLowerCase() }
+                    : p
+            ));
             setEditingId(null);
+            if (loginNote) showAlert('Vendor updated.' + loginNote, { type: 'success' });
             await logActivity(currentUser.id, 'update', `Updated Vendor: "${oldName}" → "${name}" (${email})`);
         } catch (e) {
             console.error('Error updating vendor:', e);
@@ -718,16 +697,20 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             ) : (
                 <div className="space-y-8 animate-in fade-in duration-700">
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                        
-                        {/* Directories Grid (Left 2/3) */}
-                        <div className="lg:col-span-2 space-y-4">
+                    <div className="space-y-6">
+
+                        {/* Directories Grid - full width. Top 5 Performers used to
+                            take the right third of this row; it is a glance metric,
+                            not something the team works from, so the directories
+                            they actually click now get the whole width and fit
+                            4-across instead of 3. */}
+                        <div className="space-y-4">
                             <div className="flex items-center gap-2 border-b border-stone-100 pb-3">
                                 <Users className="w-4 h-4 text-stone-700" />
                                 <h3 className="text-xs font-bold text-stone-800 uppercase tracking-wider">Directories & Allotments</h3>
                             </div>
                             
-                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 {/* Channel Partner Offices (CPO) Card */}
                                 <button
                                     onClick={() => {
@@ -904,18 +887,34 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                             </div>
                         </div>
 
-                        {/* Top Performance Ranking Chart (Right 1/3) */}
-                        <div className="space-y-4 flex flex-col h-full">
-                            <div className="flex items-center gap-2 border-b border-stone-100 pb-3">
-                                <Award className="w-4 h-4 text-amber-500 animate-bounce" />
-                                <h3 className="text-xs font-bold text-stone-850 uppercase tracking-wider">Top 5 Performers</h3>
-                            </div>
-                            
-                            <div className="bg-white rounded-[24px] p-5 border border-stone-150 shadow-xs flex-1 lg:h-[368px] flex flex-col justify-between">
-                                <div className="space-y-4 flex-1 flex flex-col justify-around py-1">
+                        {/* Demoted from the right-hand column to a collapsed strip:
+                            it is reference, not a working surface. Collapsed by
+                            default so it costs nothing until someone wants it. */}
+                        <div className="bg-white rounded-[24px] border border-stone-150 shadow-xs overflow-hidden">
+                            <button
+                                type="button"
+                                onClick={() => setShowPerformers(v => !v)}
+                                className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-stone-50/70 transition-colors cursor-pointer text-left"
+                            >
+                                <span className="flex items-center gap-2 min-w-0">
+                                    <Award className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                                    <span className="text-xs font-bold text-stone-850 uppercase tracking-wider">Top 5 Performers</span>
+                                    {!showPerformers && performanceStats.length > 0 && (
+                                        <span className="text-[11px] text-stone-400 font-medium truncate">
+                                            · {performanceStats[0].name} leads with {performanceStats[0].count}
+                                        </span>
+                                    )}
+                                </span>
+                                <ChevronDown
+                                    className={`w-4 h-4 text-stone-400 flex-shrink-0 transition-transform ${showPerformers ? 'rotate-180' : ''}`}
+                                />
+                            </button>
+
+                            {showPerformers && (
+                                <div className="px-5 pb-5 pt-1 space-y-3 border-t border-stone-100">
                                     {performanceStats.length > 0 ? (
                                         performanceStats.slice(0, 5).map((item, idx) => {
-                                            const totalProjects = performanceStats.reduce((s, p) => s + p.count, 0);
+                                            const totalProjects = performanceStats.reduce((sum, x) => sum + x.count, 0);
                                             const perc = totalProjects > 0 ? (item.count / totalProjects) * 100 : 0;
                                             const isFirst = idx === 0 && item.name !== 'No Channel Partner';
                                             return (
@@ -937,10 +936,10 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                             );
                                         })
                                     ) : (
-                                        <p className="text-xs text-stone-400 italic text-center py-4 my-auto">No performance metrics available.</p>
+                                        <p className="text-xs text-stone-400 italic text-center py-4">No performance metrics available.</p>
                                     )}
                                 </div>
-                            </div>
+                            )}
                         </div>
 
                     </div>
@@ -1224,27 +1223,14 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                     <p className="text-[10px] text-stone-400 font-medium">All three fields are required. The name appears in the Delivery Batch driver list, and picking it fills in the phone and vehicle automatically.</p>
                                 </div>
                             ) : isVendorCat ? (
-                                <div className="p-4 border-b border-stone-100 bg-stone-50/50 flex flex-col sm:flex-row gap-2">
-                                    <input
-                                        type="text"
-                                        placeholder="Vendor Name..."
-                                        value={newVendorName}
-                                        onChange={e => setNewVendorName(e.target.value)}
-                                        className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm focus:border-amber-400 outline-none transition"
-                                    />
-                                    <input
-                                        type="email"
-                                        placeholder="Vendor Email..."
-                                        value={newVendorEmail}
-                                        onChange={e => setNewVendorEmail(e.target.value)}
-                                        className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-sm focus:border-amber-400 outline-none transition"
-                                    />
-                                    <button
-                                        onClick={handleAddVendor}
-                                        className="flex items-center justify-center gap-1.5 bg-stone-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-md"
-                                    >
-                                        <Plus className="w-4 h-4" /> Add
-                                    </button>
+                                <div className="p-4 border-b border-stone-100 bg-stone-50/50">
+                                    {/* Vendors are created in User Management, not here. Adding one
+                                        in this list made a directory entry with no login behind it -
+                                        which is exactly what the "No Login in User Mgmt" badge flags. */}
+                                    <p className="text-[11px] text-stone-500 font-medium">
+                                        Vendors are added in <b className="text-stone-700">User Management</b>, so the login and the
+                                        directory entry are created together. This list is for reviewing them and correcting an email.
+                                    </p>
                                 </div>
                             ) : (
                                 <div className="p-4 border-b border-stone-100 bg-stone-50/50 flex gap-2">
@@ -1302,13 +1288,17 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                         </div>
                                                     ) : isVendorCat ? (
                                                         <div className="flex-1 flex gap-2 max-w-md">
-                                                            <input
-                                                                type="text"
-                                                                value={editingVendorName}
-                                                                onChange={e => setEditingVendorName(e.target.value)}
-                                                                className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-bold text-stone-800"
-                                                                placeholder="Name"
-                                                            />
+                                                            {/* Read-only on purpose. The vendor's NAME is the join key:
+                                                                admin.vendor stores it, and vendor RLS matches it against the
+                                                                profile name. Renaming here moved every job to the new name
+                                                                while the login kept the old one - the vendor stopped seeing
+                                                                their own work. Stays locked until identities move to UUIDs. */}
+                                                            <span
+                                                                className="flex-1 bg-stone-100 border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-bold text-stone-500 truncate flex items-center"
+                                                                title="Vendor names cannot be changed - they link the vendor to their jobs"
+                                                            >
+                                                                {editingVendorName}
+                                                            </span>
                                                             <input
                                                                 type="email"
                                                                 value={editingVendorEmail}

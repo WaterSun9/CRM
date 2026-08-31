@@ -24,7 +24,7 @@ export default function MeterInstallationTab({
     // Admin, Vendor, and Channel Partner Office can edit. Office is view-only.
     const isVendor = user?.userType === 'vendor';
     const isAdmin = user?.userType === 'admin';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office';
     const canEditMeter = (isVendor || isAdmin || isChannelPartnerOffice) && isEditable;
 
     const meterData = editData.meter_installation || 'No';

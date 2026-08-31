@@ -16,7 +16,7 @@ export default function DiscomInspectionTab({
     // Admin, Vendor, and Channel Partner Office can edit. Office is view-only.
     const isVendor = user?.userType === 'vendor';
     const isAdmin = user?.userType === 'admin';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office';
     const canEditInspection = (isVendor || isAdmin || isChannelPartnerOffice) && isEditable;
 
     const inspectionData = editData.discom_inspection || 'No';

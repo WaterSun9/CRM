@@ -1,6 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as ImageIcon, Download, MessageSquare, Check } from 'lucide-react';
 import { formatINR, toIndianCommas, parseIndianNumber, formatInputValue } from '../../utils';
+import { supabase } from '../../supabase';
+
+// ─── Vendor name list (process-wide cache) ────────────────────────────────────
+// InstallationStatusTab and MaterialDeliveryTab each fetched this on mount with
+// a [] dependency array - but a modal tab re-mounts every time it is opened, so
+// the same ~90ms round trip was paid again on every customer and every tab
+// switch, with the vendor dropdown empty until it landed.
+//
+// The list changes only when someone adds a vendor, which is rare and already
+// requires a reload to show up elsewhere. A failed fetch is deliberately NOT
+// cached, so a transient error retries on the next open instead of leaving the
+// dropdown permanently empty.
+let vendorNamesCache = null;
+let vendorNamesInflight = null;
+
+export async function fetchVendorNames() {
+    if (vendorNamesCache) return vendorNamesCache;
+    if (vendorNamesInflight) return vendorNamesInflight;   // dedupe concurrent mounts
+
+    vendorNamesInflight = (async () => {
+        const { data, error } = await supabase.from('vendors').select('name').order('name');
+        vendorNamesInflight = null;
+        if (error) {
+            console.error('Error fetching vendors:', error);
+            return [];
+        }
+        vendorNamesCache = (data || []).map(v => v.name).filter(Boolean);
+        return vendorNamesCache;
+    })();
+
+    return vendorNamesInflight;
+}
+
+// Call after adding or renaming a vendor so open tabs pick it up.
+export function invalidateVendorNames() {
+    vendorNamesCache = null;
+}
 
 const fmt = formatINR;
 

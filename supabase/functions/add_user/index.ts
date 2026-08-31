@@ -1,7 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
-const ALLOWED_ORIGINS = ["https://watersun9.github.io", "http://localhost:5173", "http://localhost:3000"]
+// The custom domain must be listed here, not just in Supabase Auth settings.
+// A missing origin fails CORS preflight, and the browser never sends the POST -
+// which surfaces in the UI as "Could not reach the account-creation service",
+// indistinguishable from the function being undeployed.
+const ALLOWED_ORIGINS = [
+    "https://watersun.deeprootsystems.in",
+    "https://watersun9.github.io",
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
 
 function isAllowedOrigin(origin: string) {
     return ALLOWED_ORIGINS.includes(origin)

@@ -247,7 +247,7 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
         // filters on it - so a blank one creates a user who can see nothing (or
         // everything). A CPO gets theirs filled in automatically; an admin must
         // supply it.
-        const BRANCH_SCOPED = ['channel_partner_office', 'channel_partner_office_manager', 'agent', 'office2', 'agent2'];
+        const BRANCH_SCOPED = ['channel_partner_office', 'agent', 'office2', 'agent2'];
         const resolvedPartner = (isCP ? partnerName : (form.channel_partner || '')).trim();
         if (BRANCH_SCOPED.includes(form.user_type) && !resolvedPartner) {
             setError('Assigned Channel Partner / Branch Name is required for this role.');
@@ -313,6 +313,53 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                     + '. This usually means the add_user edge function needs to be deployed or is misconfigured - contact your developer.');
             }
 
+            let directoryWarning = '';
+
+            // Operations > Channel Partners is a `metadata` list, separate from
+            // profiles. Creating a CPO here without adding it there left the
+            // branch missing from every Channel Partner dropdown in Operations
+            // even though the account existed - the same directory/login drift
+            // as the vendors list, one table over.
+            //
+            // The branch name is what leads are scoped by (admin.channel_partner),
+            // so it is the CPO's channel_partner, falling back to their own name
+            // exactly as branchOptions resolves it. Dealers and Channel Partners
+            // carry their parent branch, which normally exists already - adding
+            // it when it does not is still correct, and the check below makes it
+            // a no-op when it does.
+            const CP_DIRECTORY_TYPES = ['channel_partner_office', 'office2', 'agent', 'agent2'];
+            if (CP_DIRECTORY_TYPES.includes(finalForm.user_type)) {
+                // Uppercase to match how Operations stores these, so the two
+                // entry points cannot produce case-variant twins of one partner.
+                const branchName = String(
+                    finalForm.channel_partner
+                    || (finalForm.user_type === 'channel_partner_office' ? finalForm.name : '')
+                    || ''
+                ).trim().toUpperCase();
+
+                if (branchName) {
+                    try {
+                        const { data: existingBranch, error: lookupErr } = await supabase
+                            .from('metadata')
+                            .select('id')
+                            .eq('category', 'channel_partner')
+                            .ilike('label', branchName)
+                            .limit(1);
+
+                        if (lookupErr) throw lookupErr;
+
+                        if (!existingBranch || existingBranch.length === 0) {
+                            const { error: branchErr } = await supabase
+                                .from('metadata')
+                                .insert({ category: 'channel_partner', label: branchName });
+                            if (branchErr) throw branchErr;
+                        }
+                    } catch (bErr) {
+                        console.warn('Channel Partner directory sync failed:', bErr);
+                        directoryWarning = `The login for ${finalForm.name} was created, but "${branchName}" could not be added to Operations > Channel Partners. Add it there manually so it appears in the dropdowns.`;
+                    }
+                }
+            }
             // If the created user is a vendor, check if present in vendors table; if not, auto-add
             if (finalForm.user_type === 'vendor' || finalForm.role === 'Vendors' || (finalForm.role || '').toLowerCase().includes('vendor')) {
                 try {
@@ -334,10 +381,12 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                             });
                         if (vendorInsertErr) {
                             console.warn('User created, but adding them to the Vendors directory failed:', vendorInsertErr.message);
+                            directoryWarning = `The login for ${finalForm.name} was created, but adding them to the Operations vendor directory failed. They will not appear under Operations > Vendors - tell your developer.`;
                         }
                     }
                 } catch (vErr) {
                     console.warn('Vendor table sync warning:', vErr);
+                    directoryWarning = `The login for ${finalForm.name} was created, but the Operations vendor directory could not be checked. Confirm they appear under Operations > Vendors.`;
                 }
             }
 
@@ -348,7 +397,7 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                 `${finalForm.role} (${finalForm.user_type})`
             );
 
-            onCreated();
+            onCreated(directoryWarning);
         } catch (err) {
             setError(err.message || 'Failed to create user.');
         } finally {
@@ -466,7 +515,7 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                 <label className="block text-xs font-medium text-stone-600 mb-1">
                                     Assigned Channel Partner / Branch Name *
                                 </label>
-                                {!isCP && ['channel_partner_office', 'channel_partner_office_manager'].includes(form.user_type) ? (
+                                {!isCP && ['channel_partner_office'].includes(form.user_type) ? (
                                     /* A CPO *defines* a branch, so this is free text - the name typed
                                        here is stored on the new CPO's profile and becomes a selectable
                                        branch for every manager and agent created afterwards. */
@@ -650,17 +699,29 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(profile.id);
         try {
             // 1. Direct Supabase Database Update on profiles table
-            const { error: dbError } = await supabase
+            // .select('id') is not decoration: a role change blocked by RLS
+            // matches ZERO rows and comes back with error === null, so without
+            // the row count this would toast "updated" over a change the
+            // database refused. The privilege trigger raises a real error, but
+            // a row the caller simply cannot see fails silently.
+            const { data: dbRows, error: dbError } = await supabase
                 .from('profiles')
                 .update({
                     user_type: selected.user_type,
                     role: selected.role
                 })
-                .eq('id', profile.id);
+                .eq('id', profile.id)
+                .select('id');
 
             if (dbError) {
                 console.error('Database role update failed:', dbError);
                 throw new Error(dbError.message || 'Database update failed');
+            }
+            if (!dbRows || dbRows.length === 0) {
+                throw new Error(
+                    'The database did not accept the change - the role is unchanged. '
+                    + 'You may not have permission to manage this user.'
+                );
             }
 
             // The edge function has no 'update_role' action - this call always
@@ -713,6 +774,9 @@ export default function UserManagementView({ currentUser }) {
     // ─── Update User Email Address ──────────────────────────────────────────────
     const handleUpdateEmail = async (profileId, newEmail) => {
         const cleanEmail = (newEmail || '').trim().toLowerCase();
+        // Needed to find the matching Operations directory row afterwards.
+        const previousEmail = (profiles.find(p => p.id === profileId)?.email || '').trim().toLowerCase();
+        let vendorSyncNote = '';
         if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
             showToast('error', 'Please enter a valid email address.');
             return;
@@ -744,10 +808,33 @@ export default function UserManagementView({ currentUser }) {
                     .update({ email: cleanEmail })
                     .eq('id', profileId);
                 if (profileDbErr) throw profileDbErr;
+
+                // Keep the Operations > Vendors directory in step. That list
+                // decides "User Account Active" vs "No Login in User Mgmt" by
+                // matching vendors.email to profiles.email, so changing the
+                // login here without updating there left a live vendor flagged
+                // as having no login at all.
+                //
+                // Not fatal if it fails - the login change already succeeded and
+                // is the thing that matters - so this reports separately rather
+                // than rolling back a working email change.
+                if (previousEmail && previousEmail !== cleanEmail) {
+                    const { data: vRows, error: vErr } = await supabase
+                        .from('vendors')
+                        .update({ email: cleanEmail })
+                        .ilike('email', previousEmail)
+                        .select('id');
+                    if (vErr) {
+                        console.error('Vendor directory email sync failed:', vErr);
+                        showToast('error', 'Login email changed, but the Operations vendor entry still shows the old address. Update it there too.');
+                    } else if (vRows && vRows.length > 0) {
+                        vendorSyncNote = ' The matching Operations vendor entry was updated too.';
+                    }
+                }
             }
 
             setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, email: cleanEmail } : p));
-            showToast('success', 'Email updated successfully');
+            showToast('success', 'Email updated successfully.' + vendorSyncNote);
             setEditingEmailId(null);
             logActivity(currentUser?.id || 'admin', 'update', `Updated email address for profile ${profileId} to ${cleanEmail}`, '');
         } catch (err) {
@@ -1289,7 +1376,11 @@ export default function UserManagementView({ currentUser }) {
             {showCreateModal && (
                 <CreateUserModal
                     onClose={() => setShowCreateModal(false)}
-                    onCreated={() => { setShowCreateModal(false); fetchProfiles(); }}
+                    onCreated={(directoryWarning) => {
+                        setShowCreateModal(false);
+                        fetchProfiles();
+                        if (directoryWarning) showToast('error', directoryWarning);
+                    }}
                     currentUser={currentUser}
                     branchOptions={branchOptions}
                 />

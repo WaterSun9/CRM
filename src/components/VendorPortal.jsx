@@ -42,12 +42,29 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     // Material Integration and Material Delivery are intentionally hidden from vendors.
     const [activeTab, setActiveTab] = useState('DELIVERY'); // 'DELIVERY', 'INSTALLATION', 'GEO'
     const [selectedCust, setSelectedCust] = useState(null);
+    const TAB_STAGE_MAP = useMemo(() => ({ MATERIAL: STAGE_IDS.MATERIAL_INTEGRATION, DELIVERY: STAGE_IDS.MATERIAL_DELIVERY, INSTALLATION: STAGE_IDS.INSTALLATION_STATUS, GEO: STAGE_IDS.GEO_TAG_PHOTO }), []);
+
     const vendorIsFutureTab = useMemo(() => {
-        const TAB_STAGE_MAP = { MATERIAL: STAGE_IDS.MATERIAL_INTEGRATION, DELIVERY: STAGE_IDS.MATERIAL_DELIVERY, INSTALLATION: STAGE_IDS.INSTALLATION_STATUS, GEO: STAGE_IDS.GEO_TAG_PHOTO };
         const currentStageIdx = PRIMARY_STAGES.findIndex(s => s.id === selectedCust?.stage);
         const tabStageIdx = PRIMARY_STAGES.findIndex(s => s.id === TAB_STAGE_MAP[activeTab]);
         return currentStageIdx !== -1 && tabStageIdx !== -1 && tabStageIdx > currentStageIdx;
-    }, [selectedCust?.stage, activeTab]);
+    }, [selectedCust?.stage, activeTab, TAB_STAGE_MAP]);
+
+    // The mirror of vendorIsFutureTab: the customer has already moved PAST this
+    // tab. Without this the screen looked broken - an "Installed" record sitting
+    // at Discom Submission still rendered a live-looking "Save & Move to Geo Tag
+    // Photo" button, greyed out by canEditInstallation with nothing saying why.
+    // The vendor's work here is finished; there is nothing to move.
+    const vendorIsPastTab = useMemo(() => {
+        const currentStageIdx = PRIMARY_STAGES.findIndex(s => s.id === selectedCust?.stage);
+        const tabStageIdx = PRIMARY_STAGES.findIndex(s => s.id === TAB_STAGE_MAP[activeTab]);
+        return currentStageIdx !== -1 && tabStageIdx !== -1 && tabStageIdx < currentStageIdx;
+    }, [selectedCust?.stage, activeTab, TAB_STAGE_MAP]);
+
+    const currentStageLabel = useMemo(
+        () => PRIMARY_STAGES.find(s => s.id === selectedCust?.stage)?.label || selectedCust?.stage || '',
+        [selectedCust?.stage]
+    );
     
     // Edit Form State (for selected customer)
     const [geoTagStatus, setGeoTagStatus] = useState('Pending');
@@ -929,30 +946,98 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                             </div>
                         ) : filteredCustomers.length > 0 ? (
                             filteredCustomers.map(cust => {
-                                if (cust.stage === STAGE_IDS.MATERIAL_INTEGRATION) {
-                                    return (
-                                        <div 
-                                            key={cust.id} 
-                                            onClick={() => handleSelectCustomer(cust)}
-                                            className="bg-white p-3.5 rounded-2xl border border-stone-150 shadow-sm hover:border-amber-400 hover:shadow-md transition-all space-y-2.5 cursor-pointer active:scale-[0.99] group"
-                                        >
-                                            <div className="flex justify-between items-start gap-2">
-                                                <div className="space-y-1 min-w-0 flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <h4 className="text-xs font-bold text-stone-900 truncate group-hover:text-amber-600 transition-colors">{cust.customer_name}</h4>
-                                                        <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-md">
-                                                            {cust.system_capacity_kwp ? `${cust.system_capacity_kwp} kWp` : 'BOM Ready'}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-[10px] text-stone-400 font-medium truncate">{cust.villages || 'Address not specified'}</p>
-                                                    <div className="flex flex-wrap gap-2 text-[9px] text-stone-500 pt-0.5">
-                                                        {cust.consumer_no && <span>Consumer: <b>{cust.consumer_no}</b></span>}
-                                                        {cust.folder_no && <span>Folder: <b>{cust.folder_no}</b></span>}
-                                                        {cust.roof_shed && <span>Type: <b>{cust.roof_shed}</b></span>}
-                                                    </div>
-                                                </div>
-                                            </div>
+                                // ─── One card shape for every stage ───────────────
+                                // Each stage previously had its own hand-built card:
+                                // different metadata layout (stacked chips vs inline
+                                // bullets), a chevron on two of the three, and a
+                                // status badge on only one. Same list, three designs.
+                                //
+                                // The skeleton below is now identical everywhere -
+                                // name, stage badge, village, chips, footer - and
+                                // only the CONTENT of the chips and footer varies,
+                                // because the useful fields genuinely differ by stage.
+                                const isIntegration  = cust.stage === STAGE_IDS.MATERIAL_INTEGRATION;
+                                const isDelivery     = cust.stage === STAGE_IDS.MATERIAL_DELIVERY;
+                                const isInstallation = cust.stage === STAGE_IDS.INSTALLATION_STATUS;
 
+                                let badgeLabel, badgeClass, chips;
+
+                                if (isIntegration) {
+                                    badgeLabel = cust.system_capacity_kwp ? `${cust.system_capacity_kwp} kWp` : 'BOM Ready';
+                                    badgeClass = 'bg-amber-100 text-amber-800';
+                                    chips = [
+                                        cust.consumer_no && ['Consumer', cust.consumer_no],
+                                        cust.folder_no   && ['Folder', cust.folder_no],
+                                        cust.roof_shed   && ['Type', cust.roof_shed],
+                                    ];
+                                } else if (isDelivery) {
+                                    const panels = parsePanelSerials(cust.panel_serial_no).filter(Boolean);
+                                    badgeLabel = 'Delivery Stage';
+                                    badgeClass = 'bg-blue-100 text-blue-800';
+                                    chips = [
+                                        cust.consumer_no         && ['Cons', cust.consumer_no],
+                                        cust.inverter_serial_no  && ['Inv', cust.inverter_serial_no],
+                                        ['Panels', `${panels.length} serials`],
+                                    ];
+                                } else {
+                                    const statusValue = isInstallation
+                                        ? (cust.installation_status || 'Pending')
+                                        : (cust.geo_tag_status || 'Pending');
+                                    const isComplete = isInstallation
+                                        ? normalizeInstallationStatus(statusValue) === 'Yes'
+                                        : statusValue === 'Proceed';
+                                    badgeLabel = `${isInstallation ? 'Installation' : 'Geo'}: ${statusValue}`;
+                                    badgeClass = isComplete
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : 'bg-amber-100 text-amber-800';
+                                    chips = [
+                                        cust.consumer_no  && ['Cons', cust.consumer_no],
+                                        cust.phone_number && ['Ph', cust.phone_number],
+                                    ];
+                                }
+
+                                chips = chips.filter(Boolean);
+
+                                return (
+                                    <div
+                                        key={cust.id}
+                                        onClick={() => handleSelectCustomer(cust)}
+                                        className="bg-white p-3.5 rounded-2xl border border-stone-150 shadow-sm hover:border-amber-400 hover:shadow-md transition-all space-y-2.5 cursor-pointer active:scale-[0.99] group"
+                                    >
+                                        <div className="flex justify-between items-start gap-2">
+                                            <div className="space-y-1 min-w-0 flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    {/* Fallback matters: 18 rows from the 23 Aug
+                                                        import have no customer_name, and rendered
+                                                        as a nameless card with no way to tell what
+                                                        it was. */}
+                                                    <h4 className={`text-xs font-bold truncate group-hover:text-amber-600 transition-colors ${
+                                                        cust.customer_name ? 'text-stone-900' : 'text-stone-400 italic'
+                                                    }`}>
+                                                        {cust.customer_name || 'Unnamed record'}
+                                                    </h4>
+                                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md whitespace-nowrap ${badgeClass}`}>
+                                                        {badgeLabel}
+                                                    </span>
+                                                    {searchQuery.trim() && (
+                                                        <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-stone-900 text-white whitespace-nowrap">
+                                                            {cust.stage}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[10px] text-stone-400 font-medium truncate">{cust.villages || 'Address not specified'}</p>
+                                                {chips.length > 0 && (
+                                                    <div className="flex flex-wrap gap-2 text-[9px] text-stone-500 pt-0.5">
+                                                        {chips.map(([label, value]) => (
+                                                            <span key={label}>{label}: <b>{value}</b></span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <ChevronRight className="w-4.5 h-4.5 text-stone-300 group-hover:text-stone-700 transition-colors flex-shrink-0" />
+                                        </div>
+
+                                        {isIntegration && (
                                             <div className="flex items-center justify-between pt-2 border-t border-stone-100">
                                                 <span className="text-[9px] font-bold text-stone-400 flex items-center gap-1">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
@@ -969,71 +1054,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                     <Printer size={11} /> Print BOM
                                                 </button>
                                             </div>
-                                        </div>
-                                    );
-                                }
-
-                                if (cust.stage === STAGE_IDS.MATERIAL_DELIVERY) {
-                                    const panels = parsePanelSerials(cust.panel_serial_no).filter(Boolean);
-                                    return (
-                                        <div 
-                                            key={cust.id} 
-                                            onClick={() => handleSelectCustomer(cust)}
-                                            className="bg-white p-3.5 rounded-2xl border border-stone-150 shadow-sm hover:border-amber-400 hover:shadow-md transition-all space-y-2 cursor-pointer active:scale-[0.99] group"
-                                        >
-                                            <div className="flex justify-between items-start gap-2">
-                                                <div className="space-y-1 min-w-0 flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <h4 className="text-xs font-bold text-stone-900 truncate group-hover:text-amber-600 transition-colors">{cust.customer_name}</h4>
-                                                        <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded-md">
-                                                            Delivery Stage
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-[10px] text-stone-400 font-medium truncate">{cust.villages || 'Address not specified'}</p>
-                                                    <div className="flex flex-wrap gap-2 text-[9px] text-stone-500 pt-0.5">
-                                                        {cust.consumer_no && <span>Cons: <b>{cust.consumer_no}</b></span>}
-                                                        {cust.inverter_serial_no && <span>Inv: <b>{cust.inverter_serial_no}</b></span>}
-                                                        <span>Panels: <b>{panels.length} serials</b></span>
-                                                    </div>
-                                                </div>
-                                                <ChevronRight className="w-4.5 h-4.5 text-stone-300 group-hover:text-stone-700 transition-colors flex-shrink-0" />
-                                            </div>
-                                        </div>
-                                    );
-                                }
-
-                                const isInstallation = cust.stage === STAGE_IDS.INSTALLATION_STATUS;
-                                const statusValue = isInstallation ? (cust.installation_status || 'Pending') : (cust.geo_tag_status || 'Pending');
-                                const isComplete = isInstallation ? normalizeInstallationStatus(statusValue) === 'Yes' : statusValue === 'Proceed';
-
-                                return (
-                                    <div 
-                                        key={cust.id} 
-                                        onClick={() => handleSelectCustomer(cust)}
-                                        className="bg-white p-4 rounded-2xl border border-stone-150 shadow-sm hover:border-amber-400 transition-all flex justify-between items-center cursor-pointer active:scale-[0.99] group"
-                                    >
-                                        <div className="space-y-1.5 min-w-0 pr-2">
-                                            <p className="text-xs font-bold text-stone-850 truncate group-hover:text-amber-600 transition-colors">{cust.customer_name}</p>
-                                            <p className="text-[10px] text-stone-400 font-medium truncate">
-                                                {cust.villages || 'Address not specified'}
-                                                {cust.consumer_no && ` • Cons: ${cust.consumer_no}`}
-                                                {cust.phone_number && ` • Ph: ${cust.phone_number}`}
-                                            </p>
-                                            
-                                            <div className="flex flex-wrap gap-1 mt-1">
-                                                {searchQuery.trim() && (
-                                                    <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-stone-900 text-white">
-                                                        {cust.stage}
-                                                    </span>
-                                                )}
-                                                <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${
-                                                    isComplete ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
-                                                }`}>
-                                                    {isInstallation ? 'Installation' : 'Geo'}: {statusValue}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <ChevronRight className="w-4.5 h-4.5 text-stone-300 group-hover:text-stone-700 transition-colors flex-shrink-0" />
+                                        )}
                                     </div>
                                 );
                             })
@@ -1119,6 +1140,16 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                             {vendorIsFutureTab && (
                                 <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-center">
                                     <p className="text-xs font-bold text-amber-800">This stage is view-only until the office moves the customer here.</p>
+                                </div>
+                            )}
+                            {vendorIsPastTab && (
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
+                                    <p className="text-xs font-bold text-emerald-800">
+                                        Your work on this stage is complete.
+                                    </p>
+                                    <p className="text-[10px] font-medium text-emerald-700 mt-0.5">
+                                        This customer has already moved on to {currentStageLabel}, so these details are read-only.
+                                    </p>
                                 </div>
                             )}
                             <div className="space-y-4">
@@ -1487,7 +1518,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                     )}
 
                                     <div className="pt-2">
-                                        {normalizeInstallationStatus(installationStatus) === 'Yes' ? (
+                                        {normalizeInstallationStatus(installationStatus) === 'Yes' && !vendorIsPastTab ? (
                                             <div className="space-y-2">
                                                 <button
                                                     type="button"

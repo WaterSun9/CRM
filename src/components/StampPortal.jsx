@@ -455,6 +455,12 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                     // used to page through every row in the table (3,800+, of which
                     // ~78% are COMPLETED) just to keep a handful.
                     .eq("discom_submission->>sent_to_stamp_maker", "true")
+                    // Filter at the DATABASE. Narrowing in JS afterwards still
+                    // shipped every other stamp maker's customer rows over the
+                    // wire, readable in the network tab. Exact match is safe
+                    // here: assigned_stamp_maker is written from profiles.name
+                    // via the dropdown, which is the same value as user.name.
+                    .eq("discom_submission->>assigned_stamp_maker", (user?.name || '').trim())
                     .is("deleted_at", null)
                     .order("created_at", { ascending: false })
                     .range(from, from + pageSize - 1);
@@ -467,15 +473,17 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
             // Only show customers sent to stamp maker and not yet finished
             // sent_to_stamp_maker is now filtered server-side; "not yet stamped"
             // stays here because the column is JSON and the flag is often absent.
-            // Only work assigned to this stamp maker. Records sent before
-            // assignment existed have no assigned_stamp_maker, so they stay
-            // visible to everyone rather than disappearing from the queue.
+            // STRICT: a stamp maker sees only work assigned to them by name.
+            // An unassigned record (no assigned_stamp_maker) shows in NOBODY's
+            // queue - the office has to assign it first. That is deliberate:
+            // shared visibility meant two makers could both start the same job,
+            // and it is the basis of the monthly payout record.
             const myName = String(user?.name || '').trim().toLowerCase();
             const active = (data || []).filter(c => {
                 const sub = c.discom_submission || {};
                 if (sub.stamp_sent) return false;
                 const assigned = String(sub.assigned_stamp_maker || '').trim().toLowerCase();
-                return !assigned || assigned === myName;
+                return !!assigned && assigned === myName;
             });
             setCustomers(active);
             if (active.length > 0) {
@@ -505,9 +513,15 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                     return;
                 }
 
+                // Must apply the SAME assignment rule as the initial fetch,
+                // otherwise another maker's record still arrives here live and
+                // reappears in this queue despite being filtered on load.
+                const myNameRt = String(user?.name || '').trim().toLowerCase();
+                const assignedRt = String(record?.discom_submission?.assigned_stamp_maker || '').trim().toLowerCase();
                 const isStampActive = record && !record.deleted_at &&
                     record.discom_submission?.sent_to_stamp_maker === true &&
-                    !record.discom_submission?.stamp_sent;
+                    !record.discom_submission?.stamp_sent &&
+                    !!assignedRt && assignedRt === myNameRt;
 
                 setCustomers(prev => {
                     const exists = prev.some(c => c.id === record.id);
@@ -527,7 +541,9 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
             .subscribe();
 
         return () => supabase.removeChannel(channel);
-    }, [user?.id, fetchCustomers]);
+        // user?.name is read inside the handler now (assignment check), so it
+        // must be a dependency rather than a stale closure.
+    }, [user?.id, user?.name, fetchCustomers]);
 
     const handleDocsChange = useCallback((customerId, updatedDocs) => {
         setCustDocs(prev => ({ ...prev, [customerId]: updatedDocs }));
@@ -602,6 +618,7 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                 .select("id, customer_name, consumer_no, villages, discom_submission")
                 .eq("discom_submission->>sent_to_stamp_maker", "true")
                 .eq("discom_submission->>stamp_sent", "true")
+                .eq("discom_submission->>assigned_stamp_maker", (user?.name || '').trim())
                 .is("deleted_at", null);
             if (error) throw error;
             const myName = String(user?.name || '').trim().toLowerCase();
@@ -609,8 +626,10 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                 .filter(r => {
                     const assigned = String(r.discom_submission?.assigned_stamp_maker || '').trim().toLowerCase();
                     const completedBy = String(r.discom_submission?.stamp_completed_by || '').trim().toLowerCase();
-                    // Mine if it was assigned to me, or if I completed it.
-                    return (!assigned && !completedBy) || assigned === myName || completedBy === myName;
+                    // Mine only: assigned to me, or completed by me. Records with
+                    // neither belong to nobody and appear in no one's record - they
+                    // must not inflate anybody's payout count.
+                    return (!!assigned && assigned === myName) || (!!completedBy && completedBy === myName);
                 })
                 .map(r => {
                 const sub = r.discom_submission || {};

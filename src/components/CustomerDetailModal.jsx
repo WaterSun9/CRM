@@ -252,11 +252,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     // Frozen for ALL users when completed. Admin can temporarily unlock.
     const isFrozen = isCompleted && !(isAdmin && adminUnlocked);
     const isAgent = user?.userType === 'agent';
-    const isSales = user?.userType === 'sales' || user?.userType === 'office';
-    const isChannelPartnerOffice = user?.userType === 'channel_partner_office' || user?.userType === 'channel_partner_office_manager';
+    const isSales = user?.userType === 'sales';
+    const isChannelPartnerOffice = user?.userType === 'channel_partner_office';
     const isChannelPartnerManager = user?.userType === 'office2';
     const isChannelPartnerOfficeOrManager = isChannelPartnerOffice || isChannelPartnerManager;
-    const isOffice = (user?.userType === 'sales' || user?.userType === 'office' || user?.role?.toLowerCase().includes('office')) && !isChannelPartnerOfficeOrManager;
+    const isOffice = (user?.userType === 'sales' || user?.role?.toLowerCase().includes('office')) && !isChannelPartnerOfficeOrManager;
     const canDeleteDocs = isAdmin || isOffice;
 
     const isDiscomOrMeterStage = editData.stage === STAGE_IDS.DISCOM_SUBMISSION || editData.stage === STAGE_IDS.METER_INSTALLATION;
