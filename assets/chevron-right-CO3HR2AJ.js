@@ -1,1 +1,0 @@
-import{Ot as e}from"./index-DuLzAn_h.js";var t=e(`ChevronRight`,[[`path`,{d:`m9 18 6-6-6-6`,key:`mthhwq`}]]);export{t};
