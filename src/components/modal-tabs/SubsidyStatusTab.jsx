@@ -46,10 +46,14 @@ export default function SubsidyStatusTab({
             subsidy_tag: newTag
         }));
         
-        await onUpdate(customer.id, {
+        // A failed save must stop here - otherwise the activity log below
+        
+        // records a change that never reached the database.
+        
+        if (await onUpdate(customer.id, {
             subsidy_tag: newTag,
             subsidy_history: updatedHistory
-        });
+        }) === false) return;
         
         const tagLabel = SUBSIDY_TAGS.find(t => t.id === newTag)?.label || newTag;
         await logActivity(
@@ -207,10 +211,12 @@ export default function SubsidyStatusTab({
                                             subsidy_history: updatedHistory,
                                             subsidy_tag: draftStatus
                                         }));
-                                        await onUpdate(customer.id, { 
+                                        // A failed save must stop here - otherwise the activity log below
+                                        // records a change that never reached the database.
+                                        if (await onUpdate(customer.id, { 
                                             subsidy_history: updatedHistory,
                                             subsidy_tag: draftStatus
-                                        });
+                                        }) === false) return;
                                         
                                         await logActivity(
                                             user.id,

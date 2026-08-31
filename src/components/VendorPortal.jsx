@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, updateDocumentRemark, normalizeInstallationStatus } from '../utils';
+import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, updateDocumentRemark, normalizeInstallationStatus, updateAdminRecord } from '../utils';
 import { 
     User, Phone, Mail, MapPin, Zap, Building2, Sun,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
@@ -463,11 +463,11 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 // Unchecked before: the photo uploaded but the flag/status did
                 // not save, and a missing geo_tag_image blocks the move to
                 // Discom Submission - so the vendor was stuck with no reason given.
-                const { error: geoErr } = await supabase.from('admin').update({ 
+                const { ok: geoOk, error: geoErr } = await updateAdminRecord(selectedCust.id, {
                     geo_tag_image: true,
-                    geo_tag_status: nextGeoStatus 
-                }).eq('id', selectedCust.id);
-                if (geoErr) throw geoErr;
+                    geo_tag_status: nextGeoStatus
+                });
+                if (!geoOk) throw geoErr;
 
                 if (geoTagStatus === 'Pending') {
                     setGeoTagStatus('Proceed');
@@ -516,8 +516,8 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             const hasOtherGeo = remaining.some(d => d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag');
             if (!hasOtherGeo) {
                 setGeoTagImage(false);
-                const { error: clearGeoErr } = await supabase.from('admin').update({ geo_tag_image: false }).eq('id', selectedCust.id);
-                if (clearGeoErr) throw clearGeoErr;
+                const { ok: clearOk, error: clearGeoErr } = await updateAdminRecord(selectedCust.id, { geo_tag_image: false });
+                if (!clearOk) throw clearGeoErr;
             }
         } catch (err) {
             console.error('Error deleting photo:', err);
@@ -635,12 +635,12 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 updatePayload.stage = nextStage;
             }
 
-            const { error } = await supabase
-                .from('admin')
-                .update(updatePayload)
-                .eq('id', selectedCust.id);
-
-            if (error) throw error;
+            // Routed through the shared helper so this portal gets the same
+            // protections as the main app: unknown columns stripped, '' turned
+            // into null for numeric/date columns, and a 0-rows result treated
+            // as a failure instead of a silent success.
+            const { ok, error } = await updateAdminRecord(selectedCust.id, updatePayload);
+            if (!ok) throw error;
 
             let logMsg = `Vendor ${user.name} updated ${
                 activeTab === 'DELIVERY' 
@@ -710,15 +710,11 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
         setGivingUp(true);
         try {
-            const { error } = await supabase
-                .from('admin')
-                .update({
-                    installation_status: 'Giveup',
-                    vendor_note: giveUpReason || null
-                })
-                .eq('id', selectedCust.id);
-
-            if (error) throw error;
+            const { ok, error } = await updateAdminRecord(selectedCust.id, {
+                installation_status: 'Giveup',
+                vendor_note: giveUpReason || null
+            });
+            if (!ok) throw error;
 
             if (user?.id) {
                 void logActivity(

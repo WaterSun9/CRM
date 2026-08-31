@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import {
     uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, logActivity,
+    updateAdminRecord,
 } from "../utils.jsx";
 import { FilePreviewModal } from "./modal-tabs/shared";
 import { useGlobalPopup } from './GlobalPopup';
@@ -43,8 +44,8 @@ function RemarkRow({ customerId, initialRemark, userId, customerName }) {
                 .select("discom_submission").eq("id", customerId).single();
             if (readErr) throw readErr;
             const merged = { ...(existing?.discom_submission || {}), stamp_remark: remark };
-            const { error } = await supabase.from("admin").update({ discom_submission: merged }).eq("id", customerId);
-            if (error) throw error;
+            const { ok, error } = await updateAdminRecord(customerId, { discom_submission: merged });
+            if (!ok) throw error;
             await logActivity(userId, "update", customerName + ": Updated stamp remark", "", customerId);
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
@@ -140,10 +141,8 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
             // fell through to onCustomerRemoved(), so the record vanished from
             // the stamp maker's list while stamp_sent was never set - the office
             // never saw it as stamped and nobody was told.
-            const { error: writeErr } = await supabase.from("admin")
-                .update({ discom_submission: merged })
-                .eq("id", cust.id);
-            if (writeErr) throw writeErr;
+            const { ok: writeOk, error: writeErr } = await updateAdminRecord(cust.id, { discom_submission: merged });
+            if (!writeOk) throw writeErr;
 
             await logActivity(user.id, "update",
                 cust.customer_name + ": Stamp sent to Document Making", "", cust.id);
@@ -176,9 +175,8 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
             }
             // Unchecked before: the file uploaded but the checklist flag silently
             // failed to set, so the office saw no stamp against the customer.
-            const { error: flagErr } = await supabase.from("admin")
-                .update({ pm_surya_ghar_stamp: true }).eq("id", cust.id);
-            if (flagErr) throw flagErr;
+            const { ok: flagOk, error: flagErr } = await updateAdminRecord(cust.id, { pm_surya_ghar_stamp: true });
+            if (!flagOk) throw flagErr;
             await logActivity(user.id, "update",
                 cust.customer_name + ": " + (stampDoc ? "Changed" : "Uploaded") + " PM Surya Ghar Stamp", "", cust.id);
             const updatedDocs = await getCustomerDocuments(cust.id);

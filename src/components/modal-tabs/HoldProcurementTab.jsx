@@ -130,7 +130,11 @@ export default function HoldProcurementTab({
             updated_at: new Date().toISOString()
         };
 
-        await onUpdate(customer.id, { hold_procurement: payload });
+        // A failed save must stop here - otherwise the activity log below
+
+        // records a change that never reached the database.
+
+        if (await onUpdate(customer.id, { hold_procurement: payload }) === false) { setSaving(false); return; }
         if (logActivity && user?.id) {
             await logActivity(
                 user.id,
@@ -153,10 +157,14 @@ export default function HoldProcurementTab({
             resumed_to: destStage
         };
 
-        await onUpdate(customer.id, {
+        // A failed save must stop here - otherwise the activity log below
+
+        // records a change that never reached the database.
+
+        if (await onUpdate(customer.id, {
             stage: destStage,
             hold_procurement: payload
-        });
+        }) === false) return;
 
         if (logActivity && user?.id) {
             await logActivity(

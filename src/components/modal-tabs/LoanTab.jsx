@@ -69,10 +69,14 @@ export default function LoanTab({
             loan_tag: newTag
         }));
         
-        await onUpdate(customer.id, {
+        // A failed save must stop here - otherwise the activity log below
+        
+        // records a change that never reached the database.
+        
+        if (await onUpdate(customer.id, {
             loan_tag: newTag,
             loan_history: updatedHistory
-        });
+        }) === false) return;
         
         const tagLabel = LOAN_TAGS.find(t => t.id === newTag)?.label || newTag;
         await logActivity(
@@ -88,7 +92,9 @@ export default function LoanTab({
 
     const handleClearLoanTag = async () => {
         setEditData(prev => ({ ...prev, loan_tag: null }));
-        await onUpdate(customer.id, { loan_tag: null });
+        // A failed save must stop here - otherwise the activity log below
+        // records a change that never reached the database.
+        if (await onUpdate(customer.id, { loan_tag: null }) === false) return;
         await logActivity(
             user.id,
             'update',
@@ -153,7 +159,9 @@ export default function LoanTab({
     };
 
     const handleSavePayments = async () => {
-        await onUpdate(customer.id, { loan_history: editData.loan_history });
+        // A failed save must stop here - otherwise the activity log below
+        // records a change that never reached the database.
+        if (await onUpdate(customer.id, { loan_history: editData.loan_history }) === false) return;
         await logActivity(
             user.id,
             'update',
@@ -206,7 +214,9 @@ export default function LoanTab({
                                         onChange={(e) => handleLocalChange('jansamarth_application_no', e.target.value)}
                                         onBlur={async (e) => {
                                             if (editData.jansamarth_application_no !== customer.jansamarth_application_no) {
-                                                await onUpdate(customer.id, { jansamarth_application_no: e.target.value });
+                                                // A failed save must stop here - otherwise the activity log below
+                                                // records a change that never reached the database.
+                                                if (await onUpdate(customer.id, { jansamarth_application_no: e.target.value }) === false) return;
                                                 await logActivity(user.id, 'update', `${customer.customer_name}: Updated Jansamarth Application No`, '', customer.id);
                                                 fetchLogs();
                                             }
@@ -215,6 +225,75 @@ export default function LoanTab({
                                     />
                                 ) : (
                                     <p className="text-xs font-bold text-stone-800 break-words">{editData.jansamarth_application_no || '–'}</p>
+                                )}
+                            </div>
+                            <div className="p-1">
+                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Bank Name</p>
+                                {isEditingAppDetails ? (
+                                    <input
+                                        type="text"
+                                        placeholder="Enter bank name..."
+                                        value={editData.bank_name || ''}
+                                        onChange={(e) => handleLocalChange('bank_name', e.target.value)}
+                                        onBlur={async (e) => {
+                                            if (editData.bank_name !== customer.bank_name) {
+                                                // A failed save must stop here - otherwise the activity log below
+                                                // records a change that never reached the database.
+                                                if (await onUpdate(customer.id, { bank_name: e.target.value || null }) === false) return;
+                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Bank Name`, '', customer.id);
+                                                fetchLogs();
+                                            }
+                                        }}
+                                        className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition shadow-sm"
+                                    />
+                                ) : (
+                                    <p className="text-xs font-bold text-stone-800 break-words">{editData.bank_name || '–'}</p>
+                                )}
+                            </div>
+                            <div className="p-1">
+                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Bank Branch</p>
+                                {isEditingAppDetails ? (
+                                    <input
+                                        type="text"
+                                        placeholder="Enter branch..."
+                                        value={editData.bank_branch || ''}
+                                        onChange={(e) => handleLocalChange('bank_branch', e.target.value)}
+                                        onBlur={async (e) => {
+                                            if (editData.bank_branch !== customer.bank_branch) {
+                                                // A failed save must stop here - otherwise the activity log below
+                                                // records a change that never reached the database.
+                                                if (await onUpdate(customer.id, { bank_branch: e.target.value || null }) === false) return;
+                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Bank Branch`, '', customer.id);
+                                                fetchLogs();
+                                            }
+                                        }}
+                                        className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition shadow-sm"
+                                    />
+                                ) : (
+                                    <p className="text-xs font-bold text-stone-800 break-words">{editData.bank_branch || '–'}</p>
+                                )}
+                            </div>
+                            <div className="p-1">
+                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Loan Date</p>
+                                {isEditingAppDetails ? (
+                                    <input
+                                        type="date"
+                                        placeholder=""
+                                        value={editData.loan_registration_date || ''}
+                                        onChange={(e) => handleLocalChange('loan_registration_date', e.target.value)}
+                                        onBlur={async (e) => {
+                                            if (editData.loan_registration_date !== customer.loan_registration_date) {
+                                                // A failed save must stop here - otherwise the activity log below
+                                                // records a change that never reached the database.
+                                                if (await onUpdate(customer.id, { loan_registration_date: e.target.value || null }) === false) return;
+                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Loan Date`, '', customer.id);
+                                                fetchLogs();
+                                            }
+                                        }}
+                                        className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition shadow-sm"
+                                    />
+                                ) : (
+                                    <p className="text-xs font-bold text-stone-800 break-words">{editData.loan_registration_date || '–'}</p>
                                 )}
                             </div>
                         </div>
@@ -662,10 +741,12 @@ export default function LoanTab({
                                                     loan_history: updatedHistory,
                                                     loan_tag: loanDraftStatus
                                                 }));
-                                                await onUpdate(customer.id, { 
+                                                // A failed save must stop here - otherwise the activity log below
+                                                // records a change that never reached the database.
+                                                if (await onUpdate(customer.id, { 
                                                     loan_history: updatedHistory,
                                                     loan_tag: loanDraftStatus
-                                                });
+                                                }) === false) return;
                                                 
                                                 await logActivity(
                                                     user.id,

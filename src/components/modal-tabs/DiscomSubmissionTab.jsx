@@ -268,12 +268,14 @@ export default function DiscomSubmissionTab({
                             type="button"
                             onClick={async () => {
                                 setSaving(true);
-                                await onUpdate(customer.id, {
+                                // A failed save must stop here - otherwise the activity log below
+                                // records a change that never reached the database.
+                                if (await onUpdate(customer.id, {
                                     vendor_feasibility: editData.vendor_feasibility,
                                     site_feasibility: editData.site_feasibility,
                                     dcr_certificate: editData.dcr_certificate,
                                     signature_pic: editData.signature_pic
-                                });
+                                }) === false) return;
                                 await logActivity(
                                     user.id, 
                                     'update', 
@@ -304,7 +306,9 @@ export default function DiscomSubmissionTab({
                         <button
                             onClick={async () => {
                                 setSaving(true);
-                                await onUpdate(customer.id, { discom_submission: submissionData });
+                                // A failed save must stop here - otherwise the activity log below
+                                // records a change that never reached the database.
+                                if (await onUpdate(customer.id, { discom_submission: submissionData }) === false) { setSaving(false); return; }
                                 await logActivity(
                                     user.id,
                                     'update',
@@ -643,7 +647,9 @@ export default function DiscomSubmissionTab({
                                             type="button"
                                             onClick={async () => {
                                                 setSaving(true);
-                                                await onUpdate(customer.id, { pm_surya_ghar_stamp: editData.pm_surya_ghar_stamp });
+                                                // A failed save must stop here - otherwise the activity log below
+                                                // records a change that never reached the database.
+                                                if (await onUpdate(customer.id, { pm_surya_ghar_stamp: editData.pm_surya_ghar_stamp }) === false) { setSaving(false); return; }
                                                 await logActivity(user.id, 'update', `${customer.customer_name}: Updated PM Surya Ghar Stamp status`, '', customer.id);
                                                 setSaving(false);
                                             }}
@@ -897,7 +903,9 @@ export default function DiscomSubmissionTab({
                                         ...(typeof editData.stages_remarks === 'object' && editData.stages_remarks ? editData.stages_remarks : {}),
                                         discom_agreement_date: editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0]
                                     };
-                                    await onUpdate(customer.id, { stages_remarks: updatedRemarks });
+                                    // A failed save must stop here - otherwise the activity log below
+                                    // records a change that never reached the database.
+                                    if (await onUpdate(customer.id, { stages_remarks: updatedRemarks }) === false) { setSaving(false); return; }
                                     await logActivity(user.id, 'update', `${customer.customer_name}: Updated Agreement Execution Date`, '', customer.id);
                                     setSaving(false);
                                     fetchLogs();

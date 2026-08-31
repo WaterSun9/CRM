@@ -247,7 +247,9 @@ export default function MaterialDeliveryTab({
                                 setLocalDeliveryStatus(newStat);
                                 setEditData(p => ({ ...p, delivery_status: newStat }));
                                 try {
-                                    await onUpdate(customer.id, { delivery_status: newStat });
+                                    // A failed save must stop here - otherwise the activity log below
+                                    // records a change that never reached the database.
+                                    if (await onUpdate(customer.id, { delivery_status: newStat }) === false) return;
                                 } catch { /* best-effort, ignore failure */ }
                             }}
                             className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full outline-none cursor-pointer tracking-normal shadow-xs ${
@@ -600,7 +602,9 @@ export default function MaterialDeliveryTab({
                                     setInfoSentStatus(null);
                                     
                                     setEditData(prev => ({ ...prev, vendor: selectedVal }));
-                                    await onUpdate(customer.id, { vendor: selectedVal });
+                                    // A failed save must stop here - otherwise the activity log below
+                                    // records a change that never reached the database.
+                                    if (await onUpdate(customer.id, { vendor: selectedVal }) === false) return;
                                     
                                     await logActivity(
                                         user.id,

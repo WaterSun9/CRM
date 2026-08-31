@@ -75,7 +75,9 @@ export default function InstallationStatusTab({
             vendor_note: editData.vendor_note || null,
             vendor_give_up_approved: editData.vendor_give_up_approved ?? customer.vendor_give_up_approved ?? false
         };
-        await onUpdate(customer.id, updates);
+        // A failed save must stop here - otherwise the activity log below
+        // records a change that never reached the database.
+        if (await onUpdate(customer.id, updates) === false) { setSaving(false); return; }
         
         let logMsg = `${customer.customer_name}: Updated Installation Status to ${editData.installation_status || 'None'}`;
         if (editData.installation_status === 'Installed') {
@@ -122,7 +124,9 @@ export default function InstallationStatusTab({
                             type="button"
                             onClick={async () => {
                                 setSaving(true);
-                                await onUpdate(customer.id, { sfdc_photo: editData.sfdc_photo });
+                                // A failed save must stop here - otherwise the activity log below
+                                // records a change that never reached the database.
+                                if (await onUpdate(customer.id, { sfdc_photo: editData.sfdc_photo }) === false) { setSaving(false); return; }
                                 await logActivity(user.id, 'update', `${customer.customer_name}: Updated SFDC Photo status to ${editData.sfdc_photo ? 'Checked' : 'Unchecked'}`, '', customer.id);
                                 onSfdcSaved?.();
                                 setSaving(false);
@@ -273,11 +277,13 @@ export default function InstallationStatusTab({
                                             type="button"
                                             onClick={async () => {
                                                 // First persist approval to backend
-                                                await onUpdate(customer.id, {
+                                                // A failed save must stop here - otherwise the activity log below
+                                                // records a change that never reached the database.
+                                                if (await onUpdate(customer.id, {
                                                     vendor_give_up_approved: true,
                                                     vendor_note: editData.vendor_note || null,
                                                     installation_status: editData.installation_status || customer.installation_status,
-                                                });
+                                                }) === false) return;
                                                 // Then update local editData to reflect approval without causing flicker
                                                 setEditData(prev => ({ ...prev, vendor_give_up_approved: true }));
                                                 await logActivity(
@@ -473,7 +479,9 @@ export default function InstallationStatusTab({
                                     setInfoSentStatus(null);
                                     
                                     setEditData(prev => ({ ...prev, vendor: selectedVal }));
-                                    await onUpdate(customer.id, { vendor: selectedVal });
+                                    // A failed save must stop here - otherwise the activity log below
+                                    // records a change that never reached the database.
+                                    if (await onUpdate(customer.id, { vendor: selectedVal }) === false) return;
                                     
                                     await logActivity(
                                         user.id,

@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase';
-import { PRIMARY_STAGES, SUBSIDY_TAGS, LOAN_TAGS, ADMIN_COLUMNS } from './constants';
+import { PRIMARY_STAGES, SUBSIDY_TAGS, LOAN_TAGS, ADMIN_COLUMNS, ADMIN_NUMERIC_COLUMNS } from './constants';
 
 // ─── Activity Logging ─────────────────────────────────────────────────────────
 export async function logActivity(
@@ -102,6 +102,53 @@ export function diffAdminUpdates(original, edited) {
         if (changed) patch[key] = after;
     });
     return patch;
+}
+
+// Normalise values that Postgres rejects as empty strings. Numeric and date
+// columns both reject '', and one bad value fails the WHOLE update - losing
+// every other field in the same save.
+export function normalizeAdminValues(updates) {
+    const clean = { ...updates };
+    Object.keys(clean).forEach(key => {
+        if ((key === 'date' || key.endsWith('_date')) && clean[key] === '') clean[key] = null;
+    });
+    ADMIN_NUMERIC_COLUMNS.forEach(field => {
+        if (clean[field] === undefined) return;
+        if (clean[field] === '' || clean[field] === null) { clean[field] = null; return; }
+        // parseIndianNumber returns '' (not NaN) for unparseable input.
+        const parsed = parseIndianNumber(clean[field]);
+        clean[field] = (parsed === '' || Number.isNaN(parsed)) ? null : parsed;
+    });
+    return clean;
+}
+
+// The one safe way to write to `admin`.
+//
+// Vendor and Stamp portals wrote directly with none of the protections the main
+// portal has, so they were still exposed to every bug class already fixed
+// elsewhere: unknown columns rejecting the whole update, '' reaching a numeric
+// or date column, and an RLS-refused write returning 0 rows with no error and
+// reporting success.
+//
+// Returns { ok, error }. `ok: false` with no error means the row was not
+// matched - refused by RLS, or it no longer exists.
+export async function updateAdminRecord(id, updates) {
+    const clean = normalizeAdminValues(sanitizeAdminUpdate(updates));
+    delete clean.id; delete clean.created_at; delete clean.updated_at;
+
+    if (Object.keys(clean).length === 0) return { ok: true, error: null, skipped: true };
+
+    const { data, error } = await supabase
+        .from('admin').update(clean).eq('id', id).select('id');
+
+    if (error) return { ok: false, error };
+    if (!data || data.length === 0) {
+        return {
+            ok: false,
+            error: new Error('The database did not accept the change - your account may not have permission to edit this record, or it no longer exists.'),
+        };
+    }
+    return { ok: true, error: null };
 }
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────

@@ -85,7 +85,11 @@ export default function MaterialOrderTab({
             updates.stage = nextStage;
         }
 
-        await onUpdate(customer.id, updates);
+        // A failed save must stop here - otherwise the activity log below
+
+        // records a change that never reached the database.
+
+        if (await onUpdate(customer.id, updates) === false) { setSaving(false); return; }
 
         let logMsg = `${customer.customer_name}: Updated Material Order details (Roof/Shed: ${updates.roof_shed}, DC: ${updates.dc_cable}m, AC: ${updates.ac_cable}m, Front Leg: ${updates.structure_front_leg_height} ft, Rear Leg: ${updates.structure_rear_leg_height} ft, Notes: ${updates.material_order_notes || 'None'}, Invoice: ₹${updates.invoice_value})`;
         if (nextStage) {

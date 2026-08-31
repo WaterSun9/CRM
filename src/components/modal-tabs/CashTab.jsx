@@ -178,7 +178,9 @@ export default function CashTab({
                                 type="button"
                                 onClick={async () => {
                                     setSaving(true);
-                                    await onUpdate(customer.id, { cash_details: cashDetails });
+                                    // A failed save must stop here - otherwise the activity log below
+                                    // records a change that never reached the database.
+                                    if (await onUpdate(customer.id, { cash_details: cashDetails }) === false) { setSaving(false); return; }
                                     await logActivity(user.id, 'update', `${customer.customer_name}: Updated Cash Payment ledger details`, '', customer.id);
                                     setSaving(false);
                                     fetchLogs();
