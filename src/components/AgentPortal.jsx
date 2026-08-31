@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { AgreementPreview } from './agreement/AgreementPreview';
 import {
-    User, Phone, Mail, MapPin, Zap, Building2, Sun, Home,
+    User, Phone, Mail, MapPin, Zap, Building2, Home,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
     ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
@@ -15,6 +15,7 @@ import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS } from '../constants';
 import AddLeadModal from './AddLeadModal';
 import { FilePreviewModal, CheckboxRemarkItem } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
+import BrandMark from './BrandMark';
 import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
 import LoanTab from './modal-tabs/LoanTab';
@@ -867,15 +868,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             {view === 'menu' && (
                 <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans flex flex-col pb-8">
                     <header className="bg-white border-b border-stone-100 px-4 py-3 sticky top-0 z-30 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-amber-500 rounded-xl flex items-center justify-center text-white shadow-md shadow-amber-500/10">
-                        <Sun className="w-4 h-4 fill-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-xs font-black tracking-widest text-stone-900 uppercase">Watersun</h1>
-                        <p className="text-[8px] font-bold text-amber-600 uppercase tracking-widest -mt-0.5">{isAgent2 ? 'Dealer Portal' : 'Channel Partner Portal'}</p>
-                    </div>
-                </div>
+                <BrandMark label={isAgent2 ? 'Dealer Portal' : 'Channel Partner Portal'} />
                 <div className="flex items-center gap-3">
                     <span className="text-xs font-bold text-stone-600 truncate max-w-[120px]">{user.name}</span>
                     <button
@@ -957,14 +950,8 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />
                     <aside className="relative w-[280px] h-full bg-slate-900 flex flex-col shadow-2xl animate-in slide-in-from-left duration-300 z-10">
                         <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
-                            <div>
-                                <h1 className="text-xs font-black tracking-widest text-white uppercase flex items-center gap-2">
-                                    <div className="w-6 h-6 bg-amber-500 rounded-lg flex items-center justify-center text-white">
-                                        <Sun size={12} className="fill-white" />
-                                    </div>
-                                    Watersun
-                                </h1>
-                            </div>
+                            {/* Dark surface - the white wordmark variant */}
+                            <BrandMark variant="white" />
                             <button onClick={() => setIsSidebarOpen(false)} className="p-1.5 text-slate-400 hover:text-white rounded-lg">
                                 <X size={16} />
                             </button>

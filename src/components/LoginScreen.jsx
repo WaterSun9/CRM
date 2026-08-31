@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
-import { Mail, Lock, Eye, EyeOff, Sun, ArrowLeft, KeyRound, LogIn } from 'lucide-react';
+import BrandMark from './BrandMark';
+import { Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, LogIn } from 'lucide-react';
 
 export default function LoginScreen({ onLogin }) {
     const [email, setEmail] = useState('');
@@ -87,11 +88,9 @@ export default function LoginScreen({ onLogin }) {
     return (
         <div className="min-h-screen flex items-center justify-center bg-stone-100 p-4 sm:p-6">
             <div className="bg-white p-8 sm:p-10 rounded-[32px] shadow-2xl w-full max-w-md text-center border border-stone-200 animate-in fade-in zoom-in-95 duration-200">
-                <div className="w-14 h-14 bg-amber-500 rounded-3xl flex items-center justify-center text-white mx-auto mb-5 shadow-lg shadow-amber-200">
-                    <Sun size={28} />
-                </div>
-                <h1 className="text-2xl font-black text-stone-900 tracking-tight">Watersun CRM</h1>
-                <p className="text-stone-400 font-semibold text-xs mb-8 mt-1">Solar Operations & Management Portal</p>
+                <BrandMark size="lg" className="justify-center mb-5" />
+                <h1 className="text-lg font-black text-stone-900 tracking-tight">Customer Relationship Manager</h1>
+                <p className="text-stone-400 font-semibold text-xs mb-8 mt-1">Solar Operations &amp; Management Portal</p>
 
                 {!showForgot ? (
                     /* ─── Login Form ─── */

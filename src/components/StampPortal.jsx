@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import {
     LogOut, Search, Upload, Eye, Loader2, CheckCircle2,
     RefreshCw, X, MessageSquare, ChevronDown, ChevronUp, Save, FileText,
-    SendHorizonal, User, Sun, AlertTriangle, Check, AlertCircle, FileCheck, Terminal
+    SendHorizonal, User, AlertTriangle, Check, AlertCircle, FileCheck, Terminal
 } from "lucide-react";
 import {
     uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, logActivity,
@@ -11,6 +11,7 @@ import {
 } from "../utils.jsx";
 import { FilePreviewModal } from "./modal-tabs/shared";
 import { useGlobalPopup } from './GlobalPopup';
+import BrandMark from './BrandMark';
 import { isReturnedDocument } from './modal-tabs/shared';
 
 const uploaderCache = {};
@@ -662,15 +663,7 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
         <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans flex flex-col pb-8">
             {/* Sticky Header matching Vendor / Agent Portal */}
             <header className="bg-white border-b border-stone-100 px-4 py-3 sticky top-0 z-30 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-amber-500 rounded-xl flex items-center justify-center text-white shadow-md shadow-amber-500/10">
-                        <Sun className="w-4 h-4 fill-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-xs font-black tracking-widest text-stone-900 uppercase">Watersun</h1>
-                        <p className="text-[8px] font-bold text-amber-600 uppercase tracking-widest -mt-0.5">Stamp Portal</p>
-                    </div>
-                </div>
+                <BrandMark label="Stamp Portal" />
                 <div className="flex items-center gap-3">
                     <span className="text-xs font-bold text-stone-600 truncate max-w-[120px]">{user?.name || "Stamp Maker"}</span>
                     <button
@@ -708,8 +701,8 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
             <main className="flex-1 p-4 max-w-md mx-auto w-full space-y-4 animate-in fade-in duration-300">
                 {/* Hero / Welcome Banner */}
                 <div className="bg-gradient-to-br from-stone-900 to-stone-850 text-white p-5 rounded-[24px] shadow-lg relative overflow-hidden">
-                    <div className="absolute right-0 bottom-0 translate-x-4 translate-y-4 opacity-10">
-                        <Sun className="w-32 h-32" />
+                    <div className="absolute right-0 bottom-0 translate-x-4 translate-y-4 opacity-[0.07]">
+                        <BrandMark variant="white" size="lg" />
                     </div>
                     <p className="text-[9px] uppercase tracking-widest text-amber-400 font-bold">PM Surya Ghar</p>
                     <h2 className="text-lg font-bold mt-0.5">{user?.name || "Stamp Maker"}</h2>

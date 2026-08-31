@@ -28,12 +28,13 @@ const ChannelPartnerManagementView = lazyWithRetry(() => import('./ChannelPartne
 const InstallationPaymentsView = lazyWithRetry(() => import('./InstallationPaymentsView'));
 const DeliveryBatchesView = lazyWithRetry(() => import('./DeliveryBatchesView'));
 import { useGlobalPopup } from './GlobalPopup';
+import BrandMark from './BrandMark';
 
 const ViewLoader = () => <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" /></div>;
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Sun, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck
+    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck
 } from 'lucide-react';
 
 // ── NavBtn ────────────────────────────────────────────────────────────────────
@@ -913,15 +914,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             {/* ── Sidebar ── */}
             <aside className={`fixed top-0 bottom-0 left-0 z-50 w-64 bg-white border-r border-stone-100 flex flex-col h-screen max-h-screen overflow-hidden transform transition-transform duration-300 ${sidebarOpen ? 'flex' : 'hidden'} md:flex`}>
                 <div className="p-5 border-b border-stone-100 flex justify-between items-center shrink-0">
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600">
-                            <Sun size={20} />
-                        </div>
-                        <div>
-                            <h1 className="text-sm font-bold text-stone-800">Watersun</h1>
-                            <p className="text-[9px] text-stone-400 font-bold uppercase tracking-widest">Portal</p>
-                        </div>
-                    </div>
+                    <BrandMark size="md" />
                     <button className="md:hidden text-stone-400" onClick={() => setSidebarOpen(false)}><X className="w-5 h-5" /></button>
                 </div>
 

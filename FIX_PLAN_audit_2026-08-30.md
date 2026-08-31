@@ -103,3 +103,59 @@ localStorage written before the DB, never rolled back, then read back as truth.
 
 Rule for each fix: change the **cause**, not the symptom, and check for a second
 copy of the same code (C7) before moving on.
+
+---
+
+## Branding — done, and what's left
+
+**Done 2026-08-31**
+- `BrandMark.jsx` — one component for the logo lock-up, replacing five hand-rolled
+  copies of an amber square + a generic `Sun` icon + the word "Watersun" typed beside it.
+- Real artwork wired in (`src/assets/`, imported so Vite hashes and resolves them —
+  the files in `public/` have spaces in their names and are not referenced directly).
+  **blue** on light surfaces, **white** on dark ones.
+- Applied to: Login screen, Dashboard sidebar, Vendor / Dealer / Stamp portal headers,
+  the Dealer mobile sidebar, and the dark hero-banner watermarks.
+- Favicon and browser title moved to brand navy `#123a8f` + orange `#f7a01d`
+  ("Watersun CRM", was "Solar CRM"). Same favicon on the 404 page.
+- Every `<Sun />` brand mark and its now-unused import removed.
+
+**↩️ Reverted 2026-08-31 — the palette**
+A full palette pass was tried and rolled back at the client's call: brand orange
+retuned into Tailwind's `amber` scale, a `brand` navy applied to 128 dark
+surfaces, and `stone` recoloured from warm grey to a navy-tinted cool grey.
+
+Individually each was defensible - `amber-500` became the exact sun from the
+logo, contrast improved at every grey stop - but together the app read as less
+coherent, not more. Reverted in full: `tailwind.config.js` is byte-identical to
+HEAD and all 89 changed colour lines are back to their originals.
+
+**Worth knowing if this is revisited:**
+- The app's amber (`#f59e0b`) is already within a hair of the logo's sun
+  (`#f7a01d`). Retuning the `amber` scale in the theme recolours all 773 usages
+  with zero component edits - and is a one-line revert.
+- Do NOT swap amber for blue. Amber carries meaning here (pending / attention /
+  unpaid); blue does not, and the loss of that signal costs more than the
+  branding gains.
+- Tailwind `stone` is a WARM grey. It fights a cool navy. Any future navy work
+  has to address the greys at the same time, or it will look subtly wrong.
+- Suspected real culprit, untested: 73 `bg-stone-900` elements became navy,
+  including small buttons. Navy on everything flattens the visual hierarchy.
+  A narrower application - sidebar, hero banners and modal headers only - is the
+  next thing to try.
+- Pre-existing, unrelated to any of this: white text on `amber-500` is 2.10:1
+  and fails WCAG AA across ~28 sites.
+
+**Kept:** the logo work - `BrandMark.jsx`, the real artwork in `src/assets/`,
+brand favicon and title. Only the colour scheme was reverted.
+
+**⏭️ Not done — the rest of the re-skin**
+The UI accent colour is **amber** everywhere (`amber-500/600` on buttons, badges,
+focus rings, active tabs, hero taglines) - hundreds of occurrences across every
+component. The brand palette is navy `#123a8f`, cyan `#29b6f6`, orange `#f7a01d`.
+
+Doing it properly means introducing semantic Tailwind theme tokens
+(`brand`, `accent`) in `tailwind.config.js` and migrating the classes, rather
+than a find-and-replace — a blind swap would wreck contrast on the dark
+surfaces and the amber-on-white badges. Worth doing as its own pass with visual
+checks per portal; not worth risking mid-launch.
