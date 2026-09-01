@@ -1187,7 +1187,7 @@ export default function UserManagementView({ currentUser }) {
                 const { error: dbErr } = await (async () => {
                     const r = await runWrite(
                         supabase.from('profiles').delete().eq('id', userId).select('id'),
-                        { action: 'deletion' }
+                        { action: 'deletion', expectRows: false }
                     );
                     return { error: r.ok ? null : r.error };
                 })();
