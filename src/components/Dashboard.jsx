@@ -681,12 +681,17 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             return;
         }
 
+        // customer_id must be NULL here. activity_log has an FK to admin.id
+        // (fk_activity_log_customer, verified 2026-09-01), and the row is now
+        // gone - passing the id makes the insert fail, and logActivity swallows
+        // its own errors, so the deletion would be recorded NOWHERE. The id and
+        // name go in the message instead, so the audit trail survives.
         await logActivity(
             user.id,
             'delete',
-            `Permanently deleted: ${c?.customer_name}`,
+            `Permanently deleted: ${c?.customer_name || 'unnamed customer'} (id ${id})`,
             '',
-            id
+            null
         );
         setCustomers(prev => prev.filter(c => c.id !== id));
     };
@@ -701,11 +706,10 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         // with a blank Phone Number. The modal's "Move to next stage" button
         // has always enforced this list (getMissingStageRequirements in
         // CustomerDetailModal); this is the same list on the card path.
-        // Backward moves, Hold Procurement and Lost Project stay unblocked.
+        // Backward moves and Lost Project stay unblocked.
         const movingForwardFromLeads =
             oldStage === STAGE_IDS.LEADS &&
             newStage !== STAGE_IDS.LEADS &&
-            newStage !== 'HOLD PROCUREMENT' &&
             newStage !== STAGE_IDS.LOST_PROJECT;
 
         if (movingForwardFromLeads) {
@@ -796,7 +800,17 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             supabase.from('admin').update(followUp).eq('id', id).select('id'),
             { action: 'follow-up write' }
         );
-        if (!followUpRes.ok) {
+        if (followUpRes.ok) {
+            // The follow-up columns have to reach local state as well. Writing
+            // them only to Postgres left an open modal reading a stale/null
+            // hold_procurement, so HoldProcurementTab still fell back to LEADS -
+            // the exact bug this block exists to prevent. Realtime does not
+            // cover it: the update handler drops the row from `customers`
+            // because it is no longer in the selected stage, and never touches
+            // selectedCustomer.
+            setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...followUp } : c));
+            if (selectedCustomer?.id === id) setSelectedCustomer(prev => ({ ...prev, ...followUp }));
+        } else {
             if (followUp.hold_procurement) {
                 // This one is not cosmetic: without hold_procurement the Resume
                 // button defaults to LEADS and would send the project back to
@@ -943,8 +957,13 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     const stageCounts = useMemo(() => {
         const raw = metrics?.stageCounts || {};
         const normalized = { ...raw };
+        // The HOLD PROCUREMENT aliases are gone: the metrics function returns
+        // the 'LOST PROJECT' literal and no row in `admin` carries the old
+        // value. Keeping them was actively harmful - a row still stored as
+        // HOLD PROCUREMENT was COUNTED here but never LISTED, because
+        // fetchStageCustomers does a plain .eq('stage', ...) with no aliasing.
         if (!normalized[STAGE_IDS.LOST_PROJECT]) {
-            normalized[STAGE_IDS.LOST_PROJECT] = normalized['HOLD PROCUREMENT'] || normalized['HOLD_PROCUREMENT'] || normalized['Lost Project'] || 0;
+            normalized[STAGE_IDS.LOST_PROJECT] = normalized['Lost Project'] || 0;
         }
         return normalized;
     }, [metrics?.stageCounts]);

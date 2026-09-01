@@ -218,3 +218,164 @@ partners who have left remain in the list so their historical leads stay
 filterable. New CP/CPO accounts auto-register their branch. Both paths write
 uppercase. Do not rebuild this list from User Management: measured 2026-08-31,
 that would delete 54 of 63 entries and orphan 3,094 leads from the dropdown.
+
+---
+
+## 🕓 Deferred — found 2026-09-01, not fixed
+
+Found by the multi-agent audit and verified against the code. None of these lose
+data (that class was fixed in Tiers A and B); they are correctness, consistency
+and cleanup. Ordered roughly by what a user would notice first.
+
+### 1. ✅ FIXED 2026-09-01 — Dealer "Move Anyway" bypass REMOVED
+The button and `handleForceAdvanceStage` are gone; the popup now shows a single
+"Back to fill these in". Dealers advance only when the conditions are met.
+Original finding below for context.
+
+<!-- original -->
+### 1. Dealer "Move Anyway" bypasses all validation — Admin has no equivalent
+`src/components/AgentPortal.jsx:2595` → `handleForceAdvanceStage` (`:842`).
+A Dealer hitting the checklist popup gets a red **Move Anyway** button that
+advances the stage with every required field blank. The visually identical popup
+in `CustomerDetailModal.jsx:1863-1890` offers only "Review" — so the
+LEAST-privileged role has the STRONGEST override.
+
+**This is a defect, not a preference.** It is not in the silent-failure class -
+the write lands and is reported honestly - but it is a permissions INVERSION,
+and nothing in the code suggests it was designed. It reads like the agent portal
+grew its own validation popup and someone added an escape hatch to unblock field
+staff, with no equivalent ever added on the admin side.
+
+What it bypasses is not paperwork. On MATERIAL ORDER -> MATERIAL INTEGRATION
+(`AgentPortal.jsx:653-660`) the required fields are Roof/Shed, DC Cable Length,
+AC Cable Length, Structure Front Leg Height and Structure Rear Leg Height - the
+physical dimensions the BOM is generated from. A Dealer can advance with all of
+them blank and the BOM downstream is built from nothing. The same applies to
+METER INSTALLATION -> DISCOM INSPECTION and DISCOM INSPECTION -> SUBSIDY STATUS.
+
+Only the REMEDY is the client's call:
+- remove it (cleanest, but field staff may rely on it to unblock jobs where a
+  spec genuinely is not known yet);
+- gate it on admin (restores the hierarchy, keeps the escape hatch) - RECOMMENDED;
+- keep it and give admins the same button (if bypassing is legitimate, the admin
+  should not be the one who cannot).
+
+Related: it resolves the target stage by matching `st.label` against a
+hard-coded display string (`AgentPortal.jsx:845`), so editing a label in
+`constants.js` silently turns it into a no-op that only `console.warn`s.
+
+### 2. ✅ FIXED 2026-09-01 — `meter_installation` shape unified to a string
+`normalizeMeterInstallation()` added to `utils.jsx`; the writer emits a string
+and all three readers normalise, so the 2 rows stored as objects heal on their
+next save. Original finding below.
+
+<!-- original -->
+### 2. `meter_installation` is written as an object and read as a string
+- `CustomerDetailModal.jsx:1077` — advancing INTO Meter Installation writes
+  `{ status, no_date, yes_date }`.
+- `MeterInstallationTab.jsx:30, 65, 75` and `AgentPortal.jsx:707` read/write it
+  as `'Yes'` / `'No'`.
+
+On arrival at the stage neither Yes nor No renders as selected (so the stored
+value is misrepresented), and the mandatory "Meter Installation Date" field
+never renders. `getMissingStageRequirements` requires
+`editData.meter_installation === 'Yes'`, which an object can never satisfy until
+the user clicks a button. Pick one shape and migrate the other.
+
+### 3. ✅ FIXED 2026-09-01 — agent stage moves now logged
+`logStageMove()` added to `AgentPortal.jsx`, wired into all 4 transitions.
+Original finding below.
+
+<!-- original -->
+### 3. Agent-portal stage moves are invisible in the activity log
+`AgentPortal.jsx` writes `logActivity` only at lead creation (`:420`). A customer
+can travel MATERIAL ORDER → MATERIAL INTEGRATION → METER INSTALLATION →
+DISCOM INSPECTION → SUBSIDY STATUS with no `stage_change` entry anywhere. Vendor
+moves are logged as generic `'update'`, not `'stage_change'`
+(`VendorPortal.jsx:673-680`). The audit trail has a hole exactly where dealer
+activity should be.
+
+### 4. FINAL REVIEW → COMPLETED is unvalidated
+`getMissingStageRequirements` (`CustomerDetailModal.jsx:869-956`) has no `case`
+for FINAL_REVIEW, DISCOM_SUBMISSION, SUBSIDY_STATUS or CASH — they fall to
+`default: break` and return `[]`. The move that LOCKS the record is the one with
+no checks.
+
+### 5. The same move validates differently depending on where you start
+- INSTALLATION STATUS → GEO TAG: vendor requires status + install date
+  (`VendorPortal.jsx:599-616`); the admin modal requires status only (`:938-941`).
+- GEO TAG → DISCOM SUBMISSION: vendor requires an uploaded document
+  (`VendorPortal.jsx:625-628`); the modal checks `editData.geo_tag_image`
+  (`:942`). Different sources of truth for one gate.
+- The LEADS completeness checklist is implemented TWICE and hand-synced —
+  `Dashboard.jsx:693-716` vs `CustomerDetailModal.jsx:876-887`. The modal
+  additionally requires `email_address`; the card version does not.
+
+### 6. Document remarks at lead-creation time
+`AddLeadModal.jsx:334` previews a browser `File`, not a `documents` row — no id,
+nothing uploaded yet — so the remark bar is correctly hidden there. To support
+it: hold the text alongside `attachedFiles` and write it after each
+`uploadDocument` succeeds in the create flow (~20 lines, touches the upload loop).
+The Customer Detail preview and Stamp Portal were wired up on 2026-09-01;
+`documents.remark` already exists and needs no migration.
+
+### 7. ✅ FIXED 2026-09-01 — dead code deleted
+`CompletedTab.jsx` removed (git rm), plus `isDirty`, `saved`/`setSaved`,
+`SUBSIDY_STATUS_OPTIONS`, `LOAN_STATUS_OPTIONS`, `isGeoTagDirty`,
+`handleSaveMaterialDelivery` and `handleSaveOrder`. The unreachable vendor
+branches in the modal tabs were LEFT - they are harmless and removing them
+would touch permission logic for no benefit. Original finding below.
+
+<!-- original -->
+### 7. Dead code (confirmed by exhaustive call-site search)
+- `src/components/modal-tabs/CompletedTab.jsx` — the entire file. Not imported
+  anywhere, including `CustomerModalTabsRouter.jsx`.
+- `CustomerDetailModal.jsx` — `isDirty` (a 30-line computation, referenced
+  nowhere), `saved`/`setSaved` (written, never read),
+  `SUBSIDY_STATUS_OPTIONS` / `LOAN_STATUS_OPTIONS` (the live copies are in
+  `LoanTab.jsx`).
+- `GeoTagPhotoTab.jsx:33` — `isGeoTagDirty`, computed, never used.
+- Dead stage transitions: `AgentPortal.jsx:662` `handleSaveMaterialDelivery` and
+  `MaterialOrderTab.jsx:67` `handleSaveOrder` — both defined, zero call sites.
+- Vendor permission branches in `GeoTagPhotoTab.jsx:23,26`,
+  `MeterInstallationTab.jsx:25,28`, `DiscomInspectionTab.jsx:17,20` — the modal
+  is only rendered from `Dashboard.jsx`, and `App.jsx` routes vendors to
+  `VendorPortal`, so `isVendor` is always false there.
+
+### 8. Smaller items — MOSTLY FIXED 2026-09-01
+✅ `MaterialOrderTab` freeze inversion — `isEditable` now applies to every role.
+✅ `StampPortal` "saved" badge — now tracks the persisted value, and shows an
+   "unsaved" chip while the text differs from what is in the database.
+✅ `InstallationStatusTab` `'Yes'` leftover — now `!tag.isFinal`.
+⬜ STILL OPEN: the 18 blank import rows, and the lint warnings.
+
+- `MaterialOrderTab.jsx:29` — `canEdit = isAgent || isChannelPartnerOffice ||
+  (isAdmin && isEditable)`. The COMPLETED freeze applies to the ADMIN only:
+  an Admin cannot edit a completed Material Order, a Dealer can. Almost
+  certainly backwards, but fixing it REMOVES an ability people may rely on.
+- `StampPortal.jsx:70-74` — the collapsed remark row shows a "saved" badge
+  whenever the local `remark` state is non-empty, so typing and collapsing
+  without saving still shows it.
+- `InstallationStatusTab.jsx:205` — `isLocked && tag.id !== 'Yes'` is a leftover
+  from the tag rename; the ids are `Giveup / Installed / In process / Pending`,
+  so `'Yes'` matches nothing and the locked styling hits the selected button too.
+  `SubsidyStatusTab.jsx:105` and `LoanTab.jsx:389` use the correct `!tag.isFinal`.
+- `scripts/clean_csv.js` was DELETED on 2026-09-01 (recover with
+  `git show e2912b2:scripts/clean_csv.js`). It mapped `HOLD` →
+  `'HOLD PROCUREMENT'`, which no longer exists as a stage; any rewrite must map
+  to `'LOST PROJECT'`.
+- 18 blank rows in `admin` from the 23 Aug import (no name, village, or consumer
+  number; one assigned to vendor V2). Recommended: soft-delete, not hard.
+  Awaiting the client's decision.
+- Lint: 70 warnings, 0 errors. Mostly unused vars worth individual review plus
+  deliberate `exhaustive-deps` suppressions.
+
+### 9. The `move_stage` RPC is not in version control
+`Dashboard.jsx:733` calls it; no `.sql` file in `scripts/` defines it. The client
+assumes the return value is a single spreadable object and that non-null means
+the write happened — neither is verified. Pull the function definition out of
+Supabase and commit it, then confirm those assumptions.
+
+**Already fixed, do not re-open:** the update banner now reports the real deploy
+date/time and only fires when the deployed build is genuinely newer
+(`UpdateChecker.jsx`, `scripts/write_version.js`).

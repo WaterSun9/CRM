@@ -9,7 +9,7 @@ import {
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
     Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal
 } from 'lucide-react';
-import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, diffAdminUpdates } from '../utils';
+import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS } from '../constants';
 import AddLeadModal from './AddLeadModal';
@@ -474,6 +474,42 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
     };
 
+    // These five columns are BOOLEAN checklist flags, not storage paths. The
+    // real file lives in `documents` under one of several doc_type aliases.
+    //
+    // The JSX used to do href={getViewUrl(selectedCust.stamp)} - two bugs at
+    // once: it passed a boolean to a function that calls .startsWith on it
+    // (TypeError), and getViewUrl is async, so href received a Promise rather
+    // than a URL. The icon rendered on 3,278 records and went nowhere.
+    const FLAG_DOC_TYPES = {
+        vendor_feasibility: ['vendor_feasibility'],
+        site_feasibility:   ['site_feasibility'],
+        dcr_certificate:    ['dcr_certificate', 'dcr'],
+        signature_pic:      ['signature_pic', 'signature', 'firstPartySignature', 'customer_signature'],
+        stamp:              ['stamp', 'stamp_pic', 'vendor_stamp', 'secondPartyStamp'],
+    };
+
+    const findFlagDoc = (flag) => {
+        const types = FLAG_DOC_TYPES[flag] || [];
+        return (custDocs || []).find(d => types.includes(d.doc_type));
+    };
+
+    // Renders a working download button only when the file is actually there.
+    const FlagDownload = ({ flag }) => {
+        const doc = findFlagDoc(flag);
+        if (!doc) return null;
+        return (
+            <button
+                type="button"
+                onClick={() => handleDownloadDoc(doc)}
+                className="text-blue-500 hover:text-blue-700 p-1 cursor-pointer"
+                title={`Download ${doc.file_name}`}
+            >
+                <Download size={14} />
+            </button>
+        );
+    };
+
     const handleDownloadDoc = async (doc) => {
         if (!doc?.storage_path) {
             showAlert('This document has no stored file to download.', { title: 'Download Unavailable', type: 'error' });
@@ -637,8 +673,23 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         return Object.keys(editingData).some(k => String(editingData[k]) !== String(currentData[k]));
     };
 
+    // Agent-portal stage moves were invisible in the activity log: the only
+    // logActivity call in this file was at lead creation, so a customer could
+    // travel Material Order -> Material Integration -> Meter Installation ->
+    // Discom Inspection -> Subsidy Status leaving no trace of who moved them.
+    const logStageMove = async (fromStage, toStage) => {
+        if (!selectedCust || fromStage === toStage) return;
+        await logActivity(
+            user.id,
+            'stage_change',
+            `${selectedCust.customer_name}: STAGE: ${fromStage} → ${toStage}`,
+            `Done by ${user.name}`,
+            selectedCust.id
+        );
+    };
+
     const handleSaveMaterialOrder = async (advance = false) => {
-        if (!selectedCust) return;
+        if (!selectedCust) return false;
 
         const updates = {
             roof_shed: editData.roof_shed ?? selectedCust.roof_shed,
@@ -664,7 +715,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                 setValidationIssues(issues);
                 setValidationNextStage('Material Integration');
                 setShowValidationModal(true);
-                return;
+                return false;
             }
             updates.stage = STAGE_IDS.MATERIAL_INTEGRATION;
         }
@@ -676,47 +727,17 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             invoice_value: parseIndianNumber(updates.invoice_value),
         });
         
-        if (didSave && advance) setActiveCustomerStage(STAGE_IDS.MATERIAL_INTEGRATION);
-    };
-
-    const handleSaveMaterialDelivery = async (advance = false) => {
-        if (!selectedCust) return;
-
-        const updates = {
-            vendor: editData.vendor ?? selectedCust.vendor,
-            invoice_no: editData.invoice_no ?? selectedCust.invoice_no,
-            material_delivery_date: editData.material_delivery_date ?? selectedCust.material_delivery_date,
-            vehicle_number: editData.vehicle_number ?? selectedCust.vehicle_number,
-            driver_name: editData.driver_name ?? selectedCust.driver_name,
-            driver_phone_number: editData.driver_phone_number ?? selectedCust.driver_phone_number,
-            delivery_status: editData.delivery_status ?? selectedCust.delivery_status,
-        };
-
-        if (advance) {
-            const issues = [];
-            const requireField = (condition, label) => { if (!condition) issues.push(label); };
-            requireField(updates.vendor, 'Vendor Allotment');
-            requireField(updates.invoice_no, 'Invoice No');
-            requireField(updates.material_delivery_date, 'Delivery Date');
-            requireField(updates.vehicle_number, 'Vehicle Number');
-            requireField(updates.driver_name, 'Driver Name');
-            requireField(updates.driver_phone_number, 'Driver Phone Number');
-            requireField(updates.delivery_status === 'DELIVERED', 'Delivery Status (Must be DELIVERED)');
-
-            if (issues.length) {
-                setValidationIssues(issues);
-                setValidationNextStage('Installation Status');
-                setShowValidationModal(true);
-                return;
-            }
-            updates.stage = STAGE_IDS.INSTALLATION_STATUS;
+        if (didSave && advance) {
+            await logStageMove(selectedCust.stage, STAGE_IDS.MATERIAL_INTEGRATION);
+            setActiveCustomerStage(STAGE_IDS.MATERIAL_INTEGRATION);
         }
-
-        const didSave = await handleUpdateCustomer(selectedCust.id, updates);
-        
-        if (didSave && advance) setActiveCustomerStage(STAGE_IDS.INSTALLATION_STATUS);
+        // MUST return: saveBeforeAgentExit gates Save & Logout / Save & Close on
+        // this value. Returning undefined meant a Dealer with unsaved Material
+        // Order edits clicked Logout, confirmed Save, the save SUCCEEDED - and
+        // they were not logged out. The button looked dead.
         return didSave;
     };
+
 
     const getMeterInstallationUpdates = () => {
         const meterPhotoUploaded = custDocs.some(doc =>
@@ -736,7 +757,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         if (moveToNextStage) {
             const issues = [];
             const requireField = (condition, label) => { if (!condition) issues.push(label); };
-            requireField(updates.meter_installation === 'Yes', 'Meter Installation must be Yes');
+            requireField(normalizeMeterInstallation(updates.meter_installation) === 'Yes', 'Meter Installation must be Yes');
             requireField(updates.installation_date, 'Meter Installation Date');
             requireField(updates.meter_installation_photo, 'Meter Installation Photo');
             if (issues.length) {
@@ -749,7 +770,10 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
 
         const didSave = await handleUpdateCustomer(selectedCust.id, updates);
-        if (didSave && moveToNextStage) setActiveCustomerStage(STAGE_IDS.DISCOM_INSPECTION);
+        if (didSave && moveToNextStage) {
+            await logStageMove(selectedCust.stage, STAGE_IDS.DISCOM_INSPECTION);
+            setActiveCustomerStage(STAGE_IDS.DISCOM_INSPECTION);
+        }
         return didSave;
     };
 
@@ -771,6 +795,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
 
         const didSave = await handleUpdateCustomer(selectedCust.id, updates);
         if (didSave && moveToNextStage) {
+            await logStageMove(selectedCust.stage, STAGE_IDS.SUBSIDY_STATUS);
             // This is the last Stage Operations task, so return to its filtered list.
             setSelectedCust(null);
             setActiveCustomerStage(null);
@@ -859,29 +884,6 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         return handleSaveMaterialOrder(false);
     };
 
-    const handleForceAdvanceStage = async () => {
-        // Resolve the stage from PRIMARY_STAGES rather than a hardcoded list of
-        // four, so a new validation target can never silently no-op here.
-        const nextStageId = PRIMARY_STAGES.find(st => st.label === validationNextStage)?.id || null;
-
-        if (!nextStageId || !selectedCust) {
-            console.warn('Move Anyway: could not resolve a stage for', validationNextStage);
-            setShowValidationModal(false);
-            return;
-        }
-
-        // Carry the user's pending edits across. Previously this wrote only
-        // { stage }, so anything typed before the checklist popup appeared was
-        // silently discarded when they chose "Move Anyway" - the partly-filled
-        // values that triggered the warning were exactly what got lost.
-        const didSave = await handleUpdateCustomer(selectedCust.id, {
-            ...diffAdminUpdates(selectedCust, editData),
-            stage: nextStageId
-        });
-
-        if (didSave) setActiveCustomerStage(nextStageId);
-        setShowValidationModal(false);
-    };
 
     return (
         <>
@@ -2045,7 +2047,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
 
 
 
-                            {(displayedStage === STAGE_IDS.LOST_PROJECT || displayedStage === 'HOLD PROCUREMENT') && (
+                            {(displayedStage === STAGE_IDS.LOST_PROJECT) && (
                                 <div className="bg-stone-50/80 p-4 rounded-2xl border border-stone-150/70 space-y-2">
                                     <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest border-b border-stone-150 pb-2 mb-1 flex items-center gap-1.5">
                                         <PauseCircle size={11} /> Lost Project Details
@@ -2148,35 +2150,35 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Vendor Feasibility</span>
                                             <div className="flex items-center gap-2">
-                                                {selectedCust.vendor_feasibility && <a href={getViewUrl(selectedCust.vendor_feasibility)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
+                                                <FlagDownload flag="vendor_feasibility" />
                                                 {renderStatusBadge(selectedCust.vendor_feasibility ? 'Yes' : 'Pending', 'Pending')}
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Site Feasibility</span>
                                             <div className="flex items-center gap-2">
-                                                {selectedCust.site_feasibility && <a href={getViewUrl(selectedCust.site_feasibility)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
+                                                <FlagDownload flag="site_feasibility" />
                                                 {renderStatusBadge(selectedCust.site_feasibility ? 'Yes' : 'Pending', 'Pending')}
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">DCR Certificate</span>
                                             <div className="flex items-center gap-2">
-                                                {selectedCust.dcr_certificate && <a href={getViewUrl(selectedCust.dcr_certificate)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
+                                                <FlagDownload flag="dcr_certificate" />
                                                 {renderStatusBadge(selectedCust.dcr_certificate ? 'Yes' : 'Pending', 'Pending')}
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Signature Photo</span>
                                             <div className="flex items-center gap-2">
-                                                {selectedCust.signature_pic && <a href={getViewUrl(selectedCust.signature_pic)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
+                                                <FlagDownload flag="signature_pic" />
                                                 {renderStatusBadge(selectedCust.signature_pic ? 'Yes' : 'Pending', 'Pending')}
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between py-2">
                                             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Stamp</span>
                                             <div className="flex items-center gap-2">
-                                                {selectedCust.stamp && <a href={getViewUrl(selectedCust.stamp)} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 p-1"><Download size={14} /></a>}
+                                                <FlagDownload flag="stamp" />
                                                 {renderStatusBadge(selectedCust.stamp ? 'Yes' : 'Pending', 'Pending')}
                                             </div>
                                         </div>
@@ -2604,20 +2606,18 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                     );
                                 })}
                             </ul>
-                            <div className="mt-5 flex gap-2">
-                                <button 
-                                    type="button" 
-                                    onClick={() => setShowValidationModal(false)} 
-                                    className="flex-1 rounded-xl bg-stone-100 hover:bg-stone-200 px-4 py-3 text-xs font-bold text-stone-700 transition-colors cursor-pointer"
+                            {/* "Move Anyway" removed 2026-09-01. It let a Dealer advance with
+                                every required field blank - including the cable lengths and
+                                structure heights the BOM is generated from - while an Admin
+                                hitting the identical popup had no bypass at all. Dealers
+                                advance once the conditions are met. */}
+                            <div className="mt-5">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowValidationModal(false)}
+                                    className="w-full rounded-xl bg-stone-900 hover:bg-stone-800 px-4 py-3 text-xs font-bold text-white transition-colors cursor-pointer"
                                 >
-                                    Review
-                                </button>
-                                <button 
-                                    type="button" 
-                                    onClick={handleForceAdvanceStage}
-                                    className="flex-1 rounded-xl bg-rose-500 hover:bg-rose-600 px-4 py-3 text-xs font-bold text-white shadow-md shadow-rose-500/20 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                                >
-                                    Move Anyway
+                                    Back to fill these in
                                 </button>
                             </div>
                         </div>

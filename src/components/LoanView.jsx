@@ -11,6 +11,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [customers, setCustomers] = useState([]);
+    const [loadError, setLoadError] = useState(null);
     const [tagCounts, setTagCounts] = useState({});
     const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -112,6 +113,16 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
             }
 
             const { data, error } = await query;
+            // The error used to be discarded here. When the search failed
+            // (42883: ilike on the numeric phone_number column) the list simply
+            // did not update, so the box looked like it had found nothing -
+            // indistinguishable from a genuine empty result.
+            if (error) {
+                console.error('Search/filter query failed:', error);
+                setLoadError(error.message || 'The list could not be loaded.');
+            } else {
+                setLoadError(null);
+            }
             if (!error && data) {
                 if (isAppend) {
                     setCustomers(prev => {
@@ -155,6 +166,13 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
+
+            {loadError && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-3 flex items-start gap-2">
+                    <span className="text-xs font-bold text-red-800">This list could not be loaded.</span>
+                    <span className="text-[11px] text-red-700 font-medium">{loadError}</span>
+                </div>
+            )}
             {/* Header Controls: Search & Counts */}
             <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
                 {/* Real-time Backend Search */}

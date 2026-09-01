@@ -904,20 +904,34 @@ export default function UserManagementView({ currentUser }) {
                 // leads at all - so a bare row-count check would report a false
                 // failure. We count the matching rows first and require the
                 // update to touch exactly that many.
+                // `%` and `_` are LIKE wildcards. Without escaping, a name
+                // containing either would match - and rename - OTHER people's
+                // records. eq() is not usable here because the existing data is
+                // mixed-case and the match has to stay case-insensitive.
+                const likeSafeOldName = String(oldName).replace(/[\\%_]/g, ch => '\\' + ch);
+
+                // Records every cascade that actually COMMITTED, so the failure
+                // path can say what really happened instead of guessing.
+                const committed = [];
+
                 const cascade = async (table, column) => {
                     const { count, error: countErr } = await supabase
                         .from(table)
                         .select('id', { count: 'exact', head: true })
-                        .ilike(column, oldName);
+                        .ilike(column, likeSafeOldName);
                     if (countErr) throw countErr;
 
                     if (!count) return 0;   // nothing to carry across
 
                     const res = await runWrite(
-                        supabase.from(table).update({ [column]: cleanName }).ilike(column, oldName).select('id'),
+                        supabase.from(table).update({ [column]: cleanName }).ilike(column, likeSafeOldName).select('id'),
                         { action: 'rename' }
                     );
                     if (!res.ok) throw res.error;
+
+                    // Any row that changed is committed, even on a partial write.
+                    if (res.rows.length > 0) committed.push({ table, column, rows: res.rows.length });
+
                     if (res.rows.length !== count) {
                         throw new Error(
                             `Only ${res.rows.length} of ${count} ${table} records could be renamed.`
@@ -950,16 +964,32 @@ export default function UserManagementView({ currentUser }) {
                         await cascade('vendors', 'name');
                     }
                 } catch (cascadeErr) {
+                    // Put back everything that DID commit, newest first. Saying
+                    // "nothing was changed" while `admin.vendor` already held the
+                    // new name was the worst possible outcome: the exact
+                    // orphaning this block exists to prevent, with a message
+                    // telling the operator not to go looking for it.
+                    const stuck = [];
+                    for (const c of committed.slice().reverse()) {
+                        const back = await runWrite(
+                            supabase.from(c.table).update({ [c.column]: oldName }).eq(c.column, cleanName).select('id'),
+                            { action: 'revert' }
+                        );
+                        if (!back.ok) stuck.push(`${c.rows} ${c.table} record(s)`);
+                    }
+
                     const revert = await runWrite(
                         supabase.from('profiles').update({ name: oldName }).eq('id', profileId).select('id'),
                         { action: 'revert' }
                     );
+                    if (!revert.ok) stuck.push('the profile name');
+
                     throw new Error(
-                        `${cascadeErr.message} The rename was cancelled and nothing was changed`
-                        + (revert.ok
-                            ? '.'
-                            : ` - EXCEPT the profile name, which could not be put back and now reads "${cleanName}". `
-                              + `Set it back to "${oldName}" manually before this user signs in, or they will not see their own records.`)
+                        stuck.length === 0
+                            ? `${cascadeErr.message} The rename was cancelled and everything was put back.`
+                            : `${cascadeErr.message} The rename was cancelled, but ${stuck.join(' and ')} `
+                              + `could NOT be put back and still read "${cleanName}". `
+                              + `Restore them to "${oldName}" before this user signs in, or they will not see their own records.`
                     );
                 }
             }

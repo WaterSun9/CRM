@@ -333,7 +333,13 @@ export function FilePreviewModal({ file, fileUrl, onClose, onDownload, onUpdateR
                     )}
                 </div>
 
-                {/* Remark Bar in Preview */}
+                {/* Remark Bar in Preview - only when there is somewhere to save it.
+                    The input used to render unconditionally while just the Save
+                    button was guarded, so on the three screens that pass no
+                    onUpdateRemark (Add Lead, Stamp Portal, the Customer Detail
+                    file preview) you could type a remark into a live field,
+                    press Enter to no effect, and lose it silently on close. */}
+                {onUpdateRemark && (
                 <div className="p-3.5 bg-white border-t border-stone-100 flex items-center gap-2">
                     <MessageSquare size={14} className="text-stone-400 flex-shrink-0" />
                     <input
@@ -362,6 +368,7 @@ export function FilePreviewModal({ file, fileUrl, onClose, onDownload, onUpdateR
                         </button>
                     )}
                 </div>
+                )}
             </div>
         </div>
     );

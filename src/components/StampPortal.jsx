@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
     uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, logActivity,
-    updateAdminRecord,
+    updateAdminRecord, updateDocumentRemark,
 } from "../utils.jsx";
 import { FilePreviewModal } from "./modal-tabs/shared";
 import { useGlobalPopup } from './GlobalPopup';
@@ -32,6 +32,10 @@ function RemarkRow({ customerId, initialRemark, userId, customerName }) {
     const [remark, setRemark] = useState(initialRemark || "");
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+    // What is actually IN the database. The collapsed "saved" badge used to read
+    // `remark`, which changes on every keystroke - so typing a remark and
+    // collapsing without saving still showed it as saved.
+    const [persistedRemark, setPersistedRemark] = useState(initialRemark || "");
 
     const handleSave = async () => {
         setSaving(true);
@@ -48,6 +52,7 @@ function RemarkRow({ customerId, initialRemark, userId, customerName }) {
             const { ok, error } = await updateAdminRecord(customerId, { discom_submission: merged });
             if (!ok) throw error;
             await logActivity(userId, "update", customerName + ": Updated stamp remark", "", customerId);
+            setPersistedRemark(remark);
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
         } catch (err) {
@@ -67,9 +72,14 @@ function RemarkRow({ customerId, initialRemark, userId, customerName }) {
             >
                 <MessageSquare size={12} className="text-amber-500" />
                 <span>Stamp Remark</span>
-                {remark && !open && (
+                {persistedRemark && !open && (
                     <span className="bg-amber-100 text-amber-800 rounded-md text-[9px] px-1.5 py-0.2 font-extrabold">
                         saved
+                    </span>
+                )}
+                {remark !== persistedRemark && (
+                    <span className="bg-stone-200 text-stone-700 rounded-md text-[9px] px-1.5 py-0.2 font-extrabold">
+                        unsaved
                     </span>
                 )}
                 {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -556,6 +566,33 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
         setCustDocs(prev => { const n = { ...prev }; delete n[customerId]; return n; });
     }, []);
 
+    // custDocs is keyed by customer id, so the row has to be found before it can
+    // be updated in place. Returns true/false: FilePreviewModal only shows
+    // "Saved!" when the write actually landed.
+    const handleUpdateDocRemark = async (docId, newRemark) => {
+        const res = await updateDocumentRemark(docId, newRemark);
+        if (!res?.ok) {
+            showAlert(res?.error?.message || "The remark was not saved.", {
+                title: "Remark not saved",
+                type: "error",
+            });
+            return false;
+        }
+        setCustDocs(prev => {
+            const next = { ...prev };
+            for (const custId of Object.keys(next)) {
+                if ((next[custId] || []).some(d => d.id === docId)) {
+                    next[custId] = next[custId].map(d => d.id === docId ? { ...d, remark: newRemark } : d);
+                }
+            }
+            return next;
+        });
+        setPreviewDoc(prev => prev && prev.doc?.id === docId
+            ? { ...prev, doc: { ...prev.doc, remark: newRemark } }
+            : prev);
+        return true;
+    };
+
     const handleOpenPreview = async (doc) => {
         try {
             const url = await getViewUrl(doc.storage_path);
@@ -909,6 +946,7 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                     file={previewDoc.doc}
                     fileUrl={previewDoc.url}
                     onClose={() => setPreviewDoc(null)}
+                    onUpdateRemark={handleUpdateDocRemark}
                     onDownload={() => window.open(previewDoc.url, '_blank')}
                 />
             )}

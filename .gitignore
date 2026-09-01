@@ -6,3 +6,6 @@ dist/
 *.log
 .vscode/
 .idea/
+
+# Database backups - real customer data, never commit
+backups/

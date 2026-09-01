@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldAlert, Zap, ClipboardList } from 'lucide-react';
 import { CheckboxRemarkItem } from './shared';
+import { normalizeMeterInstallation } from '../../utils';
 
 export default function MeterInstallationTab({
     customer,
@@ -27,7 +28,9 @@ export default function MeterInstallationTab({
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office';
     const canEditMeter = (isVendor || isAdmin || isChannelPartnerOffice) && isEditable;
 
-    const meterData = editData.meter_installation || 'No';
+    // Tolerates the legacy object form so the 2 records stored that way render
+    // correctly; they rewrite as a plain string on the next save.
+    const meterData = normalizeMeterInstallation(editData.meter_installation) || 'No';
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">

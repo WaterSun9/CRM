@@ -17,7 +17,7 @@ import {
     Eye, Search, Image as ImageIcon, MessageSquare
 } from 'lucide-react';
 import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN } from '../constants';
-import { logActivity, formatDateToDDMMYYYY, formatINR, parseIndianNumber, fetchAgent2SubAgents } from '../utils';
+import { logActivity, formatDateToDDMMYYYY, formatINR, parseIndianNumber, fetchAgent2SubAgents, normalizeMeterInstallation, sanitizePhoneNumber } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
@@ -76,8 +76,6 @@ const formatDateTime = (date) => {
 
 
 // ─── Subsidy status options ───────────────────────────────────────────────────
-const SUBSIDY_STATUS_OPTIONS = ['Approved', 'Returned', 'Rejected', 'Redeemed', 'Received'];
-const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
 
 const getChangedFields = (draft = {}, saved = {}) => {
     const changed = new Set();
@@ -301,7 +299,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const saveBomRef = useRef(null);
     const prevCustomerRef = useRef(customer);
-    const [saved, setSaved] = useState(false);
     const [showAgreementPopup, setShowAgreementPopup] = useState(false);
     const [agreementData, setAgreementData] = useState({
         executionDate: '',
@@ -784,8 +781,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             val = String(val).replace(/[^0-9]/g, '');
         }
         if (field === 'driver_phone_number' || field === 'phone_number') {
-            const clean = String(val).replace(/[^0-9]/g, '');
-            val = clean.length === 11 && clean.startsWith('0') ? clean.slice(1) : clean.slice(0, 10);
+            val = sanitizePhoneNumber(val);
         }
         setEditData(prev => {
             const next = { ...prev, [field]: val };
@@ -813,7 +809,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const hasNextStage = (() => {
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return false;
-        if (editData.stage === STAGE_IDS.COMPLETED || editData.stage === STAGE_IDS.LOST_PROJECT || editData.stage === 'HOLD PROCUREMENT') return false;
+        if (editData.stage === STAGE_IDS.COMPLETED || editData.stage === STAGE_IDS.LOST_PROJECT) return false;
 
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return false;
@@ -825,17 +821,17 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (nextStage.id === STAGE_IDS.CASH && editData.payment_type?.trim().toLowerCase() === 'loan') {
             nextIdx++;
         }
-        if (nextIdx < PRIMARY_STAGES.length && (PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT' || PRIMARY_STAGES[nextIdx].id === STAGE_IDS.LOST_PROJECT)) {
+        if (nextIdx < PRIMARY_STAGES.length && (PRIMARY_STAGES[nextIdx].id === STAGE_IDS.LOST_PROJECT)) {
             nextIdx++;
         }
 
-        return nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id !== STAGE_IDS.LOST_PROJECT && PRIMARY_STAGES[nextIdx].id !== 'HOLD PROCUREMENT';
+        return nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id !== STAGE_IDS.LOST_PROJECT;
     })();
 
     const nextStageId = (() => {
         const currentIdx = PRIMARY_STAGES.findIndex(s => s.id === editData.stage);
         if (currentIdx === -1) return null;
-        if (editData.stage === STAGE_IDS.COMPLETED || editData.stage === STAGE_IDS.LOST_PROJECT || editData.stage === 'HOLD PROCUREMENT') return null;
+        if (editData.stage === STAGE_IDS.COMPLETED || editData.stage === STAGE_IDS.LOST_PROJECT) return null;
 
         let nextIdx = currentIdx + 1;
         if (nextIdx >= PRIMARY_STAGES.length) return null;
@@ -847,11 +843,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (nextStage.id === STAGE_IDS.CASH && editData.payment_type?.trim().toLowerCase() === 'loan') {
             nextIdx++;
         }
-        if (nextIdx < PRIMARY_STAGES.length && (PRIMARY_STAGES[nextIdx].id === 'HOLD PROCUREMENT' || PRIMARY_STAGES[nextIdx].id === STAGE_IDS.LOST_PROJECT)) {
+        if (nextIdx < PRIMARY_STAGES.length && (PRIMARY_STAGES[nextIdx].id === STAGE_IDS.LOST_PROJECT)) {
             nextIdx++;
         }
 
-        if (nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id !== STAGE_IDS.LOST_PROJECT && PRIMARY_STAGES[nextIdx].id !== 'HOLD PROCUREMENT') {
+        if (nextIdx < PRIMARY_STAGES.length && PRIMARY_STAGES[nextIdx].id !== STAGE_IDS.LOST_PROJECT) {
             return PRIMARY_STAGES[nextIdx].id;
         }
         return null;
@@ -964,7 +960,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(editData.geo_tag_image, 'Geo Tag Photograph');
                 break;
             case STAGE_IDS.METER_INSTALLATION:
-                requireField(editData.meter_installation === 'Yes', 'Meter Installation Status must be Yes');
+                requireField(normalizeMeterInstallation(editData.meter_installation) === 'Yes', 'Meter Installation Status must be Yes');
                 requireField(editData.installation_date, 'Meter Installation Date');
                 requireField(editData.meter_installation_photo, 'Meter Installation Photo');
                 break;
@@ -1069,22 +1065,20 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             updates.ac_cable = String(parseIndianNumber(updates.ac_cable));
         }
 
-        if (destStageId === STAGE_IDS.LOST_PROJECT || destStageId === 'HOLD PROCUREMENT') {
+        if (destStageId === STAGE_IDS.LOST_PROJECT) {
             const prevHold = (typeof updates.hold_procurement === 'object' && updates.hold_procurement) ? updates.hold_procurement : {};
             updates.hold_procurement = {
                 ...prevHold,
-                previous_stage: (oldStage !== STAGE_IDS.LOST_PROJECT && oldStage !== 'HOLD PROCUREMENT') ? oldStage : (prevHold.previous_stage || STAGE_IDS.LEADS),
+                previous_stage: (oldStage !== STAGE_IDS.LOST_PROJECT) ? oldStage : (prevHold.previous_stage || STAGE_IDS.LEADS),
                 hold_date: new Date().toISOString().split('T')[0]
             };
         }
 
         if (destStageId === STAGE_IDS.METER_INSTALLATION) {
-            const currentMeter = updates.meter_installation || {};
-            updates.meter_installation = {
-                status: currentMeter.status || 'No',
-                no_date: currentMeter.no_date || new Date().toISOString().split('T')[0],
-                yes_date: currentMeter.yes_date || null
-            };
+            // Seed the STRING the tab and the validator both read. This used to
+            // write { status, no_date, yes_date }; no code ever read no_date or
+            // yes_date, and the object broke every reader.
+            updates.meter_installation = normalizeMeterInstallation(updates.meter_installation) || 'No';
         }
 
         if (destStageId === STAGE_IDS.DISCOM_INSPECTION) {
@@ -1198,6 +1192,20 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (ok === false) return;
 
         setEditData(prev => ({ ...prev, stage: STAGE_IDS.LOST_PROJECT, hold_procurement: payload }));
+
+        // Re-base the conflict baseline, exactly as handleSave and
+        // handleAdvanceStage do. Without this the NEXT save in the same modal
+        // session sees the row as changed-on-the-server - by this very write -
+        // and raises an "Edit Conflict Detected" dialog against the user
+        // themselves. Postgres re-orders jsonb keys on storage, so
+        // hold_procurement compares unequal and lands in the conflict list.
+        savedDataRef.current = {
+            ...savedDataRef.current,
+            stage: STAGE_IDS.LOST_PROJECT,
+            hold_procurement: payload,
+        };
+        loadedUpdatedAtRef.current = new Date().toISOString();
+
         setActiveTab(STAGE_IDS.LOST_PROJECT);
 
         await logActivity(
@@ -1420,7 +1428,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             if (Object.keys(narrowedUpdates).length === 0) {
                 setEditingSection(null);
                 setIsFormDirty(false);
-                setSaved(true);
                 setSaving(false);
                 return true;
             }
@@ -1459,7 +1466,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             setConcurrentConflict(null);
             setEditingSection(null);
             setIsFormDirty(false);
-            setSaved(true);
             if (stageChanged) setActiveTab(editData.stage);
             // The customer update is already confirmed. Refreshing the activity
             // list does not need to delay Save & Close.
@@ -1521,36 +1527,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         onClose();
     };
 
-    const isDirty = (() => {
-        if (!customer || !editData) return false;
-        
-        const ignoreKeys = new Set(['id', 'created_at', 'updated_at', 'crn']);
-        for (const key of Object.keys(editData)) {
-            if (ignoreKeys.has(key)) continue;
-            let val1 = editData[key];
-            let val2 = customer[key];
-            
-            // Handle booleans vs null/undefined (e.g. false vs null, checklist items)
-            if (typeof val1 === 'boolean' || typeof val2 === 'boolean') {
-                if (Boolean(val1) !== Boolean(val2)) return true;
-                continue;
-            }
-
-            // Normalize empty / null / undefined values
-            const isVal1Empty = val1 === undefined || val1 === null || val1 === '';
-            const isVal2Empty = val2 === undefined || val2 === null || val2 === '';
-            if (isVal1Empty && isVal2Empty) continue;
-
-            if (typeof val1 === 'object' || typeof val2 === 'object') {
-                if (JSON.stringify(val1 ?? null) !== JSON.stringify(val2 ?? null)) return true;
-            } else {
-                const str1 = val1 !== undefined && val1 !== null ? String(val1).trim() : '';
-                const str2 = val2 !== undefined && val2 !== null ? String(val2).trim() : '';
-                if (str1 !== str2) return true;
-            }
-        }
-        return false;
-    })();
 
     const SectionHeader = ({ title, id, icon: Icon }) => (
         <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-1.5 mt-4">
@@ -1844,7 +1820,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         />
                     )}
 
-                    {isEditable && activeTab !== STAGE_IDS.LOST_PROJECT && activeTab !== 'HOLD PROCUREMENT' && activeTab !== 'DOCUMENTS' && activeTab !== 'history' && customer.stage !== STAGE_IDS.COMPLETED && (
+                    {isEditable && activeTab !== STAGE_IDS.LOST_PROJECT && activeTab !== 'DOCUMENTS' && activeTab !== 'history' && customer.stage !== STAGE_IDS.COMPLETED && (
                         <div className="mt-8 pt-4 border-t border-stone-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50/70 p-3.5 rounded-2xl border border-stone-200/60">
                             <div className="flex items-center gap-2.5">
                                 <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg flex-shrink-0">
@@ -1867,7 +1843,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 </div>
 
                 {/* Footer bar - 50/50 split buttons at customer card */}
-                {isEditable && activeTab !== STAGE_IDS.LOST_PROJECT && activeTab !== 'HOLD PROCUREMENT' && (
+                {isEditable && activeTab !== STAGE_IDS.LOST_PROJECT && (
                     <div className="p-4 border-t border-stone-100 bg-white flex-shrink-0 flex gap-3">
                         <button
                             /* () => handleSave() - NOT onClick={handleSave}. React
@@ -2031,6 +2007,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     fileUrl={filePreview.url}
                     onClose={() => setFilePreview({ doc: null, url: null })}
                     onDownload={() => handleDownloadDoc(filePreview.doc)}
+                    onUpdateRemark={handleUpdateDocRemark}
                 />
             )}
 

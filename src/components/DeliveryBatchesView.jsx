@@ -40,9 +40,16 @@ export default function DeliveryBatchesView({
                 'MATERIAL ORDER',
                 'MATERIAL_ORDER',
                 'Material Order',
-                'HOLD PROCUREMENT',
-                'HOLD_PROCUREMENT',
-                'Hold Procurement',
+                'INSTALLATION STATUS',
+                'INSTALLATION_STATUS',
+                'Installation Status',
+                // LOST PROJECT is deliberately NOT here. The list used to carry
+                // HOLD PROCUREMENT ("materials pending", reasonably batchable);
+                // that stage was renamed to LOST PROJECT, which means the deal
+                // is dead. A dead project does not get materials dispatched, and
+                // including it put 36 dead rows in front of someone loading a
+                // truck. If one genuinely needs materials, move it out of Lost
+                // Project first.
             ];
             const isAdmin = currentUser?.userType === 'admin';
             const includeEveryStage = false;

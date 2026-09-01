@@ -202,7 +202,7 @@ export default function InstallationStatusTab({
                                 disabled={!isEditable || isLocked}
                                 onClick={() => !isLocked && handleToggleInstallationTag(tag.id)}
                                 className={`px-3 py-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full ${
-                                    isLocked && tag.id !== 'Yes' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                    isLocked && !tag.isFinal ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                 } ${
                                     isSelected
                                         ? tag.activeClass

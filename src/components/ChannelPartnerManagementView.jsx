@@ -568,6 +568,10 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             // Zero rows is also LEGITIMATE here (a label nothing uses yet), so
             // count the matching rows first and require the update to touch
             // exactly that many.
+            // Records every cascade that actually COMMITTED, so the failure path
+            // reports what really happened rather than assuming none of it ran.
+            const committed = [];
+
             const cascade = async (table, column) => {
                 const { count, error: countErr } = await supabase
                     .from(table)
@@ -581,6 +585,9 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     { action: 'rename' }
                 );
                 if (!res.ok) throw res.error;
+
+                if (res.rows.length > 0) committed.push({ table, column, rows: res.rows.length });
+
                 if (res.rows.length !== count) {
                     throw new Error(`Only ${res.rows.length} of ${count} ${table} records could be renamed.`);
                 }
@@ -610,17 +617,31 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
                 if (category === 'integration_by') await cascade('bom_items', 'integration_by');
             } catch (cascadeErr) {
-                // Put the dropdown entry back, so the label and the records it
-                // points at cannot disagree.
+                // Put back every cascade that DID commit, newest first, then the
+                // dropdown entry. Reporting "nothing was changed" while
+                // admin.channel_partner already held the new label was the worst
+                // outcome: thousands of records pointing at a label that is not
+                // in any dropdown, and a message saying not to go looking.
+                const stuck = [];
+                for (const c of committed.slice().reverse()) {
+                    const back = await runWrite(
+                        supabase.from(c.table).update({ [c.column]: oldLabel }).eq(c.column, trimmed).select('id'),
+                        { action: 'revert' }
+                    );
+                    if (!back.ok) stuck.push(`${c.rows} ${c.table} record(s)`);
+                }
+
                 const revert = await runWrite(
                     supabase.from('metadata').update({ label: oldLabel }).eq('id', id).select('id'),
                     { action: 'revert' }
                 );
+                if (!revert.ok) stuck.push('the dropdown entry');
+
                 throw new Error(
-                    `${cascadeErr.message} The rename was cancelled`
-                    + (revert.ok
-                        ? ' and nothing was changed.'
-                        : ` - EXCEPT the dropdown entry, which now reads "${trimmed}". Rename it back to "${oldLabel}" manually.`)
+                    stuck.length === 0
+                        ? `${cascadeErr.message} The rename was cancelled and everything was put back.`
+                        : `${cascadeErr.message} The rename was cancelled, but ${stuck.join(' and ')} `
+                          + `could NOT be put back and still read "${trimmed}". Restore them to "${oldLabel}" manually.`
                 );
             }
 

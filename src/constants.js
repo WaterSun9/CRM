@@ -210,7 +210,7 @@ export const INSTALLATION_TAG_COLORS = {
 };
 
 // ════════════════════════════════════════════════════════════
-// HOLD PROCUREMENT STATUS TAGS
+// LOST PROJECT STATUS TAGS
 // ════════════════════════════════════════════════════════════
 export const HOLD_STATUS_TAGS = [
     { 
@@ -315,8 +315,11 @@ export const DOC_TYPE_FLAG_COLUMN = {
     // The real column carries the original spelling of "feasibilty"
     feasibilty_document:        'feasibilty_document',
     feasibility_document:       'feasibilty_document',
-    // Intentionally unmapped (no column exists): file_status,
-    // surya_gpa_stamp, gpa_stamp.
+    // Intentionally unmapped: file_status, surya_gpa_stamp, gpa_stamp.
+    // NOTE on file_status: a column of that name exists again, but it is TEXT,
+    // not boolean. This map sets its target to `true` on upload, so mapping
+    // file_status here would write a boolean into a text column and fail the
+    // whole update. Leave it out.
 };
 
 // ════════════════════════════════════════════════════════════
@@ -439,6 +442,13 @@ export const ADMIN_COLUMNS = new Set([
     'registration_no',
     'roof_shed',
     'sfdc_photo',
+    // Free-text siblings of the sfdc_photo / warranty_card checkboxes, plus
+    // file_status which has no checkbox at all. These MUST be listed here - a
+    // column missing from ADMIN_COLUMNS is stripped by sanitizeAdminUpdate, so
+    // the field would save "successfully" and write nothing.
+    'sfdc_photo_text',
+    'warranty_card_text',
+    'file_status',
     'signature_pic',
     'site_feasibility',
     'stage',

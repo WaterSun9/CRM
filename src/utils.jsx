@@ -119,6 +119,18 @@ export function normalizeAdminValues(updates) {
         const parsed = parseIndianNumber(clean[field]);
         clean[field] = (parsed === '' || Number.isNaN(parsed)) ? null : parsed;
     });
+
+    // A phone field holding only '+' or '' is not a number - store NULL.
+    // sanitizePhoneNumber deliberately lets a lone '+' survive so it can be
+    // TYPED (a controlled input that erased it would make +91 impossible to
+    // enter), but it must never reach the column: the CHECK constraint
+    // admin_phone_number_format requires at least one digit after the +.
+    ['phone_number', 'driver_phone_number'].forEach(field => {
+        if (clean[field] === undefined) return;
+        const v = String(clean[field] ?? '').trim();
+        if (v === '' || v === '+') clean[field] = null;
+    });
+
     return clean;
 }
 
@@ -150,6 +162,48 @@ export function normalizeAdminValues(updates) {
 //     if (!res.ok) throw res.error;
 //
 // `expectRows: false` is for INSERTs where matching nothing is legitimate.
+// `meter_installation` is a plain 'Yes' / 'No' string. One stage-advance path
+// used to seed it as { status, no_date, yes_date } instead, and the three places
+// that READ it all compare against the string - so on arrival at Meter
+// Installation neither button rendered as selected, the mandatory date field
+// never appeared, and the stage could not be completed. 2 rows are stored in the
+// object form; normalising on read lets them heal on the next save.
+// Phone numbers, one rule for every entry point.
+//
+// Accepts a plain 10-digit local number OR an international form with a leading
+// "+" (e.g. +919876543210). Everything that is not a digit or a leading + is
+// stripped as you type, so spaces, dashes and brackets pasted from a contact
+// list are cleaned rather than rejected.
+//
+// Kept in sync with the database CHECK constraint admin_phone_number_format:
+//     phone_number IS NULL OR phone_number ~ '^\+?[0-9]{1,15}$'
+// If you loosen one, loosen the other, or a user gets a database error for
+// something the form let them type.
+export function sanitizePhoneNumber(value) {
+    const raw = String(value ?? '');
+    const hasPlus = raw.trim().startsWith('+');
+    const digits = raw.replace(/\D/g, '');
+
+    if (hasPlus) {
+        // International: keep up to the E.164 maximum of 15 digits.
+        return digits.length ? `+${digits.slice(0, 15)}` : '+';
+    }
+
+    // Local: a leading 0 on an 11-digit entry is the trunk prefix - drop it.
+    if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
+    return digits.slice(0, 10);
+}
+
+export function normalizeMeterInstallation(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') return value.status || '';
+    const str = String(value).trim();
+    if (str.startsWith('{')) {
+        try { return (JSON.parse(str) || {}).status || ''; } catch { return ''; }
+    }
+    return str;
+}
+
 export async function runWrite(builder, { action = 'change', expectRows = true } = {}) {
     const { data, error } = await builder;
 
@@ -312,7 +366,7 @@ export function exportAllToCSV(customers) {
         'Subsidy Tag',
         'Warranty Card',
         'Insurance Status',
-        'Hold Procurement',
+        'Lost Project',
         'Internal Remarks',
         'Stage Remarks',
         'Created At',

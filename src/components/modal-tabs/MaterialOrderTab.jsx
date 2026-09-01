@@ -26,7 +26,11 @@ export default function MaterialOrderTab({
     const isAgent = user?.userType === 'agent' || user?.userType === 'agent2';
     const isAdmin = user?.userType === 'admin';
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office';
-    const canEdit = isAgent || isChannelPartnerOffice || (isAdmin && isEditable);
+    // isEditable is the COMPLETED freeze. It used to apply to isAdmin ONLY, so an
+    // Admin could not edit a completed Material Order while a Dealer could - the
+    // freeze was inverted against the permission hierarchy. It now applies to
+    // every role, which is what "frozen" is supposed to mean.
+    const canEdit = (isAgent || isChannelPartnerOffice || isAdmin) && isEditable;
 
     const [validationError, setValidationError] = useState('');
     const [savedSuccess, setSavedSuccess] = useState(false);
@@ -64,50 +68,6 @@ export default function MaterialOrderTab({
         return null;
     };
 
-    const handleSaveOrder = async (nextStage = null) => {
-        const error = validateFields();
-        if (error) {
-            setValidationError(error);
-            return;
-        }
-
-        setSaving(true);
-        const frontLeg = editData.structure_front_leg_height || '';
-        const rearLeg = editData.structure_rear_leg_height || '';
-        const updates = {
-            roof_shed: editData.roof_shed,
-            dc_cable: Number(parseIndianNumber(editData.dc_cable)),
-            ac_cable: Number(parseIndianNumber(editData.ac_cable)),
-            structure_front_leg_height: frontLeg,
-            structure_rear_leg_height: rearLeg,
-            material_order_notes: editData.material_order_notes || '',
-            invoice_value: Number(parseIndianNumber(editData.invoice_value))
-        };
-
-        if (nextStage) {
-            updates.stage = nextStage;
-        }
-
-        // A failed save must stop here - otherwise the activity log below
-
-        // records a change that never reached the database.
-
-        if (await onUpdate(customer.id, updates) === false) { setSaving(false); return; }
-
-        let logMsg = `${customer.customer_name}: Updated Material Order details (Roof/Shed: ${updates.roof_shed}, DC: ${updates.dc_cable}m, AC: ${updates.ac_cable}m, Front Leg: ${updates.structure_front_leg_height} ft, Rear Leg: ${updates.structure_rear_leg_height} ft, Notes: ${updates.material_order_notes || 'None'}, Invoice: ₹${updates.invoice_value})`;
-        if (nextStage) {
-            logMsg += ` and moved stage to ${nextStage}`;
-        }
-        if (logActivity && user?.id) {
-            await logActivity(user.id, 'update', logMsg, '', customer.id);
-        }
-
-        if (setEditingSection) setEditingSection(null);
-        setSaving(false);
-        setSavedSuccess(true);
-        setTimeout(() => setSavedSuccess(false), 3000);
-        if (fetchLogs) fetchLogs();
-    };
 
     const isEditingOrder = editingSection === 'mat_order';
 

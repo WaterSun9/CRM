@@ -19,7 +19,7 @@ export default function HoldProcurementTab({
     // Normalize hold_procurement object safely from editData or customer
     const getHoldState = () => {
         const raw = editData.hold_procurement ?? customer.hold_procurement;
-        let defaultOrigin = (customer.stage !== 'LOST PROJECT' && customer.stage !== 'HOLD PROCUREMENT') ? customer.stage : 'LEADS';
+        let defaultOrigin = (customer.stage !== 'LOST PROJECT') ? customer.stage : 'LEADS';
         
         if (!raw) {
             return {
@@ -60,7 +60,7 @@ export default function HoldProcurementTab({
 
     const getSavedHoldState = () => {
         const raw = customer.hold_procurement;
-        let defaultOrigin = (customer.stage !== 'LOST PROJECT' && customer.stage !== 'HOLD PROCUREMENT') ? customer.stage : 'LEADS';
+        let defaultOrigin = (customer.stage !== 'LOST PROJECT') ? customer.stage : 'LEADS';
         if (!raw) {
             return {
                 previous_stage: defaultOrigin,
@@ -224,7 +224,7 @@ export default function HoldProcurementTab({
                                 onChange={e => updateHoldField('previous_stage', e.target.value)}
                                 className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-800 outline-none focus:border-amber-400"
                             >
-                                {PRIMARY_STAGES.filter(s => s.id !== 'LOST PROJECT' && s.id !== 'HOLD PROCUREMENT' && s.id !== 'COMPLETED').map(stg => (
+                                {PRIMARY_STAGES.filter(s => s.id !== 'LOST PROJECT' && s.id !== 'COMPLETED').map(stg => (
                                     <option key={stg.id} value={stg.id}>{stg.label}</option>
                                 ))}
                             </select>

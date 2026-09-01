@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
-import { toIndianCommas, fetchAgent2SubAgents } from '../utils';
+import { toIndianCommas, fetchAgent2SubAgents, sanitizePhoneNumber } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
 // Dropdown component for metadata fields (clean single outline)
@@ -296,8 +296,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             processedValue = String(value).replace(/[^0-9]/g, '');
         }
         if (field === 'phone_number') {
-            const clean = String(value).replace(/[^0-9]/g, '');
-            processedValue = clean.length === 11 && clean.startsWith('0') ? clean.slice(1) : clean.slice(0, 10);
+            processedValue = sanitizePhoneNumber(value);
         }
         setFormData(prev => {
             const next = { ...prev, [field]: processedValue };
@@ -490,11 +489,13 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 </label>
                                 <input
                                     type="tel"
-                                    maxLength={10}
+                                    // 16 = "+" plus the E.164 maximum of 15 digits.
+                                    // At 10 a +91 number could not be typed at all.
+                                    maxLength={16}
                                     value={formData.phone_number || ''}
                                     onChange={e => handleChange('phone_number', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                                    placeholder="e.g. 9876543210 (10 digits)"
+                                    placeholder="9876543210 or +919876543210"
                                     required
                                 />
                             </div>

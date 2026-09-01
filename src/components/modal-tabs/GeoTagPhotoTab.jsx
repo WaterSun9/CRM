@@ -30,8 +30,6 @@ export default function GeoTagPhotoTab({
         setEditData(prev => ({ ...prev, [field]: val }));
     };
 
-    const isGeoTagDirty = editData.geo_tag_status !== customer.geo_tag_status || 
-                          !!editData.geo_tag_image !== !!customer.geo_tag_image;
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
