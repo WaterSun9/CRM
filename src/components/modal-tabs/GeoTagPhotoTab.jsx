@@ -19,32 +19,58 @@ export default function GeoTagPhotoTab({
     onFilePreview,
     onUpdateRemark
 }) {
-    // Vendor can edit geo tag, office can only view, Channel Partner Office & Admin have full edit
+    // Vendor, Channel Partner Office, Office/Sales, and Admin can edit geo tag photo
     const isVendor = user?.userType === 'vendor';
     const isAdmin = user?.userType === 'admin';
     const isChannelPartnerOffice = user?.userType === 'channel_partner_office';
-    const canEditGeoTag = isVendor || ((isAdmin || isChannelPartnerOffice) && isEditable);
+    const isSales = user?.userType === 'sales' || user?.userType === 'office' || (user?.role && user.role.toLowerCase().includes('office')) || (user?.role && user.role.toLowerCase().includes('sales'));
+    
+    // Status buttons (No / Pending / Proceed) can be manually clicked by Vendor, Admin, CPO (not Sales/Office)
+    const canEditStatus = (isVendor || ((isAdmin || isChannelPartnerOffice) && isEditable)) && !isSales;
+    // Image upload is permitted for Vendor, Admin, CPO, and Sales/Office
+    const canUploadImage = isVendor || ((isAdmin || isChannelPartnerOffice || isSales) && isEditable);
     const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
 
     const handleChange = (field, val) => {
-        setEditData(prev => ({ ...prev, [field]: val }));
+        setEditData(prev => {
+            const updated = { ...prev, [field]: val };
+            // When photo is uploaded, automatically change status to 'Proceed'
+            if (field === 'geo_tag_image') {
+                if (val) {
+                    updated.geo_tag_status = 'Proceed';
+                } else if (prev.geo_tag_status === 'Proceed') {
+                    updated.geo_tag_status = 'No';
+                }
+            }
+            return updated;
+        });
     };
 
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
-            {/* Vendor permission info banner if not vendor and not admin/channel partner office */}
-            {!canEditGeoTag && (
+            {/* Permission info banner for Sales/Office or view-only users */}
+            {isSales ? (
+                <div className="bg-blue-50/80 border border-blue-200/80 rounded-2xl p-4 flex items-center gap-3">
+                    <ShieldAlert className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                    <div>
+                        <p className="text-xs font-bold text-blue-900">Office Geo Tag Access</p>
+                        <p className="text-[11px] text-blue-700 font-medium">
+                            Upload the Geo Tag photograph below. Uploading will automatically advance the status to <b className="font-bold text-blue-950">Proceed</b>.
+                        </p>
+                    </div>
+                </div>
+            ) : !canUploadImage ? (
                 <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 flex items-center gap-3">
                     <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
                     <div>
                         <p className="text-xs font-bold text-amber-900">Vendor Controlled Stage</p>
                         <p className="text-[11px] text-amber-700 font-medium">
-                            Geo Tag Photo verification and status are configured directly by the Vendor. Office users have view-only access.
+                            Geo Tag Photo verification and status are configured directly by the Vendor. You have view-only access.
                         </p>
                     </div>
                 </div>
-            )}
+            ) : null}
 
             {/* Geo Tag Status Tag Selector */}
             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
@@ -70,11 +96,11 @@ export default function GeoTagPhotoTab({
                                 <button
                                     key={tag.id}
                                     type="button"
-                                    disabled={!canEditGeoTag}
+                                    disabled={!canEditStatus}
                                     onClick={() => {
                                         setEditData(prev => ({ ...prev, geo_tag_status: tag.id }));
                                     }}
-                                    className={`py-3 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer ${
+                                    className={`py-3 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 w-full cursor-pointer disabled:cursor-not-allowed ${
                                         isSelected
                                             ? tag.activeClass
                                             : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-600'
@@ -99,7 +125,7 @@ export default function GeoTagPhotoTab({
                         Image Upload Mandatory
                     </span>
                 </div>
-                {!canEditGeoTag && (
+                {!canUploadImage && (
                     <p className="text-[10px] text-stone-400 font-semibold italic">Only vendors can edit this section. You have view-only access.</p>
                 )}
                 <div className="flex flex-col gap-2">
@@ -108,7 +134,7 @@ export default function GeoTagPhotoTab({
                         field="geo_tag_image" 
                         value={editData.geo_tag_image} 
                         onChange={handleChange} 
-                        isEditing={canEditGeoTag} 
+                        isEditing={canUploadImage} 
                         documents={documents} 
                         onUpload={onFileUpload} 
                         onDelete={onFileDelete} 
