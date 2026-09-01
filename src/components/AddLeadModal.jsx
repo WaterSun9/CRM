@@ -313,7 +313,15 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             showAlert('Enter Module Wp and No of Modules first.', { title: 'Cannot calculate', type: 'warning' });
             return;
         }
-        handleChange('system_capacity_kwp', toIndianCommas(Math.round(wp * count)));
+        // Wp x modules gives WATTS; the field is kWp, so divide by 1000.
+        // This used to be Math.round(wp * count) - 540Wp x 6 wrote "3,240" into
+        // a kWp field, when the answer is 3.24. Every imported record is in kWp
+        // (4,536 of 4,646 carry decimals), so the auto-calc was the odd one out
+        // and any lead created through this button had a capacity 1000x too big.
+        //
+        // Two decimals, trailing zeros trimmed: 3.24 stays 3.24, 3.00 becomes 3.
+        const kwp = Math.round((wp * count) / 1000 * 100) / 100;
+        handleChange('system_capacity_kwp', String(kwp));
     };
 
     const handleFileAttach = (docType, file) => {

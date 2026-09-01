@@ -1,5 +1,6 @@
 import React from 'react';
-import { CheckboxRemarkItem, EditableDetailItem } from './shared';
+import { ClipboardCheck } from 'lucide-react';
+import { CheckboxRemarkItem, EditableDetailItem, SectionHeader } from './shared';
 
 export default function FinalReviewTab({
     editData,
@@ -12,6 +13,8 @@ export default function FinalReviewTab({
     onFileDelete,
     onFilePreview,
     onUpdateRemark,
+    editingSection,
+    setEditingSection,
     user
 }) {
     const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
@@ -41,19 +44,41 @@ export default function FinalReviewTab({
                 </div>
             </section>
 
-            {/* Free-text details. All optional - none is required to advance the
-                stage, and the checklist above can stay empty. */}
+            {/* Same pencil-to-edit pattern as every other detail section:
+                read-only until the header pencil is clicked, then the three
+                fields become inputs. All optional - the checklist above can be
+                left empty. */}
             <section>
-                <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm mb-3">
-                    <div>
-                        <h3 className="text-sm font-bold text-stone-800">Final Review Details</h3>
-                        <p className="text-[11px] text-stone-400 font-medium mt-0.5">All optional. The checklist above can be left empty.</p>
-                    </div>
-                </div>
-                <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <EditableDetailItem label="SFDC Photo" field="sfdc_photo_text" value={editData.sfdc_photo_text} onChange={handleChange} isEditing={isEditable} />
-                    <EditableDetailItem label="Warranty Card" field="warranty_card_text" value={editData.warranty_card_text} onChange={handleChange} isEditing={isEditable} />
-                    <EditableDetailItem label="File Status" field="file_status" value={editData.file_status} onChange={handleChange} isEditing={isEditable} />
+                <SectionHeader
+                    title="Final Review Details"
+                    id="finalrev"
+                    icon={ClipboardCheck}
+                    isEditable={isEditable}
+                    editingSection={editingSection}
+                    setEditingSection={setEditingSection}
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <EditableDetailItem
+                        label="SFDC Photo"
+                        field="sfdc_photo_text"
+                        value={editData.sfdc_photo_text}
+                        onChange={handleChange}
+                        isEditing={editingSection === 'finalrev'}
+                    />
+                    <EditableDetailItem
+                        label="Warranty Card"
+                        field="warranty_card_text"
+                        value={editData.warranty_card_text}
+                        onChange={handleChange}
+                        isEditing={editingSection === 'finalrev'}
+                    />
+                    <EditableDetailItem
+                        label="File Status"
+                        field="file_status"
+                        value={editData.file_status}
+                        onChange={handleChange}
+                        isEditing={editingSection === 'finalrev'}
+                    />
                 </div>
             </section>
         </div>
