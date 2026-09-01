@@ -226,11 +226,13 @@ function ResetPasswordModal({ user, onClose, onSuccess, currentUser }) {
 // ─── CreateUserModal ──────────────────────────────────────────────────────────
 function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }) {
     const isCP = currentUser?.user_type === 'channel_partner_office' || currentUser?.userType === 'channel_partner_office';
+    const isAdmin = (currentUser?.user_type || currentUser?.userType) === 'admin';
     const partnerName = (currentUser?.channel_partner || currentUser?.name || '').trim();
     const initialFormState = isCP 
         ? { name: '', email: '', password: '', role: 'Channel Partner Manager', user_type: 'office2', channel_partner: partnerName }
         : { name: '', email: '', password: '', role: 'Office', user_type: 'sales', channel_partner: '' };
     const [form, setForm] = useState(initialFormState);
+    const [customBranchMode, setCustomBranchMode] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [showPw, setShowPw] = useState(false);
@@ -574,18 +576,50 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                     </>
                                 ) : (
                                     <>
-                                        <select
-                                            value={form.channel_partner || ''}
-                                            onChange={e => set('channel_partner', e.target.value)}
-                                            className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white cursor-pointer font-medium"
-                                        >
-                                            <option value="">Select a branch / partner...</option>
-                                            {branchOptions.map(name => <option key={name} value={name}>{name}</option>)}
-                                        </select>
+                                        <div className="flex gap-2 items-center">
+                                            {customBranchMode ? (
+                                                <input
+                                                    type="text"
+                                                    value={form.channel_partner || ''}
+                                                    onChange={e => set('channel_partner', e.target.value.toUpperCase())}
+                                                    placeholder="Type new branch name..."
+                                                    className="w-full px-3 py-2.5 border border-amber-400 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white font-bold uppercase"
+                                                    autoFocus
+                                                />
+                                            ) : (
+                                                <select
+                                                    value={form.channel_partner || ''}
+                                                    onChange={e => set('channel_partner', e.target.value)}
+                                                    className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white cursor-pointer font-medium"
+                                                >
+                                                    <option value="">Select a branch / partner...</option>
+                                                    {branchOptions.map(name => <option key={name} value={name}>{name}</option>)}
+                                                </select>
+                                            )}
+                                            {isAdmin && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setCustomBranchMode(v => !v);
+                                                        set('channel_partner', '');
+                                                    }}
+                                                    className={`px-3 py-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                                                        customBranchMode
+                                                            ? 'bg-amber-100 border-amber-300 text-amber-900'
+                                                            : 'bg-stone-100 hover:bg-stone-200 border-stone-200 text-stone-700'
+                                                    }`}
+                                                    title={customBranchMode ? 'Pick from existing list' : 'Add new branch name'}
+                                                >
+                                                    {customBranchMode ? <X size={14} /> : <><Plus size={14} className="text-amber-600" /> New Branch</>}
+                                                </button>
+                                            )}
+                                        </div>
                                         <p className="text-[10px] text-stone-400 mt-1">
-                                            {branchOptions.length === 0
-                                                ? 'No branches registered yet - create a Channel Partner Office user first.'
-                                                : 'Pick the branch this user works under. To create a new branch, add a Channel Partner Office user instead.'}
+                                            {customBranchMode
+                                                ? 'Enter a new branch name. It will be assigned to this user and added to Operations directory automatically.'
+                                                : branchOptions.length === 0
+                                                    ? 'No branches registered yet - click "+ New Branch" to add one.'
+                                                    : 'Pick the branch this user works under, or click "+ New Branch" to create a new one.'}
                                         </p>
                                     </>
                                 )}
@@ -643,6 +677,7 @@ export default function UserManagementView({ currentUser }) {
     const ALLOW_NAME_EDIT = false;
     const [editingPartnerId, setEditingPartnerId] = useState(null);
     const [tempPartner, setTempPartner] = useState('');
+    const [isCustomPartner, setIsCustomPartner] = useState(false);
     const [pwdResetUser, setPwdResetUser] = useState(null);
 
     const showToast = (type, message) => {
@@ -652,6 +687,7 @@ export default function UserManagementView({ currentUser }) {
 
     const currentUserType = currentUser?.user_type || currentUser?.userType;
     const isCP = currentUserType === 'channel_partner_office';
+    const isAdmin = currentUserType === 'admin';
     const partnerName = (currentUser?.channel_partner || currentUser?.name || '').trim();
 
     // ─── Robust Fetch Profiles ──────────────────────────────────────────────────
@@ -759,7 +795,7 @@ export default function UserManagementView({ currentUser }) {
 
     // ─── Update Assigned Channel Partner Name ──────────────────────────────────
     const handleUpdatePartner = async (profileId, newPartner) => {
-        const cleanPartner = (newPartner || '').trim();
+        const cleanPartner = (newPartner || '').trim().toUpperCase();
         setActionLoading(profileId);
         try {
             if (!String(profileId).startsWith('dev-')) {
@@ -770,14 +806,34 @@ export default function UserManagementView({ currentUser }) {
                     { action: 'branch change' }
                 );
                 if (!res.ok) throw res.error;
+
+                // If a new branch was added, ensure it's in metadata directory
+                if (cleanPartner) {
+                    try {
+                        const { data: existing } = await supabase
+                            .from('metadata')
+                            .select('id')
+                            .eq('category', 'channel_partner')
+                            .ilike('label', cleanPartner)
+                            .limit(1);
+                        if (!existing || existing.length === 0) {
+                            await supabase
+                                .from('metadata')
+                                .insert({ category: 'channel_partner', label: cleanPartner });
+                        }
+                    } catch (metaSyncErr) {
+                        console.warn('Metadata sync warning on branch update:', metaSyncErr);
+                    }
+                }
             }
 
             setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, channel_partner: cleanPartner } : p));
-            showToast('success', 'Channel Partner name updated successfully');
+            showToast('success', 'Branch name updated successfully');
             setEditingPartnerId(null);
+            setIsCustomPartner(false);
         } catch (err) {
             console.error('Failed to update partner:', err);
-            showToast('error', err.message || 'Failed to update partner name');
+            showToast('error', err.message || 'Failed to update branch name');
         } finally {
             setActionLoading(null);
         }
@@ -1365,28 +1421,70 @@ export default function UserManagementView({ currentUser }) {
                                     {/* Assigned Branch / Partner */}
                                     <td className="px-4 py-3">
                                         {editingPartnerId === profile.id ? (
-                                            <div className="flex items-center gap-1.5 max-w-xs">
-                                                <select
-                                                    value={tempPartner}
-                                                    onChange={e => setTempPartner(e.target.value)}
-                                                    onKeyDown={e => { if (e.key === 'Escape') setEditingPartnerId(null); }}
-                                                    className="px-2.5 py-1 border border-stone-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 w-full font-medium cursor-pointer"
-                                                    autoFocus
-                                                >
-                                                    <option value="">None</option>
-                                                    {branchOptions.map(name => <option key={name} value={name}>{name}</option>)}
-                                                </select>
+                                            <div className="flex items-center gap-1.5 max-w-sm">
+                                                {isCustomPartner ? (
+                                                    <input
+                                                        type="text"
+                                                        value={tempPartner}
+                                                        onChange={e => setTempPartner(e.target.value.toUpperCase())}
+                                                        placeholder="Type new branch..."
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Escape') {
+                                                                setEditingPartnerId(null);
+                                                                setIsCustomPartner(false);
+                                                            }
+                                                            if (e.key === 'Enter') handleUpdatePartner(profile.id, tempPartner);
+                                                        }}
+                                                        className="px-2.5 py-1 border border-amber-400 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 w-full font-bold uppercase"
+                                                        autoFocus
+                                                    />
+                                                ) : (
+                                                    <select
+                                                        value={tempPartner}
+                                                        onChange={e => setTempPartner(e.target.value)}
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Escape') {
+                                                                setEditingPartnerId(null);
+                                                                setIsCustomPartner(false);
+                                                            }
+                                                        }}
+                                                        className="px-2.5 py-1 border border-stone-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 w-full font-medium cursor-pointer"
+                                                        autoFocus
+                                                    >
+                                                        <option value="">None</option>
+                                                        {branchOptions.map(name => <option key={name} value={name}>{name}</option>)}
+                                                    </select>
+                                                )}
+                                                {isAdmin && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsCustomPartner(v => !v)}
+                                                        className={`p-1.5 rounded-lg border text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                                                            isCustomPartner
+                                                                ? 'bg-amber-100 border-amber-300 text-amber-900'
+                                                                : 'bg-stone-100 hover:bg-stone-200 border-stone-200 text-stone-700'
+                                                        }`}
+                                                        title={isCustomPartner ? 'Pick from existing list' : 'Add new branch name (+)'}
+                                                    >
+                                                        {isCustomPartner ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5 text-amber-600" />}
+                                                    </button>
+                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => handleUpdatePartner(profile.id, tempPartner)}
-                                                    className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                                                    className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer"
+                                                    title="Save"
                                                 >
                                                     <Check className="w-3.5 h-3.5" />
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setEditingPartnerId(null)}
-                                                    className="p-1 text-stone-400 hover:bg-stone-100 rounded-lg"
+                                                    onClick={() => {
+                                                        setEditingPartnerId(null);
+                                                        setIsCustomPartner(false);
+                                                    }}
+                                                    className="p-1 text-stone-400 hover:bg-stone-100 rounded-lg cursor-pointer"
+                                                    title="Cancel"
                                                 >
                                                     <X className="w-3.5 h-3.5" />
                                                 </button>
@@ -1407,6 +1505,7 @@ export default function UserManagementView({ currentUser }) {
                                                         onClick={() => {
                                                             setEditingPartnerId(profile.id);
                                                             setTempPartner(profile.channel_partner || '');
+                                                            setIsCustomPartner(false);
                                                         }}
                                                         className="p-0.5 text-stone-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-all cursor-pointer opacity-70 group-hover/partner:opacity-100"
                                                         title="Edit Channel Partner Name"
