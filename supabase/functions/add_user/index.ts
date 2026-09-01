@@ -198,10 +198,32 @@ serve(async (req) => {
             // Delete from auth (profiles row cascades via FK)
             const { error: authError } = await adminClient.auth.admin.deleteUser(user_id)
 
-            if (authError) return new Response(
-                JSON.stringify({ error: authError.message }),
-                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            )
+            if (authError) {
+                const errMsg = (authError.message || "").toLowerCase()
+                // If user is already not found in auth.users, that is non-fatal: proceed to clean up profile
+                const isNotFound = errMsg.includes("not found") || errMsg.includes("no user") || (authError as any).status === 404
+                if (!isNotFound) {
+                    console.error("Auth delete error:", authError)
+                    return new Response(
+                        JSON.stringify({ error: authError.message }),
+                        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                    )
+                }
+            }
+
+            // Always ensure the profile row in profiles table is deleted
+            const { error: profileDeleteError } = await adminClient
+                .from("profiles")
+                .delete()
+                .eq("id", user_id)
+
+            if (profileDeleteError) {
+                console.error("Profile delete error after auth deletion:", profileDeleteError)
+                return new Response(
+                    JSON.stringify({ error: "Auth user deleted, but profiles row cleanup failed: " + profileDeleteError.message }),
+                    { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                )
+            }
 
             return new Response(
                 JSON.stringify({ success: true }),

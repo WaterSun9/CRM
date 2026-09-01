@@ -488,10 +488,16 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     const { data: fnData, error: fnErr } = await supabase.functions.invoke('add_user', {
                         body: { action: 'update_email', user_id: profileId, new_email: email.toLowerCase() },
                     });
-                    if (fnErr || fnData?.error) {
+                    let errMsg = fnData?.error || fnErr?.message;
+                    if (fnErr?.context && typeof fnErr.context.json === 'function') {
+                        try {
+                            const errJson = await fnErr.context.json();
+                            if (errJson?.error) errMsg = errJson.error;
+                        } catch { /* ignore */ }
+                    }
+                    if (errMsg) {
                         throw new Error(
-                            (fnData?.error || fnErr?.message || 'The login email could not be changed.')
-                            + ' The vendor directory was updated, but this vendor must still sign in with '
+                            errMsg + ' The vendor directory was updated, but this vendor must still sign in with '
                             + oldEmail + '. Fix the login in User Management.'
                         );
                     }

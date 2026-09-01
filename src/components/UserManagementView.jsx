@@ -34,9 +34,16 @@ function ResetPasswordModal({ user, onClose, onSuccess, currentUser }) {
                 body: { action: "update_password", user_id: user.id, new_password: newPassword },
             });
 
-            if (response.error || response.data?.error) {
-                const message = response.data?.error || response.error?.message || "Failed to update password.";
-                throw new Error(message);
+            let errMsg = response.data?.error || response.error?.message;
+            if (response.error?.context && typeof response.error.context.json === 'function') {
+                try {
+                    const errJson = await response.error.context.json();
+                    if (errJson?.error) errMsg = errJson.error;
+                } catch { /* ignore */ }
+            }
+
+            if (errMsg) {
+                throw new Error(errMsg);
             }
 
             logActivity(
@@ -863,11 +870,16 @@ export default function UserManagementView({ currentUser }) {
                 const { data: fnData, error: fnErr } = await supabase.functions.invoke('add_user', {
                     body: { action: 'update_email', user_id: profileId, new_email: cleanEmail },
                 });
-                const authFailure = fnErr || fnData?.error;
-                if (authFailure) {
+                let authErrMsg = fnData?.error || fnErr?.message;
+                if (fnErr?.context && typeof fnErr.context.json === 'function') {
+                    try {
+                        const errJson = await fnErr.context.json();
+                        if (errJson?.error) authErrMsg = errJson.error;
+                    } catch { /* ignore */ }
+                }
+                if (authErrMsg) {
                     throw new Error(
-                        (fnData?.error || fnErr?.message || 'The login email could not be changed.')
-                        + ' Nothing was changed - they can still sign in with their existing email.'
+                        authErrMsg + ' Nothing was changed - they can still sign in with their existing email.'
                     );
                 }
 
@@ -1140,22 +1152,33 @@ export default function UserManagementView({ currentUser }) {
         try {
             if (!String(userId).startsWith('dev-')) {
                 // Delete from Auth via edge function (service role).
-                //
-                // functions.invoke RESOLVES with { data, error } - it does not
-                // throw on a 4xx/5xx - so the old try/catch never fired and the
-                // error was dropped. The profile row was then deleted anyway,
-                // leaving an orphaned auth.users row: the account vanished from
-                // this list but its email stayed taken, so recreating it failed
-                // with "email exists" and there was no way to fix it in the UI.
-                const { data: fnData, error: fnErr } = await supabase.functions.invoke('add_user', {
-                    body: { action: 'delete', user_id: userId },
-                });
+                let fnErrMsg = null;
+                try {
+                    const { data: fnData, error: fnErr } = await supabase.functions.invoke('add_user', {
+                        body: { action: 'delete', user_id: userId },
+                    });
 
-                const authFailure = fnErr || fnData?.error;
-                if (authFailure) {
+                    if (fnData?.error) {
+                        fnErrMsg = fnData.error;
+                    } else if (fnErr) {
+                        fnErrMsg = fnErr.message || 'Failed to delete user from Auth';
+                        if (fnErr.context && typeof fnErr.context.json === 'function') {
+                            try {
+                                const errJson = await fnErr.context.json();
+                                if (errJson?.error) fnErrMsg = errJson.error;
+                            } catch { /* ignore */ }
+                        }
+                    }
+                } catch (invErr) {
+                    fnErrMsg = invErr.message || 'Network error invoking account service';
+                }
+
+                // If auth returned "user not found", the login is already gone, so proceed with profile deletion.
+                const isUserNotFound = fnErrMsg && /not found|no user/i.test(fnErrMsg);
+
+                if (fnErrMsg && !isUserNotFound) {
                     throw new Error(
-                        (fnData?.error || fnErr?.message || 'The login account could not be deleted.')
-                        + ' The user was NOT deleted, so their email stays usable.'
+                        fnErrMsg + ' The user was NOT deleted, so their email stays usable.'
                     );
                 }
 
