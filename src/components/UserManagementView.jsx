@@ -60,8 +60,19 @@ function ResetPasswordModal({ user, onClose, onSuccess, currentUser }) {
         setError('');
         setEmailSuccessMsg('');
         try {
-            if (!user.email || String(user.email).endsWith('@watersun.com')) {
-                setEmailSuccessMsg(`Test user ${user.name} password is set to default role password.`);
+            // This branch sends nothing and sets no password. It used to render
+            // in the green success box, identical to a genuinely sent link, so a
+            // company-domain account looked handled when nothing had happened.
+            if (!user.email) {
+                setError(`${user.name} has no email address, so a reset link cannot be sent. Add one first.`);
+                setLoading(false);
+                return;
+            }
+            if (String(user.email).endsWith('@watersun.com')) {
+                setError(
+                    `No reset link was sent. ${user.email} is an internal test address that cannot receive mail - `
+                    + 'this account still uses its default role password.'
+                );
                 setLoading(false);
                 return;
             }

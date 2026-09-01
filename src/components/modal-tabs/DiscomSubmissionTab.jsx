@@ -275,7 +275,7 @@ export default function DiscomSubmissionTab({
                                     site_feasibility: editData.site_feasibility,
                                     dcr_certificate: editData.dcr_certificate,
                                     signature_pic: editData.signature_pic
-                                }) === false) return;
+                                }) === false) { setSaving(false); return; }
                                 await logActivity(
                                     user.id, 
                                     'update', 

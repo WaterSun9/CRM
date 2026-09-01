@@ -792,9 +792,24 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             };
         }
 
-        const { error: remarkErr } = await supabase.from('admin')
-            .update(followUp).eq('id', id);
-        if (remarkErr) console.warn('Stage moved, but the follow-up write failed:', remarkErr.message);
+        const followUpRes = await runWrite(
+            supabase.from('admin').update(followUp).eq('id', id).select('id'),
+            { action: 'follow-up write' }
+        );
+        if (!followUpRes.ok) {
+            if (followUp.hold_procurement) {
+                // This one is not cosmetic: without hold_procurement the Resume
+                // button defaults to LEADS and would send the project back to
+                // the wrong stage. Say so rather than warning to the console.
+                showAlert(
+                    `The customer was moved to Lost Project, but the origin stage (${oldStage}) could not be recorded. `
+                    + 'Open the Lost Project tab and set "Origin Stage" manually, or Resume will send them back to Leads.',
+                    { type: 'error' }
+                );
+            } else {
+                console.warn('Stage moved, but clearing the old stage remark failed:', followUpRes.error.message);
+            }
+        }
 
         await logActivity(
             user.id,

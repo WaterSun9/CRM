@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabase';
 import { PRIMARY_STAGES, DELIVERY_PICKER_COLUMNS } from '../constants';
-import { toIndianCommas, logActivity, formatInputValue, parseIndianNumber } from '../utils';
+import { toIndianCommas, logActivity, formatInputValue, parseIndianNumber, runWrite } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
 export default function DeliveryBatchesView({ 
@@ -222,8 +222,11 @@ export default function DeliveryBatchesView({
         // never existed as though it were real.
         setBatches(updatedBatches);
         try {
-            const { error } = await supabase.from('delivery_batches').upsert([changedBatch]);
-            if (error) throw error;
+            const upsertRes = await runWrite(
+                supabase.from('delivery_batches').upsert([changedBatch]).select('id'),
+                { action: 'batch save' }
+            );
+            if (!upsertRes.ok) throw upsertRes.error;
             localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(updatedBatches));
             return true;
         } catch (e) {
@@ -411,17 +414,37 @@ export default function DeliveryBatchesView({
                 // Unchecked before: the batch row saved while the customer links
                 // silently did not, leaving customers stranded outside the batch
                 // that claims them - the original delivery-batch bug class.
+                // Checking `error` alone could not detect this: an RLS-refused
+                // UPDATE matches zero rows and returns error: null. Requiring
+                // every id back also catches a PARTIAL link, which would strand
+                // some customers outside the batch that claims them.
                 if (validProjectIds.length > 0) {
-                    const { error: linkErr } = await supabase.from('admin').update(customerUpdates).in('id', validProjectIds);
-                    if (linkErr) throw linkErr;
+                    const linkRes = await runWrite(
+                        supabase.from('admin').update(customerUpdates).in('id', validProjectIds).select('id'),
+                        { action: 'batch link' }
+                    );
+                    if (!linkRes.ok) throw linkRes.error;
+                    if (linkRes.rows.length !== validProjectIds.length) {
+                        throw new Error(
+                            `Only ${linkRes.rows.length} of ${validProjectIds.length} customers could be linked to this batch.`
+                        );
+                    }
                 }
 
                 if (removedProjectIds.length > 0) {
-                    const { error: unlinkErr } = await supabase.from('admin').update({ 
-                        delivery_batch_id: null,
-                        delivery_status: 'PENDING'
-                    }).in('id', removedProjectIds);
-                    if (unlinkErr) throw unlinkErr;
+                    const unlinkRes = await runWrite(
+                        supabase.from('admin').update({
+                            delivery_batch_id: null,
+                            delivery_status: 'PENDING'
+                        }).in('id', removedProjectIds).select('id'),
+                        { action: 'batch unlink' }
+                    );
+                    if (!unlinkRes.ok) throw unlinkRes.error;
+                    if (unlinkRes.rows.length !== removedProjectIds.length) {
+                        throw new Error(
+                            `Only ${unlinkRes.rows.length} of ${removedProjectIds.length} customers could be removed from this batch.`
+                        );
+                    }
                 }
             } else {
                 setBatches(updatedBatches);
@@ -480,7 +503,11 @@ export default function DeliveryBatchesView({
             }
 
             if (!deleteAtomicSuccess) {
-                const { error } = await supabase.from('delivery_batches').delete().eq('id', batchToDelete.id);
+                const delRes = await runWrite(
+                    supabase.from('delivery_batches').delete().eq('id', batchToDelete.id).select('id'),
+                    { action: 'batch deletion' }
+                );
+                const error = delRes.ok ? null : delRes.error;
                 if (error) {
                     console.error('Failed to delete delivery batch from the database:', error);
                     setBatches(previousBatches);
@@ -493,14 +520,28 @@ export default function DeliveryBatchesView({
                 if (batchToDelete?.project_ids?.length > 0) {
                     // Unchecked before: deleting a batch could leave its customers
                     // still pointing at a batch row that no longer exists.
-                    const { error: clearErr } = await supabase
-                        .from('admin')
-                        .update({ 
-                            delivery_batch_id: null,
-                            delivery_status: 'PENDING'
-                        })
-                        .in('id', batchToDelete.project_ids);
-                    if (clearErr) throw clearErr;
+                    // `throw` here had no enclosing try - the only one closes
+                    // above - so a failure became an unhandled rejection and the
+                    // user was told nothing while the batch was already gone
+                    // from the UI and localStorage.
+                    const clearRes = await runWrite(
+                        supabase.from('admin')
+                            .update({
+                                delivery_batch_id: null,
+                                delivery_status: 'PENDING'
+                            })
+                            .in('id', batchToDelete.project_ids)
+                            .select('id'),
+                        { action: 'batch unlink' }
+                    );
+                    if (!clearRes.ok || clearRes.rows.length !== batchToDelete.project_ids.length) {
+                        showAlert(
+                            'The batch was deleted, but '
+                            + `${batchToDelete.project_ids.length - (clearRes.rows?.length || 0)} customer(s) still point at it. `
+                            + 'Refresh and check the batch list before creating a new one.',
+                            { type: 'error' }
+                        );
+                    }
                 }
             }
         }
@@ -794,11 +835,27 @@ export default function DeliveryBatchesView({
                                                         }
 
                                                         if (!atomicSuccess) {
-                                                            const { error: bErr } = await supabase.from("delivery_batches").update({ status: newStatus }).eq("id", batch.id);
-                                                            if (bErr) throw bErr;
+                                                            // Non-atomic fallback: the all-or-nothing guarantee
+                                                            // is already gone here, so at minimum every write must
+                                                            // prove it landed. "Mark All Delivered" flipping the
+                                                            // whole batch on screen over a refused write is exactly
+                                                            // the failure this path existed to avoid.
+                                                            const bRes = await runWrite(
+                                                                supabase.from("delivery_batches").update({ status: newStatus }).eq("id", batch.id).select('id'),
+                                                                { action: 'batch status change' }
+                                                            );
+                                                            if (!bRes.ok) throw bRes.error;
                                                             if (projectIds.length > 0) {
-                                                                const { error: aErr } = await supabase.from("admin").update({ delivery_status: newStatus }).in("id", projectIds);
-                                                                if (aErr) throw aErr;
+                                                                const aRes = await runWrite(
+                                                                    supabase.from("admin").update({ delivery_status: newStatus }).in("id", projectIds).select('id'),
+                                                                    { action: 'delivery status change' }
+                                                                );
+                                                                if (!aRes.ok) throw aRes.error;
+                                                                if (aRes.rows.length !== projectIds.length) {
+                                                                    throw new Error(
+                                                                        `The batch status changed, but only ${aRes.rows.length} of ${projectIds.length} customers were updated.`
+                                                                    );
+                                                                }
                                                             }
                                                         }
 
@@ -860,8 +917,11 @@ export default function DeliveryBatchesView({
                                                          setBatches(updatedBatches);
                                                          
                                                          try {
-                                                             const { error } = await supabase.from("delivery_batches").update(updates).eq("id", batch.id);
-                                                             if (error) throw error;
+                                                             const rentRes = await runWrite(
+                                                                 supabase.from("delivery_batches").update(updates).eq("id", batch.id).select('id'),
+                                                                 { action: 'Car Rent Paid change' }
+                                                             );
+                                                             if (!rentRes.ok) throw rentRes.error;
                                                          } catch (err) {
                                                              setBatches(prev => prev.map(b => b.id === batch.id ? previousBatch : b));
                                                              showAlert("Failed to save Car Rent Paid status: " + (err.message || "Unknown error"), { type: 'error' });
@@ -962,11 +1022,22 @@ export default function DeliveryBatchesView({
                                                       }
 
                                                       if (!statusAtomicSuccess) {
-                                                          const { error: batchError } = await supabase.from("delivery_batches").update({ status: "DELIVERED" }).eq("id", batch.id);
-                                                          if (batchError) throw batchError;
+                                                          const bRes = await runWrite(
+                                                              supabase.from("delivery_batches").update({ status: "DELIVERED" }).eq("id", batch.id).select('id'),
+                                                              { action: 'batch status change' }
+                                                          );
+                                                          if (!bRes.ok) throw bRes.error;
                                                           if (projectIds.length > 0) {
-                                                              const { error: adminError } = await supabase.from("admin").update({ delivery_status: "DELIVERED" }).in("id", projectIds);
-                                                              if (adminError) throw adminError;
+                                                              const aRes = await runWrite(
+                                                                  supabase.from("admin").update({ delivery_status: "DELIVERED" }).in("id", projectIds).select('id'),
+                                                                  { action: 'delivery status change' }
+                                                              );
+                                                              if (!aRes.ok) throw aRes.error;
+                                                              if (aRes.rows.length !== projectIds.length) {
+                                                                  throw new Error(
+                                                                      `The batch was marked delivered, but only ${aRes.rows.length} of ${projectIds.length} customers were updated.`
+                                                                  );
+                                                              }
                                                           }
                                                       }
 
@@ -1056,16 +1127,22 @@ export default function DeliveryBatchesView({
                                                                              }
                                                                              : { delivery_status: newStat };
 
-                                                                         const { error } = await supabase.from('admin').update(patch).eq('id', proj.id);
-                                                                         if (error) throw error;
+                                                                         const statusRes = await runWrite(
+                                                                             supabase.from('admin').update(patch).eq('id', proj.id).select('id'),
+                                                                             { action: 'delivery status change' }
+                                                                         );
+                                                                         if (!statusRes.ok) throw statusRes.error;
 
                                                                          if (leavingBatch) {
                                                                              const remaining = (batch.project_ids || []).filter(id => id !== proj.id);
-                                                                             const { error: batchErr } = await supabase
-                                                                                 .from('delivery_batches')
-                                                                                 .update({ project_ids: remaining })
-                                                                                 .eq('id', batch.id);
-                                                                             if (batchErr) throw batchErr;
+                                                                             const batchRes = await runWrite(
+                                                                                 supabase.from('delivery_batches')
+                                                                                     .update({ project_ids: remaining })
+                                                                                     .eq('id', batch.id)
+                                                                                     .select('id'),
+                                                                                 { action: 'batch update' }
+                                                                             );
+                                                                             if (!batchRes.ok) throw batchRes.error;
                                                                              await logActivity(currentUser?.id || 'admin', 'update',
                                                                                  `Removed ${proj.customer_name || proj.id} from delivery batch ${batch.batch_no || batch.id} (set back to Pending)`, '', proj.id);
                                                                          }

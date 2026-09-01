@@ -528,13 +528,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 if (flagColumn) {
                     setEditData(prev => ({ ...prev, [flagColumn]: true }));
                     lastSelfWriteRef.current = Date.now();
-                    onUpdate(customer.id, { [flagColumn]: true }).catch(err => {
-                        console.error(`Failed to set ${flagColumn} after upload:`, err);
+                    // onUpdate RESOLVES false on failure, it does not reject, so
+                    // the .catch() that used to be here could never fire - the
+                    // checkbox was ticked on screen and the warning was dead
+                    // code. Await the result and untick on refusal.
+                    const flagOk = await onUpdate(customer.id, { [flagColumn]: true });
+                    if (flagOk === false) {
+                        setEditData(prev => ({ ...prev, [flagColumn]: false }));
                         showAlert(
                             `The document uploaded, but its checklist tick could not be saved. Please tick "${DOC_TYPE_LABELS[docType] || docType}" manually.`,
                             { title: 'Checklist not updated', type: 'warning' }
                         );
-                    });
+                    }
                 }
                 logActivity(
                     user.id,
@@ -646,7 +651,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
         });
 
-        await handleSectionUpdate(customer.id, patch);
+        // handleSectionUpdate returns false on failure. Ignoring it wrote an
+        // audit entry for a checklist change the database never accepted.
+        if (await handleSectionUpdate(customer.id, patch) === false) return;
         if (changes.length > 0) {
             await logActivity(user.id, 'update', `${customer.customer_name}: Registration checklist update - ${changes.join(' | ')}`, '', customer.id);
         }
@@ -674,7 +681,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
         });
 
-        await handleSectionUpdate(customer.id, patch);
+        if (await handleSectionUpdate(customer.id, patch) === false) return;
         if (changes.length > 0) {
             await logActivity(user.id, 'update', `${customer.customer_name}: Operational checklist update - ${changes.join(' | ')}`, '', customer.id);
         }
@@ -756,10 +763,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 internal_remarks: updatedInternalRemarks
             }));
 
-            await handleSectionUpdate(customer.id, {
+            if (await handleSectionUpdate(customer.id, {
                 stages_remarks: updatedRemarks,
                 internal_remarks: updatedInternalRemarks
-            });
+            }) === false) return;
 
             await logActivity(
                 user.id,
@@ -1497,7 +1504,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const handleAddNote = async () => {
         if (!followUpText.trim()) return;
         const updatedNotes = [...(editData.follow_ups || []), { text: followUpText, author: user.name, date: new Date().toISOString() }];
-        await handleSectionUpdate(customer.id, { follow_ups: updatedNotes });
+        // Returning early on failure matters most here: this used to clear
+        // followUpText regardless, so a refused save destroyed the note the
+        // user had just typed.
+        if (await handleSectionUpdate(customer.id, { follow_ups: updatedNotes }) === false) return;
         await logActivity(user.id, 'note', `Note Added: ${followUpText}`, '', customer.id);
         setEditData(prev => ({ ...prev, follow_ups: updatedNotes }));
         setFollowUpText('');

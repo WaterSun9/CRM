@@ -319,7 +319,11 @@ export default function InstallationStatusTab({
                                             } else {
                                                 setEditData(prev => ({ ...prev, vendor: null }));
                                                 setInfoSentStatus(null);
-                                                onUpdate(customer.id, { vendor: null }).then(() => {
+                                                // .then() fires when the promise RESOLVES - including resolving
+                                            // false on failure - so the removal was logged whether
+                                            // or not it happened.
+                                            onUpdate(customer.id, { vendor: null }).then((ok) => {
+                                                if (ok === false) return;
                                                     logActivity(
                                                         user.id,
                                                         'update',
@@ -474,7 +478,7 @@ export default function InstallationStatusTab({
                                     setEditData(prev => ({ ...prev, vendor: selectedVal }));
                                     // A failed save must stop here - otherwise the activity log below
                                     // records a change that never reached the database.
-                                    if (await onUpdate(customer.id, { vendor: selectedVal }) === false) return;
+                                    if (await onUpdate(customer.id, { vendor: selectedVal }) === false) { setSendingInfo(false); return; }
                                     
                                     await logActivity(
                                         user.id,

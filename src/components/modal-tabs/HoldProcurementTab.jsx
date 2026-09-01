@@ -164,7 +164,7 @@ export default function HoldProcurementTab({
         if (await onUpdate(customer.id, {
             stage: destStage,
             hold_procurement: payload
-        }) === false) return;
+        }) === false) { setSaving(false); return; }
 
         if (logActivity && user?.id) {
             await logActivity(

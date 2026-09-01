@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, ChevronDown, UserPlus, Phone, Mail, Truck, Stamp, IndianRupee } from 'lucide-react';
-import { logActivity } from '../utils';
+import { logActivity, runWrite } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
 export default function ChannelPartnerManagementView({ customers = [], currentUser }) {
@@ -214,11 +214,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         }
 
         try {
-            const { error } = await supabase
-                .from('drivers')
-                .update({ name, phone, vehicle_number: vehicle, updated_at: new Date().toISOString() })
-                .eq('id', id);
-            if (error) throw error;
+            const res = await runWrite(
+                supabase.from('drivers')
+                    .update({ name, phone, vehicle_number: vehicle, updated_at: new Date().toISOString() })
+                    .eq('id', id).select('id'),
+                { action: 'driver update' }
+            );
+            if (!res.ok) throw res.error;
 
             setDrivers(prev => prev.map(d => d.id === id ? { ...d, name, phone, vehicle_number: vehicle } : d));
             setEditingId(null);
@@ -232,8 +234,11 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const handleDeleteDriver = async (id, name) => {
         if (!window.confirm(`Delete driver "${name}"?\n\nDelivery batches already saved with this driver keep their details - only future batches lose the option.`)) return;
         try {
-            const { error } = await supabase.from('drivers').delete().eq('id', id);
-            if (error) throw error;
+            const res = await runWrite(
+                supabase.from('drivers').delete().eq('id', id).select('id'),
+                { action: 'driver deletion' }
+            );
+            if (!res.ok) throw res.error;
             setDrivers(prev => prev.filter(d => d.id !== id));
             await logActivity(currentUser.id, 'delete', `Deleted Driver: "${name}"`);
         } catch (e) {
@@ -451,12 +456,11 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         }
 
         try {
-            const { error } = await supabase
-                .from('vendors')
-                .update({ email })
-                .eq('id', id);
-
-            if (error) throw error;
+            const res = await runWrite(
+                supabase.from('vendors').update({ email }).eq('id', id).select('id'),
+                { action: 'vendor email change' }
+            );
+            if (!res.ok) throw res.error;
 
             // No rename branch here any more: the name field is read-only, so
             // admin.vendor can never fall out of step with the login name.
@@ -490,11 +494,11 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                             + oldEmail + '. Fix the login in User Management.'
                         );
                     }
-                    const { error: pErr } = await supabase
-                        .from('profiles')
-                        .update({ email: email.toLowerCase() })
-                        .eq('id', profileId);
-                    if (pErr) throw pErr;
+                    const pRes = await runWrite(
+                        supabase.from('profiles').update({ email: email.toLowerCase() }).eq('id', profileId).select('id'),
+                        { action: 'profile email change' }
+                    );
+                    if (!pRes.ok) throw pRes.error;
                     loginNote = ' Their login email was updated to match.';
                 }
             }
@@ -519,12 +523,11 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         if (!window.confirm(`Are you sure you want to delete vendor "${name}"?`)) return;
 
         try {
-            const { error } = await supabase
-                .from('vendors')
-                .delete()
-                .eq('id', id);
-
-            if (error) throw error;
+            const res = await runWrite(
+                supabase.from('vendors').delete().eq('id', id).select('id'),
+                { action: 'vendor deletion' }
+            );
+            if (!res.ok) throw res.error;
 
             setVendors(prev => prev.filter(v => v.id !== id));
             await logActivity(currentUser.id, 'delete', `Deleted Vendor: "${name}"`);
@@ -556,12 +559,40 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         }
 
         try {
-            // Update in metadata table
-            const { error: metaError } = await supabase
-                .from('metadata')
-                .update({ label: trimmed })
-                .eq('id', id);
-            if (metaError) throw metaError;
+            // Every write below used to check `error` only. An RLS-refused
+            // UPDATE matches zero rows and returns error: null, so a rename
+            // could land in `metadata` and silently miss `admin` - leaving
+            // thousands of records pointing at a label that no longer exists in
+            // any dropdown.
+            //
+            // Zero rows is also LEGITIMATE here (a label nothing uses yet), so
+            // count the matching rows first and require the update to touch
+            // exactly that many.
+            const cascade = async (table, column) => {
+                const { count, error: countErr } = await supabase
+                    .from(table)
+                    .select('id', { count: 'exact', head: true })
+                    .eq(column, oldLabel);
+                if (countErr) throw countErr;
+                if (!count) return 0;
+
+                const res = await runWrite(
+                    supabase.from(table).update({ [column]: trimmed }).eq(column, oldLabel).select('id'),
+                    { action: 'rename' }
+                );
+                if (!res.ok) throw res.error;
+                if (res.rows.length !== count) {
+                    throw new Error(`Only ${res.rows.length} of ${count} ${table} records could be renamed.`);
+                }
+                return res.rows.length;
+            };
+
+            // The dropdown entry itself.
+            const metaRes = await runWrite(
+                supabase.from('metadata').update({ label: trimmed }).eq('id', id).select('id'),
+                { action: 'rename' }
+            );
+            if (!metaRes.ok) throw metaRes.error;
 
             // Map category to column in admin table
             let dbField = '';
@@ -570,34 +601,27 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             else if (category === 'registration_by') dbField = 'registration_by';
             else if (category === 'inverter_make') dbField = 'inverter_make';
 
-            // Update in admin table
-            if (dbField) {
-                const { error: adminError } = await supabase
-                    .from('admin')
-                    .update({ [dbField]: trimmed })
-                    .eq(dbField, oldLabel);
-                if (adminError) throw adminError;
-            }
+            try {
+                if (dbField) await cascade('admin', dbField);
 
-            // Also sync the renamed label to any profiles (real logins) using the old name,
-            // so a channel partner's own portal session reflects the rename immediately.
-            if (category === "channel_partner") {
-                const { error: profileSyncError } = await supabase
-                    .from("profiles")
-                    .update({ channel_partner: trimmed })
-                    .eq("channel_partner", oldLabel);
-                if (profileSyncError) throw profileSyncError;
-            }
+                // Keep real logins in step so a channel partner's own portal
+                // session reflects the rename immediately.
+                if (category === 'channel_partner') await cascade('profiles', 'channel_partner');
 
-            // Update in bom_items table if integration_by
-            if (category === 'integration_by') {
-                // Unchecked before: a failed cascade left BOM lines pointing at
-                // the old name, which then reads as "not in list" everywhere.
-                const { error: bomSyncError } = await supabase
-                    .from('bom_items')
-                    .update({ integration_by: trimmed })
-                    .eq('integration_by', oldLabel);
-                if (bomSyncError) throw bomSyncError;
+                if (category === 'integration_by') await cascade('bom_items', 'integration_by');
+            } catch (cascadeErr) {
+                // Put the dropdown entry back, so the label and the records it
+                // points at cannot disagree.
+                const revert = await runWrite(
+                    supabase.from('metadata').update({ label: oldLabel }).eq('id', id).select('id'),
+                    { action: 'revert' }
+                );
+                throw new Error(
+                    `${cascadeErr.message} The rename was cancelled`
+                    + (revert.ok
+                        ? ' and nothing was changed.'
+                        : ` - EXCEPT the dropdown entry, which now reads "${trimmed}". Rename it back to "${oldLabel}" manually.`)
+                );
             }
 
             // Update state
@@ -662,8 +686,11 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
             if (!window.confirm(warning)) return;
 
-            const { error } = await supabase.from('metadata').delete().eq('id', id);
-            if (error) throw error;
+            const res = await runWrite(
+                supabase.from('metadata').delete().eq('id', id).select('id'),
+                { action: 'deletion' }
+            );
+            if (!res.ok) throw res.error;
 
             if (category === 'channel_partner')      setPartners(prev => prev.filter(p => p.id !== id));
             else if (category === 'module_brand')    setBrands(prev => prev.filter(b => b.id !== id));
