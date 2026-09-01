@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, ChevronDown, UserPlus, Phone, Mail, Truck, Stamp, IndianRupee } from 'lucide-react';
+import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, ChevronDown, UserPlus, Phone, Mail, Truck, Stamp, IndianRupee, Search } from 'lucide-react';
 import { logActivity, runWrite } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
@@ -16,6 +16,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [selectedCpo, setSelectedCpo] = useState(null);
     const [cpoLeadsCount, setCpoLeadsCount] = useState({});
     const [newPartner, setNewPartner] = useState('');
+    const [partnerSearch, setPartnerSearch] = useState('');
     const [newBrand, setNewBrand] = useState('');
     const [newRegistration, setNewRegistration] = useState('');
     const [newIntegration, setNewIntegration] = useState('');
@@ -1208,8 +1209,13 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                     placeholder = 'Enter driver name...';
                 }
 
+                const isChannelPartnerCat = activeManageCategory === 'channel_partner';
                 const isVendorCat = activeManageCategory === 'vendor';
                 const isDriverCat = activeManageCategory === 'driver';
+
+                const displayedList = isChannelPartnerCat && partnerSearch.trim()
+                    ? list.filter(item => (item.label || '').toLowerCase().includes(partnerSearch.trim().toLowerCase()))
+                    : list;
 
                 return (
                     <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1225,6 +1231,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                     onClick={() => {
                                         setActiveManageCategory(null);
                                         setEditingId(null);
+                                        setPartnerSearch('');
                                     }}
                                     className="text-stone-400 hover:text-white p-2 hover:bg-stone-800 rounded-xl transition"
                                 >
@@ -1232,8 +1239,34 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                 </button>
                             </div>
 
-                            {/* Add Section */}
-                            {isDriverCat ? (
+                            {/* Add / Search Section */}
+                            {isChannelPartnerCat ? (
+                                <div className="p-4 border-b border-stone-100 bg-stone-50/50 space-y-2">
+                                    <div className="relative flex items-center">
+                                        <Search className="w-4 h-4 text-stone-400 absolute left-3.5 pointer-events-none" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search channel partner directory..."
+                                            value={partnerSearch}
+                                            onChange={e => setPartnerSearch(e.target.value)}
+                                            className="w-full bg-white border border-stone-200 rounded-xl pl-10 pr-9 py-2 text-sm focus:border-amber-400 outline-none transition"
+                                            autoFocus
+                                        />
+                                        {partnerSearch && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setPartnerSearch('')}
+                                                className="absolute right-3 text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-stone-500 font-medium">
+                                        Channel Partners are managed in <b className="text-stone-700">User Management</b>. Adding from Operations is locked to keep directories aligned.
+                                    </p>
+                                </div>
+                            ) : isDriverCat ? (
                                 <div className="p-4 border-b border-stone-100 bg-stone-50/50 space-y-2">
                                     <div className="flex flex-col sm:flex-row gap-2">
                                         <input
@@ -1301,8 +1334,8 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
 
                             {/* List Section */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                                {list.length > 0 ? (
-                                    list.map(item => {
+                                {displayedList.length > 0 ? (
+                                    displayedList.map(item => {
                                         const isEditing = editingId === item.id;
                                         return (
                                             <div key={item.id} className="flex justify-between items-center bg-stone-50 px-4 py-2.5 rounded-xl border border-stone-100 hover:bg-stone-100/50 transition-colors">
