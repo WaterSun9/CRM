@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabase';
-import { logActivity } from '../utils';
+import { logActivity, runWrite } from '../utils';
 import { APP_ROLES } from '../constants';
 import { 
     ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, 
@@ -752,12 +752,13 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(profileId);
         try {
             if (!String(profileId).startsWith('dev-')) {
-                const { error } = await supabase
-                    .from('profiles')
-                    .update({ channel_partner: cleanPartner || null })
-                    .eq('id', profileId);
-
-                if (error) throw error;
+                // channel_partner scopes what this user can SEE. A silently
+                // refused write left them pointed at the wrong branch.
+                const res = await runWrite(
+                    supabase.from('profiles').update({ channel_partner: cleanPartner || null }).eq('id', profileId).select('id'),
+                    { action: 'branch change' }
+                );
+                if (!res.ok) throw res.error;
             }
 
             setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, channel_partner: cleanPartner } : p));
@@ -803,11 +804,19 @@ export default function UserManagementView({ currentUser }) {
                     );
                 }
 
-                const { error: profileDbErr } = await supabase
-                    .from('profiles')
-                    .update({ email: cleanEmail })
-                    .eq('id', profileId);
-                if (profileDbErr) throw profileDbErr;
+                const profileEmailRes = await runWrite(
+                    supabase.from('profiles').update({ email: cleanEmail }).eq('id', profileId).select('id'),
+                    { action: 'email change' }
+                );
+                if (!profileEmailRes.ok) {
+                    // The LOGIN email already changed above. Say so plainly -
+                    // silently succeeding here left the login and the directory
+                    // disagreeing with nothing to indicate it.
+                    throw new Error(
+                        `The login email was changed to ${cleanEmail}, but the profile record still shows the old address. `
+                        + 'Sign-in works with the new address; correct the profile before relying on the user list.'
+                    );
+                }
 
                 // Keep the Operations > Vendors directory in step. That list
                 // decides "User Account Active" vs "No Login in User Mgmt" by
@@ -867,37 +876,80 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(profileId);
         try {
             if (!String(profileId).startsWith('dev-')) {
-                const { error: nameErr } = await supabase
-                    .from('profiles')
-                    .update({ name: cleanName })
-                    .eq('id', profileId);
-                if (nameErr) throw nameErr;
+                // ─── Why this is careful ────────────────────────────────────
+                // The name IS the join key. admin.sub_channel_partner and
+                // admin.vendor store it as text, and RLS matches those against
+                // the PROFILE name. So a rename must land on every table or on
+                // none - a half-applied rename means the user can no longer see
+                // a single one of their own records, silently, with no way to
+                // repair it from the UI.
+                //
+                // Every write below was previously unchecked. An RLS-refused
+                // UPDATE matches zero rows and returns error: null, so
+                // `if (leadErr) throw` could never fire and the toast said
+                // "Name updated successfully" over an orphaning rename.
+                //
+                // Zero rows is also LEGITIMATE here - a new dealer may own no
+                // leads at all - so a bare row-count check would report a false
+                // failure. We count the matching rows first and require the
+                // update to touch exactly that many.
+                const cascade = async (table, column) => {
+                    const { count, error: countErr } = await supabase
+                        .from(table)
+                        .select('id', { count: 'exact', head: true })
+                        .ilike(column, oldName);
+                    if (countErr) throw countErr;
+
+                    if (!count) return 0;   // nothing to carry across
+
+                    const res = await runWrite(
+                        supabase.from(table).update({ [column]: cleanName }).ilike(column, oldName).select('id'),
+                        { action: 'rename' }
+                    );
+                    if (!res.ok) throw res.error;
+                    if (res.rows.length !== count) {
+                        throw new Error(
+                            `Only ${res.rows.length} of ${count} ${table} records could be renamed.`
+                        );
+                    }
+                    return res.rows.length;
+                };
+
+                // The profile row goes first, then the cascade. If the cascade
+                // fails we revert this one write - reverting a single row is far
+                // more likely to succeed than unpicking a bulk update, so this
+                // ordering keeps the tables consistent on failure.
+                const profileRes = await runWrite(
+                    supabase.from('profiles').update({ name: cleanName }).eq('id', profileId).select('id'),
+                    { action: 'name change' }
+                );
+                if (!profileRes.ok) throw profileRes.error;
 
                 const type = profile?.user_type;
+                try {
+                    // Dealer / Channel Partner: their leads are scoped by name.
+                    if ((type === 'agent' || type === 'agent2') && oldName) {
+                        await cascade('admin', 'sub_channel_partner');
+                    }
 
-                // Dealer / Channel Partner: their leads are scoped by name.
-                if ((type === 'agent' || type === 'agent2') && oldName) {
-                    const { error: leadErr } = await supabase
-                        .from('admin')
-                        .update({ sub_channel_partner: cleanName })
-                        .ilike('sub_channel_partner', oldName);
-                    if (leadErr) throw leadErr;
-                }
-
-                // Vendor: their jobs are scoped by name, and the vendors
-                // directory holds the same name.
-                if (type === 'vendor' && oldName) {
-                    const { error: jobErr } = await supabase
-                        .from('admin')
-                        .update({ vendor: cleanName })
-                        .ilike('vendor', oldName);
-                    if (jobErr) throw jobErr;
-
-                    const { error: dirErr } = await supabase
-                        .from('vendors')
-                        .update({ name: cleanName })
-                        .ilike('name', oldName);
-                    if (dirErr) console.warn('Vendor directory name not updated:', dirErr.message);
+                    // Vendor: their jobs are scoped by name, and the vendors
+                    // directory holds the same name.
+                    if (type === 'vendor' && oldName) {
+                        await cascade('admin', 'vendor');
+                        await cascade('vendors', 'name');
+                    }
+                } catch (cascadeErr) {
+                    const revert = await runWrite(
+                        supabase.from('profiles').update({ name: oldName }).eq('id', profileId).select('id'),
+                        { action: 'revert' }
+                    );
+                    throw new Error(
+                        `${cascadeErr.message} The rename was cancelled and nothing was changed`
+                        + (revert.ok
+                            ? '.'
+                            : ` - EXCEPT the profile name, which could not be put back and now reads "${cleanName}". `
+                              + `Set it back to "${oldName}" manually before this user signs in, or they will not see their own records.`)
+                    );
                 }
             }
 
@@ -920,7 +972,15 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(userId);
         try {
             if (!String(userId).startsWith('dev-')) {
-                const { error: dbErr } = await supabase.from('profiles').update({ status: 'inactive' }).eq('id', userId);
+                // Row count checked: a refused write left the account ACTIVE while
+                // the toast said "deactivated" - they could still sign in.
+                const { error: dbErr } = await (async () => {
+                    const r = await runWrite(
+                        supabase.from('profiles').update({ status: 'inactive' }).eq('id', userId).select('id'),
+                        { action: 'deactivation' }
+                    );
+                    return { error: r.ok ? null : r.error };
+                })();
                 if (dbErr) throw dbErr;
                 // Best-effort: the profiles.status write above is what the app
                 // enforces. Surfaced in the console because invoke resolves with
@@ -947,7 +1007,13 @@ export default function UserManagementView({ currentUser }) {
         setActionLoading(userId);
         try {
             if (!String(userId).startsWith('dev-')) {
-                const { error: dbErr } = await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
+                const { error: dbErr } = await (async () => {
+                    const r = await runWrite(
+                        supabase.from('profiles').update({ status: 'active' }).eq('id', userId).select('id'),
+                        { action: 'reactivation' }
+                    );
+                    return { error: r.ok ? null : r.error };
+                })();
                 if (dbErr) throw dbErr;
                 // Best-effort: the profiles.status write above is what the app
                 // enforces. Surfaced in the console because invoke resolves with
@@ -998,7 +1064,13 @@ export default function UserManagementView({ currentUser }) {
 
                 // Auth deletion cascades the profile row via FK; this is a
                 // no-op safety net for older rows without the constraint.
-                const { error: dbErr } = await supabase.from('profiles').delete().eq('id', userId);
+                const { error: dbErr } = await (async () => {
+                    const r = await runWrite(
+                        supabase.from('profiles').delete().eq('id', userId).select('id'),
+                        { action: 'deletion' }
+                    );
+                    return { error: r.ok ? null : r.error };
+                })();
                 if (dbErr) throw dbErr;
             }
 

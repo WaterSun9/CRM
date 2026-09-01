@@ -11,9 +11,19 @@ import { useEffect, useRef, useState } from 'react';
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Show the deploy time in the user's own timezone, e.g. "1 Sep 2026, 10:20 am".
+function formatBuiltAt(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString(undefined, {
+        day: 'numeric', month: 'short', year: 'numeric',
+        hour: 'numeric', minute: '2-digit',
+    });
+}
+
 export default function UpdateChecker() {
-    const [updateAvailable, setUpdateAvailable] = useState(false);
-    const initialBuildIdRef = useRef(null);
+    const [updateAvailable, setUpdateAvailable] = useState(null); // null | { builtAt }
+    const loadedRef = useRef(null); // { buildId, builtAt }
 
     useEffect(() => {
         let cancelled = false;
@@ -23,24 +33,41 @@ export default function UpdateChecker() {
                 const res = await fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' });
                 if (!res.ok) return null;
                 const data = await res.json();
-                return data?.buildId || null;
+                if (!data?.buildId) return null;
+                return { buildId: String(data.buildId), builtAt: data.builtAt || null };
             } catch {
                 return null;
             }
         };
 
         const checkForUpdate = async () => {
-            const buildId = await fetchVersion();
-            if (cancelled || !buildId) return;
+            const remote = await fetchVersion();
+            if (cancelled || !remote) return;
 
-            if (initialBuildIdRef.current === null) {
-                initialBuildIdRef.current = buildId;
+            // First successful poll records what THIS tab is running.
+            if (loadedRef.current === null) {
+                loadedRef.current = remote;
                 return;
             }
 
-            if (buildId !== initialBuildIdRef.current) {
-                setUpdateAvailable(true);
+            const loaded = loadedRef.current;
+            if (remote.buildId === loaded.buildId) return;
+
+            // A different id is not enough. Require the deployed build to be
+            // strictly NEWER than the one this tab loaded - otherwise a stale
+            // cached copy, a rollback, or two builds of the same commit prompt
+            // a "new version" that is not new, and the banner cries wolf until
+            // people stop trusting it.
+            const remoteTime = remote.builtAt ? Date.parse(remote.builtAt) : NaN;
+            const loadedTime = loaded.builtAt ? Date.parse(loaded.builtAt) : NaN;
+
+            if (!Number.isNaN(remoteTime) && !Number.isNaN(loadedTime)) {
+                if (remoteTime <= loadedTime) return;   // same age or older: ignore
             }
+            // If either timestamp is missing/unparseable we fall through on the
+            // id difference alone rather than suppress a genuine update.
+
+            setUpdateAvailable({ builtAt: remote.builtAt });
         };
 
         checkForUpdate();
@@ -60,9 +87,16 @@ export default function UpdateChecker() {
 
     if (!updateAvailable) return null;
 
+    const releasedAt = formatBuiltAt(updateAvailable.builtAt);
+
     return (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] bg-stone-900 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3 animate-in slide-in-from-bottom-3 duration-300">
-            <span className="text-xs font-semibold">A new version of this app is available.</span>
+            <span className="text-xs font-semibold">
+                Update released{releasedAt ? ` ${releasedAt}` : ''}.
+                <span className="block text-[10px] font-medium text-stone-400 mt-0.5">
+                    Refresh to load it.
+                </span>
+            </span>
             <button
                 onClick={() => window.location.reload()}
                 className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg cursor-pointer transition-colors"

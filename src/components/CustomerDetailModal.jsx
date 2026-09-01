@@ -578,7 +578,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     };
 
     const handleDeleteDoc = async (doc) => {
-        deleteDocument(doc.id, doc.storage_path);
+        // Was fire-and-forget: not awaited, no result checked. A refused delete
+        // removed the row from the list and wrote a "Deleted document" audit
+        // entry while the file was still there on the next refresh.
+        const res = await deleteDocument(doc.id, doc.storage_path);
+        if (!res?.ok) {
+            showAlert(res?.error?.message || 'The document could not be deleted. It has not been removed.', { type: 'error' });
+            return;
+        }
         setDocuments(prev => prev.filter(d => d.id !== doc.id));
         await logActivity(
             user.id,
@@ -590,8 +597,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         fetchLogs();
     };
 
+    // Returns true/false so the remark rows in shared.jsx can show the real
+    // outcome instead of an unconditional "Saved!".
     const handleUpdateDocRemark = async (docId, newRemark) => {
-        await updateDocumentRemark(docId, newRemark);
+        const res = await updateDocumentRemark(docId, newRemark);
+        if (!res?.ok) {
+            showAlert(res?.error?.message || 'The remark was not saved.', { type: 'error' });
+            return false;
+        }
         setDocuments(prev => prev.map(d => d.id === docId ? { ...d, remark: newRemark } : d));
         const docObj = documents.find(d => d.id === docId);
         const fileName = docObj?.file_name || 'Document';
@@ -603,6 +616,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             customer.id
         );
         fetchLogs();
+        return true;
     };
 
     const REG_CHECKLIST_FIELDS = [
@@ -1128,6 +1142,66 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         setSaving(false);
     };
 
+
+    // ─── Move to Lost Project ────────────────────────────────────────────────
+    // This button used to be `onClick={() => setActiveTab(STAGE_IDS.LOST_PROJECT)}`
+    // - it switched the visible tab and never wrote anything. The user filled in
+    // the panel, pressed Save, and got a green confirmation while `stage` was
+    // untouched, so the record never moved. No customer has ever reached Lost
+    // Project through the UI.
+    //
+    // It also has to record WHERE the project was lost from. Without
+    // hold_procurement.previous_stage, HoldProcurementTab falls back to 'LEADS'
+    // (see its getHoldState), so Resume would dump a project lost at Subsidy
+    // Status all the way back to Leads.
+    const handleMoveToLostProject = async () => {
+        const originStage = customer?.stage;
+        if (!originStage) return;
+
+        const originLabel = PRIMARY_STAGES.find(st => st.id === originStage)?.label || originStage;
+        const confirmed = await showConfirm(
+            `Move ${customer.customer_name || 'this customer'} to Lost Project?\n\n`
+            + `Their current stage (${originLabel}) is recorded, so they can be resumed back to it later.`,
+            { title: 'Move to Lost Project', confirmLabel: 'Move to Lost Project', cancelLabel: 'Cancel', type: 'warning' }
+        );
+        if (!confirmed) return;
+
+        // Preserve anything already stored (a previous hold's notes) rather
+        // than overwriting the column wholesale.
+        let existing = {};
+        const raw = editData.hold_procurement ?? customer.hold_procurement;
+        if (raw) {
+            try {
+                existing = typeof raw === 'string' ? (JSON.parse(raw) || {}) : (raw || {});
+            } catch { existing = {}; }
+        }
+
+        const payload = {
+            ...existing,
+            previous_stage: originStage,
+            hold_date: new Date().toISOString().split('T')[0],
+        };
+
+        lastSelfWriteRef.current = Date.now();
+        const ok = await onUpdate(customer.id, {
+            stage: STAGE_IDS.LOST_PROJECT,
+            hold_procurement: payload,
+        });
+        // onUpdate resolves false on failure and has already shown the error.
+        if (ok === false) return;
+
+        setEditData(prev => ({ ...prev, stage: STAGE_IDS.LOST_PROJECT, hold_procurement: payload }));
+        setActiveTab(STAGE_IDS.LOST_PROJECT);
+
+        await logActivity(
+            user.id,
+            'stage_change',
+            `${customer.customer_name}: moved to Lost Project from ${originLabel}`,
+            '',
+            customer.id
+        );
+        fetchLogs();
+    };
 
     const handleSave = async (forceOverwrite = false) => {
         setSaving(true);
@@ -1773,7 +1847,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setActiveTab(STAGE_IDS.LOST_PROJECT)}
+                                onClick={handleMoveToLostProject}
                                 className="px-3.5 py-2 bg-white hover:bg-stone-100 text-stone-700 rounded-xl text-xs font-bold border border-stone-200 transition-colors shadow-2xs self-start sm:self-auto cursor-pointer"
                             >
                                 Move to Lost Project
@@ -1786,7 +1860,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 {isEditable && activeTab !== STAGE_IDS.LOST_PROJECT && activeTab !== 'HOLD PROCUREMENT' && (
                     <div className="p-4 border-t border-stone-100 bg-white flex-shrink-0 flex gap-3">
                         <button
-                            onClick={handleSave}
+                            /* () => handleSave() - NOT onClick={handleSave}. React
+                               passes the click event as the first argument, which
+                               made `forceOverwrite` a truthy SyntheticEvent and
+                               skipped the entire concurrency check below it, so
+                               the conflict dialog could never open from this
+                               button and a colleague's edit was silently
+                               overwritten with a green "Saved". */
+                            onClick={() => handleSave()}
                             disabled={saving}
                             className={`flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs cursor-pointer shadow-sm disabled:opacity-50 ${
                                 isFormDirty

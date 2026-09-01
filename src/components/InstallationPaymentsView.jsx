@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, toIndianCommas, normalizeInstallationStatus } from '../utils';
+import { logActivity, toIndianCommas, normalizeInstallationStatus, runWrite } from '../utils';
 import { CUSTOMER_CARD_COLUMNS } from '../constants';
 import { 
     Search, CreditCard, CheckCircle2, AlertCircle, Calendar, 
@@ -169,14 +169,22 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         
         setUpdatingId(customerRecord.id);
         try {
-            const { error } = await supabase
-                .from('admin')
-                .update({ 
-                    vendor_payment_status: nextStatus,
-                    vendor_paid_date: paidDate,
-                    vendor_paid_by: paidBy
-                })
-                .eq('id', customerRecord.id);
+            // Row count checked. This is money: `error === null` is NOT proof
+            // the row changed - an RLS-refused UPDATE matches zero rows and
+            // returns no error, which flipped the badge to Paid and wrote an
+            // activity-log entry over a database that never recorded it.
+            const res = await runWrite(
+                supabase.from('admin')
+                    .update({
+                        vendor_payment_status: nextStatus,
+                        vendor_paid_date: paidDate,
+                        vendor_paid_by: paidBy
+                    })
+                    .eq('id', customerRecord.id)
+                    .select('id'),
+                { action: 'payment status change' }
+            );
+            const error = res.ok ? null : res.error;
 
             if (!error) {
                 // Mutate local state
@@ -243,14 +251,27 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         const unpaidIds = unpaidRecords.map(r => r.id);
 
         try {
-            const { error } = await supabase
-                .from('admin')
-                .update({
-                    vendor_payment_status: 'Paid',
-                    vendor_paid_date: today,
-                    vendor_paid_by: paidBy
-                })
-                .in('id', unpaidIds);
+            // Bulk payout. Beyond checking for zero rows, require EVERY id to
+            // come back: a partial write would otherwise mark the whole list
+            // Paid on screen while only some rows actually settled.
+            const res = await runWrite(
+                supabase.from('admin')
+                    .update({
+                        vendor_payment_status: 'Paid',
+                        vendor_paid_date: today,
+                        vendor_paid_by: paidBy
+                    })
+                    .in('id', unpaidIds)
+                    .select('id'),
+                { action: 'bulk payment' }
+            );
+            let error = res.ok ? null : res.error;
+            if (!error && res.rows.length !== unpaidIds.length) {
+                error = new Error(
+                    `Only ${res.rows.length} of ${unpaidIds.length} payments were recorded. `
+                    + 'Nothing has been marked paid on screen - reload and check before paying again.'
+                );
+            }
 
             if (!error) {
                 const unpaidSet = new Set(unpaidIds);

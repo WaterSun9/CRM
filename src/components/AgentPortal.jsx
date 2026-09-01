@@ -401,17 +401,32 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             throw error;
         }
 
-        // Await all attached file uploads so documents are fully recorded in database before completion
+            // Collect the failures instead of swallowing them. The lead is
+        // already created and must not be rolled back, but the user has to
+        // be told WHICH documents did not store - otherwise their only copy
+        // is the file picker in a modal that is about to close.
         if (attachedFiles && attachedFiles.length > 0) {
+            const failedUploads = [];
             await Promise.all(attachedFiles.map(async item => {
-                if (item.file) {
-                    try {
-                        await uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id);
-                    } catch (uploadErr) {
-                        console.error('Failed to upload file for lead:', uploadErr);
-                    }
+            if (item.file) {
+                try {
+                    await uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id);
+                } catch (uploadErr) {
+                    console.error('Failed to upload file for new lead:', uploadErr);
+                    failedUploads.push(item.file.name || item.doc_type || 'a document');
                 }
+            }
             }));
+            if (failedUploads.length > 0) {
+            setCustomAlert({
+                title: 'Some documents did not upload',
+                message:
+                    `The lead was saved, but ${failedUploads.length} document(s) did NOT upload: `
+                    + failedUploads.join(', ')
+                    + '. Open the customer and attach them again.',
+                type: 'error'
+            });
+            }
         }
 
         setCustomers(prev => prev.some(customer => customer.id === newCustomer.id) ? prev : [newCustomer, ...prev]);
@@ -521,7 +536,11 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
         try {
             const { deleteDocument } = await import('../utils');
-            await deleteDocument(doc.id, doc.storage_path);
+            const res = await deleteDocument(doc.id, doc.storage_path);
+            if (!res?.ok) {
+                setCustomAlert({ title: 'Replacement Failed', message: res?.error?.message || 'The old document could not be removed.', type: 'error' });
+                return false;
+            }
             setCustDocs(prev => prev.filter(item => item.id !== doc.id));
             return true;
         } catch (err) {
@@ -531,12 +550,13 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     const handleUpdateDocRemark = async (docId, newRemark) => {
-        try {
-            await updateDocumentRemark(docId, newRemark);
-            setCustDocs(prev => prev.map(d => d.id === docId ? { ...d, remark: newRemark } : d));
-        } catch (err) {
-            console.error('Failed to update remark:', err);
+        const res = await updateDocumentRemark(docId, newRemark);
+        if (!res?.ok) {
+            setCustomAlert({ title: 'Remark not saved', message: res?.error?.message || 'The remark was not saved.', type: 'error' });
+            return false;
         }
+        setCustDocs(prev => prev.map(d => d.id === docId ? { ...d, remark: newRemark } : d));
+        return true;
     };
 
     // State moved to top

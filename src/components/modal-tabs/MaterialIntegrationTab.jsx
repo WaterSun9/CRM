@@ -371,16 +371,30 @@ export default function MaterialIntegrationTab({
                     throw new Error('Could not read the existing BOM lines, so they were not overwritten. Please retry.');
                 }
 
-                const { error: delErr } = await supabase
+                // The guard below only ever checked delErr - but an RLS-refused
+                // DELETE removes nothing and returns error: null, so it fell
+                // straight through to the insert and the BOM accumulated BOTH
+                // the old and the new rows on every save. That duplication is
+                // what made Material Integration data appear to change on its
+                // own. `previousItems` is the rows we just read, so it tells us
+                // exactly how many the delete had to remove.
+                const expectedDeletes = Array.isArray(previousItems) ? previousItems.length : 0;
+                const { data: deletedRows, error: delErr } = await supabase
                     .from('bom_items')
                     .delete()
-                    .eq('bom_id', currentBomId);
+                    .eq('bom_id', currentBomId)
+                    .select('id');
 
                 if (delErr) {
-                    // Nothing was removed - stop before inserting, or the BOM
-                    // would end up with both the old and the new rows.
                     console.error('bom_items delete error:', delErr);
                     throw new Error('The existing BOM lines could not be replaced. Nothing was changed.');
+                }
+                if ((deletedRows?.length || 0) !== expectedDeletes) {
+                    console.error('bom_items delete removed', deletedRows?.length, 'of', expectedDeletes);
+                    throw new Error(
+                        'The existing BOM lines could not be replaced, so the new ones were not added - '
+                        + 'this avoids leaving the BOM with duplicate rows. Nothing was changed.'
+                    );
                 }
 
                 const validItems = items.filter(item => item.product_name && item.product_name.trim() !== '');

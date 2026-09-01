@@ -516,12 +516,15 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     const handleUpdateDocRemark = async (docId, newRemark) => {
-        try {
-            await updateDocumentRemark(docId, newRemark);
-            setDocuments(prev => (prev || []).map(d => d.id === docId ? { ...d, remark: newRemark } : d));
-        } catch (err) {
-            console.error('Failed to update remark:', err);
+        // The try/catch here was decorative - updateDocumentRemark never threw,
+        // it logged and returned undefined, so a refused write showed "Saved!".
+        const res = await updateDocumentRemark(docId, newRemark);
+        if (!res?.ok) {
+            showAlert(res?.error?.message || 'The remark was not saved.', { type: 'error' });
+            return false;
         }
+        setDocuments(prev => (prev || []).map(d => d.id === docId ? { ...d, remark: newRemark } : d));
+        return true;
     };
 
     // Removes the returned photo once its replacement has uploaded.

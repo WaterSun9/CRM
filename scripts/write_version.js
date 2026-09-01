@@ -21,6 +21,15 @@ if (!buildId) {
     }
 }
 
+// Normalise to the 7-char short form. A local build used `git rev-parse --short`
+// (7 chars) while CI used GITHUB_SHA (40 chars) - the SAME commit produced two
+// different strings, so the client compared them, saw a difference, and told
+// every user a new version was available when nothing had changed.
+buildId = String(buildId).trim();
+if (/^[0-9a-f]{40}$/i.test(buildId)) {
+    buildId = buildId.slice(0, 7);
+}
+
 writeFileSync(
     join(publicDir, 'version.json'),
     JSON.stringify({ buildId, builtAt: new Date().toISOString() }, null, 2)

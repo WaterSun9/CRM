@@ -132,6 +132,43 @@ export function normalizeAdminValues(updates) {
 //
 // Returns { ok, error }. `ok: false` with no error means the row was not
 // matched - refused by RLS, or it no longer exists.
+// ─── The write guard every table needs ────────────────────────────────────────
+// supabase-js never throws, and an UPDATE/DELETE refused by RLS matches ZERO
+// rows while returning `error: null`. "No error" has never been proof of a save.
+// `admin` had this covered by updateAdminRecord; every other table - profiles,
+// vendors, drivers, metadata, delivery_batches, bom_items, documents - was
+// checking `error` alone and reporting success over writes the database
+// silently declined.
+//
+// Pass a builder that ALREADY has .select(...) on it, so the row count exists
+// to be checked:
+//
+//     const res = await runWrite(
+//         supabase.from('profiles').update({ name }).eq('id', id).select('id'),
+//         { action: 'name change' }
+//     );
+//     if (!res.ok) throw res.error;
+//
+// `expectRows: false` is for INSERTs where matching nothing is legitimate.
+export async function runWrite(builder, { action = 'change', expectRows = true } = {}) {
+    const { data, error } = await builder;
+
+    if (error) return { ok: false, rows: [], error };
+
+    if (expectRows && (!data || (Array.isArray(data) && data.length === 0))) {
+        return {
+            ok: false,
+            rows: [],
+            error: new Error(
+                `The database did not accept the ${action} - nothing was saved. `
+                + 'Your account may not have permission, or the record no longer exists.'
+            ),
+        };
+    }
+
+    return { ok: true, rows: Array.isArray(data) ? data : [data].filter(Boolean), error: null };
+}
+
 export async function updateAdminRecord(id, updates) {
     const clean = normalizeAdminValues(sanitizeAdminUpdate(updates));
     delete clean.id; delete clean.created_at; delete clean.updated_at;
@@ -735,29 +772,45 @@ export const getDownloadUrl = async (storagePath, fileName) => {
     return data?.signedUrl || null;
 };
 
+// Returns { ok, error }. Previously swallowed every failure with console.error,
+// so an RLS-refused delete removed the row from the list, wrote a "Deleted
+// document" audit entry, and the file reappeared on refresh.
 export const deleteDocument = async (documentId, storagePath) => {
     const id = typeof documentId === 'object' && documentId !== null ? documentId.id : documentId;
     const path = typeof documentId === 'object' && documentId !== null ? documentId.storage_path : storagePath;
-    if (path) {
-        await supabase.storage.from('customer-documents').remove([path]);
-    }
+
     if (id) {
-        const { error } = await supabase.from('documents').delete().eq('id', id);
-        if (error) console.error('Failed to delete document:', error);
+        // Delete the row FIRST. If it fails we still have the storage object,
+        // so nothing is orphaned; the reverse order loses the file for good.
+        const res = await runWrite(
+            supabase.from('documents').delete().eq('id', id).select('id'),
+            { action: 'document deletion' }
+        );
+        if (!res.ok) return res;
     }
+
+    if (path) {
+        const { error: storageErr } = await supabase.storage.from('customer-documents').remove([path]);
+        if (storageErr) {
+            // The record is gone, which is what the user asked for. The stored
+            // file is now orphaned - worth logging, not worth failing over.
+            console.warn('Document row deleted but the stored file remains:', storageErr.message);
+        }
+    }
+
+    return { ok: true, error: null };
 };
 
+// Returns { ok, error }. Callers MUST check `ok` - this used to return the row
+// (undefined on failure) and log to the console, so every "Saved!" badge and
+// every "[RETURNED]" flag was reported whether or not the write landed.
 export const updateDocumentRemark = async (documentId, remark) => {
-    if (!documentId) return null;
-    const { data, error } = await supabase
-        .from('documents')
-        .update({ remark: remark || '' })
-        .eq('id', documentId)
-        .select()
-        .single();
+    if (!documentId) return { ok: false, error: new Error('No document was specified.') };
 
-    if (error) console.error('Failed to update document remark:', error);
-    return data;
+    return runWrite(
+        supabase.from('documents').update({ remark: remark || '' }).eq('id', documentId).select('id'),
+        { action: 'remark' }
+    );
 };
 
 export async function fetchAgent2SubAgents(branchName) {

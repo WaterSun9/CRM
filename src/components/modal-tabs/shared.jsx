@@ -287,8 +287,12 @@ export function FilePreviewModal({ file, fileUrl, onClose, onDownload, onUpdateR
     const handleSaveRemark = async () => {
         if (!onUpdateRemark) return;
         setSavingRemark(true);
-        await onUpdateRemark(file.id, remark);
+        // The handlers now return false when the write was refused. "Saved!"
+        // used to show unconditionally, so a remark the database rejected still
+        // turned the button green.
+        const ok = await onUpdateRemark(file.id, remark);
         setSavingRemark(false);
+        if (ok === false) return;   // the handler has already shown the error
         setRemarkSaved(true);
         setTimeout(() => setRemarkSaved(false), 2000);
     };
@@ -376,8 +380,10 @@ function DocRemarkRow({ doc, onUpdateRemark, isEditing }) {
     const handleSave = async () => {
         if (!onUpdateRemark) return;
         setSaving(true);
-        await onUpdateRemark(doc.id, remarkVal);
+        const ok = await onUpdateRemark(doc.id, remarkVal);
         setSaving(false);
+        // Keep the editor open on failure so the typed text is not lost.
+        if (ok === false) return;
         setIsEditingRemark(false);
     };
 
@@ -747,8 +753,9 @@ export function DocGalleryRemarkRow({ doc, onUpdateRemark, isEditable }) {
     const handleSave = async () => {
         if (!onUpdateRemark) return;
         setSaving(true);
-        await onUpdateRemark(doc.id, remarkVal);
+        const ok = await onUpdateRemark(doc.id, remarkVal);
         setSaving(false);
+        if (ok === false) return;
         setIsEditing(false);
     };
 

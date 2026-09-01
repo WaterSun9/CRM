@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, lazyWithRetry, sanitizeAdminUpdate } from '../utils';
+import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, lazyWithRetry, sanitizeAdminUpdate, runWrite } from '../utils';
 import { PRIMARY_STAGES, STAGE_IDS, CUSTOMER_CARD_COLUMNS, ADMIN_NUMERIC_COLUMNS } from '../constants';
 import DashboardView from './DashboardView';
 import CustomerCard from './CustomerCard';
@@ -630,20 +630,27 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: ts } : c));
         setSelectedCustomer(null);
 
-        // Unchecked before: the row vanished from the list optimistically and
-        // reappeared on the next refresh if the write had actually failed.
-        const { error } = await supabase.from('admin').update({ deleted_at: ts }).eq('id', id);
-        if (error) {
+        // Checked for zero rows, not just for an error: an RLS-refused UPDATE
+        // returns error: null having changed nothing, so the row vanished from
+        // the list optimistically and came back on the next refresh.
+        const res = await runWrite(
+            supabase.from('admin').update({ deleted_at: ts }).eq('id', id).select('id'),
+            { action: 'move to Trash' }
+        );
+        if (!res.ok) {
             setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: null } : c));
-            showAlert('The customer was not moved to Trash: ' + error.message, { type: 'error' });
+            showAlert('The customer was not moved to Trash: ' + res.error.message, { type: 'error' });
         }
     };
 
     // Recover from trash
     const handleRecover = async (id) => {
-        const { error } = await supabase.from('admin').update({ deleted_at: null }).eq('id', id);
-        if (error) {
-            showAlert('The customer could not be recovered: ' + error.message, { type: 'error' });
+        const res = await runWrite(
+            supabase.from('admin').update({ deleted_at: null }).eq('id', id).select('id'),
+            { action: 'recovery' }
+        );
+        if (!res.ok) {
+            showAlert('The customer could not be recovered: ' + res.error.message, { type: 'error' });
             return;
         }
         setCustomers(prev => prev.map(c => c.id === id ? { ...c, deleted_at: null } : c));
@@ -659,6 +666,21 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     // Hard-delete: permanent, admin only
     const handleHardDelete = async (id) => {
         const c = customers.find(x => x.id === id);
+
+        // The delete runs FIRST and its row count is checked. This used to write
+        // "Permanently deleted" to the activity log before attempting the
+        // delete, and the delete itself was unchecked - so a refused delete left
+        // the record live in the database with an audit entry swearing it was
+        // gone, and the card removed from the list.
+        const res = await runWrite(
+            supabase.from('admin').delete().eq('id', id).select('id'),
+            { action: 'permanent deletion' }
+        );
+        if (!res.ok) {
+            showAlert('The customer was NOT permanently deleted: ' + res.error.message, { type: 'error' });
+            return;
+        }
+
         await logActivity(
             user.id,
             'delete',
@@ -666,11 +688,6 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             '',
             id
         );
-        const { error } = await supabase.from('admin').delete().eq('id', id);
-        if (error) {
-            showAlert('The customer was NOT permanently deleted: ' + error.message, { type: 'error' });
-            return;
-        }
         setCustomers(prev => prev.filter(c => c.id !== id));
     };
 
@@ -753,9 +770,31 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         // Non-blocking: the stage move already succeeded via the RPC above, so a
         // failure here only leaves the previous stage's remark behind. Warn
         // rather than throw, but do not let it fail invisibly.
+        const followUp = { stages_remarks: optimisticUpdates.stages_remarks };
+
+        // Moving to Lost Project must record WHERE it was lost from. The RPC
+        // writes only `stage` and `internal_remarks`, so a record dragged here
+        // from the card arrived with no hold_procurement at all - and
+        // HoldProcurementTab then falls back to 'LEADS', so Resume offered to
+        // send a project lost at Subsidy Status back to Leads.
+        if (newStage === STAGE_IDS.LOST_PROJECT) {
+            let existing = {};
+            const raw = customer.hold_procurement;
+            if (raw) {
+                try {
+                    existing = typeof raw === 'string' ? (JSON.parse(raw) || {}) : (raw || {});
+                } catch { existing = {}; }
+            }
+            followUp.hold_procurement = {
+                ...existing,
+                previous_stage: oldStage,
+                hold_date: new Date().toISOString().split('T')[0],
+            };
+        }
+
         const { error: remarkErr } = await supabase.from('admin')
-            .update({ stages_remarks: optimisticUpdates.stages_remarks }).eq('id', id);
-        if (remarkErr) console.warn('Stage moved, but clearing the old stage remark failed:', remarkErr.message);
+            .update(followUp).eq('id', id);
+        if (remarkErr) console.warn('Stage moved, but the follow-up write failed:', remarkErr.message);
 
         await logActivity(
             user.id,
@@ -815,17 +854,30 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             showAlert(`Failed to add lead: ${error.message} (Code: ${error.code})`, { type: 'error' });
             throw error;
         } else {
-            // Await all attached file uploads so documents are fully recorded in database before completion
+            // Collect the failures instead of swallowing them. The lead is
+            // already created and must not be rolled back, but the user has to
+            // be told WHICH documents did not store - otherwise their only copy
+            // is the file picker in a modal that is about to close.
             if (attachedFiles && attachedFiles.length > 0) {
+                const failedUploads = [];
                 await Promise.all(attachedFiles.map(async item => {
                     if (item.file) {
                         try {
                             await uploadDocument(item.file, newCustomer.id, item.doc_type, user?.id);
                         } catch (uploadErr) {
                             console.error('Failed to upload file for new lead:', uploadErr);
+                            failedUploads.push(item.file.name || item.doc_type || 'a document');
                         }
                     }
                 }));
+                if (failedUploads.length > 0) {
+                    showAlert(
+                        `The lead was saved, but ${failedUploads.length} document(s) did NOT upload: `
+                        + failedUploads.join(', ')
+                        + '. Open the customer and attach them again.',
+                        { type: 'error' }
+                    );
+                }
             }
 
             setCustomers(prev => prev.some(c => c.id === newCustomer.id) ? prev : [newCustomer, ...prev]);
