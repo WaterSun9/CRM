@@ -38,7 +38,8 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                 .from('admin')
                 .select('*', { count: 'exact', head: true })
                 .is('deleted_at', null)
-                .or('payment_type.ilike.%loan%,loan_tag.not.is.null');
+                .not('loan_tag', 'is', null)
+                .neq('loan_tag', '');
 
             if (targetPartner) {
                 totalQuery = totalQuery.ilike('channel_partner', `%${targetPartner}%`);
@@ -104,7 +105,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
             if (activeFilter) {
                 query = query.ilike('loan_tag', `%${activeFilter}%`);
             } else {
-                query = query.or('payment_type.ilike.%loan%,loan_tag.not.is.null');
+                query = query.not('loan_tag', 'is', null).neq('loan_tag', '');
             }
 
             // Direct Backend Search across name, phone, consumer_no

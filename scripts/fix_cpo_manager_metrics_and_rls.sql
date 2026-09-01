@@ -112,6 +112,7 @@ declare
     v_cash int := 0;
     v_installation_count int := 0;
     v_subsidy_count int := 0;
+    v_loan_tag_count int := 0;
     v_stages json;
 begin
     -- Look up caller's role and branch
@@ -135,8 +136,9 @@ begin
         count(*) filter (where payment_type ilike '%loan%' or (loan_tag is not null and trim(loan_tag) != '')),
         count(*) filter (where payment_type ilike '%cash%'),
         count(*) filter (where installation_status is not null and trim(installation_status) != ''),
-        count(*) filter (where subsidy_tag is not null and trim(subsidy_tag) != '')
-    into v_total, v_completed, v_live, v_loan, v_cash, v_installation_count, v_subsidy_count
+        count(*) filter (where subsidy_tag is not null and trim(subsidy_tag) != ''),
+        count(*) filter (where loan_tag is not null and trim(loan_tag) != '')
+    into v_total, v_completed, v_live, v_loan, v_cash, v_installation_count, v_subsidy_count, v_loan_tag_count
     from public.admin
     where deleted_at is null
       and (
@@ -168,7 +170,7 @@ begin
         'cashCount', v_cash,
         'installationTagCount', v_installation_count,
         'subsidyTagCount', v_subsidy_count,
-        'loanTagCount', v_loan,
+        'loanTagCount', v_loan_tag_count,
         'stageCounts', coalesce(v_stages, '{}'::json)
     );
 end;
