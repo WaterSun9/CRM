@@ -73,7 +73,26 @@ export default function SetPassword() {
             setStatus('ready');
             return;
         }
+
+        // Do not auto login: explicitly sign out so user returns to login page to sign in
+        try {
+            await supabase.auth.signOut();
+            if (typeof window !== 'undefined') {
+                Object.keys(localStorage).forEach(key => { if (key.startsWith('sb-')) localStorage.removeItem(key); });
+                Object.keys(sessionStorage).forEach(key => { if (key.startsWith('sb-')) sessionStorage.removeItem(key); });
+            }
+        } catch (e) {
+            console.warn('Signout after password reset note:', e);
+        }
+
         setStatus('done');
+    };
+
+    const handleBackToLogin = () => {
+        if (typeof window !== 'undefined') {
+            const basePath = window.location.pathname.startsWith('/CRM') ? '/CRM/' : '/';
+            window.location.href = window.location.origin + basePath;
+        }
     };
 
     return (
@@ -100,6 +119,13 @@ export default function SetPassword() {
                                 <p className="text-red-600 text-xs mt-1">
                                     Ask your admin to resend the password reset email, then open the new link directly.
                                 </p>
+                                <button
+                                    type="button"
+                                    onClick={handleBackToLogin}
+                                    className="mt-3 text-xs font-bold text-stone-900 underline hover:text-stone-700 cursor-pointer block"
+                                >
+                                    Back to Login
+                                </button>
                             </div>
                         </div>
                     )}
@@ -145,7 +171,7 @@ export default function SetPassword() {
                             <button
                                 onClick={handleSubmit}
                                 disabled={status === 'saving'}
-                                className="w-full py-2.5 bg-stone-900 text-white rounded-xl text-sm font-medium disabled:opacity-50"
+                                className="w-full py-2.5 bg-stone-900 text-white rounded-xl text-sm font-medium disabled:opacity-50 cursor-pointer"
                             >
                                 {status === 'saving' ? 'Saving...' : 'Set Password'}
                             </button>
@@ -155,9 +181,15 @@ export default function SetPassword() {
                     {status === 'done' && (
                         <div className="flex flex-col items-center gap-3 py-4 text-center">
                             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-                            <p className="text-stone-800 font-medium">Password set successfully</p>
-                            <p className="text-stone-500 text-xs">You can now log in with your new password.</p>
-                            <a href="/CRM/" className="mt-2 text-sm font-medium text-stone-900 underline">Go to login</a>
+                            <p className="text-stone-800 font-bold text-sm">Password set successfully</p>
+                            <p className="text-stone-500 text-xs">Your password has been updated. Please sign in with your new password.</p>
+                            <button
+                                type="button"
+                                onClick={handleBackToLogin}
+                                className="mt-3 w-full py-2.5 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-sm"
+                            >
+                                Go to Login
+                            </button>
                         </div>
                     )}
                 </div>
