@@ -519,7 +519,10 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                             setForm(prev => ({
                                                 ...prev,
                                                 user_type: selected.user_type,
-                                                role: selected.role
+                                                role: selected.role,
+                                                // Switching to Channel Partner drops any branch already
+                                                // picked, so one cannot be saved by accident.
+                                                channel_partner: selected.user_type === 'agent' ? '' : prev.channel_partner,
                                             }));
                                         }
                                     }}
@@ -530,7 +533,12 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                             </div>
                         )}
 
-                        {['channel_partner_office', 'agent', 'office2', 'agent2'].includes(form.user_type) && (
+                        {/* 'agent' (Channel Partner) is deliberately NOT here. A Channel
+                            Partner is universal - they work under no branch, and their leads
+                            are matched on their own name. Giving them a branch made the
+                            portal query that branch instead of them, which is how 10 accounts
+                            ended up pointed at an ownerless "Sandip Trivedi" and saw nothing. */}
+                        {['channel_partner_office', 'office2', 'agent2'].includes(form.user_type) && (
                             <div>
                                 <label className="block text-xs font-medium text-stone-600 mb-1">
                                     Assigned Channel Partner / Branch Name *
@@ -666,6 +674,7 @@ export default function UserManagementView({ currentUser }) {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [actionLoading, setActionLoading] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [roleFilter, setRoleFilter] = useState('all');   // 'all' | APP_ROLES user_type
     const [toast, setToast] = useState(null); // { type: 'success' | 'error', message }
     const [editingEmailId, setEditingEmailId] = useState(null);
     const [tempEmail, setTempEmail] = useState('');
@@ -802,7 +811,13 @@ export default function UserManagementView({ currentUser }) {
 
     // ─── Update Assigned Channel Partner Name ──────────────────────────────────
     const handleUpdatePartner = async (profileId, newPartner) => {
-        const cleanPartner = (newPartner || '').trim().toUpperCase();
+        // A Channel Partner is universal - never under a branch. Enforced here as
+        // well as in the UI, so no future screen or stale tab can set one. The
+        // database trigger in fix_channel_partner_scoping.sql is the third layer.
+        const target = (profiles || []).find(p => p.id === profileId);
+        const cleanPartner = target?.user_type === 'agent'
+            ? ''
+            : (newPartner || '').trim().toUpperCase();
         setActionLoading(profileId);
         try {
             if (!String(profileId).startsWith('dev-')) {
@@ -1205,6 +1220,11 @@ export default function UserManagementView({ currentUser }) {
     };
 
     const filteredProfiles = (profiles || []).filter(p => {
+        // Role filter matches on user_type, not the `role` label - the label is
+        // free text that drifts ("Channel Partners" vs "Channel Partner"),
+        // while user_type is what every permission check actually uses.
+        if (roleFilter !== 'all' && p?.user_type !== roleFilter) return false;
+
         const q = (searchQuery || '').trim().toLowerCase();
         return !q ||
             String(p?.name || '').toLowerCase().includes(q) ||
@@ -1212,6 +1232,13 @@ export default function UserManagementView({ currentUser }) {
             String(p?.channel_partner || '').toLowerCase().includes(q) ||
             String(p?.role || '').toLowerCase().includes(q);
     });
+
+    // Live count per role for the dropdown, so you can see where people are
+    // before selecting. Counts ignore the search box on purpose.
+    const roleCounts = (profiles || []).reduce((acc, p) => {
+        if (p?.user_type) acc[p.user_type] = (acc[p.user_type] || 0) + 1;
+        return acc;
+    }, {});
 
     if (loading) return (
         <div className="flex flex-col items-center justify-center h-64 space-y-3">
@@ -1260,19 +1287,53 @@ export default function UserManagementView({ currentUser }) {
 
             <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
                 {/* Search */}
-                <div className="relative border-b border-stone-100 p-4 bg-stone-50/50">
-                    <Search className="absolute left-7 top-6.5 w-4 h-4 text-stone-400 pointer-events-none" />
-                    <input type="text" readOnly onFocus={(e) => e.target.removeAttribute('readonly')} 
-                        name="crm_global_user_search_unique"
-                        autoComplete="off"
-                        autoCorrect="off"
-                        spellCheck="false"
-                        placeholder="Search users by name, role, or channel partner..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-500 placeholder:text-stone-400"
-                    />
+                <div className="border-b border-stone-100 p-4 bg-stone-50/50 flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+                        <input type="text" readOnly onFocus={(e) => e.target.removeAttribute('readonly')}
+                            name="crm_global_user_search_unique"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck="false"
+                            placeholder="Search users by name, role, or channel partner..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-500 placeholder:text-stone-400"
+                        />
+                    </div>
+
+                    <select
+                        value={roleFilter}
+                        onChange={e => setRoleFilter(e.target.value)}
+                        className="px-3 py-2.5 bg-white border border-stone-200 rounded-xl text-xs font-bold text-stone-700 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer sm:w-56"
+                    >
+                        <option value="all">All roles ({(profiles || []).length})</option>
+                        {APP_ROLES.map(r => (
+                            <option key={r.id} value={r.user_type}>
+                                {r.label} ({roleCounts[r.user_type] || 0})
+                            </option>
+                        ))}
+                    </select>
+
+                    {(roleFilter !== 'all' || searchQuery) && (
+                        <button
+                            type="button"
+                            onClick={() => { setRoleFilter('all'); setSearchQuery(''); }}
+                            className="px-3 py-2.5 rounded-xl text-xs font-bold bg-stone-200 text-stone-700 hover:bg-stone-300 transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                            Clear
+                        </button>
+                    )}
                 </div>
+
+                {(roleFilter !== 'all' || searchQuery) && (
+                    <div className="px-4 py-2 bg-amber-50/60 border-b border-amber-100">
+                        <p className="text-[11px] font-bold text-amber-800">
+                            Showing {filteredProfiles.length} of {(profiles || []).length} users
+                            {roleFilter !== 'all' && ` · ${APP_ROLES.find(r => r.user_type === roleFilter)?.label || roleFilter}`}
+                        </p>
+                    </div>
+                )}
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
@@ -1531,7 +1592,10 @@ export default function UserManagementView({ currentUser }) {
                                                 ) : (
                                                     <span className="text-xs text-stone-400 italic">Universal (All)</span>
                                                 )}
-                                                {!isInactive && !isYou && (
+                                                {/* No branch editing for a Channel Partner - they are
+                                                    universal by definition. The pencil is hidden rather
+                                                    than disabled, so there is nothing to click by mistake. */}
+                                                {!isInactive && !isYou && profile.user_type !== 'agent' && (
                                                     <button
                                                         type="button"
                                                         onClick={() => {

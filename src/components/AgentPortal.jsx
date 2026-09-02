@@ -151,19 +151,23 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                 const myName = (user?.name || '').trim();
 
                 if (isAgent2) {
-                    // Dealer (Agent 2): only leads where they are the sub_channel_partner.
-                    q = q.ilike('sub_channel_partner', myName);
+                    // Dealer: both the Dealer name and registered CPO branch must
+                    // match. A stray Dealer name under another CPO must remain
+                    // visible to that CPO, but must not leak into this Dealer view.
+                    const myBranch = (user?.channel_partner || '').trim();
+                    q = q.ilike('sub_channel_partner', myName)
+                        .ilike('channel_partner', myBranch);
                 } else {
-                    // Channel Partner (Agent 1) is UNIVERSAL - not under any branch.
-                    // Their own book is filed under channel_partner = THEIR NAME, plus
-                    // anything assigned to them as a sub partner.
+                    // Independent Channel Partner: their own book is filed under
+                    // channel_partner = THEIR NAME. Ignore sub_channel_partner:
+                    // CPs do not sit under CPOs and do not have Dealers.
                     //
                     // This used to use `user.channel_partner || user.name`, so a Channel
                     // Partner who had been given a branch asked for THAT BRANCH's leads
                     // instead of their own - 10 accounts were pointed at an ownerless
                     // "Sandip Trivedi" branch and saw almost nothing, while their own
                     // 1,066 leads stayed invisible. Never scope Agent 1 by branch.
-                    q = q.or(`channel_partner.ilike."${myName}",sub_channel_partner.ilike."${myName}"`);
+                    q = q.ilike('channel_partner', myName);
                 }
                 return q;
             };
@@ -208,8 +212,8 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
 
                 const belongsToAgent = record && !record.deleted_at && (
                     isAgent2
-                        ? custSubCp === myName
-                        : (custCp === partnerName || custSubCp === myName)
+                        ? (custSubCp === myName && custCp === partnerName)
+                        : custCp === myName
                 );
 
                 setCustomers(previous => {
