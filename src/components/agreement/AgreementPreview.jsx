@@ -3,11 +3,12 @@ import { Page1 } from './Page1';
 import { Page2 } from './Page2';
 import { Page3 } from './Page3';
 import { Page4 } from './Page4';
-import { Printer, ZoomIn, ZoomOut, FileText, Eye, EyeOff, X, Type } from 'lucide-react';
+import { Printer, ZoomIn, ZoomOut, FileText, Eye, EyeOff, X, Type, RotateCw } from 'lucide-react';
 
 export const AgreementPreview = ({ data, onChange, onClose }) => {
   const [zoom, setZoom] = useState(100);
   const [fontSize, setFontSize] = useState('text-[17px]');
+  const [stampRotation, setStampRotation] = useState(0);
   const containerRef = useRef(null);
 
   const handlePrint = () => {
@@ -154,14 +155,27 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
             </div>
           </div>
 
-          {/* Right: Zoom, Font, Highlights, Print & Close */}
-          <div className="flex items-center gap-5 xl:gap-6">
+          {/* Right: Zoom, Font, Highlights, Rotate, Print & Close */}
+          <div className="flex items-center gap-4 xl:gap-5">
             
+            {/* Rotate Stamp Button (if stamp exists) */}
+            {data.gpaStampUrl && (
+              <button
+                type="button"
+                onClick={() => setStampRotation(prev => (prev + 90) % 360)}
+                className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 text-xs font-bold text-amber-300 flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                title="Rotate stamp 90° clockwise if uploaded sideways"
+              >
+                <RotateCw className="w-3.5 h-3.5 text-amber-400" />
+                <span>Rotate Stamp{stampRotation > 0 ? ` (${stampRotation}°)` : ''}</span>
+              </button>
+            )}
+
             {/* Highlight Toggle */}
             <button
               type="button"
               onClick={() => onChange({ ...data, showHighlights: !data.showHighlights })}
-              className={`px-4 py-2 rounded-xl border text-xs flex items-center gap-2 transition font-bold ${
+              className={`px-3.5 py-2 rounded-xl border text-xs flex items-center gap-2 transition font-bold ${
                 data.showHighlights
                   ? 'bg-amber-400/20 border-amber-500/30 text-amber-300 shadow-lg shadow-amber-400/5'
                   : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850 hover:text-slate-200'
@@ -172,7 +186,7 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
             </button>
 
             {/* Font Size Selection */}
-            <div className="flex items-center gap-2 bg-slate-900 rounded-xl border border-slate-800 px-3.5 py-1.5">
+            <div className="flex items-center gap-2 bg-slate-900 rounded-xl border border-slate-800 px-3 py-1.5">
               <Type className="w-4 h-4 text-slate-400" />
               <select
                 value={fontSize}
@@ -187,7 +201,7 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
             </div>
 
             {/* Zoom Controls */}
-            <div className="flex items-center gap-2 bg-slate-900 rounded-xl border border-slate-800 px-3.5 py-1.5">
+            <div className="flex items-center gap-2 bg-slate-900 rounded-xl border border-slate-800 px-3 py-1.5">
               <button
                 onClick={() => setZoom(Math.max(60, zoom - 10))}
                 className="text-slate-400 hover:text-slate-200 p-0.5"
@@ -208,7 +222,7 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
             {/* Print Button */}
             <button
               onClick={handlePrint}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-blue-600/20 transition text-xs"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-blue-600/20 transition text-xs cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               <span>Print / Save PDF</span>
@@ -237,12 +251,25 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
               <div id="crm-agreement-page-0" className="print:m-0 print:p-0">
                 <div 
                   className="doc-page stamp-page bg-white relative mx-auto shadow-2xl rounded-sm overflow-hidden" 
-                  style={{ minHeight: '297mm', height: '297mm', width: '210mm', boxSizing: 'border-box', padding: 0 }}
+                  style={{ minHeight: '297mm', height: '297mm', width: '210mm', boxSizing: 'border-box', padding: 0, position: 'relative' }}
                 >
                   <img 
                     src={data.gpaStampUrl} 
                     alt="PM Surya GPA Stamp" 
-                    style={{ width: '210mm', height: '297mm', display: 'block', objectFit: 'fill' }}
+                    onLoad={(e) => {
+                      if (e.target.naturalWidth > e.target.naturalHeight && stampRotation === 0) {
+                        setStampRotation(90);
+                      }
+                    }}
+                    style={
+                      stampRotation === 90
+                        ? { width: '297mm', height: '210mm', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(90deg)', objectFit: 'fill', imageOrientation: 'from-image' }
+                        : stampRotation === 180
+                        ? { width: '210mm', height: '297mm', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(180deg)', objectFit: 'fill', imageOrientation: 'from-image' }
+                        : stampRotation === 270
+                        ? { width: '297mm', height: '210mm', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(270deg)', objectFit: 'fill', imageOrientation: 'from-image' }
+                        : { width: '210mm', height: '297mm', display: 'block', objectFit: 'fill', imageOrientation: 'from-image' }
+                    }
                   />
                 </div>
               </div>

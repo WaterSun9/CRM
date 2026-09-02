@@ -320,20 +320,22 @@ function CustomerCard({ cust, docs, user, onDocsChange, onCustomerRemoved, onPre
                                 >
                                     <Eye size={14} />
                                 </button>
-                                {/* Once uploaded the stamp is locked. Admin or Office must send
-                                    it back before it can be replaced; there is no delete. */}
-                                {isReturnedDocument(stampDoc) ? (
-                                    <>
+                                {/* Once uploaded the stamp is locked. When office sends it back
+                                    (sendbackRemark) or marks it returned, allow replacing it. */}
+                                {(sendbackRemark || isReturnedDocument(stampDoc)) ? (
+                                    <div className="flex items-center gap-1.5">
                                         <span className="text-[9px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">Returned</span>
                                         <button
                                             type="button"
+                                            disabled={uploading}
                                             onClick={() => fileInputRef.current?.click()}
-                                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                                            className="flex items-center gap-1 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition shadow-xs cursor-pointer"
                                             title="Replace the returned stamp document"
                                         >
-                                            <Upload size={14} />
+                                            <Upload size={12} />
+                                            <span>Change</span>
                                         </button>
-                                    </>
+                                    </div>
                                 ) : (
                                     <span className="text-[9px] font-semibold text-stone-400 uppercase tracking-wide" title="Admin or Office must send this back before it can be replaced">
                                         Locked
