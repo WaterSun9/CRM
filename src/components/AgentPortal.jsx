@@ -9,7 +9,7 @@ import {
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
     Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal
 } from 'lucide-react';
-import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation } from '../utils';
+import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS } from '../constants';
 import AddLeadModal from './AddLeadModal';
@@ -541,15 +541,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             showAlert('Could not generate a download link for this document.', { title: 'Download Failed', type: 'error' });
             return;
         }
-        if (url) {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = doc.file_name;
-            a.target = '_blank';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
+        await downloadFileWithSaveAs(url, doc.file_name);
     };
 
     const handleUploadDocForCustomer = async (e, docType) => {

@@ -23,7 +23,7 @@ import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
 import { Page1 } from './agreement/Page1';
 import { FileText, Printer } from 'lucide-react';
-import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark } from '../utils';
+import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark, downloadFileWithSaveAs } from '../utils';
 
 const getDocTypeLabel = (type) => {
     if (!type) return 'Client Attachment';
@@ -561,13 +561,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const handleDownloadDoc = async (doc) => {
         const url = await getDownloadUrl(doc.storage_path, doc.file_name);
         if (url) {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = doc.file_name;
-            a.target = '_blank';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            await downloadFileWithSaveAs(url, doc.file_name);
         }
     };
 

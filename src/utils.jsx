@@ -252,6 +252,19 @@ export function exportAllToCSV(customers) {
     const currentDateStr = new Date().toISOString().split('T')[0];
     const currentTimestampStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
+    // Sort numerically by File / Folder Number (with unassigned at the end)
+    const sortedCustomers = [...customers].sort((a, b) => {
+        const parseNo = (val) => {
+            if (val === null || val === undefined || val === '') return Infinity;
+            const n = Number(String(val).replace(/[^0-9.]/g, ''));
+            return isNaN(n) ? Infinity : n;
+        };
+        const numA = parseNo(a.folder_no);
+        const numB = parseNo(b.folder_no);
+        if (numA !== numB) return numA - numB;
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    });
+
     const escapeCSV = (val) => {
         if (val === null || val === undefined) return '""';
         let str = typeof val === 'object' ? JSON.stringify(val) : String(val);
@@ -263,17 +276,8 @@ export function exportAllToCSV(customers) {
         return `"${str.replace(/"/g, '""')}"`;
     };
 
-    // Rebuilt against the current live `admin` schema - the previous
-    // version of this list dated back to an older column structure and
-    // many of those columns (application_number, meter_category,
-    // sanctioned_load, bank_name, loan_sanction_amount, etc.) no longer
-    // exist. Every field below is confirmed still in active use
-    // elsewhere in the app (models.jsx's DEFAULT_LEAD_FORM, or read/write
-    // in a modal tab).
     const yn = (val) => val === true ? 'Yes' : val === false ? 'No' : (val || '');
 
-    // Some jsonb columns come back as a JSON string on older rows - normalise
-    // both shapes before flattening so nothing silently exports as blank.
     const asObj = (val) => {
         if (!val) return {};
         if (typeof val === 'object') return val;
@@ -300,6 +304,7 @@ export function exportAllToCSV(customers) {
 
     const headers = [
         'Export Date',
+        'File No (Folder No)',
         'Customer Name',
         'Phone Number',
         'Email Address',
@@ -314,7 +319,6 @@ export function exportAllToCSV(customers) {
         'Module Brand',
         'Module Wp',
         'Number of Modules',
-        'Folder No',
         'Registration Date',
         'Registration By',
         'Registration No',
@@ -404,7 +408,7 @@ export function exportAllToCSV(customers) {
         'Subsidy History'
     ];
 
-    const rows = customers.map(c => {
+    const rows = sortedCustomers.map(c => {
         const stageLabel = PRIMARY_STAGES.find(s => s.id === c.stage)?.label || c.stage || '';
         const subsidyLabel = SUBSIDY_TAGS.find(f => f.id === c.subsidy_tag)?.label || c.subsidy_tag || '';
         const loanLabel = LOAN_TAGS.find(f => f.id === c.loan_tag)?.label || c.loan_tag || '';
@@ -416,6 +420,7 @@ export function exportAllToCSV(customers) {
 
         return [
             currentTimestampStr,
+            c.folder_no || '',
             c.customer_name || '',
             c.phone_number || '',
             c.email_address || '',
@@ -430,7 +435,6 @@ export function exportAllToCSV(customers) {
             c.module_brand || '',
             c.module_wp || '',
             c.no_of_modules || '',
-            c.folder_no || '',
             c.registration_date || '',
             c.registration_by || '',
             c.registration_no || '',
@@ -524,13 +528,9 @@ export function exportAllToCSV(customers) {
     const csvContent = '\uFEFF' + [headers.map(escapeCSV).join(','), ...rows].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `watersun_crm_export_${currentDateStr}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadFileWithSaveAs(url, `watersun_crm_export_${currentDateStr}.csv`).finally(() => {
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+    });
 }
 
 // ─── Indian Number System Formatters ──────────────────────────────────────────
@@ -824,6 +824,51 @@ export const getDownloadUrl = async (storagePath, fileName) => {
 
     if (error) console.error('Failed to get download URL:', error);
     return data?.signedUrl || null;
+};
+
+/**
+ * Downloads a file, prompting the user with the native OS "Save As" location dialog
+ * when supported (Chrome, Edge, Opera, Desktop), with standard fallback.
+ */
+export const downloadFileWithSaveAs = async (url, fileName) => {
+    if (!url) return;
+
+    if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const blob = await response.blob();
+
+            const ext = (fileName || '').split('.').pop()?.toLowerCase();
+            const fileHandle = await window.showSaveFilePicker({
+                suggestedName: fileName || 'document',
+                types: ext ? [{
+                    description: `${ext.toUpperCase()} File`,
+                    accept: { [blob.type || 'application/octet-stream']: [`.${ext}`] }
+                }] : undefined
+            });
+
+            const writableStream = await fileHandle.createWritable();
+            await writableStream.write(blob);
+            await writableStream.close();
+            return;
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                // User cancelled the Save dialog
+                return;
+            }
+            console.warn('showSaveFilePicker fallback to anchor download:', err);
+        }
+    }
+
+    // Fallback: standard browser download trigger
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'download';
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 };
 
 // Returns { ok, error }. Previously swallowed every failure with console.error,

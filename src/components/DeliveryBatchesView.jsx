@@ -33,27 +33,6 @@ export default function DeliveryBatchesView({
     // Queries only required columns via DELIVERY_PICKER_COLUMNS to cut network payload.
     const fetchAllCustomers = async () => {
         try {
-            const PICKER_STAGES = [
-                'MATERIAL DELIVERY',
-                'MATERIAL_DELIVERY',
-                'Material Delivery',
-                'MATERIAL ORDER',
-                'MATERIAL_ORDER',
-                'Material Order',
-                'INSTALLATION STATUS',
-                'INSTALLATION_STATUS',
-                'Installation Status',
-                // LOST PROJECT is deliberately NOT here. The list used to carry
-                // HOLD PROCUREMENT ("materials pending", reasonably batchable);
-                // that stage was renamed to LOST PROJECT, which means the deal
-                // is dead. A dead project does not get materials dispatched, and
-                // including it put 36 dead rows in front of someone loading a
-                // truck. If one genuinely needs materials, move it out of Lost
-                // Project first.
-            ];
-            const isAdmin = currentUser?.userType === 'admin';
-            const includeEveryStage = false;
-
             const pageAll = async (buildQuery) => {
                 const pageSize = 1000;
                 let from = 0;
@@ -72,18 +51,7 @@ export default function DeliveryBatchesView({
                 return rows;
             };
 
-            let all;
-            if (includeEveryStage) {
-                all = await pageAll(() => supabase.from('admin').select('*').is('deleted_at', null));
-            } else {
-                const [byStage, batched] = await Promise.all([
-                    pageAll(() => supabase.from('admin').select('*').is('deleted_at', null).in('stage', PICKER_STAGES)),
-                    pageAll(() => supabase.from('admin').select('*').is('deleted_at', null).not('delivery_batch_id', 'is', null)),
-                ]);
-                const byId = new Map();
-                [...byStage, ...batched].forEach(row => byId.set(row.id, row));
-                all = [...byId.values()];
-            }
+            const all = await pageAll(() => supabase.from('admin').select('*').is('deleted_at', null));
             setAllCustomers(all);
         } catch (e) {
             console.error('Error fetching customers in DeliveryBatchesView:', e);
@@ -107,16 +75,6 @@ export default function DeliveryBatchesView({
     }, []);
 
     // Wrap onRefreshCustomers to also update local customers list
-    const handleRefresh = async () => {
-        await fetchAllCustomers();
-        // The rows we just fetched are authoritative. Drop the optimistic
-        // overrides here or they keep shadowing the real delivery_status for
-        // the rest of the session - which is how a write that silently did
-        // not land still shows as green until the page is reloaded.
-        setLocalStatusOverrides({});
-        if (onRefreshCustomers) onRefreshCustomers();
-    };
-
     const customers = propCustomers && propCustomers.length > 0 ? propCustomers : allCustomers;
     
     // Modal states
@@ -139,7 +97,6 @@ export default function DeliveryBatchesView({
     });
 
     const [projectSearchQuery, setProjectSearchQuery] = useState('');
-    
     const [projectStageFilter, setProjectStageFilter] = useState('MATERIAL DELIVERY');
     const [saving, setSaving] = useState(false);
     const [vendorsList, setVendorsList] = useState([]);
@@ -149,9 +106,6 @@ export default function DeliveryBatchesView({
         const fetchVendors = async () => {
             try {
                 const { data } = await supabase.from('vendors').select('name').order('name');
-                // Only real vendors. A placeholder used to be prepended here
-                // unconditionally, which meant a fabricated name could be
-                // picked and saved onto the customer as the allotted vendor.
                 setVendorsList(Array.from(new Set((data || []).map(v => v.name).filter(Boolean))));
             } catch (e) {
                 console.error('Error fetching vendors in batches view:', e);
@@ -162,7 +116,6 @@ export default function DeliveryBatchesView({
     }, []);
 
     // Load Batches from Database or LocalStorage
-    // "All Stages" is the only case that needs the whole table — load it on demand.
     useEffect(() => {
         if (projectStageFilter === 'ALL') fetchAllCustomers(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,7 +124,6 @@ export default function DeliveryBatchesView({
     const fetchBatches = async () => {
         setLoading(true);
         try {
-            // Try fetching from delivery_batches table
             const { data, error } = await supabase
                 .from('delivery_batches')
                 .select('*')
@@ -182,11 +134,6 @@ export default function DeliveryBatchesView({
                 localStorage.setItem('watersun_local_delivery_batches', JSON.stringify(data));
             } else {
                 console.error('Failed to fetch delivery batches from the database:', error);
-                // Fallback to localStorage, but only ever trust entries with
-                // a real UUID id - older locally-cached batches from before
-                // the id-format fix used a fake string id that was never
-                // actually written to the database, and would break any
-                // future save that tries to upsert alongside them.
                 const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
                 const localStored = localStorage.getItem('watersun_local_delivery_batches');
                 const parsed = localStored ? JSON.parse(localStored).filter(b => uuidRe.test(String(b.id))) : [];
@@ -200,8 +147,44 @@ export default function DeliveryBatchesView({
         }
     };
 
+    const handleRefresh = async () => {
+        await Promise.all([fetchBatches(), fetchAllCustomers()]);
+        setLocalStatusOverrides({});
+        if (onRefreshCustomers) onRefreshCustomers();
+    };
+
     useEffect(() => {
         fetchBatches();
+
+        const channel = supabase.channel('delivery_batches_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_batches' }, payload => {
+                if (payload.eventType === 'INSERT' && payload.new) {
+                    setBatches(prev => {
+                        if (prev.some(b => b.id === payload.new.id)) return prev;
+                        return [payload.new, ...prev];
+                    });
+                } else if (payload.eventType === 'UPDATE' && payload.new) {
+                    setBatches(prev => prev.map(b => b.id === payload.new.id ? payload.new : b));
+                } else if (payload.eventType === 'DELETE' && payload.old?.id) {
+                    setBatches(prev => prev.filter(b => b.id !== payload.old.id));
+                }
+            })
+            .subscribe();
+
+        const onFocus = () => {
+            if (document.visibilityState === 'visible') {
+                fetchBatches();
+                fetchAllCustomers();
+            }
+        };
+        document.addEventListener('visibilitychange', onFocus);
+        window.addEventListener('focus', onFocus);
+
+        return () => {
+            supabase.removeChannel(channel);
+            document.removeEventListener('visibilitychange', onFocus);
+            window.removeEventListener('focus', onFocus);
+        };
     }, []);
 
     // Save Batches Helper
