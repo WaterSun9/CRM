@@ -7,7 +7,7 @@
 // deployed build id no longer matches the one this tab loaded with.
 // ────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const CHECK_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
 const BASE_PATH = import.meta.env.BASE_URL || '/';
@@ -23,11 +23,18 @@ function formatBuiltAt(iso) {
     });
 }
 
+// Compiled in by vite.config.js from the version.json written moments earlier.
+// This is the ONLY trustworthy answer to "which build is this tab running?" -
+// anything fetched at runtime describes the SERVER, not this tab.
+const RUNNING_BUILD_ID = typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'dev';
+
 export default function UpdateChecker() {
     const [updateAvailable, setUpdateAvailable] = useState(null); // null | { builtAt }
-    const loadedRef = useRef(null); // { buildId, builtAt }
 
     useEffect(() => {
+        // In dev there is no build id, so there is nothing meaningful to compare.
+        if (RUNNING_BUILD_ID === 'dev') return;
+
         let cancelled = false;
 
         const fetchVersion = async () => {
@@ -46,22 +53,15 @@ export default function UpdateChecker() {
             const remote = await fetchVersion();
             if (cancelled || !remote) return;
 
-            // First successful poll records what THIS tab is running.
-            if (loadedRef.current === null) {
-                loadedRef.current = remote;
-                return;
-            }
+            // Compare the SERVER's build against the one compiled into this
+            // bundle. A tab running a stale cached index.html now notices
+            // immediately, instead of adopting the server's answer as its own.
+            if (remote.buildId === RUNNING_BUILD_ID) return;
 
-            const loaded = loadedRef.current;
-            if (remote.buildId === loaded.buildId) return;
-
-            // If timestamps exist, check if remote build is strictly newer
-            const remoteTime = remote.builtAt ? Date.parse(remote.builtAt) : NaN;
-            const loadedTime = loaded.builtAt ? Date.parse(loaded.builtAt) : NaN;
-
-            if (!Number.isNaN(remoteTime) && !Number.isNaN(loadedTime)) {
-                if (remoteTime <= loadedTime) return;   // same age or older: ignore
-            }
+            // No timestamp comparison any more, and none is needed: the ids come
+            // from two different places - one compiled into this tab, one live
+            // from the server. A difference is never a false alarm, it means
+            // this tab is genuinely not running what is deployed.
 
             setUpdateAvailable({ builtAt: remote.builtAt });
         };

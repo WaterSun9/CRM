@@ -16,6 +16,34 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700;800&family=Nunito+Sans:ital,opsz,wght@0,6..12,200..1000;1,6..12,200..1000&display=swap"
         rel="stylesheet">
+    <script>
+        // Stale-index.html rescue.
+        //
+        // GitHub Pages serves index.html with `cache-control: max-age=600`, and
+        // a deploy DELETES the previous hashed bundle. So for up to 10 minutes a
+        // browser can hold an index.html pointing at a bundle that now 404s -
+        // the app renders nothing, and no JS runs, so the in-app update banner
+        // cannot help. This catches that one case and reloads once.
+        //
+        // sessionStorage guards against a reload loop: if the second attempt
+        // also fails the problem is not staleness, and we stop.
+        (function () {
+            window.addEventListener('error', function (e) {
+                var el = e && e.target;
+                if (!el || el.tagName !== 'SCRIPT' || !el.src) return;
+                try {
+                    if (sessionStorage.getItem('ws_stale_reload')) return;
+                    sessionStorage.setItem('ws_stale_reload', '1');
+                } catch (_) { return; }   // private mode: do nothing rather than loop
+                location.reload();
+            }, true);
+
+            // The app loaded, so clear the flag for next time.
+            window.addEventListener('load', function () {
+                try { sessionStorage.removeItem('ws_stale_reload'); } catch (_) { /* ignore */ }
+            });
+        })();
+    </script>
 </head>
 
 <body>
