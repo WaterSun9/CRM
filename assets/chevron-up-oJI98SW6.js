@@ -1,1 +1,0 @@
-import{jt as e}from"./index-CcB_0LIf.js";var t=e(`ChevronUp`,[[`path`,{d:`m18 15-6-6-6 6`,key:`153udz`}]]);export{t};
