@@ -112,14 +112,19 @@ export default function LoanTab({
         return historyList.find(h => h.status === statusName) || {};
     };
 
+    const quotationPayment = getPaymentItem('Total Quotation').amount !== undefined
+        ? getPaymentItem('Total Quotation')
+        : getPaymentItem('Quotation');
     const downPayment = getPaymentItem('Down Payment');
     const firstPayment = getPaymentItem('1st Payment');
     const secondPayment = getPaymentItem('2nd Payment');
 
+    const quotationAmount = parseIndianNumber(quotationPayment.amount) || 0;
     const downAmount = parseIndianNumber(downPayment.amount) || 0;
     const firstAmount = parseIndianNumber(firstPayment.amount) || 0;
     const secondAmount = parseIndianNumber(secondPayment.amount) || 0;
     const totalReceived = downAmount + firstAmount + secondAmount;
+    const leftToReceive = quotationAmount > 0 ? (quotationAmount - totalReceived) : 0;
 
     const currentTag = editData.loan_tag;
     const isFirstPaymentTag = currentTag === '1st Payment';
@@ -165,7 +170,7 @@ export default function LoanTab({
         await logActivity(
             user.id,
             'update',
-            `${customer.customer_name}: Updated loan payment figures (Total: ₹${totalReceived.toLocaleString('en-IN')})`,
+            `${customer.customer_name}: Updated loan payment figures (Quotation: ₹${quotationAmount.toLocaleString('en-IN')}, Received: ₹${totalReceived.toLocaleString('en-IN')})`,
             '',
             customer.id
         );
@@ -177,7 +182,7 @@ export default function LoanTab({
     };
 
     // Filter timeline entries for general status history (excluding internal payment item rows)
-    const timelineEntries = historyList.filter(e => !['Down Payment'].includes(e.status));
+    const timelineEntries = historyList.filter(e => !['Down Payment', 'Total Quotation', 'Quotation'].includes(e.status));
 
     return (
         <div className="space-y-5 animate-in fade-in duration-300">
@@ -203,7 +208,26 @@ export default function LoanTab({
                                 </button>
                             )}
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <div className="p-1">
+                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Total Quotation Amount (₹)</p>
+                                {isEditingAppDetails ? (
+                                    <input 
+                                        type="text" 
+                                        placeholder="e.g. 3,50,000"
+                                        value={quotationPayment.amount ? formatInputValue(quotationPayment.amount) : ''}
+                                        onChange={(e) => updatePaymentInHistory('Total Quotation', 'amount', formatInputValue(e.target.value))}
+                                        onBlur={async () => {
+                                            if (isPaymentsDirty) {
+                                                await handleSavePayments();
+                                            }
+                                        }}
+                                        className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition shadow-sm text-stone-900"
+                                    />
+                                ) : (
+                                    <p className="text-xs font-bold text-stone-800 break-words">{quotationAmount > 0 ? `₹${toIndianCommas(quotationAmount)}` : '–'}</p>
+                                )}
+                            </div>
                             <div className="p-1">
                                 <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Jansamarth Application No <span className="text-red-500 font-bold">*</span></p>
                                 {isEditingAppDetails ? (
@@ -452,6 +476,39 @@ export default function LoanTab({
                                 </div>
                             )}
 
+                            {/* Total Quotation Amount */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="bg-stone-50/70 border border-stone-200/70 rounded-xl p-3.5 space-y-1.5">
+                                    <div className="flex items-center justify-between pb-1 border-b border-stone-200/50">
+                                        <span className="text-[9px] font-bold text-stone-500 uppercase tracking-wider">
+                                            Total Quotation Amount (₹)
+                                        </span>
+                                        {!isCustomEditing && (
+                                            <span className="text-[9px] text-stone-400 font-bold uppercase flex items-center gap-0.5">
+                                                <Lock size={8} /> Locked
+                                            </span>
+                                        )}
+                                    </div>
+                                    {isCustomEditing ? (
+                                        <div>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. 3,50,000"
+                                                value={quotationPayment.amount ? formatInputValue(quotationPayment.amount) : ''}
+                                                onChange={e => updatePaymentInHistory('Total Quotation', 'amount', formatInputValue(e.target.value))}
+                                                className="w-full bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-800 outline-none focus:border-amber-400"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="py-0.5">
+                                            <p className="text-base font-bold text-stone-800">
+                                                {quotationAmount > 0 ? `₹${toIndianCommas(quotationAmount)}` : '–'}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 {/* Down Payment Card */}
                                 <div className="bg-stone-50/70 border border-stone-200/70 rounded-xl p-3.5 space-y-2.5">
@@ -620,12 +677,26 @@ export default function LoanTab({
                             </div>
 
                             {/* Classy Bottom Summary Bar */}
-                            <div className="bg-stone-50 border border-stone-200/80 p-3.5 rounded-xl flex items-center justify-between">
-                                <div>
-                                    <p className="text-[9px] text-stone-400 uppercase font-bold tracking-widest">Total Payments Received</p>
-                                    <p className="text-lg font-bold text-stone-900 mt-0.5">
-                                        ₹{toIndianCommas(totalReceived)}
-                                    </p>
+                            <div className="bg-stone-50 border border-stone-200/80 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                                <div className="flex flex-wrap items-center gap-6">
+                                    <div>
+                                        <p className="text-[9px] text-stone-400 uppercase font-bold tracking-widest">Total Quotation</p>
+                                        <p className="text-base font-bold text-stone-900 mt-0.5">
+                                            {quotationAmount > 0 ? `₹${toIndianCommas(quotationAmount)}` : '–'}
+                                        </p>
+                                    </div>
+                                    <div className="border-l border-stone-200 pl-4">
+                                        <p className="text-[9px] text-emerald-700 uppercase font-bold tracking-widest">Total Received</p>
+                                        <p className="text-base font-bold text-emerald-800 mt-0.5">
+                                            ₹{toIndianCommas(totalReceived)}
+                                        </p>
+                                    </div>
+                                    <div className="border-l border-stone-200 pl-4">
+                                        <p className="text-[9px] text-stone-400 uppercase font-bold tracking-widest">Left to Receive</p>
+                                        <p className={`text-base font-bold mt-0.5 ${leftToReceive <= 0 && quotationAmount > 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                            {quotationAmount > 0 ? `₹${toIndianCommas(Math.max(0, leftToReceive))}` : '–'}
+                                        </p>
+                                    </div>
                                 </div>
 
                                 <div className="flex items-center gap-2.5">
