@@ -100,6 +100,14 @@ export default function LeadsTab({
                     <EditableDetailItem label="MODULE WP *" field="module_wp" value={editData.module_wp} onChange={handleChange} options={meta['module_wp'] && meta['module_wp'].length > 0 ? meta['module_wp'] : ['540', '545', '550', '570', '575', '580', '585', '590', '600', '610', '615', '620']} category="module_wp" isEditing={editingSection === 'cus'} user={user} />
                     <EditableDetailItem label="No of Modules *" field="no_of_modules" value={editData.no_of_modules} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
                     <EditableDetailItem label="System Capacity (kWp) *" field="system_capacity_kwp" value={editData.system_capacity_kwp} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                    {editData.created_at && (
+                        <div className="p-2.5 rounded-xl border border-stone-200 bg-stone-50 flex flex-col justify-center">
+                            <span className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">Lead Generated (IST)</span>
+                            <span className="text-xs font-semibold text-stone-800">
+                                {new Date(editData.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}
+                            </span>
+                        </div>
+                    )}
                 </div>
             </section>
 

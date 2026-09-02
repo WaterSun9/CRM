@@ -1638,6 +1638,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                 </span>
                             )}
                         </div>
+                        {customer.created_at && (
+                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">
+                                Lead Created: {new Date(customer.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })} IST
+                            </p>
+                        )}
                     </div>
                     <div className="flex items-center gap-2">
                         {/* Admin unlock/lock toggle for completed cards */}

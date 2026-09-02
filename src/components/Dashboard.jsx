@@ -592,6 +592,15 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 syncMetadata(cleanUpdates);
                 return true;
             } else if (!error) {
+                // Check if the rejection was due to an expired/invalid auth session
+                const { data: authData, error: authErr } = await supabase.auth.getUser();
+                if (authErr || !authData?.user) {
+                    console.error('Update refused because session expired.');
+                    showAlert('Your session has expired. Please log in again to continue.', { type: 'error' });
+                    onLogout?.();
+                    return false;
+                }
+
                 console.error('Update matched no rows for id', id, '- refused by RLS, or the record no longer exists.');
                 showAlert(
                     'Your changes were not saved: the database did not accept the update. '
@@ -607,6 +616,12 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 return false;
             } else {
                 console.error('Error updating customer in DB:', error);
+                // Check if the error is an auth/JWT expiration error
+                if (error.code === 'PGRST301' || error.message?.toLowerCase().includes('jwt') || error.message?.toLowerCase().includes('token') || error.message?.toLowerCase().includes('auth')) {
+                    showAlert('Your session has expired. Please log in again.', { type: 'error' });
+                    onLogout?.();
+                    return false;
+                }
                 showAlert('Database Save Error: ' + (error.message || 'Unknown database error'), { type: 'error' });
                 
                 // Rollback on failure

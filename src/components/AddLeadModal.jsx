@@ -430,9 +430,14 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                 {/* Modal Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 bg-white sticky top-0 z-10">
                     <div>
-                        <h2 className="text-base font-black text-stone-900 uppercase tracking-wider flex items-center gap-2">
-                            <Plus size={18} className="text-amber-500" /> Add New Lead
-                        </h2>
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-base font-black text-stone-900 uppercase tracking-wider flex items-center gap-2">
+                                <Plus size={18} className="text-amber-500" /> Add New Lead
+                            </h2>
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
+                                {new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })} IST
+                            </span>
+                        </div>
                         <p className="text-[10px] text-stone-400 font-semibold mt-0.5">
                             Register a new customer lead with complete details and document attachments.
                         </p>

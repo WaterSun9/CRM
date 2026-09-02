@@ -86,6 +86,11 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                             <span className="truncate">Batch: {customer.delivery_batch_id}</span>
                         </div>
                     )}
+                    {customer.created_at && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-stone-400 font-medium col-span-2 pt-0.5">
+                            <span>📅 {new Date(customer.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                        </div>
+                    )}
                 </div>
             </div>
 

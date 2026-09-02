@@ -3,10 +3,10 @@ import { supabase } from '../supabase';
 import BrandMark from './BrandMark';
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, KeyRound, LogIn } from 'lucide-react';
 
-export default function LoginScreen({ onLogin }) {
+export default function LoginScreen({ onLogin, initialError = '' }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
+    const [error, setError] = useState(initialError);
     const [loading, setLoading] = useState(false);
     const [showPw, setShowPw] = useState(false);
     const [showForgot, setShowForgot] = useState(false);

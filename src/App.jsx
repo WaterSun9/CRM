@@ -65,17 +65,50 @@ export default function App() {
     const [loading, setLoading] = useState(true);
     const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
     const [devSwitcherOpen, setDevSwitcherOpen] = useState(false);
+    const [authError, setAuthError] = useState('');
 
     useEffect(() => {
-        // ── Detect recovery link from URL hash BEFORE any async work ──
-        // Supabase appends #type=recovery to the redirect URL.
-        // We check this synchronously so we never accidentally show the
-        // Dashboard before the PASSWORD_RECOVERY event fires.
+        // ── Detect auth errors or recovery link from URL hash ──
         const hash = window.location.hash;
-        if (hash && hash.includes('type=recovery')) {
-            setIsPasswordRecovery(true);
-            setLoading(false);
-            // Don't return — still set up the listener below for cleanup.
+        if (hash) {
+            // Check for Supabase error in hash (e.g. #error=access_denied&error_code=otp_expired)
+            if (hash.includes('error=') || hash.includes('error_code=')) {
+                try {
+                    const params = new URLSearchParams(hash.replace(/^#/, ''));
+                    const errorCode = params.get('error_code') || '';
+                    const errorDescription = params.get('error_description') || '';
+                    let userFriendlyMsg = 'Your login link has expired or is invalid. Please sign in with your email and password.';
+                    if (errorCode === 'otp_expired' || errorDescription.toLowerCase().includes('expired')) {
+                        userFriendlyMsg = 'The email link has expired. Please sign in or request a new reset link.';
+                    } else if (errorDescription) {
+                        userFriendlyMsg = decodeURIComponent(errorDescription.replace(/\+/g, ' '));
+                    }
+                    setAuthError(userFriendlyMsg);
+                } catch {
+                    setAuthError('Your login link has expired or is invalid. Please sign in again.');
+                }
+
+                // Cleanly strip the error hash from browser address bar
+                if (typeof window !== 'undefined' && window.history?.replaceState) {
+                    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+                }
+
+                // Clear any stale credentials and state
+                if (typeof window !== 'undefined') {
+                    Object.keys(localStorage).forEach(k => { if (k.startsWith('sb-')) localStorage.removeItem(k); });
+                    Object.keys(sessionStorage).forEach(k => { if (k.startsWith('sb-')) sessionStorage.removeItem(k); });
+                }
+                void supabase.auth.signOut();
+                setUser(null);
+                setLoading(false);
+                return;
+            }
+
+            // Supabase appends #type=recovery to the redirect URL
+            if (hash.includes('type=recovery')) {
+                setIsPasswordRecovery(true);
+                setLoading(false);
+            }
         }
 
         // Restore session on page load
@@ -84,50 +117,46 @@ export default function App() {
             if (isPasswordRecovery) { setLoading(false); return; }
 
             try {
-                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-                if (sessionError) throw sessionError;
+                // Verify with Supabase auth server that the token is genuinely active & valid
+                const { data: userData, error: userError } = await supabase.auth.getUser();
+                if (userError || !userData?.user) {
+                    // Token expired or no session
+                    setUser(null);
+                    setLoading(false);
+                    return;
+                }
 
-                if (session?.user) {
-                    try {
-                        const { data: profile, error: profileError } = await supabase
-                            .from('profiles')
-                            .select('*')
-                            .eq('id', session.user.id)
-                            .maybeSingle();
+                const authUser = userData.user;
+                try {
+                    const { data: profile, error: profileError } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', authUser.id)
+                        .maybeSingle();
 
-                        if (profileError) {
-                            console.warn('Profile fetch warning:', profileError);
-                        }
+                    if (profileError) {
+                        console.warn('Profile fetch warning:', profileError);
+                    }
 
-                        if (profile && profile.status !== 'inactive') {
-                            setUser({
-                                id: session.user.id,
-                                email: session.user.email,
-                                name: profile.name || session.user.email?.split('@')[0] || 'User',
-                                role: profile.role || 'User',
-                                userType: profile.user_type || 'sales',
-                                channel_partner: profile.channel_partner || profile.name || '',
-                            });
-                        } else if (profile && profile.status === 'inactive') {
-                            await supabase.auth.signOut();
-                            setUser(null);
-                        } else {
-                            // No profile row: the account is not provisioned. This used to
-                            // fall back to userType 'sales', which routes to the Office
-                            // Dashboard — a missing profile GRANTED access instead of
-                            // denying it. Fail closed, same as the inactive branch above.
-                            console.error('No profile row for authenticated user; signing out.', session.user.id);
-                            await supabase.auth.signOut();
-                            setUser(null);
-                        }
-                    } catch (fetchErr) {
-                        // The lookup failed, so the role is unknown — never assume Office.
-                        // The session is left intact (this is usually a transient network
-                        // error), so a retry can succeed without a fresh sign-in.
-                        console.error('Failed to fetch profile row on startup; refusing to assume a role.', fetchErr);
+                    if (profile && profile.status !== 'inactive') {
+                        setUser({
+                            id: authUser.id,
+                            email: authUser.email,
+                            name: profile.name || authUser.email?.split('@')[0] || 'User',
+                            role: profile.role || 'User',
+                            userType: profile.user_type || 'sales',
+                            channel_partner: profile.channel_partner || profile.name || '',
+                        });
+                    } else if (profile && profile.status === 'inactive') {
+                        await supabase.auth.signOut();
+                        setUser(null);
+                    } else {
+                        console.error('No profile row for authenticated user; signing out.', authUser.id);
+                        await supabase.auth.signOut();
                         setUser(null);
                     }
-                } else {
+                } catch (fetchErr) {
+                    console.error('Failed to fetch profile row on startup; refusing to assume a role.', fetchErr);
                     setUser(null);
                 }
             } catch (err) {
@@ -141,22 +170,23 @@ export default function App() {
         restoreSession();
 
         // Listen for auth events
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
-            if (event === 'SIGNED_OUT') setUser(null);
-            if (event === 'PASSWORD_RECOVERY') {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_OUT') {
+                setUser(null);
+            } else if (event === 'PASSWORD_RECOVERY') {
                 setIsPasswordRecovery(true);
                 setLoading(false);
+            } else if (event === 'TOKEN_REFRESHED' && !session) {
+                setUser(null);
             }
         });
 
         return () => subscription.unsubscribe();
     }, []);
 
-    // ── Enforce deactivation mid-session ────────────────────────────────────
-    // `status = 'inactive'` was only checked at login, so someone deactivated
-    // while working kept full access until they happened to sign out. Watch
-    // this user's own profile row and end the session the moment it flips —
-    // and re-check on tab focus, in case the socket dropped.
+    // ── Enforce deactivation & session validity mid-session ────────────────
+    // Watch this user's own profile row, periodically verify token validity with
+    // Supabase auth server, and re-check on tab focus to eliminate ghost sessions.
     useEffect(() => {
         if (!user?.id) return undefined;
 
@@ -171,15 +201,23 @@ export default function App() {
         };
 
         const verifyStillActive = async () => {
+            // 1. Verify token is genuinely valid on Supabase Auth server
+            const { data: authData, error: authErr } = await supabase.auth.getUser();
+            if (authErr || !authData?.user) {
+                setAuthError('Your session has expired. Please sign in again.');
+                await endSession('session expired or token invalidated');
+                return;
+            }
+
+            // 2. Verify profile is still active
             const { data, error } = await supabase
                 .from('profiles')
                 .select('status')
                 .eq('id', user.id)
                 .maybeSingle();
-            // A failed lookup is left alone — it is usually a dropped network,
-            // and signing people out on a blip would be worse than the risk.
-            if (error) return;
-            if (!data || data.status === 'inactive') {
+
+            if (!error && (!data || data.status === 'inactive')) {
+                setAuthError('Your account has been deactivated. Please contact an administrator.');
                 await endSession(!data ? 'profile row removed' : 'account deactivated');
             }
         };
@@ -189,7 +227,10 @@ export default function App() {
             .on('postgres_changes',
                 { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
                 payload => {
-                    if (payload.new?.status === 'inactive') endSession('account deactivated');
+                    if (payload.new?.status === 'inactive') {
+                        setAuthError('Your account has been deactivated. Please contact an administrator.');
+                        endSession('account deactivated');
+                    }
                 })
             .subscribe();
 
@@ -197,8 +238,12 @@ export default function App() {
         window.addEventListener('focus', onFocus);
         verifyStillActive();
 
+        // Periodic heartbeat every 2 minutes to detect background token expiration
+        const heartbeatInterval = setInterval(verifyStillActive, 2 * 60 * 1000);
+
         return () => {
             window.removeEventListener('focus', onFocus);
+            clearInterval(heartbeatInterval);
             supabase.removeChannel(channel);
         };
     }, [user?.id]);
@@ -214,6 +259,7 @@ export default function App() {
     const isStamp = user && (user.userType === 'stamp');
 
     const handleLogout = async () => {
+        setAuthError('');
         await supabase.auth.signOut();
         if (typeof window !== 'undefined') {
             Object.keys(localStorage).forEach(key => {
@@ -233,7 +279,7 @@ export default function App() {
             <OfflineBanner />
             <Suspense fallback={<ScreenLoader />}>
                 {!user ? (
-                    <LoginScreen onLogin={setUser} />
+                    <LoginScreen onLogin={(userData) => { setAuthError(''); setUser(userData); }} initialError={authError} />
                 ) : isAgent ? (
                     <AgentPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isVendor ? (
