@@ -1,6 +1,7 @@
 import React from 'react';
 import { User, ClipboardList, Edit3, X } from 'lucide-react';
 import { SectionHeader, EditableDetailItem, CheckboxRemarkItem } from './shared';
+import { useGlobalPopup } from '../GlobalPopup';
 
 export default function LeadsTab({
     editData,
@@ -27,6 +28,19 @@ export default function LeadsTab({
     onDelete,
     onUpdateRemark,
 }) {
+    const { showAlert } = useGlobalPopup();
+
+    const autoCalcCapacity = () => {
+        const wp = parseFloat(String(editData.module_wp || '').replace(/,/g, ''));
+        const count = parseFloat(String(editData.no_of_modules || '').replace(/,/g, ''));
+        if (isNaN(wp) || isNaN(count) || wp <= 0 || count <= 0) {
+            showAlert('Enter Module Wp and No of Modules first.', { title: 'Cannot calculate', type: 'warning' });
+            return;
+        }
+        const kwp = Math.round((wp * count) / 1000 * 100) / 100;
+        handleChange('system_capacity_kwp', String(kwp));
+    };
+
     const handlePreview = onPreview || onFilePreview || onViewDocument;
     const handleDelete = onDelete || onFileDelete || onDeleteDocument;
     const handleUpload = onUpload || onFileUpload;
@@ -99,7 +113,7 @@ export default function LeadsTab({
                     <EditableDetailItem label="MODULE BRAND *" field="module_brand" value={editData.module_brand} onChange={handleChange} options={meta['module_brand']} category="module_brand" isEditing={editingSection === 'cus'} user={user} />
                     <EditableDetailItem label="MODULE WP *" field="module_wp" value={editData.module_wp} onChange={handleChange} options={meta['module_wp'] && meta['module_wp'].length > 0 ? meta['module_wp'] : ['540', '545', '550', '570', '575', '580', '585', '590', '600', '610', '615', '620']} category="module_wp" isEditing={editingSection === 'cus'} user={user} />
                     <EditableDetailItem label="No of Modules *" field="no_of_modules" value={editData.no_of_modules} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
-                    <EditableDetailItem label="System Capacity (kWp) *" field="system_capacity_kwp" value={editData.system_capacity_kwp} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                    <EditableDetailItem label="System Capacity (kWp) *" field="system_capacity_kwp" value={editData.system_capacity_kwp} onChange={handleChange} isEditing={editingSection === 'cus'} onAutoCalc={autoCalcCapacity} />
                     {editData.created_at && (
                         <div className="p-2.5 rounded-xl border border-stone-200 bg-stone-50 flex flex-col justify-center">
                             <span className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">Lead Generated (IST)</span>

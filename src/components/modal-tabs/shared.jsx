@@ -234,7 +234,7 @@ export function ChannelPartnerAutocomplete({ label, value, onChange, suggestions
     );
 }
 
-export function EditableDetailItem({ label, field, value, onChange, type = 'text', isMoney = false, isEnergy = false, isEditing, options, category, channel_partners = [], isAdmin = false }) {
+export function EditableDetailItem({ label, field, value, onChange, type = 'text', isMoney = false, isEnergy = false, isEditing, options, category, channel_partners = [], isAdmin = false, onAutoCalc }) {
     if (options && category) {
         return <MetaSelect label={label} field={field} value={value} onChange={onChange} options={options} isEditing={isEditing} />;
     }
@@ -265,6 +265,19 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
                 <input type="text" inputMode="decimal" value={value ? formatInputValue(value) : ''}
                     onChange={e => onChange(field, formatInputValue(e.target.value))}
                     className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300" />
+            ) : onAutoCalc ? (
+                <div className="relative">
+                    <input type={type} value={value || ''} onChange={e => onChange(field, e.target.value)}
+                        className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 pr-14 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-800" />
+                    <button
+                        type="button"
+                        onClick={onAutoCalc}
+                        title="Calculate from Module Wp x No of Modules"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 rounded bg-amber-500 hover:bg-amber-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white transition cursor-pointer"
+                    >
+                        Auto
+                    </button>
+                </div>
             ) : (
                 <input type={type} value={value || ''} onChange={e => onChange(field, e.target.value)}
                     className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300" />
