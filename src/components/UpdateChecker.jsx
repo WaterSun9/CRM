@@ -9,7 +9,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const CHECK_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
+const BASE_PATH = import.meta.env.BASE_URL || '/';
+const VERSION_URL = (BASE_PATH.endsWith('/') ? BASE_PATH : BASE_PATH + '/') + 'version.json';
 
 // Show the deploy time in the user's own timezone, e.g. "1 Sep 2026, 10:20 am".
 function formatBuiltAt(iso) {
@@ -30,7 +32,7 @@ export default function UpdateChecker() {
 
         const fetchVersion = async () => {
             try {
-                const res = await fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' });
+                const res = await fetch(`${VERSION_URL}?t=${Date.now()}`, { cache: 'no-store' });
                 if (!res.ok) return null;
                 const data = await res.json();
                 if (!data?.buildId) return null;
@@ -53,19 +55,13 @@ export default function UpdateChecker() {
             const loaded = loadedRef.current;
             if (remote.buildId === loaded.buildId) return;
 
-            // A different id is not enough. Require the deployed build to be
-            // strictly NEWER than the one this tab loaded - otherwise a stale
-            // cached copy, a rollback, or two builds of the same commit prompt
-            // a "new version" that is not new, and the banner cries wolf until
-            // people stop trusting it.
+            // If timestamps exist, check if remote build is strictly newer
             const remoteTime = remote.builtAt ? Date.parse(remote.builtAt) : NaN;
             const loadedTime = loaded.builtAt ? Date.parse(loaded.builtAt) : NaN;
 
             if (!Number.isNaN(remoteTime) && !Number.isNaN(loadedTime)) {
                 if (remoteTime <= loadedTime) return;   // same age or older: ignore
             }
-            // If either timestamp is missing/unparseable we fall through on the
-            // id difference alone rather than suppress a genuine update.
 
             setUpdateAvailable({ builtAt: remote.builtAt });
         };
