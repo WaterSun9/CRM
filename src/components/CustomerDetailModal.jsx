@@ -14,7 +14,7 @@ import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
-    Eye, Search, Image as ImageIcon, MessageSquare
+    Eye, Search, Image as ImageIcon, MessageSquare, Calendar
 } from 'lucide-react';
 import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN } from '../constants';
 import { logActivity, formatDateToDDMMYYYY, formatINR, parseIndianNumber, fetchAgent2SubAgents, normalizeMeterInstallation, sanitizePhoneNumber } from '../utils';
@@ -1639,8 +1639,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             )}
                         </div>
                         {customer.created_at && (
-                            <p className="text-[11px] text-stone-400 font-medium mt-0.5">
-                                Lead Created: {new Date(customer.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })} IST
+                            <p className="text-[11px] text-stone-400 font-medium mt-0.5 flex items-center gap-1.5">
+                                <Calendar size={11} className="text-stone-400 flex-shrink-0" />
+                                <span>Lead Created: {new Date(customer.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })} IST</span>
                             </p>
                         )}
                     </div>

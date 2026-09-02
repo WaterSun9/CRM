@@ -5,7 +5,7 @@ import { leadSchema } from '../utils/validation';
 import { useState, useEffect, useRef } from 'react';
 import { 
     X, Plus, User, ClipboardList, Paperclip, Eye, 
-    Upload, FileText, Image as ImageIcon, Loader2, Banknote, AlertTriangle
+    Upload, FileText, Image as ImageIcon, Loader2, Banknote, AlertTriangle, Calendar
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
@@ -434,8 +434,9 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             <h2 className="text-base font-black text-stone-900 uppercase tracking-wider flex items-center gap-2">
                                 <Plus size={18} className="text-amber-500" /> Add New Lead
                             </h2>
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
-                                {new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })} IST
+                            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
+                                <Calendar size={11} className="text-amber-600 flex-shrink-0" />
+                                <span>{new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })} IST</span>
                             </span>
                         </div>
                         <p className="text-[10px] text-stone-400 font-semibold mt-0.5">

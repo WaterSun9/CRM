@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { Zap, MapPin, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck } from 'lucide-react';
+import { Zap, MapPin, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 
 const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStage, currentUser }) {
@@ -88,7 +88,8 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                     )}
                     {customer.created_at && (
                         <div className="flex items-center gap-1.5 text-[10px] text-stone-400 font-medium col-span-2 pt-0.5">
-                            <span>📅 {new Date(customer.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                            <Calendar size={11} className="text-stone-300 flex-shrink-0" />
+                            <span>{new Date(customer.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</span>
                         </div>
                     )}
                 </div>
