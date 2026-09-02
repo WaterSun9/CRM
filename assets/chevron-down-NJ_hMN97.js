@@ -1,0 +1,1 @@
+import{jt as e}from"./index-CcB_0LIf.js";var t=e(`ChevronDown`,[[`path`,{d:`m6 9 6 6 6-6`,key:`qrunsl`}]]);export{t};
