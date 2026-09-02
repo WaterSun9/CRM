@@ -1474,7 +1474,16 @@ export default function UserManagementView({ currentUser }) {
                                                         className="px-2.5 py-1 border border-stone-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 w-full font-medium cursor-pointer"
                                                         autoFocus
                                                     >
-                                                        <option value="">None</option>
+                                                        <option value="">None (universal - no branch)</option>
+                                                        {/* The profile's CURRENT branch must be an option even when no CPO
+                                                            owns it any more. Without this the select's value matches no
+                                                            option, the browser silently displays the first one ("None"),
+                                                            and clicking None fires no onChange - so Save wrote the old
+                                                            value straight back and the branch could never be cleared.
+                                                            10 profiles were stuck on the ownerless "Sandip Trivedi". */}
+                                                        {tempPartner && !branchOptions.includes(tempPartner) && (
+                                                            <option value={tempPartner}>{tempPartner} (no CPO owns this)</option>
+                                                        )}
                                                         {branchOptions.map(name => <option key={name} value={name}>{name}</option>)}
                                                     </select>
                                                 )}

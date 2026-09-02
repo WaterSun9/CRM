@@ -149,15 +149,21 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             const buildQuery = () => {
                 let q = supabase.from('admin').select('*').is('deleted_at', null).order('created_at', { ascending: false });
                 const myName = (user?.name || '').trim();
-                const parentCp = (user?.channel_partner || user?.name || '').trim();
 
                 if (isAgent2) {
-                    // Dealer (Agent 2): Only see leads where they are the sub_channel_partner
+                    // Dealer (Agent 2): only leads where they are the sub_channel_partner.
                     q = q.ilike('sub_channel_partner', myName);
                 } else {
-                    // Direct Channel Partner (Agent 1):
-                    // Sees leads belonging to their Channel Partner branch OR assigned to them
-                    q = q.or(`channel_partner.ilike."${parentCp}",sub_channel_partner.ilike."${myName}"`);
+                    // Channel Partner (Agent 1) is UNIVERSAL - not under any branch.
+                    // Their own book is filed under channel_partner = THEIR NAME, plus
+                    // anything assigned to them as a sub partner.
+                    //
+                    // This used to use `user.channel_partner || user.name`, so a Channel
+                    // Partner who had been given a branch asked for THAT BRANCH's leads
+                    // instead of their own - 10 accounts were pointed at an ownerless
+                    // "Sandip Trivedi" branch and saw almost nothing, while their own
+                    // 1,066 leads stayed invisible. Never scope Agent 1 by branch.
+                    q = q.or(`channel_partner.ilike."${myName}",sub_channel_partner.ilike."${myName}"`);
                 }
                 return q;
             };
