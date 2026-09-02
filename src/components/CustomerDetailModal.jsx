@@ -288,14 +288,16 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         supabase.from('admin').select('*').eq('id', customer.id).single().then(({ data }) => {
             if (data) {
                 loadedUpdatedAtRef.current = data.updated_at || loadedUpdatedAtRef.current;
-                savedDataRef.current = { ...data, ...savedDataRef.current };
+                savedDataRef.current = { ...data };
                 setEditData(prev => {
-                    const next = { ...data, ...prev };
-                    return next;
+                    if (isFormDirty) {
+                        return { ...data, ...prev };
+                    }
+                    return { ...data };
                 });
             }
         });
-    }, [customer?.id]);
+    }, [customer?.id, isFormDirty]);
 
     const saveBomRef = useRef(null);
     const prevCustomerRef = useRef(customer);

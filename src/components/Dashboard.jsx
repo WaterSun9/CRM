@@ -992,7 +992,8 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         return !stageSearch ||
             String(c?.customer_name || '').toLowerCase().includes(q) ||
             String(c?.phone_number || '').includes(stageSearch) ||
-            String(c?.consumer_no || '').toLowerCase().includes(q);
+            String(c?.consumer_no || '').toLowerCase().includes(q) ||
+            String(c?.folder_no || '').toLowerCase().includes(q);
     });
 
     // ── Nav button helper ─────────────────────────────────────────────────────

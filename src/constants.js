@@ -510,9 +510,9 @@ export const DEFAULT_PAGE_SIZE = 50;
 // Also covers the fields handleMoveStage validates before letting a lead leave
 // the Leads stage (villages, module_brand, sub_divisions) - narrowing the grid
 // query without these would make that check see undefined and falsely block.
-export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, consumer_no, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_brand, module_wp, no_of_modules, villages, sub_divisions, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, stages_remarks, vendor, geo_tag_status';
+export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, email_address, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_brand, module_wp, no_of_modules, villages, sub_divisions, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, stages_remarks, vendor, geo_tag_status';
 
-export const DELIVERY_PICKER_COLUMNS = 'id, customer_name, phone_number, consumer_no, stage, channel_partner, sub_channel_partner, system_capacity_kwp, module_wp, no_of_modules, invoice_value, delivery_batch_id, delivery_status, material_delivery_date, driver_name, driver_phone_number, vehicle_number, vendor, created_at, updated_at, deleted_at';
+export const DELIVERY_PICKER_COLUMNS = 'id, customer_name, phone_number, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, system_capacity_kwp, module_wp, no_of_modules, invoice_value, delivery_batch_id, delivery_status, material_delivery_date, driver_name, driver_phone_number, vehicle_number, vendor, created_at, updated_at, deleted_at';
 
 // A tag value is "final" when it is the terminal state of its set. Reaching it
 // locks the field for everyone except Admin. Driven by the isFinal flag on the

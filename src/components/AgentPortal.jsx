@@ -140,8 +140,6 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     const fetchCustomers = async () => {
         setLoading(true);
         try {
-            // A blank scope previously became ilike '%%', which matched every
-            // customer in the table. Show nothing instead.
             const scopeValue = user?.name || '';
             if (!String(scopeValue).trim()) {
                 setCustomers([]);
@@ -150,11 +148,17 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             }
             const buildQuery = () => {
                 let q = supabase.from('admin').select('*').is('deleted_at', null).order('created_at', { ascending: false });
-                // Both Agent Portal roles see only the leads filed under their own
-                // name. Branch-wide visibility belongs to the CPO and the manager,
-                // who use the Dashboard - previously every agent in a branch saw
-                // every other agent's leads.
-                q = q.ilike('sub_channel_partner', (user.name || '').trim());
+                const myName = (user?.name || '').trim();
+                const parentCp = (user?.channel_partner || user?.name || '').trim();
+
+                if (isAgent2) {
+                    // Dealer (Agent 2): Only see leads where they are the sub_channel_partner
+                    q = q.ilike('sub_channel_partner', myName);
+                } else {
+                    // Direct Channel Partner (Agent 1):
+                    // Sees leads belonging to their Channel Partner branch OR assigned to them
+                    q = q.or(`channel_partner.ilike."${parentCp}",sub_channel_partner.ilike."${myName}"`);
+                }
                 return q;
             };
 
@@ -189,12 +193,17 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         fetchCustomers();
 
         const myName = (user.name || '').trim().toLowerCase();
-        const partnerName = (user.channel_partner || user.name).trim().toLowerCase();
+        const partnerName = (user.channel_partner || user.name || '').trim().toLowerCase();
         const channel = supabase.channel(`agent_customers_${user.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
                 const record = payload.new;
+                const custCp = (record?.channel_partner || '').trim().toLowerCase();
+                const custSubCp = (record?.sub_channel_partner || '').trim().toLowerCase();
+
                 const belongsToAgent = record && !record.deleted_at && (
-                    (record.sub_channel_partner || '').trim().toLowerCase() === myName
+                    isAgent2
+                        ? custSubCp === myName
+                        : (custCp === partnerName || custSubCp === myName)
                 );
 
                 setCustomers(previous => {
@@ -208,7 +217,19 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             })
             .subscribe();
 
-        return () => supabase.removeChannel(channel);
+        const onFocus = () => {
+            if (document.visibilityState === 'visible') {
+                fetchCustomers();
+            }
+        };
+        document.addEventListener('visibilitychange', onFocus);
+        window.addEventListener('focus', onFocus);
+
+        return () => {
+            supabase.removeChannel(channel);
+            document.removeEventListener('visibilitychange', onFocus);
+            window.removeEventListener('focus', onFocus);
+        };
     }, [user, isAgent2]);
 
     useEffect(() => {
