@@ -1,1 +1,0 @@
-import{Mt as e}from"./index-CVFo-9Hn.js";var t=e(`ChevronUp`,[[`path`,{d:`m18 15-6-6-6 6`,key:`153udz`}]]);export{t};
