@@ -1,1 +1,0 @@
-import{jt as e}from"./index-Chli7R1w.js";var t=e(`ChevronDown`,[[`path`,{d:`m6 9 6 6 6-6`,key:`qrunsl`}]]);export{t};
