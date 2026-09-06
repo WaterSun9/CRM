@@ -52,7 +52,7 @@ export const Page1 = ({ data, fontSizeClass = 'text-[17px]' }) => {
           </span>{' '}
           Dist:{' '}
           <span className="font-normal" style={getHighlightStyle()}>
-            {data.district || 'PATAN'}
+            {data.district || ''}
           </span>{' '}
           (hereinafter referred to as first Party i.e. /consumer/consumer/purchaser /owner of system).
         </p>

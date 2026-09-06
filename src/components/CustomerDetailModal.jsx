@@ -409,6 +409,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     }, [showAgreementPopup, editData, documents]);
 
     const handleGenerateAgreement = async () => {
+        if (!String(editData.district || '').trim()) {
+            showAlert('District is empty. Please enter the client district in Leads before generating the agreement.', {
+                title: 'District Required',
+                type: 'warning'
+            });
+            return;
+        }
+
         // Find signature, stamp and GPAE stamp documents
         const sigDoc = documents.find(d => 
             d.doc_type === 'signature_pic' || 

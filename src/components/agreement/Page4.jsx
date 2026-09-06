@@ -85,7 +85,7 @@ export const Page4 = ({ data, fontSizeClass = 'text-[17px]' }) => {
               <span> Tal: </span>
               <span className="font-normal" style={getHighlightStyle()}>{data.taluka || 'RADHANPUR'}</span>
               <span> Dist: </span>
-              <span className="font-normal" style={getHighlightStyle()}>{data.district || 'PATAN'}</span>
+              <span className="font-normal" style={getHighlightStyle()}>{data.district || ''}</span>
             </div>
 
             {/* Signature Box */}
