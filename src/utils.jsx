@@ -4,6 +4,7 @@
 
 import { supabase } from './supabase';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, LOAN_TAGS, ADMIN_COLUMNS, ADMIN_NUMERIC_COLUMNS } from './constants';
+import JSZip from 'jszip';
 
 // ─── Activity Logging ─────────────────────────────────────────────────────────
 export async function logActivity(
@@ -869,6 +870,108 @@ export const downloadFileWithSaveAs = async (url, fileName) => {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+};
+
+const safeDownloadName = (value, fallback = 'file') => {
+    const cleaned = String(value || '').replace(/[\\/:*?"<>|]+/g, '_').trim();
+    return cleaned || fallback;
+};
+
+// Fetches every attachment visible under the current user's RLS permissions and
+// packages them into one ZIP. It is read-only: neither Storage nor document rows
+// are changed.
+export const downloadDocumentsAsZip = async (documents, customerName) => {
+    const docs = (documents || []).filter(doc => doc?.storage_path);
+    if (docs.length === 0) throw new Error('This client has no documents to download.');
+
+    const zipName = `${safeDownloadName(customerName, 'client')}-documents.zip`;
+    let saveHandle = null;
+    // Ask where to save immediately while the click still counts as a direct
+    // user gesture. Waiting until every document is downloaded can cause the
+    // browser to suppress the native picker.
+    if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+        try {
+            saveHandle = await window.showSaveFilePicker({
+                suggestedName: zipName,
+                types: [{
+                    description: 'ZIP archive',
+                    accept: { 'application/zip': ['.zip'] }
+                }]
+            });
+        } catch (error) {
+            if (error?.name === 'AbortError') return { downloaded: 0, failed: [], cancelled: true };
+            console.warn('ZIP Save As picker unavailable; using browser download:', error);
+        }
+    }
+
+    const zip = new JSZip();
+    const usedNames = new Set();
+    const failures = [];
+
+    // Supabase can sign every private object in one request. The previous code
+    // made one signing request per document before downloading the files.
+    const storedDocs = docs.filter(doc => !doc.storage_path.startsWith('mock/') && !doc.storage_path.startsWith('http'));
+    const signedUrlByPath = new Map();
+    if (storedDocs.length > 0) {
+        const { data: signedFiles, error: signedError } = await supabase.storage
+            .from('customer-documents')
+            .createSignedUrls(storedDocs.map(doc => doc.storage_path), 3600);
+        if (signedError) throw signedError;
+        (signedFiles || []).forEach(file => {
+            if (file?.path && file?.signedUrl) signedUrlByPath.set(file.path, file.signedUrl);
+        });
+    }
+
+    await Promise.all(docs.map(async (doc, index) => {
+        try {
+            const url = doc.storage_path.startsWith('mock/') || doc.storage_path.startsWith('http')
+                ? await getDownloadUrl(doc.storage_path, doc.file_name)
+                : signedUrlByPath.get(doc.storage_path);
+            if (!url) throw new Error('No download URL returned');
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            const baseName = safeDownloadName(doc.file_name, `document-${index + 1}`);
+            let uniqueName = baseName;
+            let suffix = 2;
+            while (usedNames.has(uniqueName.toLowerCase())) {
+                const dot = baseName.lastIndexOf('.');
+                uniqueName = dot > 0
+                    ? `${baseName.slice(0, dot)}-${suffix}${baseName.slice(dot)}`
+                    : `${baseName}-${suffix}`;
+                suffix += 1;
+            }
+            usedNames.add(uniqueName.toLowerCase());
+            zip.file(uniqueName, blob);
+        } catch (error) {
+            console.error('Document ZIP item failed:', doc.file_name, error);
+            failures.push(doc.file_name || `document-${index + 1}`);
+        }
+    }));
+
+    if (usedNames.size === 0) throw new Error('None of the client documents could be downloaded.');
+    // PDFs, PNGs and JPEGs are already compressed. Recompressing them consumed
+    // most of the preparation time while barely changing archive size.
+    const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    if (saveHandle) {
+        const writable = await saveHandle.createWritable();
+        await writable.write(zipBlob);
+        await writable.close();
+        return { downloaded: usedNames.size, failed: failures, cancelled: false };
+    }
+
+    const objectUrl = URL.createObjectURL(zipBlob);
+    try {
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = zipName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+    } finally {
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    }
+    return { downloaded: usedNames.size, failed: failures, cancelled: false };
 };
 
 // Returns { ok, error }. Previously swallowed every failure with console.error,

@@ -422,6 +422,7 @@ export const ADMIN_COLUMNS = new Set([
     'jansamarth_application_no',
     'light_bill',
     'loan_history',
+    'loan_by',
     'loan_registration_date',
     'loan_tag',
     'material_delivery_date',
@@ -458,6 +459,7 @@ export const ADMIN_COLUMNS = new Set([
     'structure_rear_leg_height',
     'sub_channel_partner',
     'sub_divisions',
+    'district',
     'subsidy_history',
     'subsidy_tag',
     'subsidy_token_photo',
@@ -510,7 +512,11 @@ export const DEFAULT_PAGE_SIZE = 50;
 // Also covers the fields handleMoveStage validates before letting a lead leave
 // the Leads stage (villages, module_brand, sub_divisions) - narrowing the grid
 // query without these would make that check see undefined and falsely block.
-export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, email_address, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_brand, module_wp, no_of_modules, villages, sub_divisions, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, stages_remarks, vendor, geo_tag_status';
+export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, email_address, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_brand, module_wp, no_of_modules, villages, sub_divisions, district, registration_date, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, stages_remarks, vendor, geo_tag_status';
+
+// Vendor list cards and stage counters do not need the full admin record. The
+// complete record is fetched only when a vendor opens one assignment.
+export const VENDOR_LIST_COLUMNS = 'id, customer_name, phone_number, email_address, consumer_no, folder_no, stage, vendor, deleted_at, installation_status, geo_tag_status, villages, sub_divisions, district, system_capacity_kwp, module_brand, module_wp, no_of_modules, created_at, updated_at';
 
 export const DELIVERY_PICKER_COLUMNS = 'id, customer_name, phone_number, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, system_capacity_kwp, module_wp, no_of_modules, invoice_value, delivery_batch_id, delivery_status, material_delivery_date, driver_name, driver_phone_number, vehicle_number, vendor, created_at, updated_at, deleted_at';
 

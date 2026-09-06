@@ -23,7 +23,7 @@ import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
 import { Page1 } from './agreement/Page1';
 import { FileText, Printer } from 'lucide-react';
-import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark, downloadFileWithSaveAs } from '../utils';
+import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark, downloadFileWithSaveAs, downloadDocumentsAsZip } from '../utils';
 
 const getDocTypeLabel = (type) => {
     if (!type) return 'Client Attachment';
@@ -352,8 +352,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 consumerName: editData.customer_name || '',
                 consumerNo: editData.consumer_no || '',
                 village: editData.villages || '',
-                taluka: editData.villages || '',
-                district: editData.sub_divisions || '',
+                taluka: editData.sub_divisions || '',
+                district: editData.district || '',
                 vendorName: 'Watersun Electrical Solutions Pvt Ltd',
                 vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
                 paymentTerms: 'Mutually Agreed Terms of Payment',
@@ -444,8 +444,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             consumerName: editData.customer_name || '',
             consumerNo: editData.consumer_no || '',
             village: editData.villages || '',
-            taluka: editData.villages || '',
-            district: editData.sub_divisions || '',
+            taluka: editData.sub_divisions || '',
+            district: editData.district || '',
             vendorName: 'Watersun Electrical Solutions Pvt Ltd',
             vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
             paymentTerms: 'Mutually Agreed Terms of Payment',
@@ -562,6 +562,24 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const url = await getDownloadUrl(doc.storage_path, doc.file_name);
         if (url) {
             await downloadFileWithSaveAs(url, doc.file_name);
+        }
+    };
+
+    const [downloadingAllDocuments, setDownloadingAllDocuments] = useState(false);
+    const canDownloadAllDocuments = !['vendor', 'stamp'].includes(user?.userType);
+    const handleDownloadAllDocuments = async () => {
+        if (!canDownloadAllDocuments) return;
+        if (downloadingAllDocuments) return;
+        setDownloadingAllDocuments(true);
+        try {
+            const result = await downloadDocumentsAsZip(documents, customer.customer_name);
+            if (result.failed.length > 0) {
+                showAlert(`${result.downloaded} document(s) were downloaded. ${result.failed.length} could not be included.`, { type: 'warning' });
+            }
+        } catch (error) {
+            showAlert(error?.message || 'The documents could not be downloaded.', { title: 'Download Failed', type: 'error' });
+        } finally {
+            setDownloadingAllDocuments(false);
         }
     };
 
@@ -904,7 +922,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(editData.module_wp?.toString().trim(), 'Module WP');
                 requireField(editData.no_of_modules?.toString().trim(), 'Number of Modules');
                 requireField(editData.system_capacity_kwp, 'System Capacity');
-                requireField(editData.sub_divisions?.trim(), 'Sub Division');
+                requireField(editData.sub_divisions?.trim(), 'Tehsil / Sub Division');
+                requireField(editData.district?.trim(), 'District');
                 requireField(editData.payment_type?.trim(), 'Payment Type');
                 break;
             case STAGE_IDS.REGISTRATION:
@@ -1804,6 +1823,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             handlePreviewDoc={handlePreviewDoc}
                             handleDeleteDoc={handleDeleteDoc}
                             handleUpdateDocRemark={handleUpdateDocRemark}
+                            handleDownloadAllDocuments={handleDownloadAllDocuments}
+                            downloadingAllDocuments={downloadingAllDocuments}
+                            canDownloadAllDocuments={canDownloadAllDocuments}
                         />
                     )}
 

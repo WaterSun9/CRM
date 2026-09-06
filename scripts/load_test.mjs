@@ -99,8 +99,11 @@ async function globalSearch(sb, role) {
 
 async function dashboardCounts(sb, role) {
     const t = Date.now();
-    const { error } = await sb.from('admin').select('id', { count: 'exact', head: true }).is('deleted_at', null);
-    record('dashboard_count', t, error, role);
+    const { error } = await sb.rpc('get_dashboard_metrics_scoped', {
+        p_channel_partner: null,
+        p_dealer: null
+    });
+    record('dashboard_metrics_scoped', t, error, role);
 }
 
 async function openCustomer(sb, role, scope) {
@@ -242,6 +245,12 @@ async function virtualUser(n, endAt) {
     if (profErr || !profile) { console.error(`  no profile for ${acct.email}`); return; }
 
     roleOf.set(acct.email, profile.user_type);
+
+    // Always exercise the dashboard RPC at least once for an admin/sales
+    // session; random traffic alone can otherwise miss this deployment gate.
+    if (['admin', 'sales'].includes(profile.user_type)) {
+        await dashboardCounts(sb, profile.user_type);
+    }
 
     while (Date.now() < endAt) {
         await runProfile(sb, profile);

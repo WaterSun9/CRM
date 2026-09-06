@@ -80,9 +80,15 @@ export const leadSchema = z.object({
     .min(1, "System Capacity is required"),
 
     sub_divisions: z.string({
-        error: "Sub Division is required",
+        error: "Tehsil / Sub Division is required",
     })
-    .min(1, "Sub Division is required")
+    .min(1, "Tehsil / Sub Division is required")
+    .trim(),
+
+    district: z.string({
+        error: "District is required",
+    })
+    .min(1, "District is required")
     .trim(),
 
     // Was: `if (!val) return 'Cash'` — an empty Payment Type was silently

@@ -170,14 +170,21 @@ export default function MaterialOrderTab({
                         isMoney={true}
                         isEditing={isEditingOrder}
                     />
-                    <div className="col-span-2 md:col-span-3">
-                        <EditableDetailItem
-                            label="Notes / Special Instructions (Optional)"
-                            field="material_order_notes"
-                            value={editData.material_order_notes}
-                            onChange={handleLocalChange}
-                            isEditing={isEditingOrder}
-                        />
+                    <div className="col-span-2 md:col-span-3 rounded-xl bg-stone-50 p-3">
+                        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-stone-500">Notes / Special Instructions (Optional)</p>
+                        {isEditingOrder ? (
+                            <textarea
+                                rows={5}
+                                value={editData.material_order_notes || ''}
+                                onChange={e => handleLocalChange('material_order_notes', e.target.value)}
+                                placeholder="Enter material order notes"
+                                className="min-h-[120px] w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-6 text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-300"
+                            />
+                        ) : (
+                            <p className="min-h-[72px] whitespace-pre-wrap break-words text-sm leading-6 text-stone-800">
+                                {editData.material_order_notes || '–'}
+                            </p>
+                        )}
                     </div>
                 </div>
             </section>

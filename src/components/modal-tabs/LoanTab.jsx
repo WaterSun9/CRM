@@ -16,6 +16,7 @@ export default function LoanTab({
     logActivity,
     fetchLogs,
     user,
+    meta = {},
     documents = [],
     onFileUpload,
     onFileDelete,
@@ -210,6 +211,30 @@ export default function LoanTab({
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             <div className="p-1">
+                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Loan By</p>
+                                {isEditingAppDetails ? (
+                                    <select
+                                        value={editData.loan_by || ''}
+                                        onChange={async (event) => {
+                                            const nextValue = event.target.value;
+                                            handleLocalChange('loan_by', nextValue);
+                                            if (await onUpdate(customer.id, { loan_by: nextValue || null }) === false) return;
+                                            await logActivity(user.id, 'update', `${customer.customer_name}: Updated Loan By to ${nextValue || 'None'}`, '', customer.id);
+                                            fetchLogs();
+                                        }}
+                                        className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition shadow-sm"
+                                    >
+                                        <option value="">Select...</option>
+                                        {editData.loan_by && !(meta['registration_by'] || []).includes(editData.loan_by) && (
+                                            <option value={editData.loan_by}>{editData.loan_by}</option>
+                                        )}
+                                        {(meta['registration_by'] || []).map(name => <option key={name} value={name}>{name}</option>)}
+                                    </select>
+                                ) : (
+                                    <p className="text-xs font-bold text-stone-800 break-words">{editData.loan_by || '–'}</p>
+                                )}
+                            </div>
+                            <div className="p-1">
                                 <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Total Quotation Amount (₹)</p>
                                 {isEditingAppDetails ? (
                                     <input 
@@ -249,52 +274,6 @@ export default function LoanTab({
                                     />
                                 ) : (
                                     <p className="text-xs font-bold text-stone-800 break-words">{editData.jansamarth_application_no || '–'}</p>
-                                )}
-                            </div>
-                            <div className="p-1">
-                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Bank Name</p>
-                                {isEditingAppDetails ? (
-                                    <input
-                                        type="text"
-                                        placeholder="Enter bank name..."
-                                        value={editData.bank_name || ''}
-                                        onChange={(e) => handleLocalChange('bank_name', e.target.value)}
-                                        onBlur={async (e) => {
-                                            if (editData.bank_name !== customer.bank_name) {
-                                                // A failed save must stop here - otherwise the activity log below
-                                                // records a change that never reached the database.
-                                                if (await onUpdate(customer.id, { bank_name: e.target.value || null }) === false) return;
-                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Bank Name`, '', customer.id);
-                                                fetchLogs();
-                                            }
-                                        }}
-                                        className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition shadow-sm"
-                                    />
-                                ) : (
-                                    <p className="text-xs font-bold text-stone-800 break-words">{editData.bank_name || '–'}</p>
-                                )}
-                            </div>
-                            <div className="p-1">
-                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Bank Branch</p>
-                                {isEditingAppDetails ? (
-                                    <input
-                                        type="text"
-                                        placeholder="Enter branch..."
-                                        value={editData.bank_branch || ''}
-                                        onChange={(e) => handleLocalChange('bank_branch', e.target.value)}
-                                        onBlur={async (e) => {
-                                            if (editData.bank_branch !== customer.bank_branch) {
-                                                // A failed save must stop here - otherwise the activity log below
-                                                // records a change that never reached the database.
-                                                if (await onUpdate(customer.id, { bank_branch: e.target.value || null }) === false) return;
-                                                await logActivity(user.id, 'update', `${customer.customer_name}: Updated Bank Branch`, '', customer.id);
-                                                fetchLogs();
-                                            }
-                                        }}
-                                        className="w-full bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition shadow-sm"
-                                    />
-                                ) : (
-                                    <p className="text-xs font-bold text-stone-800 break-words">{editData.bank_branch || '–'}</p>
                                 )}
                             </div>
                             <div className="p-1">

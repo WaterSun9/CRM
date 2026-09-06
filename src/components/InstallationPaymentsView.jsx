@@ -57,6 +57,8 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                 // the installation_status filter was fixed.
                 .select('id, customer_name, phone_number, consumer_no, system_capacity_kwp, vendor, vendor_quote, vendor_payment_status, vendor_paid_date, material_delivery_date, installation_date, installation_status')
                 .is('deleted_at', null)
+                .not('vendor', 'is', null)
+                .neq('vendor', '')
                 .or('installation_status.ilike.%yes%,installation_status.ilike.%installed%')
                 .order('created_at', { ascending: false });
 
@@ -72,6 +74,8 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                 // the installation_status filter was fixed.
                 .select('id, customer_name, phone_number, consumer_no, system_capacity_kwp, vendor, vendor_quote, vendor_payment_status, vendor_paid_date, material_delivery_date, installation_date, installation_status')
                     .is('deleted_at', null)
+                    .not('vendor', 'is', null)
+                    .neq('vendor', '')
                     .not('installation_status', 'is', null);
                 if (allData) {
                     const matched = allData.filter(c =>
@@ -97,7 +101,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
 
     // Map payout details to records using material_delivery_date from delivery stage
     const records = useMemo(() => {
-        return installations.map(c => {
+        return installations.filter(c => String(c.vendor || '').trim()).map(c => {
             const fallbackDate = c.installation_date || (c.created_at ? c.created_at.split('T')[0] : null);
             const targetDate = c.material_delivery_date || fallbackDate;
             const details = getPayoutDetails(targetDate, fallbackDate);

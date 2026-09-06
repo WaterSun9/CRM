@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { Zap, MapPin, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar } from 'lucide-react';
+import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 
 const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStage, currentUser }) {
@@ -57,12 +57,20 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                 </div>
                 <div className="grid grid-cols-2 gap-y-1.5 mb-3">
                     <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
-                        <Zap size={11} className="text-amber-500 flex-shrink-0" />
-                        <span>{customer.system_capacity_kwp ? `${customer.system_capacity_kwp} kWp` : '–'}</span>
+                        <FolderOpen size={11} className="text-stone-300 flex-shrink-0" />
+                        <span className="truncate">File: {customer.folder_no || '–'}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
-                        <MapPin size={11} className="text-stone-300 flex-shrink-0" />
-                        <span className="truncate">{customer.villages || 'N/A'}</span>
+                        <Package size={11} className="text-stone-300 flex-shrink-0" />
+                        <span className="truncate">Panel: {customer.module_brand || '–'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
+                        <Zap size={11} className="text-amber-500 flex-shrink-0" />
+                        <span>WP: {customer.module_wp || '–'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
+                        <Zap size={11} className="text-amber-500 flex-shrink-0" />
+                        <span>{customer.system_capacity_kwp ? `${customer.system_capacity_kwp} kWp` : '–'}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
                         <User size={11} className="text-stone-300 flex-shrink-0" />

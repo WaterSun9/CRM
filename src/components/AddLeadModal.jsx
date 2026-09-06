@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
-import { toIndianCommas, fetchAgent2SubAgents, sanitizePhoneNumber } from '../utils';
+import { toIndianCommas, fetchAgent2SubAgents, sanitizePhoneNumber, downloadFileWithSaveAs } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
 // Dropdown component for metadata fields (clean single outline)
@@ -365,7 +365,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         };
 
         // Ensure string fields are strings to pass Zod schema
-        ['customer_name', 'phone_number', 'email_address', 'consumer_no', 'villages', 'channel_partner', 'module_brand', 'module_wp', 'no_of_modules', 'system_capacity_kwp', 'sub_divisions'].forEach(key => {
+        ['customer_name', 'phone_number', 'email_address', 'consumer_no', 'villages', 'district', 'channel_partner', 'module_brand', 'module_wp', 'no_of_modules', 'system_capacity_kwp', 'sub_divisions', 'bank_name', 'bank_branch'].forEach(key => {
             if (finalData[key] !== undefined && finalData[key] !== null) {
                 finalData[key] = String(finalData[key]);
             }
@@ -560,17 +560,32 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 />
                             </div>
 
-                            {/* Sub Division */}
+                            {/* Tehsil / Sub Division */}
                             <div className="space-y-1">
                                 <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
-                                    Sub Division <span className="text-red-500 font-bold">*</span>
+                                    Tehsil / Sub Division <span className="text-red-500 font-bold">*</span>
                                 </label>
                                 <input
                                     type="text"
                                     value={formData.sub_divisions || ''}
                                     onChange={e => handleChange('sub_divisions', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                                    placeholder="Sub division"
+                                    placeholder="Tehsil or sub division"
+                                    required
+                                />
+                            </div>
+
+                            {/* District */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">
+                                    District <span className="text-red-500 font-bold">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.district || ''}
+                                    onChange={e => handleChange('district', e.target.value)}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                    placeholder="District"
                                     required
                                 />
                             </div>
@@ -764,6 +779,31 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 })()}
                             </div>
 
+                            {String(formData.payment_type || '').trim().toLowerCase() === 'loan' && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">Bank Name</label>
+                                        <input
+                                            type="text"
+                                            value={formData.bank_name || ''}
+                                            onChange={e => handleChange('bank_name', e.target.value)}
+                                            placeholder="Enter bank name"
+                                            className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">Bank Branch</label>
+                                        <input
+                                            type="text"
+                                            value={formData.bank_branch || ''}
+                                            onChange={e => handleChange('bank_branch', e.target.value)}
+                                            placeholder="Enter bank branch"
+                                            className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Checklist items only visible if payment_type is selected */}
                             {formData.payment_type ? (
                                 <div className="space-y-1 divide-y divide-stone-100">
@@ -901,15 +941,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                     file={previewDoc.doc}
                     fileUrl={previewDoc.url}
                     onClose={handleClosePreview}
-                    onDownload={() => {
-                        const a = document.createElement('a');
-                        a.href = previewDoc.url;
-                        a.download = previewDoc.doc.file_name;
-                        a.target = '_blank';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                    }}
+                    onDownload={() => downloadFileWithSaveAs(previewDoc.url, previewDoc.doc.file_name)}
                 />
             )}
         </div>

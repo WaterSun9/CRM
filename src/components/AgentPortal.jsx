@@ -9,7 +9,7 @@ import {
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
     Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal
 } from 'lucide-react';
-import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs } from '../utils';
+import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsZip } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS } from '../constants';
 import AddLeadModal from './AddLeadModal';
@@ -81,6 +81,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     const [editData, setEditData] = useState({});
     const [saving, setSaving] = useState(false);
     const [custDocs, setCustDocs] = useState([]);
+    const [downloadingAllDocs, setDownloadingAllDocs] = useState(false);
     const [integrationBom, setIntegrationBom] = useState(null);
     const [integrationBomItems, setIntegrationBomItems] = useState([]);
     const [showBomPrint, setShowBomPrint] = useState(false);
@@ -554,6 +555,22 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         await downloadFileWithSaveAs(url, doc.file_name);
     };
 
+    const handleDownloadAllDocs = async () => {
+        if (!['agent', 'agent2'].includes(user?.userType)) return;
+        if (downloadingAllDocs) return;
+        setDownloadingAllDocs(true);
+        try {
+            const result = await downloadDocumentsAsZip(custDocs, selectedCust?.customer_name);
+            if (result.failed.length > 0) {
+                showAlert(`${result.downloaded} document(s) downloaded; ${result.failed.length} could not be included.`, { type: 'warning' });
+            }
+        } catch (error) {
+            showAlert(error?.message || 'The documents could not be downloaded.', { title: 'Download Failed', type: 'error' });
+        } finally {
+            setDownloadingAllDocs(false);
+        }
+    };
+
     const handleUploadDocForCustomer = async (e, docType) => {
         // Enforce document edit permissions
         if (![STAGE_IDS.LEADS, STAGE_IDS.REGISTRATION].includes(activeCustomerStage) && 
@@ -871,8 +888,8 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             consumerName: selectedCust.customer_name || '',
             consumerNo: selectedCust.consumer_no || '',
             village: selectedCust.villages || '',
-            taluka: selectedCust.villages || '',
-            district: selectedCust.sub_divisions || '',
+            taluka: selectedCust.sub_divisions || '',
+            district: selectedCust.district || '',
             vendorName: 'Watersun Electrical Solutions Pvt Ltd',
             vendorAddress: 'Plot No 40 GIDC Estate Radhanpur',
             paymentTerms: 'Mutually Agreed Terms of Payment',
@@ -1399,9 +1416,21 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
 
                             {displayedStage === 'DOCUMENTS' && (
                                 <div className="space-y-3">
-                                    <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5 px-1">
-                                        <FolderOpen size={11} /> Uploaded Documents ({custDocs?.length || 0})
-                                    </h5>
+                                    <div className="flex items-center justify-between gap-3 px-1">
+                                        <h5 className="text-[9px] font-black text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
+                                            <FolderOpen size={11} /> Uploaded Documents ({custDocs?.length || 0})
+                                        </h5>
+                                        {['agent', 'agent2'].includes(user?.userType) && custDocs?.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={handleDownloadAllDocs}
+                                                disabled={downloadingAllDocs}
+                                                className="rounded-lg bg-amber-500 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-amber-600 disabled:opacity-60"
+                                            >
+                                                {downloadingAllDocs ? 'Preparing ZIP...' : 'Download All'}
+                                            </button>
+                                        )}
+                                    </div>
                                     {(!custDocs || custDocs.length === 0) ? (
                                         <div className="p-8 text-center bg-stone-50 border border-dashed border-stone-200 rounded-xl">
                                             <p className="text-xs font-bold text-stone-500">No documents found</p>
@@ -1943,14 +1972,14 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 />
                                             </div>
 
-                                            <div className="flex items-center justify-between py-2">
+                                            <div className="flex flex-col gap-1.5 py-2">
                                                 <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Notes / Instructions</span>
-                                                <input
-                                                    type="text"
+                                                <textarea
+                                                    rows={5}
                                                     value={editData.material_order_notes ?? selectedCust.material_order_notes ?? ''}
                                                     onChange={e => setEditData(prev => ({ ...prev, material_order_notes: e.target.value }))}
                                                     placeholder="Optional notes"
-                                                    className="w-48 bg-white border border-stone-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                                    className="min-h-[120px] w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-6 font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
                                                 />
                                             </div>
                                         </div>

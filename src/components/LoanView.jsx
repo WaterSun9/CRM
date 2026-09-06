@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { IndianRupee, Search, RefreshCw, ChevronDown } from 'lucide-react';
-import { LOAN_TAGS, LOAN_TAG_COLORS, CUSTOMER_CARD_COLUMNS } from '../constants';
+import { LOAN_TAGS, LOAN_TAG_COLORS, CUSTOMER_CARD_COLUMNS, STAGE_IDS } from '../constants';
 import { normalizeLoanTag } from '../utils';
 import { supabase } from '../supabase';
 
 const PAGE_SIZE = 50;
 
-export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
+export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter }) {
     const [activeFilter, setActiveFilter] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -34,15 +34,27 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
             const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
 
             // 1. Total Count Query for all Loan customers
-            let totalQuery = supabase
+            let loanStageQuery = supabase
                 .from('admin')
                 .select('*', { count: 'exact', head: true })
                 .is('deleted_at', null)
+                .eq('stage', STAGE_IDS.LOAN);
+            let taggedOutsideLoanQuery = supabase
+                .from('admin')
+                .select('*', { count: 'exact', head: true })
+                .is('deleted_at', null)
+                .neq('stage', STAGE_IDS.COMPLETED)
+                .neq('stage', STAGE_IDS.LOAN)
                 .not('loan_tag', 'is', null)
                 .neq('loan_tag', '');
 
             if (targetPartner) {
-                totalQuery = totalQuery.ilike('channel_partner', `%${targetPartner}%`);
+                loanStageQuery = loanStageQuery.ilike('channel_partner', `%${targetPartner}%`);
+                taggedOutsideLoanQuery = taggedOutsideLoanQuery.ilike('channel_partner', `%${targetPartner}%`);
+            }
+            if (dealerFilter) {
+                loanStageQuery = loanStageQuery.ilike('sub_channel_partner', dealerFilter);
+                taggedOutsideLoanQuery = taggedOutsideLoanQuery.ilike('sub_channel_partner', dealerFilter);
             }
 
             // 2. Parallel Head queries for every specific tag in LOAN_TAGS
@@ -51,17 +63,19 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                     .from('admin')
                     .select('*', { count: 'exact', head: true })
                     .is('deleted_at', null)
+                    .neq('stage', STAGE_IDS.COMPLETED)
                     .ilike('loan_tag', `%${tag.id}%`);
 
                 if (targetPartner) {
                     tagQuery = tagQuery.ilike('channel_partner', `%${targetPartner}%`);
                 }
+                if (dealerFilter) tagQuery = tagQuery.ilike('sub_channel_partner', dealerFilter);
 
                 const { count, error } = await tagQuery;
                 return { tagId: tag.id, count: (!error && count !== null) ? count : 0 };
             });
 
-            const [totalRes, ...tagResults] = await Promise.all([totalQuery, ...countPromises]);
+            const [loanStageRes, taggedOutsideLoanRes, ...tagResults] = await Promise.all([loanStageQuery, taggedOutsideLoanQuery, ...countPromises]);
 
             const countsMap = {};
             tagResults.forEach(({ tagId, count }) => {
@@ -69,8 +83,8 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
             });
             setTagCounts(countsMap);
 
-            if (!totalRes.error && totalRes.count !== null) {
-                setTotalCount(totalRes.count);
+            if (!loanStageRes.error && !taggedOutsideLoanRes.error) {
+                setTotalCount((loanStageRes.count || 0) + (taggedOutsideLoanRes.count || 0));
             } else {
                 const sum = Object.values(countsMap).reduce((a, b) => a + b, 0);
                 setTotalCount(sum);
@@ -78,7 +92,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
         } catch (err) {
             console.error('Error fetching loan counts:', err);
         }
-    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
+    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter]);
 
     // Fetch Paginated Customer Records with Backend Search
     const fetchCustomers = useCallback(async (pageNum = 0, isAppend = false) => {
@@ -95,17 +109,19 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                 // and unused. The detail modal fetches the full record on open.
                 .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
+                .neq('stage', STAGE_IDS.COMPLETED)
                 .order('created_at', { ascending: false })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 
             if (targetPartner) {
                 query = query.ilike('channel_partner', `%${targetPartner}%`);
             }
+            if (dealerFilter) query = query.ilike('sub_channel_partner', dealerFilter);
 
             if (activeFilter) {
                 query = query.ilike('loan_tag', `%${activeFilter}%`);
             } else {
-                query = query.not('loan_tag', 'is', null).neq('loan_tag', '');
+                query = query.or(`stage.eq.${STAGE_IDS.LOAN},loan_tag.not.is.null`);
             }
 
             // Direct Backend Search across name, phone, consumer_no
@@ -125,14 +141,17 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                 setLoadError(null);
             }
             if (!error && data) {
+                const visibleData = activeFilter
+                    ? data
+                    : data.filter(row => row.stage === STAGE_IDS.LOAN || String(row.loan_tag || '').trim());
                 if (isAppend) {
                     setCustomers(prev => {
                         const existingIds = new Set(prev.map(c => c.id));
-                        const fresh = data.filter(c => !existingIds.has(c.id));
+                        const fresh = visibleData.filter(c => !existingIds.has(c.id));
                         return [...prev, ...fresh];
                     });
                 } else {
-                    setCustomers(data);
+                    setCustomers(visibleData);
                 }
                 setHasMore(data.length === PAGE_SIZE);
             } else {
@@ -147,12 +166,9 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
         } finally {
             setLoading(false);
             setLoadingMore(false);
+            if (pageNum === 0) void fetchCounts();
         }
-    }, [activeFilter, debouncedSearch, isChannelPartnerOffice, partnerName, channelPartnerFilter]);
-
-    useEffect(() => {
-        fetchCounts();
-    }, [fetchCounts]);
+    }, [activeFilter, debouncedSearch, isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter, fetchCounts]);
 
     useEffect(() => {
         setPage(0);
@@ -198,7 +214,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
 
                 <div className="flex items-center gap-2 self-end sm:self-center">
                     <button
-                        onClick={() => { fetchCounts(); fetchCustomers(0, false); }}
+                        onClick={() => fetchCustomers(0, false)}
                         className="p-2.5 bg-white hover:bg-stone-50 border border-stone-200 rounded-xl text-stone-600 transition-colors shadow-2xs cursor-pointer"
                         title="Refresh counts"
                     >
@@ -298,7 +314,19 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-stone-100 text-[10px]">
+                                    <div className="grid grid-cols-3 gap-2 pt-2.5 border-t border-stone-100 text-[10px]">
+                                        <div>
+                                            <p className="text-stone-400 font-bold uppercase tracking-wide">File No.</p>
+                                            <p className="text-xs font-semibold text-stone-700 mt-0.5 truncate">{c.folder_no || '–'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-stone-400 font-bold uppercase tracking-wide">Panel</p>
+                                            <p className="text-xs font-semibold text-stone-700 mt-0.5 truncate">{c.module_brand || '–'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-stone-400 font-bold uppercase tracking-wide">WP</p>
+                                            <p className="text-xs font-semibold text-stone-700 mt-0.5">{c.module_wp || '–'}</p>
+                                        </div>
                                         <div>
                                             <p className="text-stone-400 font-bold uppercase tracking-wide">Capacity</p>
                                             <p className="text-xs font-semibold text-stone-700 mt-0.5">

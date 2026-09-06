@@ -6,8 +6,8 @@ import {
     SendHorizonal, User, AlertTriangle, Check, AlertCircle, FileCheck, Terminal
 } from "lucide-react";
 import {
-    uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, logActivity,
-    updateAdminRecord, updateDocumentRemark,
+    uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, logActivity,
+    updateAdminRecord, updateDocumentRemark, downloadFileWithSaveAs,
 } from "../utils.jsx";
 import { FilePreviewModal } from "./modal-tabs/shared";
 import { useGlobalPopup } from './GlobalPopup';
@@ -949,7 +949,10 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                     fileUrl={previewDoc.url}
                     onClose={() => setPreviewDoc(null)}
                     onUpdateRemark={handleUpdateDocRemark}
-                    onDownload={() => window.open(previewDoc.url, '_blank')}
+                    onDownload={async () => {
+                        const url = await getDownloadUrl(previewDoc.doc.storage_path, previewDoc.doc.file_name);
+                        if (url) await downloadFileWithSaveAs(url, previewDoc.doc.file_name);
+                    }}
                 />
             )}
 

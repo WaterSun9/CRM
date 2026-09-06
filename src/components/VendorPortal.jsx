@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, uploadDocument, getCustomerDocuments, getViewUrl, deleteDocument, toIndianCommas, updateDocumentRemark, normalizeInstallationStatus, updateAdminRecord } from '../utils';
+import { logActivity, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, toIndianCommas, updateDocumentRemark, normalizeInstallationStatus, updateAdminRecord, downloadFileWithSaveAs } from '../utils';
 import { 
     User, Phone, Mail, MapPin, Zap, Building2, CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Hash, Folder, Tag, ChevronLeft, Search, ClipboardList, Banknote, Calendar, ClipboardCheck,
@@ -8,7 +8,7 @@ import {
     Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, Check, Wrench, RefreshCw, Save, Terminal
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
-import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, isFinalTagValue } from '../constants';
+import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, VENDOR_LIST_COLUMNS, isFinalTagValue } from '../constants';
 import { isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
@@ -82,6 +82,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     
     const [saving, setSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
+    const [stageMoveError, setStageMoveError] = useState('');
 
     // Document attachments state
     const [documents, setDocuments] = useState([]);
@@ -303,7 +304,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             while (true) {
                 const { data: page, error } = await supabase
                     .from('admin')
-                    .select('*')
+                    .select(VENDOR_LIST_COLUMNS)
                     .in('vendor', searchNames)
                     .order('created_at', { ascending: false })
                     .range(from, from + pageSize - 1);
@@ -379,7 +380,9 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             if (document.visibilityState === 'visible') refreshAssignments();
         };
 
-        const refreshInterval = window.setInterval(refreshAssignments, 15000);
+        // Realtime handles normal updates. A two-minute fallback avoids every open
+        // vendor tab downloading its full assignment list four times per minute.
+        const refreshInterval = window.setInterval(refreshAssignments, 120000);
         window.addEventListener('focus', refreshAssignments);
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -420,18 +423,32 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     const handleSelectCustomer = async (cust) => {
-        setSelectedCust(cust);
+        setStageMoveError('');
+        // Keep list loading light, then fetch the complete record only for the
+        // assignment the vendor actually opens.
+        const { data: fullCustomer, error: fullCustomerError } = await supabase
+            .from('admin')
+            .select('*')
+            .eq('id', cust.id)
+            .single();
+        if (fullCustomerError) {
+            console.error('Error loading vendor customer details:', fullCustomerError);
+            showAlert('Could not load this assignment. Please refresh and try again.', 'Load Failed');
+            return;
+        }
+        const openedCustomer = fullCustomer || cust;
+        setSelectedCust(openedCustomer);
         
         // Match active tab to the vendor-facing customer stage.
-        if (cust.stage === STAGE_IDS.MATERIAL_DELIVERY) {
+        if (openedCustomer.stage === STAGE_IDS.MATERIAL_DELIVERY) {
             setActiveTab('DELIVERY');
-        } else if (cust.stage === STAGE_IDS.GEO_TAG_PHOTO) {
+        } else if (openedCustomer.stage === STAGE_IDS.GEO_TAG_PHOTO) {
             setActiveTab('GEO');
-        } else if (cust.stage === STAGE_IDS.INSTALLATION_STATUS) {
+        } else if (openedCustomer.stage === STAGE_IDS.INSTALLATION_STATUS) {
             setActiveTab('INSTALLATION');
         }
 
-        hydrateFieldsFrom(cust);
+        hydrateFieldsFrom(openedCustomer);
 
         setView('details');
         setSaveSuccess(false);
@@ -582,13 +599,16 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
 
     // Save changes to Supabase and optionally progress stage
     const handleSaveChanges = async (nextStage = null) => {
+        setStageMoveError('');
         const currentStage = String(selectedCust?.stage || '').toUpperCase().trim();
         const canEditCurrentTab =
             (activeTab === 'INSTALLATION' && currentStage === STAGE_IDS.INSTALLATION_STATUS) ||
             (activeTab === 'GEO' && currentStage === STAGE_IDS.GEO_TAG_PHOTO);
 
         if (!canEditCurrentTab) {
-            showAlert('This stage is view-only until the office moves the customer to it.', {
+            const message = 'This stage is view-only until the office moves the customer to it.';
+            setStageMoveError(message);
+            showAlert(message, {
                 title: 'Stage Not Available Yet',
                 type: 'warning'
             });
@@ -609,7 +629,9 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             }
 
             if (missingItems.length > 0) {
-                showAlert(`To move forward to Geo Tag Photo, please complete the following:\n\n• ${missingItems.join('\n• ')}`, {
+                const message = `To move forward to Geo Tag Photo, please complete:\n• ${missingItems.join('\n• ')}`;
+                setStageMoveError(message);
+                showAlert(message, {
                     title: 'Installation Incomplete',
                     type: 'warning'
                 });
@@ -629,7 +651,9 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             }
 
             if (missingItems.length > 0) {
-                showAlert(`To move forward to Discom Submission, please complete the following:\n\n• ${missingItems.join('\n• ')}`, {
+                const message = `To move forward to Discom Submission, please complete:\n• ${missingItems.join('\n• ')}`;
+                setStageMoveError(message);
+                showAlert(message, {
                     title: 'Geo Tag Report Incomplete',
                     type: 'warning'
                 });
@@ -684,6 +708,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             }
             
             setSaveSuccess(true);
+            setStageMoveError('');
             setCustomers(prev => prev.map(customer => customer.id === selectedCust.id ? { ...customer, ...updatePayload } : customer));
             
             setSelectedCust(prev => ({
@@ -708,7 +733,10 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             return true;
         } catch (err) {
             console.error('Failed to save details:', err);
-            showAlert(`Error saving changes: ${err.message || err}`, {
+            const technicalMessage = err?.message || String(err || 'Unknown database error');
+            const message = `The stage was not moved. ${technicalMessage}`;
+            setStageMoveError(message);
+            showAlert(message, {
                 title: 'Database Error',
                 type: 'error'
             });
@@ -1144,6 +1172,24 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                 );
                             })}
                         </div>
+
+                        {stageMoveError && (
+                            <div role="alert" className="flex items-start gap-2 rounded-2xl border border-rose-300 bg-rose-50 p-3 text-rose-800">
+                                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-bold">Could not move to the next stage</p>
+                                    <p className="mt-1 whitespace-pre-line break-words text-[11px] font-medium">{stageMoveError}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setStageMoveError('')}
+                                    className="rounded-lg p-1 text-rose-500 hover:bg-rose-100 hover:text-rose-800"
+                                    aria-label="Dismiss stage error"
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
+                        )}
 
                         {/* Editable Form Card */}
                         <div className="space-y-4">
@@ -1622,7 +1668,10 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                     file={previewDoc.doc}
                     fileUrl={previewDoc.url}
                     onClose={() => setPreviewDoc(null)}
-                    onDownload={() => window.open(previewDoc.url, '_blank')}
+                    onDownload={async () => {
+                        const url = await getDownloadUrl(previewDoc.doc.storage_path, previewDoc.doc.file_name);
+                        if (url) await downloadFileWithSaveAs(url, previewDoc.doc.file_name);
+                    }}
                     onUpdateRemark={handleUpdateDocRemark}
                 />
             )}

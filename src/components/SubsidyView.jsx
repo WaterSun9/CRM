@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Tag, Search, RefreshCw, ChevronDown } from 'lucide-react';
-import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, CUSTOMER_CARD_COLUMNS } from '../constants';
+import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, CUSTOMER_CARD_COLUMNS, STAGE_IDS } from '../constants';
 import { normalizeSubsidyTag } from '../utils';
 import { supabase } from '../supabase';
 
 const PAGE_SIZE = 50;
 
-export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter }) {
+export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter }) {
     const [activeFilter, setActiveFilter] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -38,12 +38,14 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                 .from('admin')
                 .select('*', { count: 'exact', head: true })
                 .is('deleted_at', null)
+                .neq('stage', STAGE_IDS.COMPLETED)
                 .not('subsidy_tag', 'is', null)
                 .neq('subsidy_tag', '');
 
             if (targetPartner) {
                 totalQuery = totalQuery.ilike('channel_partner', `%${targetPartner}%`);
             }
+            if (dealerFilter) totalQuery = totalQuery.ilike('sub_channel_partner', dealerFilter);
 
             // 2. Parallel Head queries for every tag in SUBSIDY_TAGS
             const countPromises = SUBSIDY_TAGS.map(async (tag) => {
@@ -51,11 +53,13 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                     .from('admin')
                     .select('*', { count: 'exact', head: true })
                     .is('deleted_at', null)
+                    .neq('stage', STAGE_IDS.COMPLETED)
                     .ilike('subsidy_tag', `%${tag.id}%`);
 
                 if (targetPartner) {
                     tagQuery = tagQuery.ilike('channel_partner', `%${targetPartner}%`);
                 }
+                if (dealerFilter) tagQuery = tagQuery.ilike('sub_channel_partner', dealerFilter);
 
                 const { count, error } = await tagQuery;
                 return { tagId: tag.id, count: (!error && count !== null) ? count : 0 };
@@ -78,7 +82,7 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
         } catch (err) {
             console.error('Error fetching subsidy counts:', err);
         }
-    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter]);
+    }, [isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter]);
 
     // Fetch Paginated Customer Records with Backend Search
     const fetchCustomers = useCallback(async (pageNum = 0, isAppend = false) => {
@@ -95,12 +99,14 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                 // and unused. The detail modal fetches the full record on open.
                 .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
+                .neq('stage', STAGE_IDS.COMPLETED)
                 .order('created_at', { ascending: false })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 
             if (targetPartner) {
                 query = query.ilike('channel_partner', `%${targetPartner}%`);
             }
+            if (dealerFilter) query = query.ilike('sub_channel_partner', dealerFilter);
 
             if (activeFilter) {
                 query = query.ilike('subsidy_tag', `%${activeFilter}%`);
@@ -147,12 +153,9 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
         } finally {
             setLoading(false);
             setLoadingMore(false);
+            if (pageNum === 0) void fetchCounts();
         }
-    }, [activeFilter, debouncedSearch, isChannelPartnerOffice, partnerName, channelPartnerFilter]);
-
-    useEffect(() => {
-        fetchCounts();
-    }, [fetchCounts]);
+    }, [activeFilter, debouncedSearch, isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter, fetchCounts]);
 
     useEffect(() => {
         setPage(0);
@@ -198,7 +201,7 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
 
                 <div className="flex items-center gap-2 self-end sm:self-center">
                     <button
-                        onClick={() => { fetchCounts(); fetchCustomers(0, false); }}
+                        onClick={() => fetchCustomers(0, false)}
                         className="p-2.5 bg-white hover:bg-stone-50 border border-stone-200 rounded-xl text-stone-600 transition-colors shadow-2xs cursor-pointer"
                         title="Refresh counts"
                     >
@@ -292,7 +295,19 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                                         </span>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-stone-100 text-[10px]">
+                                    <div className="grid grid-cols-3 gap-2 pt-2.5 border-t border-stone-100 text-[10px]">
+                                        <div>
+                                            <p className="text-stone-400 font-bold uppercase tracking-wide">File No.</p>
+                                            <p className="text-xs font-semibold text-stone-700 mt-0.5 truncate">{c.folder_no || '–'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-stone-400 font-bold uppercase tracking-wide">Panel</p>
+                                            <p className="text-xs font-semibold text-stone-700 mt-0.5 truncate">{c.module_brand || '–'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-stone-400 font-bold uppercase tracking-wide">WP</p>
+                                            <p className="text-xs font-semibold text-stone-700 mt-0.5">{c.module_wp || '–'}</p>
+                                        </div>
                                         <div>
                                             <p className="text-stone-400 font-bold uppercase tracking-wide">Capacity</p>
                                             <p className="text-xs font-semibold text-stone-700 mt-0.5">

@@ -1,4 +1,4 @@
-import { FolderOpen, Plus, Search, FileText, Eye, Trash2, Image as ImageIcon } from "lucide-react";
+import { FolderOpen, Plus, Search, FileText, Eye, Trash2, Image as ImageIcon, Download, Loader2 } from "lucide-react";
 import { DocGalleryRemarkRow } from "./shared";
 import { formatDateToDDMMYYYY } from "../../utils";
 
@@ -13,7 +13,10 @@ export default function CustomerDocumentsTab({
     getDocTypeLabel,
     handlePreviewDoc,
     handleDeleteDoc,
-    handleUpdateDocRemark
+    handleUpdateDocRemark,
+    handleDownloadAllDocuments,
+    downloadingAllDocuments,
+    canDownloadAllDocuments = false
 }) {
     const filteredDocs = (documents || []).filter(doc => {
         if (!docSearchQuery.trim()) return true;
@@ -47,8 +50,20 @@ export default function CustomerDocumentsTab({
                         </div>
                     </div>
 
-                    {isEditable && (
-                        <label className="bg-stone-900 hover:bg-stone-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer self-start sm:self-auto">
+                    <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                        {canDownloadAllDocuments && documents.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleDownloadAllDocuments}
+                                disabled={downloadingAllDocuments}
+                                className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                            >
+                                {downloadingAllDocuments ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                <span>{downloadingAllDocuments ? 'Preparing ZIP...' : 'Download All'}</span>
+                            </button>
+                        )}
+                        {isEditable && (
+                            <label className="bg-stone-900 hover:bg-stone-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer">
                             <Plus size={14} />
                             <span>{uploading ? 'Uploading...' : 'Upload File'}</span>
                             <input
@@ -58,8 +73,9 @@ export default function CustomerDocumentsTab({
                                 disabled={uploading}
                                 className="hidden"
                             />
-                        </label>
-                    )}
+                            </label>
+                        )}
+                    </div>
                 </div>
 
                 {/* Search Filter */}

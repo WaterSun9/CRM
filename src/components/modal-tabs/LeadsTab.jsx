@@ -87,7 +87,14 @@ export default function LeadsTab({
                     <EditableDetailItem label="Email Address *" field="email_address" value={editData.email_address || editData.email_address} onChange={handleChange} isEditing={editingSection === 'cus'} />
                     <EditableDetailItem label="Consumer No *" field="consumer_no" value={editData.consumer_no} onChange={handleChange} type="number" isEditing={editingSection === 'cus'} />
                     <EditableDetailItem label="Villages *" field="villages" value={editData.villages} onChange={handleChange} isEditing={editingSection === 'cus'} />
-                    <EditableDetailItem label="Sub Division *" field="sub_divisions" value={editData.sub_divisions} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                    <EditableDetailItem label="Tehsil / Sub Division *" field="sub_divisions" value={editData.sub_divisions} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                    <EditableDetailItem label="District *" field="district" value={editData.district} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                    {String(editData.payment_type || '').trim().toLowerCase() === 'loan' && (
+                        <>
+                            <EditableDetailItem label="Bank Name" field="bank_name" value={editData.bank_name} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                            <EditableDetailItem label="Bank Branch" field="bank_branch" value={editData.bank_branch} onChange={handleChange} isEditing={editingSection === 'cus'} />
+                        </>
+                    )}
                     <EditableDetailItem
                         label="Channel Partner Name *"
                         field="channel_partner"

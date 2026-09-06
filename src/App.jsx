@@ -117,8 +117,21 @@ export default function App() {
             if (isPasswordRecovery) { setLoading(false); return; }
 
             try {
-                // Verify with Supabase auth server that the token is genuinely active & valid
-                const { data: userData, error: userError } = await supabase.auth.getUser();
+                // Read the locally cached session first so the independent remote
+                // Auth and Profile checks can run together instead of serially.
+                // We still refuse access unless getUser confirms the token.
+                const { data: sessionData } = await supabase.auth.getSession();
+                const sessionUser = sessionData?.session?.user;
+                if (!sessionUser) {
+                    setUser(null);
+                    setLoading(false);
+                    return;
+                }
+                const [userResult, profileResult] = await Promise.all([
+                    supabase.auth.getUser(),
+                    supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle()
+                ]);
+                const { data: userData, error: userError } = userResult;
                 if (userError || !userData?.user) {
                     // Token expired or no session
                     setUser(null);
@@ -128,11 +141,7 @@ export default function App() {
 
                 const authUser = userData.user;
                 try {
-                    const { data: profile, error: profileError } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', authUser.id)
-                        .maybeSingle();
+                    const { data: profile, error: profileError } = profileResult;
 
                     if (profileError) {
                         console.warn('Profile fetch warning:', profileError);
@@ -236,9 +245,9 @@ export default function App() {
 
         const onFocus = () => verifyStillActive();
         window.addEventListener('focus', onFocus);
-        verifyStillActive();
-
-        // Periodic heartbeat every 2 minutes to detect background token expiration
+        // Startup already performed these exact two checks. Avoid immediately
+        // repeating them while the first dashboard queries are loading.
+        // Periodic heartbeat every 2 minutes detects later invalidation.
         const heartbeatInterval = setInterval(verifyStillActive, 2 * 60 * 1000);
 
         return () => {

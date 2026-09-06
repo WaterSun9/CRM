@@ -32,6 +32,23 @@ import BrandMark from './BrandMark';
 
 const ViewLoader = () => <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" /></div>;
 
+const MONTH_OPTIONS = [
+    ['01', 'January'], ['02', 'February'], ['03', 'March'], ['04', 'April'],
+    ['05', 'May'], ['06', 'June'], ['07', 'July'], ['08', 'August'],
+    ['09', 'September'], ['10', 'October'], ['11', 'November'], ['12', 'December']
+];
+
+const getMonthBounds = (monthValue, timestamp = false) => {
+    if (!/^\d{4}-\d{2}$/.test(monthValue || '')) return null;
+    const [year, month] = monthValue.split('-').map(Number);
+    const nextYear = month === 12 ? year + 1 : year;
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const next = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+    return timestamp
+        ? { start: `${monthValue}-01T00:00:00+05:30`, end: `${next}T00:00:00+05:30` }
+        : { start: `${monthValue}-01`, end: next };
+};
+
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
     Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck
@@ -87,6 +104,10 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     const [stageSearch, setStageSearch] = useState('');    // per-stage search
     const [channelPartnerFilterInput, setChannelPartnerFilterInput] = useState('');  // typed channel partner name (not yet applied)
     const [channelPartnerFilter, setChannelPartnerFilter] = useState('');    // applied channel partner filter
+    const [dealerFilter, setDealerFilter] = useState('');
+    const [dealerOptions, setDealerOptions] = useState([]);
+    const [leadMonthFilter, setLeadMonthFilter] = useState('');
+    const [registrationMonthFilter, setRegistrationMonthFilter] = useState('');
     const [showChannelPartnerDrop, setShowChannelPartnerDrop] = useState(false);
     const channelPartnerFilterRef = useRef(null);
     const sidebarRef = useRef(null);
@@ -154,6 +175,31 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     // the CPO nor the CP Manager (office2) under it gets access.
     const canSeeDeliveryBatches = user?.userType === 'admin' || user?.userType === 'sales';
     const partnerName = (user?.channel_partner || user?.name || ' ').trim();
+    const effectivePartnerFilter = isChannelPartnerOffice ? partnerName : channelPartnerFilter.trim();
+
+    useEffect(() => {
+        let cancelled = false;
+        setDealerFilter('');
+        if (!effectivePartnerFilter) {
+            setDealerOptions([]);
+            return () => { cancelled = true; };
+        }
+        const loadDealers = async () => {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('name')
+                .eq('user_type', 'agent2')
+                .ilike('channel_partner', effectivePartnerFilter)
+                .eq('status', 'active')
+                .order('name');
+            if (!cancelled) {
+                if (error) console.error('Dealer filter load failed:', error);
+                setDealerOptions([...(new Set((data || []).map(row => row.name).filter(Boolean)))]);
+            }
+        };
+        loadDealers();
+        return () => { cancelled = true; };
+    }, [effectivePartnerFilter]);
 
     const handleFullExport = async () => {
         setExporting(true);
@@ -178,6 +224,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 } else if (channelPartnerFilter && channelPartnerFilter.trim()) {
                     query = query.ilike('channel_partner', channelPartnerFilter.trim());
                 }
+                if (dealerFilter) query = query.ilike('sub_channel_partner', dealerFilter);
 
                 const { data, error } = await query;
                 if (error || !data || data.length === 0) {
@@ -213,14 +260,26 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     // the branch filter changes, not on every write anywhere in the system.
     const fetchMetricsAndMeta = async (skipMeta = false) => {
         const targetPartner = isChannelPartnerOffice ? partnerName : (channelPartnerFilter?.trim() || null);
-        const [metricsRes, metaRes, batchesRes] = await Promise.all([
-            supabase.rpc('get_dashboard_metrics', { 
-                p_channel_partner: targetPartner 
+        let [metricsRes, metaRes, batchesRes] = await Promise.all([
+            supabase.rpc('get_dashboard_metrics_scoped', {
+                p_channel_partner: targetPartner,
+                p_dealer: dealerFilter?.trim() || null
             }),
             skipMeta ? Promise.resolve({ data: null, error: null })
                      : supabase.from('metadata').select('category, label'),
             supabase.from('delivery_batches').select('id', { count: 'exact', head: true }).neq('status', 'DELIVERED')
         ]);
+
+        // Deployment-safe fallback: the UI may be published before the additive
+        // dealer-aware RPC migration is run. Keep the existing counts visible
+        // instead of replacing the entire sidebar with zeroes. Once the new RPC
+        // exists, dealer-filtered metrics are used automatically.
+        if (metricsRes.error) {
+            console.warn('Scoped metrics unavailable; using existing dashboard metrics:', metricsRes.error.message);
+            metricsRes = await supabase.rpc('get_dashboard_metrics', {
+                p_channel_partner: targetPartner
+            });
+        }
 
         let finalMetrics = {
             totalProjects: 0, completedCount: 0, liveProjects: 0, loanCount: 0, cashCount: 0, stageCounts: {}, deliveryBatchesCount: 0,
@@ -277,6 +336,29 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             query = query.ilike('channel_partner', `%${channelPartnerFilter.trim()}%`);
         }
 
+        if (dealerFilter) {
+            query = query.ilike('sub_channel_partner', dealerFilter);
+        }
+
+        const selectedStageMonth = normalizedStage === STAGE_IDS.LEADS
+            ? leadMonthFilter
+            : normalizedStage === STAGE_IDS.REGISTRATION
+                ? registrationMonthFilter
+                : '';
+        if (selectedStageMonth) {
+            const isLeadStage = normalizedStage === STAGE_IDS.LEADS;
+            const now = new Date();
+            const selectedMonth = selectedStageMonth === 'this-month'
+                ? String(now.getMonth() + 1).padStart(2, '0')
+                : selectedStageMonth;
+            const monthValue = `${now.getFullYear()}-${selectedMonth}`;
+            const bounds = getMonthBounds(monthValue, isLeadStage);
+            if (bounds) {
+                const field = isLeadStage ? 'created_at' : 'registration_date';
+                query = query.gte(field, bounds.start).lt(field, bounds.end);
+            }
+        }
+
         const { data, error } = await query;
         if (!error && data) {
             if (pageNum === 0) {
@@ -307,7 +389,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         setPage(0);
         fetchMetricsAndMeta();
         fetchStageCustomers(selectedStage, 0);
-    }, [selectedStage, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
+    }, [selectedStage, channelPartnerFilter, dealerFilter, leadMonthFilter, registrationMonthFilter, isChannelPartnerOffice, partnerName]);
 
     // Refresh when the operator returns to the tab. This is what actually keeps
     // the grid current for most people - they switch away, come back, and see
@@ -329,7 +411,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             window.removeEventListener('focus', onFocus);
             document.removeEventListener('visibilitychange', onFocus);
         };
-    }, [selectedStage, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
+    }, [selectedStage, channelPartnerFilter, dealerFilter, leadMonthFilter, registrationMonthFilter, isChannelPartnerOffice, partnerName]);
 
     useEffect(() => {
         const channel = supabase.channel('admin_changes')
@@ -352,7 +434,13 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 const isVisibleToMe = (row) => {
                     if (!row) return false;
                     if (row.deleted_at) return false;
-                    if (user?.userType === 'admin' || user?.userType === 'sales') return true;
+                    if (dealerFilter && String(row.sub_channel_partner || '').trim().toLowerCase()
+                        !== String(dealerFilter).trim().toLowerCase()) return false;
+                    if (user?.userType === 'admin' || user?.userType === 'sales') {
+                        if (!channelPartnerFilter) return true;
+                        return String(row.channel_partner || '').trim().toLowerCase()
+                            === String(channelPartnerFilter).trim().toLowerCase();
+                    }
                     if (isChannelPartnerOffice) {
                         return String(row.channel_partner || '').trim().toLowerCase()
                             === String(partnerName || '').trim().toLowerCase();
@@ -393,7 +481,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         // user identity is stable for a session, but it is now read inside the
         // handler (isVisibleToMe), so it belongs in the deps rather than being
         // captured in a stale closure.
-    }, [selectedStage, user?.userType, isChannelPartnerOffice, partnerName]);
+    }, [selectedStage, user?.userType, isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter]);
 
     // Sync selectedCustomer state with fresh database values when updates occur
     useEffect(() => {
@@ -453,6 +541,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             } else if (channelPartnerFilter) {
                 query = query.ilike('channel_partner', `%${channelPartnerFilter.trim()}%`);
             }
+            if (dealerFilter) query = query.ilike('sub_channel_partner', dealerFilter);
 
             const { data, error } = await query;
             if (error) console.error("Search error:", error);
@@ -462,7 +551,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
 
         const timer = setTimeout(fetchSearch, 300); // 300ms debounce
         return () => clearTimeout(timer);
-    }, [globalSearch, channelPartnerFilter, isChannelPartnerOffice, partnerName]);
+    }, [globalSearch, channelPartnerFilter, dealerFilter, isChannelPartnerOffice, partnerName]);
 
     const handleGlobalSelect = (customer) => {
         // Navigate to the customer's stage so context is clear
@@ -740,6 +829,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             need(customer.no_of_modules?.toString().trim(), 'Number of Modules');
             need(customer.system_capacity_kwp, 'System Capacity');
             need(customer.sub_divisions?.trim(), 'Sub Division');
+            need(customer.district?.trim(), 'District');
             need(customer.payment_type?.trim(), 'Payment Type');
 
             if (missing.length > 0) {
@@ -1106,6 +1196,9 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         ) : channelPartnerFilter ? (
                             <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">Channel Partner: {channelPartnerFilter}</span>
                         ) : null}
+                        {dealerFilter && (
+                            <span className="text-xs bg-stone-100 text-stone-700 px-2 py-0.5 rounded-full font-bold">Dealer: {dealerFilter}</span>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -1187,6 +1280,20 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                             </div>
                         )}
 
+                        {/* Dealer is a global child-scope filter, just like Channel Partner. */}
+                        {effectivePartnerFilter && (
+                            <select
+                                value={dealerFilter}
+                                onChange={event => setDealerFilter(event.target.value)}
+                                aria-label={`Dealer under ${effectivePartnerFilter}`}
+                                title={`Dealer under ${effectivePartnerFilter}`}
+                                className="hidden lg:block px-3 py-2 bg-stone-100 rounded-xl text-sm font-semibold text-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-300 w-36"
+                            >
+                                <option value="">All dealers</option>
+                                {dealerOptions.map(name => <option key={name} value={name}>{name}</option>)}
+                            </select>
+                        )}
+
                         {user?.userType === 'admin' && (
                             <button 
                                 onClick={handleFullExport}
@@ -1219,9 +1326,9 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                             onOpenCustomerModal={setSelectedCustomer} 
                         />
                     )}
-                    {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
-                    {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
-                    {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} />}
+                    {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
+                    {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
+                    {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
 
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView currentUser={user} />}
                     {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} />}
@@ -1237,6 +1344,27 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         />
                     )}
 
+                    {currentView === 'stages' && (selectedStage === STAGE_IDS.LEADS || selectedStage === STAGE_IDS.REGISTRATION) && (
+                        <div className="mb-4 flex justify-end">
+                            <select
+                                value={selectedStage === STAGE_IDS.LEADS ? leadMonthFilter : registrationMonthFilter}
+                                onChange={event => {
+                                    if (selectedStage === STAGE_IDS.LEADS) setLeadMonthFilter(event.target.value);
+                                    else setRegistrationMonthFilter(event.target.value);
+                                    setPage(0);
+                                }}
+                                aria-label={selectedStage === STAGE_IDS.LEADS ? 'Filter leads by month' : 'Filter registrations by month'}
+                                className="w-40 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-stone-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+                            >
+                                <option value="">Clear filter</option>
+                                <option value="this-month">This month</option>
+                                {MONTH_OPTIONS.map(([value, label]) => (
+                                    <option key={value} value={value}>{label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     {/* Stage grid - identical for every role */}
                     {currentView === 'stages' && (
                         (loading && page === 0) ? (
@@ -1244,7 +1372,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                                 <div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" />
                             </div>
                         ) : filtered.length > 0 ? (
-                            <div className="space-y-6">
+                            <div className="space-y-4">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                                     {filtered.map(c => (
                                         <CustomerCard key={c.id} customer={c} onSelect={setSelectedCustomer} onMoveStage={handleMoveStage} currentUser={user} />
@@ -1264,8 +1392,8 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         ) : (
                             <div className="flex flex-col items-center justify-center h-64 text-stone-400">
                                 <Users className="w-12 h-12 mb-3 text-stone-200" />
-                                <p className="font-medium text-stone-500">{(stageSearch || channelPartnerFilter) ? 'No matching results in this stage' : 'No customers in this stage'}</p>
-                                <p className="text-sm mt-1">{channelPartnerFilter ? `No leads with Channel Partner "${channelPartnerFilter}" here` : stageSearch ? 'Try the global search bar to find across all stages' : 'Move customers here or add a new lead'}</p>
+                                <p className="font-medium text-stone-500">{(stageSearch || channelPartnerFilter || dealerFilter || (selectedStage === STAGE_IDS.LEADS ? leadMonthFilter : selectedStage === STAGE_IDS.REGISTRATION ? registrationMonthFilter : '')) ? 'No matching results in this stage' : 'No customers in this stage'}</p>
+                                <p className="text-sm mt-1">{dealerFilter ? `No records for dealer "${dealerFilter}" here` : (selectedStage === STAGE_IDS.LEADS ? leadMonthFilter : selectedStage === STAGE_IDS.REGISTRATION ? registrationMonthFilter : '') ? 'No records were added in the selected month' : channelPartnerFilter ? `No leads with Channel Partner "${channelPartnerFilter}" here` : stageSearch ? 'Try the global search bar to find across all stages' : 'Move customers here or add a new lead'}</p>
                             </div>
                         )
                     )}
