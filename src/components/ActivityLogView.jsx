@@ -11,7 +11,7 @@
 // publication the live path below picks up again automatically.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../supabase';
 import { Activity, RefreshCw } from 'lucide-react';
 import { ACTION_COLORS } from '../constants';
@@ -33,10 +33,11 @@ export default function ActivityLogView() {
     const [userFilter, setUserFilter] = useState('all');   // 'all' | 'unattributed' | <profile id>
     const [actionFilter, setActionFilter] = useState('all');
     const [actors, setActors] = useState([]);              // [{ id, name }]
+    const actorNames = useMemo(() => new Map(actors.map(actor => [actor.id, actor.name])), [actors]);
 
     // Paging. PAGE_SIZE at a time; `hasMore` is true while the last page came
     // back full, which is the only reliable signal without a count query.
-    const PAGE_SIZE = 200;
+    const PAGE_SIZE = 75;
     const [hasMore, setHasMore] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
 
@@ -54,7 +55,7 @@ export default function ActivityLogView() {
 
             let query = supabase
                 .from('activity_log')
-                .select('*, profiles(name)')
+                .select('id, user_id, customer_id, action, message, new_value, created_at')
                 .order('created_at', { ascending: false })
                 .range(from, from + PAGE_SIZE - 1);
 
@@ -120,7 +121,7 @@ export default function ActivityLogView() {
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_log' }, async (payload) => {
                 const { data } = await supabase
                     .from('activity_log')
-                    .select('*, profiles(name)')
+                    .select('id, user_id, customer_id, action, message, new_value, created_at')
                     .eq('id', payload.new.id)
                     .single();
                 if (!data) return;
@@ -220,7 +221,7 @@ export default function ActivityLogView() {
                         <p className="text-sm text-stone-800">{log.message}</p>
                         {log.new_value && <p className="text-xs text-stone-500 mt-0.5">{log.new_value}</p>}
                         <p className="text-[10px] text-stone-400 mt-1 font-bold uppercase">
-                            {log.profiles?.name || 'Unknown'} • {new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
+                            {actorNames.get(log.user_id) || (log.user_id ? 'Unknown' : 'System')} • {new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
                         </p>
                     </div>
                 </div>

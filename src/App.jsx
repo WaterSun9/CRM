@@ -210,11 +210,32 @@ export default function App() {
         };
 
         const verifyStillActive = async () => {
+            // A mobile tab returning from Camera/Gallery may briefly be offline.
+            // Only an absent session or a definite Auth rejection should end it;
+            // a transient fetch failure must not throw the user out mid-upload.
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (!sessionData?.session) {
+                setAuthError('Your session has expired. Please sign in again.');
+                await endSession('session missing or expired');
+                return;
+            }
+
             // 1. Verify token is genuinely valid on Supabase Auth server
             const { data: authData, error: authErr } = await supabase.auth.getUser();
-            if (authErr || !authData?.user) {
+            if (authErr) {
+                const definiteAuthFailure = [401, 403].includes(authErr.status)
+                    || /invalid.*(jwt|token)|expired.*(jwt|token)|session.*(missing|expired)|not authenticated/i.test(authErr.message || '');
+                if (!definiteAuthFailure) {
+                    console.warn('Session verification deferred after a temporary connection error:', authErr.message);
+                    return;
+                }
                 setAuthError('Your session has expired. Please sign in again.');
                 await endSession('session expired or token invalidated');
+                return;
+            }
+            if (!authData?.user) {
+                setAuthError('Your session has expired. Please sign in again.');
+                await endSession('authenticated user missing');
                 return;
             }
 

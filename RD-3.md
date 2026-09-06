@@ -16,6 +16,9 @@ Deployment status: **PAUSED — do not deploy until this checklist is verified a
 - [x] Make Dealer a global child filter across dashboard metrics, every stage, global search, export, and all tag views.
 - [x] Parallelize startup Auth/Profile verification and remove the duplicate immediate heartbeat.
 - [x] Prioritize tag-view customer records before launching background count queries.
+- [x] Reduce Activity Log payload and remove the repeated Profile join.
+- [ ] Run `scripts/optimize_activity_log_reads.sql` by itself for newest-first Activity Log reads.
+- [x] Persist mobile sessions while Camera/Gallery/Files is open and tolerate transient focus-network errors.
 - [ ] Run `scripts/sync_sidebar_tag_counts.sql` and confirm each sidebar/inside pair matches.
 - [x] Show Installation Payments only after a vendor is selected.
 - [x] Use the same browser Save As flow for PDF and PNG downloads.
