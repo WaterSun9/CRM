@@ -1,6 +1,7 @@
 import { FolderOpen, Plus, Search, FileText, Eye, Trash2, Image as ImageIcon, Download, Loader2 } from "lucide-react";
 import { DocGalleryRemarkRow } from "./shared";
 import { formatDateToDDMMYYYY } from "../../utils";
+import { useGlobalPopup } from "../GlobalPopup";
 
 export default function CustomerDocumentsTab({
     documents,
@@ -18,6 +19,16 @@ export default function CustomerDocumentsTab({
     downloadingAllDocuments,
     canDownloadAllDocuments = false
 }) {
+    const { showConfirm } = useGlobalPopup();
+
+    const confirmDocumentDelete = async (doc) => {
+        const confirmed = await showConfirm(
+            `Are you sure you want to permanently delete “${doc.file_name || 'this document'}”? It will be removed from the backend and cannot be recovered.`,
+            { title: 'Delete Document?', confirmLabel: 'Delete Permanently', cancelLabel: 'Cancel', type: 'danger' }
+        );
+        if (confirmed) await handleDeleteDoc(doc);
+    };
+
     const filteredDocs = (documents || []).filter(doc => {
         if (!docSearchQuery.trim()) return true;
         const q = docSearchQuery.trim().toLowerCase();
@@ -152,7 +163,7 @@ export default function CustomerDocumentsTab({
                                             {canDelete && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleDeleteDoc(doc)}
+                                                    onClick={() => confirmDocumentDelete(doc)}
                                                     className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
                                                     title="Delete Document"
                                                 >

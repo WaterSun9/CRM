@@ -28,3 +28,12 @@ Deployment status: **PAUSED — do not deploy until this checklist is verified a
 - [x] Verify the responsive controls locally without writing customer data.
 - [x] Run the final read-only load test for this batch (admin/vendor succeeded; six stored test credentials need refreshing).
 - [ ] Obtain approval before production deployment.
+
+## Deferred Activity Log improvements
+
+- [ ] Add a Role filter (Admin, Sales/Office, CPO, Manager, CP, Dealer, Vendor, Stamp).
+- [ ] Record account-role changes as a dedicated `role_change` action showing old role → new role and who changed it.
+- [ ] Add quick filters for customer edits, stage changes, account changes, errors, uploads, and deletions.
+- [ ] Store reliable field-level before/after values so a reported reversion can be traced without treating the current row as the only source of truth.
+- [ ] Add date/month filtering and customer File Number/Consumer Number search.
+- [ ] Review retention and access rules before adding database-level audit history, because it will create additional audit records.

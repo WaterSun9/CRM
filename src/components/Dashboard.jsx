@@ -933,8 +933,8 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         await logActivity(
             user.id,
             'stage_change',
-            `${customer.customer_name}: STAGE: ${oldStage} → ${newStage}`,
-            '',
+            `${customer.customer_name}: Stage changed`,
+            `Stage: ${oldStage || 'Empty'} → ${newStage || 'Empty'}`,
             id
         );
     };

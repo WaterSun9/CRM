@@ -619,6 +619,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             customer.id
         );
         fetchLogs();
+        return true;
     };
 
     // Returns true/false so the remark rows in shared.jsx can show the real
@@ -1154,7 +1155,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             savedDataRef.current = { ...savedDataRef.current, ...narrowed };
             setActiveTab(destStageId);
 
-            void logActivity(user.id, 'stage_change', `${customer.customer_name}: STAGE: ${oldStage} → ${destStageId}`, '', customer.id);
+            void logActivity(
+                user.id,
+                'stage_change',
+                `${customer.customer_name}: Stage changed`,
+                `Stage: ${oldStage || 'Empty'} → ${destStageId || 'Empty'}`,
+                customer.id
+            );
             if (changeSummary.length > 0) {
                 void logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id);
             }
@@ -1234,8 +1241,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         await logActivity(
             user.id,
             'stage_change',
-            `${customer.customer_name}: moved to Lost Project from ${originLabel}`,
-            '',
+            `${customer.customer_name}: Stage changed`,
+            `Stage: ${originStage || 'Empty'} → ${STAGE_IDS.LOST_PROJECT}`,
             customer.id
         );
         fetchLogs();
@@ -1460,6 +1467,20 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             if (changeSummary.length > 0) promises.push(logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id));
             const [updateResult] = await Promise.all(promises);
             if (updateResult === false) throw new Error('The database did not accept the changes.');
+
+            // Admins can override a customer's stage and then use the regular
+            // Save button. That route previously persisted the stage but never
+            // wrote a stage_change entry because `stage` is intentionally
+            // excluded from the generic field summary above.
+            if (stageChanged) {
+                await logActivity(
+                    user.id,
+                    'stage_change',
+                    `${customer.customer_name}: Stage changed by admin override`,
+                    `Stage: ${customer.stage || 'Empty'} → ${editData.stage || 'Empty'}`,
+                    customer.id
+                );
+            }
 
             // Re-read what the server actually stored, and use ITS updated_at as
             // the new baseline. Two separate bugs made the conflict dialog fire

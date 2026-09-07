@@ -618,6 +618,32 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         const todayStr = new Date().toISOString().split('T')[0];
         const effectiveInstallDate = installationDate || (normalizeInstallationStatus(installationStatus) === 'Yes' ? todayStr : null);
 
+        // Build the audit detail from values that genuinely changed. Besides
+        // making the log useful, this prevents the already-saved button from
+        // creating a misleading "updated" entry for a no-op save.
+        const auditChanges = [];
+        const addAuditChange = (label, before, after) => {
+            const oldValue = String(before ?? '').trim();
+            const newValue = String(after ?? '').trim();
+            if (oldValue !== newValue) {
+                auditChanges.push(`${label}: ${oldValue || 'Empty'} → ${newValue || 'Empty'}`);
+            }
+        };
+        if (activeTab === 'INSTALLATION') {
+            addAuditChange('Installation Status', selectedCust?.installation_status, installationStatus);
+            addAuditChange('Installation Date', selectedCust?.installation_date, effectiveInstallDate);
+            addAuditChange('Vendor Note', selectedCust?.vendor_note, vendorNote);
+        } else if (activeTab === 'GEO') {
+            addAuditChange('Geo Tag Status', selectedCust?.geo_tag_status, geoTagStatus);
+        }
+        if (nextStage) addAuditChange('Stage', selectedCust?.stage, nextStage);
+
+        if (auditChanges.length === 0) {
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 2000);
+            return true;
+        }
+
         // Comprehensive Logical Validation when advancing from Installation to Geo Tag
         if (nextStage === STAGE_IDS.GEO_TAG_PHOTO) {
             const missingItems = [];
@@ -702,7 +728,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                     user.id,
                     'update',
                     `${selectedCust.customer_name}: ${logMsg}`,
-                    '',
+                    auditChanges.join(' · '),
                     selectedCust.id
                 );
             }
@@ -846,7 +872,9 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     const geoDocs = documents.filter(d => d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag');
 
     const saveBeforeVendorExit = async (confirmLabel) => {
-        const hasChanges = (activeTab === 'INSTALLATION' && isInstallationDirty) || (activeTab === 'GEO' && isGeoTagDirty);
+        const hasChanges =
+            (activeTab === 'INSTALLATION' && canEditInstallation && isInstallationDirty) ||
+            (activeTab === 'GEO' && canEditGeoTag && isGeoTagDirty);
         if (!hasChanges) return true;
         const shouldSave = await showConfirm('You have unsaved changes. Save them before leaving?', {
             title: 'Unsaved changes',
@@ -1110,7 +1138,9 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                     <div className="flex items-center justify-between">
                         <button
                             onClick={async () => {
-                                const hasChanges = (activeTab === 'INSTALLATION' && isInstallationDirty) || (activeTab === 'GEO' && isGeoTagDirty);
+                                const hasChanges =
+                                    (activeTab === 'INSTALLATION' && canEditInstallation && isInstallationDirty) ||
+                                    (activeTab === 'GEO' && canEditGeoTag && isGeoTagDirty);
                                 if (hasChanges) {
                                     const shouldSave = await showConfirm('You have unsaved changes. Save them before going back?', { title: 'Unsaved changes', confirmLabel: 'Save & Back', cancelLabel: 'Keep Editing', type: 'success' });
                                     if (!shouldSave || !(await handleSaveChanges(null))) return;
@@ -1152,7 +1182,9 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         key={tab.id}
                                         type="button"
                                         onClick={async () => {
-                                            const hasChanges = (activeTab === 'INSTALLATION' && isInstallationDirty) || (activeTab === 'GEO' && isGeoTagDirty);
+                                            const hasChanges =
+                                                (activeTab === 'INSTALLATION' && canEditInstallation && isInstallationDirty) ||
+                                                (activeTab === 'GEO' && canEditGeoTag && isGeoTagDirty);
                                             if (tab.id !== activeTab && hasChanges) {
                                                 const shouldSave = await showConfirm('You have unsaved changes. Save them before continuing?', { title: 'Unsaved changes', confirmLabel: 'Save & Continue', cancelLabel: 'Keep Editing', type: 'success' });
                                                 if (!shouldSave || !(await handleSaveChanges(null))) return;
@@ -1167,7 +1199,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                     >
                                         <Icon size={11} />
                                         <span className="hidden sm:inline">{tab.label}</span>
-                                        <span className="sm:hidden">{tab.id === 'GEO' ? 'Geo' : 'Install'}</span>
+                                        <span className="sm:hidden">{tab.id === 'DELIVERY' ? 'Delivery' : tab.id === 'GEO' ? 'Geo' : 'Install'}</span>
                                     </button>
                                 );
                             })}
@@ -1195,7 +1227,9 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                         <div className="space-y-4">
                             {vendorIsFutureTab && (
                                 <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 text-center">
-                                    <p className="text-xs font-bold text-amber-800">This stage is view-only until the office moves the customer here.</p>
+                                    <p className="text-xs font-bold text-amber-800">
+                                        You can view this step, but editing is locked. Complete {currentStageLabel} and use its “Save & Move” button to unlock it.
+                                    </p>
                                 </div>
                             )}
                             {vendorIsPastTab && (
@@ -1429,14 +1463,24 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                     <div className="pt-2">
                                         <button
                                             type="button"
-                                            onClick={() => handleSaveChanges(STAGE_IDS.DISCOM_SUBMISSION)}
-                                            disabled={saving || !canEditGeoTag || geoTagStatus !== 'Proceed' || geoDocs.length === 0 || vendorIsFutureTab}
+                                            onClick={() => {
+                                                if (vendorIsFutureTab) {
+                                                    const message = selectedStage === STAGE_IDS.INSTALLATION_STATUS
+                                                        ? 'Complete Installation first: mark Physical Installation Status as Yes, confirm the Installation Date, then use “Save & Move to Geo Tag Photo”.'
+                                                        : `This customer is currently at ${currentStageLabel}. Complete that stage before moving from Geo Tag Photo.`;
+                                                    setStageMoveError(message);
+                                                    showAlert(message, { title: 'Complete Installation First', type: 'warning' });
+                                                    return;
+                                                }
+                                                handleSaveChanges(STAGE_IDS.DISCOM_SUBMISSION);
+                                            }}
+                                            disabled={saving || vendorIsPastTab}
                                             title={geoTagStatus !== 'Proceed' || geoDocs.length === 0 ? 'Set status to Proceed and upload a geo-tag photo first.' : undefined}
                                             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] cursor-pointer"
                                         >
                                             {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving & Moving...</> : <><CheckCircle2 size={14} /> Save & Move to Discom Submission</>}
                                         </button>
-                                        {(geoTagStatus !== 'Proceed' || geoDocs.length === 0) && (
+                                        {!vendorIsFutureTab && (geoTagStatus !== 'Proceed' || geoDocs.length === 0) && (
                                             <p className="mt-2 text-center text-[10px] font-semibold text-rose-600">Set status to Proceed and upload a geo-tag photo to continue.</p>
                                         )}
                                         <button
@@ -1591,7 +1635,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 <button
                                                     type="button"
                                                     onClick={() => handleSaveChanges(null)}
-                                                    disabled={saving || !canEditInstallation}
+                                                    disabled={saving || !canEditInstallation || !isInstallationDirty}
                                                     className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
                                                         isInstallationDirty
                                                             ? 'bg-stone-900 text-white hover:bg-stone-850'
@@ -1611,7 +1655,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                             <button
                                                 type="button"
                                                 onClick={() => handleSaveChanges(null)}
-                                                disabled={saving || !canEditInstallation}
+                                                disabled={saving || !canEditInstallation || !isInstallationDirty}
                                                 className={`w-full py-3.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
                                                     isInstallationDirty
                                                         ? 'bg-stone-900 text-white hover:bg-stone-850'

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as ImageIcon, Download, MessageSquare, Check } from 'lucide-react';
 import { formatINR, toIndianCommas, parseIndianNumber, formatInputValue } from '../../utils';
 import { supabase } from '../../supabase';
+import { useGlobalPopup } from '../GlobalPopup';
 
 // ─── Vendor name list (process-wide cache) ────────────────────────────────────
 // InstallationStatusTab and MaterialDeliveryTab each fetched this on mount with
@@ -488,6 +489,7 @@ export const RETURNED_DOCUMENT_PREFIX = '[RETURNED]';
 export const isReturnedDocument = (doc) => String(doc?.remark || '').trim().toUpperCase().startsWith(RETURNED_DOCUMENT_PREFIX);
 
 export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onDownload, onUpdateRemark, note, canDelete = false, canReplace = canDelete, allowReturnedReplace = !canDelete }) {
+    const { showConfirm } = useGlobalPopup();
     const fieldDocs = documents.filter(d => d.doc_type === field);
     const fileInputRef = React.useRef(null);
     const [replacingDocId, setReplacingDocId] = React.useState(null);
@@ -529,7 +531,13 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
     };
 
     const handleDeleteClick = async (doc) => {
-        if (onDelete) await onDelete(doc);
+        const confirmed = await showConfirm(
+            `Are you sure you want to permanently delete “${doc.file_name || 'this document'}”? It will be removed from the backend and cannot be recovered.`,
+            { title: 'Delete Document?', confirmLabel: 'Delete Permanently', cancelLabel: 'Cancel', type: 'danger' }
+        );
+        if (!confirmed) return;
+        const result = onDelete ? await onDelete(doc) : false;
+        if (result === false) return;
         const remaining = fieldDocs.filter(d => d.id !== doc.id);
         if (remaining.length === 0 && onChange) {
             onChange(field, false);
