@@ -1,0 +1,1 @@
+import{Nt as e}from"./index-h9Hk3nR7.js";var t=e(`ChevronRight`,[[`path`,{d:`m9 18 6-6-6-6`,key:`mthhwq`}]]);export{t};
