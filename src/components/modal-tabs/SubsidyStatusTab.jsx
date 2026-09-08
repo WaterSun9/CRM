@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { History } from 'lucide-react';
 import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, isFinalTagValue } from '../../constants';
+import { CheckboxRemarkItem } from './shared';
 
 export default function SubsidyStatusTab({
     customer,
@@ -10,12 +11,18 @@ export default function SubsidyStatusTab({
     onUpdate,
     logActivity,
     fetchLogs,
-    user
+    user,
+    documents = [],
+    onFileUpload,
+    onFileDelete,
+    onFilePreview,
+    onUpdateRemark
 }) {
     const today = new Date().toISOString().split('T')[0];
     const [draftStatus, setDraftStatus] = useState('Approved');
     const [draftDate, setDraftDate] = useState(today);
     const [draftRemark, setDraftRemark] = useState('');
+    const canDeleteDocs = ['admin', 'sales', 'office'].includes(user?.userType);
 
     const handleToggleSubsidyTag = (tagId) => {
         const newTag = editData.subsidy_tag === tagId ? null : tagId;
@@ -115,6 +122,28 @@ export default function SubsidyStatusTab({
                         );
                     })}
                 </div>
+            </section>
+
+            {/* Optional supporting document: the document row itself is the
+                source of truth, so no new admin-table boolean is required. */}
+            <section className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-3">
+                <div className="border-b border-stone-100 pb-2">
+                    <h3 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Subsidy Documents</h3>
+                    <p className="mt-1 text-[10px] font-medium text-stone-400">Optional supporting documents</p>
+                </div>
+                <CheckboxRemarkItem
+                    label="Plant Commissioning Report (Optional)"
+                    field="plant_commissioning_report"
+                    value={editData.plant_commissioning_report}
+                    onChange={(field, value) => setEditData(prev => ({ ...prev, [field]: value }))}
+                    isEditing={isEditable}
+                    documents={documents}
+                    onUpload={onFileUpload}
+                    onDelete={onFileDelete}
+                    onPreview={onFilePreview}
+                    onUpdateRemark={onUpdateRemark}
+                    canDelete={canDeleteDocs}
+                />
             </section>
 
             {/* Subsidy History Timeline */}

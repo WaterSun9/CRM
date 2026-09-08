@@ -580,7 +580,16 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (downloadingAllDocuments) return;
         setDownloadingAllDocuments(true);
         try {
-            const result = await downloadDocumentsAsZip(documents, customer.customer_name);
+            // Signatures remain stored and individually viewable, but must not be
+            // copied into the bulk customer-document export.
+            const signatureTypes = new Set([
+                'signature_pic',
+                'signature',
+                'firstPartySignature',
+                'customer_signature'
+            ]);
+            const bulkDocuments = documents.filter(doc => !signatureTypes.has(doc?.doc_type));
+            const result = await downloadDocumentsAsZip(bulkDocuments, customer.customer_name);
             if (result.failed.length > 0) {
                 showAlert(`${result.downloaded} document(s) were downloaded. ${result.failed.length} could not be included.`, { type: 'warning' });
             }
@@ -902,8 +911,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const isRegistrationFieldsFilled = !!(
         editData.registration_date &&
         editData.registration_by?.trim() &&
-        (editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim()) &&
-        editData.folder_no?.toString().trim()
+        (editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim())
     );
     const isRegistrationReady = isRegistrationFieldsFilled && hasFeasibilityDoc && hasSubsidyTokenDoc && hasApplicationAcknowledgment;
 
@@ -939,7 +947,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(editData.registration_date, 'Registration Date');
                 requireField(editData.registration_by?.trim(), 'Registration By');
                 requireField(editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim(), 'Feasibility No');
-                requireField(editData.folder_no?.toString().trim(), 'File No');
                 requireField(hasFeasibilityDoc, 'Feasibility Document');
                 requireField(hasSubsidyTokenDoc, 'Subsidy Token Photo');
                 requireField(hasApplicationAcknowledgment, 'Application Acknowledgment');
@@ -986,7 +993,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             case STAGE_IDS.METER_INSTALLATION:
                 requireField(normalizeMeterInstallation(editData.meter_installation) === 'Yes', 'Meter Installation Status must be Yes');
                 requireField(editData.installation_date, 'Meter Installation Date');
-                requireField(editData.meter_installation_photo, 'Meter Installation Photo');
                 break;
             case STAGE_IDS.DISCOM_INSPECTION:
                 requireField(editData.discom_inspection === 'Yes', 'Discom Inspection Status must be Yes');

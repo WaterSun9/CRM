@@ -50,6 +50,8 @@ export const DEFAULT_LEAD_FORM = {
     driver_name: '',
     driver_phone_number: '',
     dcr_certificate: false,
+    pcr_certificate: false,
+    plant_commissioning_report: false,
     signature_pic: false,
     stamp: false,
     vendor_feasibility: false,

@@ -1,6 +1,5 @@
 import React from 'react';
-import { ShieldAlert, Zap, ClipboardList } from 'lucide-react';
-import { CheckboxRemarkItem } from './shared';
+import { ShieldAlert, Zap } from 'lucide-react';
 import { normalizeMeterInstallation } from '../../utils';
 
 export default function MeterInstallationTab({
@@ -20,8 +19,6 @@ export default function MeterInstallationTab({
     onFilePreview,
     onUpdateRemark
 }) {
-    const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
-
     // Admin, Vendor, and Channel Partner Office can edit. Office is view-only.
     const isVendor = user?.userType === 'vendor';
     const isAdmin = user?.userType === 'admin';
@@ -41,7 +38,7 @@ export default function MeterInstallationTab({
                     <div>
                         <p className="text-xs font-bold text-amber-900">Vendor & Admin Controlled Stage</p>
                         <p className="text-[11px] text-amber-700 font-medium">
-                            Meter installation status, photographs, and verification dates are configured directly by the Allotted Vendor or Admin. Office users have view-only access.
+                            Meter installation status and verification date are configured directly by the Allotted Vendor or Admin. Office users have view-only access.
                         </p>
                     </div>
                 </div>
@@ -112,35 +109,6 @@ export default function MeterInstallationTab({
                 </div>
             </div>
 
-            {/* Meter Installation Photo Checklist */}
-            <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
-                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest flex items-center gap-2">
-                        <ClipboardList className="w-4 h-4 text-amber-500" /> Meter Photo Checklist
-                    </h4>
-                    <span className="text-[9px] font-bold text-stone-400 bg-stone-50 px-2 py-0.5 rounded border border-stone-150">
-                        Upload to Verify
-                    </span>
-                </div>
-                {!canEditMeter && (
-                    <p className="text-[10px] text-stone-400 font-semibold italic">Only vendors and admins can edit this section. You have view-only access.</p>
-                )}
-                <div className="flex flex-col gap-2">
-                    <CheckboxRemarkItem 
-                        label="Meter Installation Photo *" 
-                        field="meter_installation_photo" 
-                        value={editData.meter_installation_photo} 
-                        onChange={handleChange || ((field, val) => setEditData(prev => ({ ...prev, [field]: val })))} 
-                        isEditing={canEditMeter} 
-                        documents={documents} 
-                        onUpload={onFileUpload} 
-                        onDelete={onFileDelete} 
-                        onPreview={onFilePreview} 
-                        onUpdateRemark={onUpdateRemark}
-                        canDelete={canDeleteDocs}
-                    />
-                </div>
-            </div>
         </div>
     );
 }

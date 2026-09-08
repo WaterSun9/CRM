@@ -77,7 +77,7 @@ export default function RegistrationTab({
                         isEditing={editingSection === 'reg_details'} 
                     />
                     <EditableDetailItem 
-                        label={<span>File No <span className="text-red-500">*</span></span>} 
+                        label="File No"
                         field="folder_no" 
                         value={editData.folder_no} 
                         onChange={handleChange} 
