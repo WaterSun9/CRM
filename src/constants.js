@@ -409,6 +409,7 @@ export const ADMIN_COLUMNS = new Set([
     'feasibility_no',
     'feasibilty_document',
     'folder_no',
+    'full_address',
     'follow_ups',
     'geo_tag_image',
     'geo_tag_status',
@@ -445,6 +446,7 @@ export const ADMIN_COLUMNS = new Set([
     'payment_type',
     'plant_commissioning_report',
     'phone_number',
+    'pincode',
     'pm_surya_ghar_stamp',
     'registration_by',
     'registration_date',
@@ -520,7 +522,7 @@ export const DEFAULT_PAGE_SIZE = 50;
 // Also covers the fields handleMoveStage validates before letting a lead leave
 // the Leads stage (villages, module_brand, sub_divisions) - narrowing the grid
 // query without these would make that check see undefined and falsely block.
-export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, email_address, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_brand, module_wp, no_of_modules, villages, sub_divisions, district, registration_date, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, stages_remarks, vendor, geo_tag_status';
+export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, email_address, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_brand, module_wp, no_of_modules, villages, full_address, pincode, sub_divisions, district, registration_date, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, stages_remarks, vendor, geo_tag_status';
 
 // Vendor list cards and stage counters do not need the full admin record. The
 // complete record is fetched only when a vendor opens one assignment.

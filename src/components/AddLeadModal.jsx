@@ -365,7 +365,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         };
 
         // Ensure string fields are strings to pass Zod schema
-        ['customer_name', 'phone_number', 'email_address', 'consumer_no', 'villages', 'district', 'channel_partner', 'module_brand', 'module_wp', 'no_of_modules', 'system_capacity_kwp', 'sub_divisions', 'bank_name', 'bank_branch'].forEach(key => {
+        ['customer_name', 'phone_number', 'email_address', 'consumer_no', 'villages', 'full_address', 'pincode', 'district', 'channel_partner', 'module_brand', 'module_wp', 'no_of_modules', 'system_capacity_kwp', 'sub_divisions', 'bank_name', 'bank_branch'].forEach(key => {
             if (finalData[key] !== undefined && finalData[key] !== null) {
                 finalData[key] = String(finalData[key]);
             }
@@ -558,6 +558,26 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     placeholder="Village or address"
                                     required
                                 />
+                            </div>
+
+                            {/* Tehsil / Sub Division */}
+                            <div className="space-y-1 md:col-span-2">
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">Full Address <span className="normal-case text-stone-400">(optional)</span></label>
+                                <textarea
+                                    rows={3}
+                                    value={formData.full_address || ''}
+                                    onChange={e => handleChange('full_address', e.target.value)}
+                                    className="w-full resize-y bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                    placeholder="Complete installation address"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">Pincode <span className="normal-case text-stone-400">(optional)</span></label>
+                                <input type="text" inputMode="numeric" maxLength={6} value={formData.pincode || ''}
+                                    onChange={e => handleChange('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                                    placeholder="6-digit pincode" />
                             </div>
 
                             {/* Tehsil / Sub Division */}

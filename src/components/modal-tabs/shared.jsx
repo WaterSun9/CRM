@@ -279,6 +279,9 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
                         Auto
                     </button>
                 </div>
+            ) : type === 'textarea' ? (
+                <textarea rows={3} value={value || ''} onChange={e => onChange(field, e.target.value)}
+                    className="w-full resize-y bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300" />
             ) : (
                 <input type={type} value={value || ''} onChange={e => onChange(field, e.target.value)}
                     className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-amber-300" />

@@ -877,8 +877,20 @@ const safeDownloadName = (value, fallback = 'file') => {
 };
 
 const BULK_DOWNLOAD_EXCLUDED_TYPES = new Set([
-    'signature_pic', 'signature', 'firstPartySignature', 'customer_signature'
+    'signature_pic', 'signature', 'firstPartySignature', 'customer_signature',
+    // Meter Installation Photo was removed from the workflow. Keep legacy
+    // rows/storage intact, but never include either historical alias in the
+    // combined customer-document PDF.
+    'meter_installation_photo', 'meter_photo'
 ]);
+
+const isBulkDownloadExcluded = (doc) => {
+    if (BULK_DOWNLOAD_EXCLUDED_TYPES.has(doc?.doc_type)) return true;
+    // Covers older/imported rows whose type was blank or inconsistent but whose
+    // filename clearly identifies the retired meter-installation photograph.
+    const fileName = String(doc?.file_name || '').toLowerCase().replace(/[\s-]+/g, '_');
+    return fileName.includes('meter_installation_photo') || fileName.includes('meter_photo');
+};
 
 const blobToOptimizedJpeg = async (blob) => {
     const objectUrl = URL.createObjectURL(blob);
@@ -920,7 +932,7 @@ const blobToOptimizedJpeg = async (blob) => {
 // sequentially to cap peak memory. It never changes Storage or document rows.
 export const downloadDocumentsAsPdf = async (documents, customerName) => {
     const docs = (documents || []).filter(doc =>
-        doc?.storage_path && !BULK_DOWNLOAD_EXCLUDED_TYPES.has(doc.doc_type)
+        doc?.storage_path && !isBulkDownloadExcluded(doc)
     );
     if (docs.length === 0) throw new Error('This client has no documents to download.');
 

@@ -52,6 +52,11 @@ export const leadSchema = z.object({
     .min(2, "Address must be at least 2 characters")
     .trim(),
 
+    full_address: z.string().trim().optional().or(z.literal('')),
+    pincode: z.string().trim().refine(value => value === '' || /^\d{6}$/.test(value), {
+        message: 'Pincode must contain exactly 6 digits'
+    }).optional(),
+
     channel_partner: z.string({
         error: "Channel Partner Name is required",
     })

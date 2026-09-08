@@ -486,6 +486,11 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         );
     });
 
+    const getTelephoneHref = (phone) => {
+        const normalized = String(phone || '').replace(/[^\d+]/g, '');
+        return normalized && /\d/.test(normalized) ? `tel:${normalized}` : null;
+    };
+
     // Group by stage
     const getCustomersByStage = (stageId) => {
         return filteredCustomers.filter(c => c.stage === stageId);
@@ -645,6 +650,10 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
 
     // Filter customers for workdesk
     const getWorkdeskCustomers = (stageTab) => {
+        // On mobile, search is a directory-wide search across every customer
+        // already returned by RLS for this Agent/Dealer. With no search, keep
+        // the normal stage-specific work queue.
+        if (searchQuery.trim()) return filteredCustomers;
         return filteredCustomers.filter(c => c.stage === stageTab);
     };
 
@@ -1077,7 +1086,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                         </button>
                         <div>
                             <h2 className="text-sm md:text-lg font-black text-stone-900 uppercase tracking-tight flex items-center gap-2">
-                                {PRIMARY_STAGES.find(s => s.id === activeWorkdeskTab)?.label || activeWorkdeskTab}
+                                {searchQuery.trim() ? 'Search Results' : (PRIMARY_STAGES.find(s => s.id === activeWorkdeskTab)?.label || activeWorkdeskTab)}
                             </h2>
                         </div>
                     </div>
@@ -1164,7 +1173,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                             {getWorkdeskCustomers(activeWorkdeskTab).map((cust) => (
                                 <div
                                     key={cust.id}
-                                    onClick={() => handleSelectCustomerForStage(cust, activeWorkdeskTab)}
+                                    onClick={() => handleSelectCustomerForStage(cust, searchQuery.trim() ? cust.stage : activeWorkdeskTab)}
                                     className="bg-white p-4 md:p-5 rounded-2xl border border-stone-200/80 shadow-sm hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] flex flex-col justify-between"
                                 >
                                     <div>
@@ -1172,9 +1181,22 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                             <h4 className="text-sm font-black text-stone-900 group-hover:text-blue-600 transition-colors leading-snug">
                                                 {cust.customer_name}
                                             </h4>
-                                            <button type="button" className="shrink-0 w-6 h-6 md:w-7 md:h-7 bg-stone-50 group-hover:bg-blue-600 group-hover:text-white text-stone-400 rounded-lg transition-all flex items-center justify-center shadow-2xs border border-stone-100 group-hover:border-blue-600">
-                                                <ChevronRight size={14} />
-                                            </button>
+                                            <div className="flex items-center gap-1.5">
+                                                {getTelephoneHref(cust.phone_number) && (
+                                                    <a
+                                                        href={getTelephoneHref(cust.phone_number)}
+                                                        onClick={event => event.stopPropagation()}
+                                                        aria-label={`Call ${cust.customer_name}`}
+                                                        title={`Call ${cust.phone_number}`}
+                                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-600 hover:text-white"
+                                                    >
+                                                        <Phone size={14} />
+                                                    </a>
+                                                )}
+                                                <button type="button" aria-label={`Open ${cust.customer_name}`} className="shrink-0 w-7 h-7 bg-stone-50 group-hover:bg-blue-600 group-hover:text-white text-stone-400 rounded-lg transition-all flex items-center justify-center shadow-2xs border border-stone-100 group-hover:border-blue-600">
+                                                    <ChevronRight size={14} />
+                                                </button>
+                                            </div>
                                         </div>
                                         
                                         <div className="space-y-1.5 md:space-y-2 text-[11px] md:text-xs text-stone-600">
@@ -1287,6 +1309,16 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 ml-3">
+                                {getTelephoneHref(selectedCust.phone_number) && (
+                                    <a
+                                        href={getTelephoneHref(selectedCust.phone_number)}
+                                        aria-label={`Call ${selectedCust.customer_name}`}
+                                        title={`Call ${selectedCust.phone_number}`}
+                                        className="flex h-9 items-center gap-1.5 rounded-full bg-emerald-600 px-3 text-[10px] font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-emerald-700"
+                                    >
+                                        <Phone size={14} /> Call
+                                    </a>
+                                )}
                                 <button
                                     onClick={async () => { if (await saveBeforeAgentExit('Save & Close')) setSelectedCust(null); }}
                                     className="w-8 h-8 rounded-full bg-stone-200/70 hover:bg-stone-300 flex items-center justify-center text-stone-600 hover:text-stone-900 transition-colors font-bold text-xs cursor-pointer"

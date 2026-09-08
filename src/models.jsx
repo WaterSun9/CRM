@@ -9,6 +9,8 @@ export const DEFAULT_LEAD_FORM = {
     bank_name: '',
     bank_branch: '',
     villages: '',
+    full_address: '',
+    pincode: '',
     district: '',
     folder_no: '',
     module_brand: '',
