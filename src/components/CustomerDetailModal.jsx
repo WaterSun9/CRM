@@ -23,7 +23,7 @@ import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
 import { Page1 } from './agreement/Page1';
 import { FileText, Printer } from 'lucide-react';
-import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark, downloadFileWithSaveAs, downloadDocumentsAsZip } from '../utils';
+import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
 
 const getDocTypeLabel = (type) => {
     if (!type) return 'Client Attachment';
@@ -580,16 +580,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (downloadingAllDocuments) return;
         setDownloadingAllDocuments(true);
         try {
-            // Signatures remain stored and individually viewable, but must not be
-            // copied into the bulk customer-document export.
-            const signatureTypes = new Set([
-                'signature_pic',
-                'signature',
-                'firstPartySignature',
-                'customer_signature'
-            ]);
-            const bulkDocuments = documents.filter(doc => !signatureTypes.has(doc?.doc_type));
-            const result = await downloadDocumentsAsZip(bulkDocuments, customer.customer_name);
+            const result = await downloadDocumentsAsPdf(documents, customer.customer_name);
             if (result.failed.length > 0) {
                 showAlert(`${result.downloaded} document(s) were downloaded. ${result.failed.length} could not be included.`, { type: 'warning' });
             }

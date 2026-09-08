@@ -9,7 +9,7 @@ import {
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
     Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal
 } from 'lucide-react';
-import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsZip } from '../utils';
+import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS } from '../constants';
 import AddLeadModal from './AddLeadModal';
@@ -560,7 +560,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         if (downloadingAllDocs) return;
         setDownloadingAllDocs(true);
         try {
-            const result = await downloadDocumentsAsZip(custDocs, selectedCust?.customer_name);
+            const result = await downloadDocumentsAsPdf(custDocs, selectedCust?.customer_name);
             if (result.failed.length > 0) {
                 showAlert(`${result.downloaded} document(s) downloaded; ${result.failed.length} could not be included.`, { type: 'warning' });
             }
@@ -1427,7 +1427,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 disabled={downloadingAllDocs}
                                                 className="rounded-lg bg-amber-500 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-amber-600 disabled:opacity-60"
                                             >
-                                                {downloadingAllDocs ? 'Preparing ZIP...' : 'Download All'}
+                                                {downloadingAllDocs ? 'Preparing PDF...' : 'Download All PDF'}
                                             </button>
                                         )}
                                     </div>

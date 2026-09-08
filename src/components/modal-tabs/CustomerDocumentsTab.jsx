@@ -70,7 +70,7 @@ export default function CustomerDocumentsTab({
                                 className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
                             >
                                 {downloadingAllDocuments ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                                <span>{downloadingAllDocuments ? 'Preparing ZIP...' : 'Download All'}</span>
+                                <span>{downloadingAllDocuments ? 'Preparing PDF...' : 'Download All PDF'}</span>
                             </button>
                         )}
                         {isEditable && (

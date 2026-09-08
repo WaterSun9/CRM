@@ -140,8 +140,7 @@ begin
               and installation_status is not null and trim(installation_status) != ''
         ),
         count(*) filter (
-            where upper(trim(coalesce(stage, ''))) != 'COMPLETED'
-              and subsidy_tag is not null and trim(subsidy_tag) != ''
+            where subsidy_tag is not null and trim(subsidy_tag) != ''
         ),
         count(*) filter (
             where upper(trim(coalesce(stage, ''))) != 'COMPLETED'

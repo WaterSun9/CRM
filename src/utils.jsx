@@ -4,7 +4,6 @@
 
 import { supabase } from './supabase';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, LOAN_TAGS, ADMIN_COLUMNS, ADMIN_NUMERIC_COLUMNS } from './constants';
-import JSZip from 'jszip';
 
 // ─── Activity Logging ─────────────────────────────────────────────────────────
 export async function logActivity(
@@ -877,14 +876,55 @@ const safeDownloadName = (value, fallback = 'file') => {
     return cleaned || fallback;
 };
 
-// Fetches every attachment visible under the current user's RLS permissions and
-// packages them into one ZIP. It is read-only: neither Storage nor document rows
-// are changed.
-export const downloadDocumentsAsZip = async (documents, customerName) => {
-    const docs = (documents || []).filter(doc => doc?.storage_path);
+const BULK_DOWNLOAD_EXCLUDED_TYPES = new Set([
+    'signature_pic', 'signature', 'firstPartySignature', 'customer_signature'
+]);
+
+const blobToOptimizedJpeg = async (blob) => {
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+        const image = await new Promise((resolve, reject) => {
+            const element = new Image();
+            element.onload = () => resolve(element);
+            element.onerror = () => reject(new Error('The image could not be decoded.'));
+            element.src = objectUrl;
+        });
+        // Phone photos can be 12-50 MP. Resize before embedding so PDF creation
+        // does not exhaust a mobile browser's memory.
+        const maxSide = 1800;
+        const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+        const width = Math.max(1, Math.round(image.naturalWidth * scale));
+        const height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d', { alpha: false });
+        if (!context) throw new Error('Image conversion is unavailable in this browser.');
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+        const jpegBlob = await new Promise((resolve, reject) => {
+            canvas.toBlob(
+                result => result ? resolve(result) : reject(new Error('The image could not be converted.')),
+                'image/jpeg',
+                0.82
+            );
+        });
+        return { bytes: await jpegBlob.arrayBuffer(), width, height };
+    } finally {
+        URL.revokeObjectURL(objectUrl);
+    }
+};
+
+// Combines PDFs and images into one phone-friendly PDF. Source files are fetched
+// sequentially to cap peak memory. It never changes Storage or document rows.
+export const downloadDocumentsAsPdf = async (documents, customerName) => {
+    const docs = (documents || []).filter(doc =>
+        doc?.storage_path && !BULK_DOWNLOAD_EXCLUDED_TYPES.has(doc.doc_type)
+    );
     if (docs.length === 0) throw new Error('This client has no documents to download.');
 
-    const zipName = `${safeDownloadName(customerName, 'client')}-documents.zip`;
+    const pdfName = `${safeDownloadName(customerName, 'client')}-documents.pdf`;
     let saveHandle = null;
     // Ask where to save immediately while the click still counts as a direct
     // user gesture. Waiting until every document is downloaded can cause the
@@ -892,21 +932,23 @@ export const downloadDocumentsAsZip = async (documents, customerName) => {
     if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
         try {
             saveHandle = await window.showSaveFilePicker({
-                suggestedName: zipName,
+                suggestedName: pdfName,
                 types: [{
-                    description: 'ZIP archive',
-                    accept: { 'application/zip': ['.zip'] }
+                    description: 'PDF document',
+                    accept: { 'application/pdf': ['.pdf'] }
                 }]
             });
         } catch (error) {
             if (error?.name === 'AbortError') return { downloaded: 0, failed: [], cancelled: true };
-            console.warn('ZIP Save As picker unavailable; using browser download:', error);
+            console.warn('PDF Save As picker unavailable; using browser download:', error);
         }
     }
 
-    const zip = new JSZip();
-    const usedNames = new Set();
+    // Loaded only when Download All is tapped, keeping the normal CRM bundle fast.
+    const { PDFDocument } = await import('pdf-lib');
+    const outputPdf = await PDFDocument.create();
     const failures = [];
+    let included = 0;
 
     // Supabase can sign every private object in one request. The previous code
     // made one signing request per document before downloading the files.
@@ -922,56 +964,93 @@ export const downloadDocumentsAsZip = async (documents, customerName) => {
         });
     }
 
-    await Promise.all(docs.map(async (doc, index) => {
-        try {
-            const url = doc.storage_path.startsWith('mock/') || doc.storage_path.startsWith('http')
-                ? await getDownloadUrl(doc.storage_path, doc.file_name)
-                : signedUrlByPath.get(doc.storage_path);
-            if (!url) throw new Error('No download URL returned');
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const blob = await response.blob();
-            const baseName = safeDownloadName(doc.file_name, `document-${index + 1}`);
-            let uniqueName = baseName;
-            let suffix = 2;
-            while (usedNames.has(uniqueName.toLowerCase())) {
-                const dot = baseName.lastIndexOf('.');
-                uniqueName = dot > 0
-                    ? `${baseName.slice(0, dot)}-${suffix}${baseName.slice(dot)}`
-                    : `${baseName}-${suffix}`;
-                suffix += 1;
+    // Fetch three files at a time. This removes most of the network waiting of
+    // a fully sequential download while bounding phone memory to one small batch.
+    const batchSize = 3;
+    for (let offset = 0; offset < docs.length; offset += batchSize) {
+        const batch = docs.slice(offset, offset + batchSize);
+        const fetched = await Promise.all(batch.map(async doc => {
+            try {
+                const url = doc.storage_path.startsWith('mock/') || doc.storage_path.startsWith('http')
+                    ? await getDownloadUrl(doc.storage_path, doc.file_name)
+                    : signedUrlByPath.get(doc.storage_path);
+                if (!url) throw new Error('No download URL returned');
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return { doc, blob: await response.blob(), error: null };
+            } catch (error) {
+                return { doc, blob: null, error };
             }
-            usedNames.add(uniqueName.toLowerCase());
-            zip.file(uniqueName, blob);
-        } catch (error) {
-            console.error('Document ZIP item failed:', doc.file_name, error);
-            failures.push(doc.file_name || `document-${index + 1}`);
-        }
-    }));
+        }));
 
-    if (usedNames.size === 0) throw new Error('None of the client documents could be downloaded.');
-    // PDFs, PNGs and JPEGs are already compressed. Recompressing them consumed
-    // most of the preparation time while barely changing archive size.
-    const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
-    if (saveHandle) {
-        const writable = await saveHandle.createWritable();
-        await writable.write(zipBlob);
-        await writable.close();
-        return { downloaded: usedNames.size, failed: failures, cancelled: false };
+        for (const { doc, blob, error: fetchError } of fetched) {
+            if (fetchError) {
+                console.error('Document PDF item failed:', doc.file_name, fetchError);
+                failures.push(doc.file_name || 'unnamed document');
+                continue;
+            }
+            try {
+                const fileName = String(doc.file_name || '').toLowerCase();
+                const isPdf = blob.type === 'application/pdf' || fileName.endsWith('.pdf');
+                const isImage = blob.type.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(fileName);
+                if (isPdf) {
+                    const sourcePdf = await PDFDocument.load(await blob.arrayBuffer(), { ignoreEncryption: true });
+                    const pages = await outputPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
+                    pages.forEach(page => outputPdf.addPage(page));
+                } else if (isImage) {
+                    const optimized = await blobToOptimizedJpeg(blob);
+                    const embedded = await outputPdf.embedJpg(optimized.bytes);
+                    const pageSize = optimized.height >= optimized.width
+                        ? [595.28, 841.89]
+                        : [841.89, 595.28];
+                    const page = outputPdf.addPage(pageSize);
+                    const margin = 24;
+                    const fit = Math.min(
+                        (pageSize[0] - margin * 2) / embedded.width,
+                        (pageSize[1] - margin * 2) / embedded.height
+                    );
+                    const width = embedded.width * fit;
+                    const height = embedded.height * fit;
+                    page.drawImage(embedded, {
+                        x: (pageSize[0] - width) / 2,
+                        y: (pageSize[1] - height) / 2,
+                        width,
+                        height,
+                    });
+                } else {
+                    throw new Error('Unsupported file type');
+                }
+                included += 1;
+            } catch (error) {
+                console.error('Document PDF item failed:', doc.file_name, error);
+                failures.push(doc.file_name || 'unnamed document');
+            }
+        }
     }
 
-    const objectUrl = URL.createObjectURL(zipBlob);
+    if (included === 0 || outputPdf.getPageCount() === 0) {
+        throw new Error('None of the client documents could be converted to PDF.');
+    }
+    const pdfBlob = new Blob([await outputPdf.save({ useObjectStreams: true })], { type: 'application/pdf' });
+    if (saveHandle) {
+        const writable = await saveHandle.createWritable();
+        await writable.write(pdfBlob);
+        await writable.close();
+        return { downloaded: included, failed: failures, cancelled: false };
+    }
+
+    const objectUrl = URL.createObjectURL(pdfBlob);
     try {
         const anchor = document.createElement('a');
         anchor.href = objectUrl;
-        anchor.download = zipName;
+        anchor.download = pdfName;
         document.body.appendChild(anchor);
         anchor.click();
         document.body.removeChild(anchor);
     } finally {
         setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     }
-    return { downloaded: usedNames.size, failed: failures, cancelled: false };
+    return { downloaded: included, failed: failures, cancelled: false };
 };
 
 // Returns { ok, error }. Previously swallowed every failure with console.error,

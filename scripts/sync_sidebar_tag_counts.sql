@@ -51,8 +51,7 @@ begin
               and installation_status is not null and trim(installation_status) != ''
         ),
         count(*) filter (
-            where upper(trim(coalesce(stage, ''))) != 'COMPLETED'
-              and subsidy_tag is not null and trim(subsidy_tag) != ''
+            where subsidy_tag is not null and trim(subsidy_tag) != ''
         ),
         count(*) filter (
             where upper(trim(coalesce(stage, ''))) != 'COMPLETED'
@@ -120,8 +119,7 @@ select
     ) as inside_installation,
     (public.get_dashboard_metrics_scoped(null, null)->>'subsidyTagCount')::int as sidebar_subsidy,
     count(*) filter (
-        where upper(trim(coalesce(stage, ''))) != 'COMPLETED'
-          and subsidy_tag is not null and trim(subsidy_tag) != ''
+        where subsidy_tag is not null and trim(subsidy_tag) != ''
     ) as inside_subsidy,
     (public.get_dashboard_metrics_scoped(null, null)->>'loanTagCount')::int as sidebar_loan,
     count(*) filter (

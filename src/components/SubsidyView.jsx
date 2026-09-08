@@ -38,7 +38,6 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                 .from('admin')
                 .select('*', { count: 'exact', head: true })
                 .is('deleted_at', null)
-                .neq('stage', STAGE_IDS.COMPLETED)
                 .not('subsidy_tag', 'is', null)
                 .neq('subsidy_tag', '');
 
@@ -53,7 +52,6 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                     .from('admin')
                     .select('*', { count: 'exact', head: true })
                     .is('deleted_at', null)
-                    .neq('stage', STAGE_IDS.COMPLETED)
                     .ilike('subsidy_tag', `%${tag.id}%`);
 
                 if (targetPartner) {
@@ -99,7 +97,6 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                 // and unused. The detail modal fetches the full record on open.
                 .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
-                .neq('stage', STAGE_IDS.COMPLETED)
                 .order('created_at', { ascending: false })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 

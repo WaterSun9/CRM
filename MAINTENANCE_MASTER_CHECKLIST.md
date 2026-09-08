@@ -125,7 +125,7 @@ database-changing sections while staff are actively working.
 - [ ] Verify storage rows and objects do not become orphaned.
 - [ ] Confirm Download All is available to intended roles and hidden from Vendor/Stamp.
 - [ ] Test ZIP speed with customers having small and large document sets.
-- [ ] Evaluate a server-side single-PDF Download All flow for mixed PDFs and images; preserve originals, page quality, orientation, ordering, and reasonable memory use before replacing ZIP.
+- [ ] Stress-test single-PDF Download All on representative Android and iPhone devices with unusually large customer document sets; move merging server-side only if mobile memory limits remain a problem.
 - [ ] Verify browser Save As behaviour for PDF, PNG/JPG, and ZIP where supported.
 - [ ] Verify PCR Certificate uploads as a document without requiring a new boolean column.
 

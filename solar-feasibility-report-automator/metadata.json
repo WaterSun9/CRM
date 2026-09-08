@@ -1,0 +1,6 @@
+{
+  "name": "Solar Feasibility Report Automator",
+  "description": "Automated solar rooftop feasibility report generator with client data filling, live document preview, and PDF download.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
