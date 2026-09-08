@@ -121,7 +121,7 @@ export const ReviewPrintModal: React.FC<ReviewPrintModalProps> = ({
                     ]
                       .filter(Boolean)
                       .join(', ')}{' '}
-                    — you may still print or return to complete them.
+                    - you may still print or return to complete them.
                   </div>
                 </div>
               )}
@@ -137,13 +137,13 @@ export const ReviewPrintModal: React.FC<ReviewPrintModalProps> = ({
                   <div>
                     <span className="text-slate-400 block text-xs">1. Consumer Name</span>
                     <span className="font-bold text-slate-900">
-                      {client.consumerName || '— (Blank)'}
+                      {client.consumerName || '- (Blank)'}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-xs">2. Discom Consumer ID</span>
                     <span className="font-bold text-slate-900">
-                      {client.discomConsumerId || '— (Blank)'}
+                      {client.discomConsumerId || '- (Blank)'}
                     </span>
                   </div>
                 </div>
@@ -152,13 +152,13 @@ export const ReviewPrintModal: React.FC<ReviewPrintModalProps> = ({
                   <div>
                     <span className="text-slate-400 block text-xs">4. PM Surya Portal ID</span>
                     <span className="font-medium text-slate-800">
-                      {client.pmSuryaShaktiPortalId || '—'}
+                      {client.pmSuryaShaktiPortalId || '-'}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-xs">5. Jan Samarth ID</span>
                     <span className="font-medium text-slate-800">
-                      {client.janSamarthId || '—'}
+                      {client.janSamarthId || '-'}
                     </span>
                   </div>
                 </div>
@@ -168,7 +168,7 @@ export const ReviewPrintModal: React.FC<ReviewPrintModalProps> = ({
                   <span className="font-medium text-slate-800">
                     {client.installationAddress
                       ? `${client.installationAddress}, ${client.district} - ${client.pincode}, ${client.state}`
-                      : '— (Blank)'}
+                      : '- (Blank)'}
                   </span>
                 </div>
 
@@ -176,13 +176,13 @@ export const ReviewPrintModal: React.FC<ReviewPrintModalProps> = ({
                   <div>
                     <span className="text-slate-400 block text-xs">Applied Capacity</span>
                     <span className="font-bold text-slate-900">
-                      {client.rtsCapacityAppliedKw || '—'} kW
+                      {client.rtsCapacityAppliedKw || '-'} kW
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-xs">Actual Capacity to Install</span>
                     <span className="font-bold text-blue-700">
-                      {client.actualCapacityKw || '—'} kW
+                      {client.actualCapacityKw || '-'} kW
                     </span>
                   </div>
                   <div>
@@ -192,7 +192,7 @@ export const ReviewPrintModal: React.FC<ReviewPrintModalProps> = ({
                         ? (/^Rs\.?/i.test(client.projectCost.trim())
                             ? client.projectCost.trim()
                             : `Rs. ${client.projectCost.replace(/^[₹¹\s]+/, '').trim()}`)
-                        : '—'}
+                        : '-'}
                     </span>
                   </div>
                 </div>

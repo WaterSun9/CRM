@@ -74,7 +74,7 @@ serve(async (req) => {
             return new Response(
                 JSON.stringify({
                     error: "Could not read your profile: " + callerProfileErr.message
-                        + " — this is a server-side lookup failure, not a permission problem."
+                        + " - this is a server-side lookup failure, not a permission problem."
                 }),
                 { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             )
@@ -93,10 +93,10 @@ serve(async (req) => {
             // from a wrong role without digging through logs.
             const detail = !callerProfile
                 ? `no profile row exists for your account (auth id ${caller.id}, ${caller.email})`
-                : `your account is user_type='${callerProfile.user_type}', role='${callerProfile.role}' — only Admin or the main Channel Partner Office account can manage users`;
+                : `your account is user_type='${callerProfile.user_type}', role='${callerProfile.role}' - only Admin or the main Channel Partner Office account can manage users`;
             console.error("Access denied:", detail)
             return new Response(
-                JSON.stringify({ error: "Forbidden: Access denied — " + detail }),
+                JSON.stringify({ error: "Forbidden: Access denied - " + detail }),
                 { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             )
         }
@@ -118,7 +118,7 @@ serve(async (req) => {
                     .single();
 
                 // Branch names are compared the way the rest of the app compares
-                // them — trimmed and case-insensitive. A strict !== would lock a
+                // them - trimmed and case-insensitive. A strict !== would lock a
                 // CPO out of their own users over "Radhe Solar" vs "RADHE SOLAR".
                 const norm = (value: string | null | undefined) => String(value ?? "").trim().toUpperCase();
                 const sameBranch = !targetErr && targetProf
@@ -445,7 +445,7 @@ serve(async (req) => {
             }
 
             // Step 4: send them a "set your password" email using Brevo (bypasses Supabase Rate Limit)
-            // Fire-and-forget — don't await.
+            // Fire-and-forget - don't await.
             adminClient.auth.admin.generateLink({
                 type: 'recovery',
                 email: email,

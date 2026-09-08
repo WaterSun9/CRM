@@ -15,7 +15,7 @@ jobs:
           echo "Starting backup at $(date -u)..."
           git clone "https://x-access-token:${{ secrets.BACKUP_PAT }}@github.com/${{ secrets.BACKUP_REPO }}.git" backup-repo
 
-      # Year/month/day folder — each day gets its own snapshot
+      # Year/month/day folder - each day gets its own snapshot
       - name: Set folder path
         run: echo "FOLDER=$(date +%Y/%m/%d)" >> $GITHUB_ENV
 
@@ -34,7 +34,7 @@ jobs:
           LINES=$(wc -l < "backup-repo/${{ env.FOLDER }}/admin.csv" | tr -d ' ')
           echo "admin.csv: $LINES rows"
           if [ "$LINES" -le 1 ]; then
-            echo "::warning::admin.csv has no data rows — check if table is empty or secrets are wrong"
+            echo "::warning::admin.csv has no data rows - check if table is empty or secrets are wrong"
           fi
 
       - name: Backup profiles table
@@ -67,7 +67,7 @@ jobs:
           LINES=$(wc -l < "backup-repo/${{ env.FOLDER }}/metadata.csv" | tr -d ' ')
           echo "metadata.csv: $LINES rows"
 
-      # ── Commit — each day is a new folder, git history tracks everything ────
+      # ── Commit - each day is a new folder, git history tracks everything ────
 
       - name: Commit backup files
         run: |

@@ -76,7 +76,7 @@ grant execute on function public.stamp_monthly_summary() to authenticated, servi
 -- ── Verify: completed_count must now equal the detail list's row count ──────
 select * from public.stamp_monthly_summary();
 
--- The one that was sent back after being completed — this is the row that
+-- The one that was sent back after being completed - this is the row that
 -- caused the 6-vs-5 gap. EXPECT: 1 row.
 select
     customer_name,

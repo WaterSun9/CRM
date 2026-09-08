@@ -1,5 +1,5 @@
 -- ============================================================================
--- CRITICAL — privilege escalation via public.profiles
+-- CRITICAL - privilege escalation via public.profiles
 --
 -- PROVEN 2026-08-31 by signing in as each of the 8 roles and writing user_type
 -- back to itself: the write was PERMITTED for every one of them.

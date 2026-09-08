@@ -290,7 +290,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         let processedValue = value;
         // Consumer No is digits only. It used to be type="number", which
         // silently accepts "e" (exponent) and then reports the value as an
-        // empty string — so typing a letter produced "must be at least 3
+        // empty string - so typing a letter produced "must be at least 3
         // characters" instead of anything about letters.
         if (field === 'consumer_no') {
             processedValue = String(value).replace(/[^0-9]/g, '');

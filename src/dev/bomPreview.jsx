@@ -1,6 +1,6 @@
 // Dev-only harness for iterating on the BOM print document without logging in.
 // Served at /bom-preview.html in `npm run dev`. Not referenced by the app and
-// not part of the production build — safe to delete.
+// not part of the production build - safe to delete.
 
 import { createRoot } from 'react-dom/client';
 import BomPrintView from '../components/BomPrintView';

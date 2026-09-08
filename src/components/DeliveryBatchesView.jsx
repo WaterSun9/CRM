@@ -471,7 +471,7 @@ export default function DeliveryBatchesView({
             // screen looked identical to a real delete, so there was no way to
             // tell "deleted" apart from "there was never anything to delete".
             showAlert(
-                'This batch only ever existed in your browser — it was never saved to the shared database, so there was nothing to delete there. It has been removed locally.',
+                'This batch only ever existed in your browser - it was never saved to the shared database, so there was nothing to delete there. It has been removed locally.',
                 { title: 'Removed locally', type: 'warning' }
             );
         }
@@ -1103,7 +1103,7 @@ export default function DeliveryBatchesView({
                                                                          // clear the link, drop the driver/vehicle details that came
                                                                          // from the batch, and remove them from project_ids so they
                                                                          // become available for a new batch again. Updating only
-                                                                         // delivery_status left them stranded — still inside the
+                                                                         // delivery_status left them stranded - still inside the
                                                                          // batch and invisible to the customer picker.
                                                                          const leavingBatch = newStat === 'PENDING';
                                                                          const patch = leavingBatch

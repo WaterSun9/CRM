@@ -200,7 +200,7 @@ export default function LoanTab({
         const missing = getMissingFeasibilityFields(data, Boolean(photoDoc));
         if (missing.length) {
             showAlert(
-                `Please fill these values first:\n\n${missing.map(item => `• ${item.field} — ${item.tab} tab`).join('\n')}`,
+                `Please fill these values first:\n\n${missing.map(item => `• ${item.field} - ${item.tab} tab`).join('\n')}`,
                 { title: 'Feasibility report is incomplete', type: 'warning' }
             );
             return null;

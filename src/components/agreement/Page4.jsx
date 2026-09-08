@@ -129,7 +129,7 @@ export const Page4 = ({ data, fontSizeClass = 'text-[17px]' }) => {
               <span className="font-normal">{data.vendorAddress || 'Plot No 40 GIDC Estate Radhanpur'}</span>
             </div>
 
-            {/* Vendor Stamp & Signature Box — Enlarged by 30% and shifted center-right */}
+            {/* Vendor Stamp & Signature Box - Enlarged by 30% and shifted center-right */}
             <div className="pt-2">
               <span className="font-semibold block mb-1">Stamp & Sign:</span>
               {data.secondPartyStamp || data.stampUrl ? (

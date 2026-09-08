@@ -1,10 +1,10 @@
--- ─── RLS STEP 3 — scope the `admin` table (3,801 customer records) ──────────
+-- ─── RLS STEP 3 - scope the `admin` table (3,801 customer records) ──────────
 -- Today `read_admin` and `update_admin` have qual = true, so ANY authenticated
 -- user can read and modify every customer row by calling the API directly. The
 -- correctly-scoped admin_select / admin_update policies sit beside them and are
 -- therefore dead: Postgres OR's permissive policies together.
 --
--- The existing scoped policies are also stale — they predate agent2, office2
+-- The existing scoped policies are also stale - they predate agent2, office2
 -- and stamp, and they match `agent` on channel_partner = name, which is wrong
 -- (an agent's channel_partner is their BRANCH). So the scoped policies are
 -- rewritten first, then the blanket ones dropped, in one transaction.
@@ -74,7 +74,7 @@ drop policy if exists insert_admin      on public.admin;
 drop policy if exists auth_select_admin on public.admin;
 drop policy if exists auth_update_admin on public.admin;
 drop policy if exists auth_insert_admin on public.admin;
--- DELETE is already Admin-only (admin_delete_admin + no_delete_admin) — left alone.
+-- DELETE is already Admin-only (admin_delete_admin + no_delete_admin) - left alone.
 
 commit;
 
@@ -89,7 +89,7 @@ order by cmd, policyname;
 
 
 -- ── ROLLBACK, if any role loses access ──────────────────────────────────────
--- Restores the previous permissive behaviour immediately. Only a stopgap —
+-- Restores the previous permissive behaviour immediately. Only a stopgap -
 -- it re-opens the whole table to every authenticated user.
 --
 -- create policy read_admin   on public.admin for select to authenticated using (true);

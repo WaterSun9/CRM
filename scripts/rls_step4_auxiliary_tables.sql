@@ -1,4 +1,4 @@
--- ─── RLS STEP 4 — scope auxiliary tables & tighten remaining policies ────────
+-- ─── RLS STEP 4 - scope auxiliary tables & tighten remaining policies ────────
 -- Tables covered:
 --   1. profiles         (close open INSERT, retain required SELECT for UI joins)
 --   2. metadata         (open SELECT for dropdowns; scoped INSERT/UPDATE/DELETE)

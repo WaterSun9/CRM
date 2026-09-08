@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Watersun CRM — concurrent load test.
+ * Watersun CRM - concurrent load test.
  *
  *   node scripts/load_test.mjs --users 30 --duration 60
  *

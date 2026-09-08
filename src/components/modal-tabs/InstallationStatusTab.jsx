@@ -193,7 +193,7 @@ export default function InstallationStatusTab({
                         { id: 'Pending', label: 'Pending', activeClass: 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/10', dotClass: 'bg-white' }
                     ].map(tag => {
                         const isSelected = editData.installation_status === tag.id;
-                        // Terminal value locks the field — Admin can still change it.
+                        // Terminal value locks the field - Admin can still change it.
                         const isLocked = isFinalTagValue(customer.installation_status, INSTALLATION_TAGS) && user?.userType !== 'admin';
                         return (
                             <button
@@ -216,7 +216,7 @@ export default function InstallationStatusTab({
                     })}
                 </div>
 
-                {/* WHEN STATUS IS "GIVE UP" — Admin Reviews & Approves Reason */}
+                {/* WHEN STATUS IS "GIVE UP" - Admin Reviews & Approves Reason */}
                 {editData.installation_status === 'Giveup' && (
                     <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
                         {/* 1. Vendor Give Up Box */}
@@ -399,7 +399,7 @@ export default function InstallationStatusTab({
                     </div>
                 )}
 
-                {/* WHEN STATUS IS "PROCESS" — Installation Date & Automatically Grabbed Vendor Name */}
+                {/* WHEN STATUS IS "PROCESS" - Installation Date & Automatically Grabbed Vendor Name */}
                 {(editData.installation_status === 'In process' || editData.installation_status === 'Installed') && (
                     <div className="pt-4 border-t border-stone-100 grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-300">
                         <div>

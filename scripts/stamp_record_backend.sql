@@ -1,5 +1,5 @@
 -- ============================================================================
--- Stamp completion record — backend support
+-- Stamp completion record - backend support
 --
 -- No new columns are needed. The data already exists inside admin.discom_submission:
 --   sent_to_stamp_maker      / sent_to_stamp_maker_at   (we sent it)

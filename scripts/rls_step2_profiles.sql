@@ -1,4 +1,4 @@
--- ─── RLS STEP 2 — close anonymous access to profiles ────────────────────────
+-- ─── RLS STEP 2 - close anonymous access to profiles ────────────────────────
 -- `Allow authenticated profile updates` is misnamed: it grants ALL commands to
 -- the `anon` role with qual/with_check = true. Anyone holding the anon key from
 -- the shipped JS bundle can read every user's email and role, and modify them,
@@ -35,7 +35,7 @@ create policy "profiles_update_scoped" on public.profiles
         )
     );
 
--- 2. DELETE had no policy of its own — it relied entirely on the anon ALL rule.
+-- 2. DELETE had no policy of its own - it relied entirely on the anon ALL rule.
 create policy "profiles_delete_scoped" on public.profiles
     for delete to authenticated
     using (
@@ -66,4 +66,4 @@ order by cmd, policyname;
 --     the sub-agent dropdown and the branch list, so it needs its own pass.
 -- profiles_insert_policy : INSERT, authenticated, with_check = true
 --     Client never inserts profiles (the edge function uses service_role), so
---     this can likely be restricted to Admin — verify before changing.
+--     this can likely be restricted to Admin - verify before changing.

@@ -2,14 +2,14 @@
 -- The tag ids in src/constants.js changed. Counts are computed with
 --   ilike('<column>', '%<tag id>%')
 -- so any row still holding an old value matches NO tag and vanishes from the
--- tag screens entirely — silently, with no error. Exactly what happened with
+-- tag screens entirely - silently, with no error. Exactly what happened with
 -- the 'No' installation values.
 --
 -- Run STEP 1 first and check the mapping looks right for your data.
 -- STEP 2 is not reversible; take a snapshot.
 -- ────────────────────────────────────────────────────────────────────────────
 
--- STEP 1 — what is currently stored, and what it will become.
+-- STEP 1 - what is currently stored, and what it will become.
 select 'subsidy' as tag, subsidy_tag as current_value, count(*) as rows
 from public.admin where deleted_at is null group by subsidy_tag
 union all
@@ -35,7 +35,7 @@ order by 1, 3 desc;
 --                  (Pending unchanged)
 
 
--- STEP 2 — apply.
+-- STEP 2 - apply.
 begin;
 
 update public.admin set subsidy_tag = 'Inprocess'
@@ -65,7 +65,7 @@ where deleted_at is null and lower(trim(installation_status)) in ('no', '');
 commit;
 
 
--- STEP 3 — verify. Every row should now hold a value from the new sets,
+-- STEP 3 - verify. Every row should now hold a value from the new sets,
 -- or be null. Anything else will not appear under any tag.
 select 'subsidy' as tag, subsidy_tag as value, count(*) as rows
 from public.admin

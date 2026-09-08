@@ -20,7 +20,7 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
       .map(tag => tag.outerHTML)
       .join('\n');
 
-    // Create a hidden 0x0 iframe — no new tab, prints in same page
+    // Create a hidden 0x0 iframe - no new tab, prints in same page
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0';

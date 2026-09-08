@@ -1,8 +1,8 @@
 // ─── utils/bom.js ───────────────────────────────────────────────────────────
 // Single source of truth for loading a customer's BOM.
 //
-// This was previously inline in MaterialIntegrationTab, so the Agent Portal —
-// which read the bom / bom_items tables directly — ended up with a different
+// This was previously inline in MaterialIntegrationTab, so the Agent Portal -
+// which read the bom / bom_items tables directly - ended up with a different
 // item list than the admin for the same customer: no template merge, so a
 // customer with nothing saved yet showed an empty BOM in the portal and the
 // full canonical checklist in admin. Both now call this, so both print the

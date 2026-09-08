@@ -1,4 +1,4 @@
--- ─── RLS STEP 1 — revoke anonymous access ───────────────────────────────────
+-- ─── RLS STEP 1 - revoke anonymous access ───────────────────────────────────
 -- RLS is enabled on every table, but four tables carry policies granting the
 -- `anon` role full access. The anon key is embedded in the shipped JS bundle,
 -- so those tables are readable/writable by anyone who views source.
@@ -7,7 +7,7 @@
 -- scoped policy beside it. Removing the blanket ones is what makes the scoped
 -- ones start working.
 --
--- This step does NOT touch the `admin` table — that needs its scoped policies
+-- This step does NOT touch the `admin` table - that needs its scoped policies
 -- rewritten first (they predate agent2 / office2). Step 1 is safe on its own.
 -- Run each section, then the verification at the bottom.
 -- ────────────────────────────────────────────────────────────────────────────

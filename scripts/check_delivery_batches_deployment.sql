@@ -1,5 +1,5 @@
 -- ============================================================================
--- Delivery batches — deployment pre-flight check.  READ ONLY.
+-- Delivery batches - deployment pre-flight check.  READ ONLY.
 -- Run in the Supabase SQL editor.  Nothing here writes or changes anything.
 -- Run each numbered block and compare against "EXPECT".
 -- ============================================================================
@@ -127,7 +127,7 @@ order by b.batch_no, a.customer_name;
 
 -- ── 7. Stranded customers: point at a batch that no longer lists them ────────
 -- EXPECT: 0 rows.  These are invisible to the customer picker AND to the
--- batch view — the original "delivery batches" bug class.
+-- batch view - the original "delivery batches" bug class.
 select
     a.customer_name,
     a.delivery_batch_id,

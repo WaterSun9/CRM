@@ -101,7 +101,7 @@ export default function SubsidyStatusTab({
                     {SUBSIDY_TAGS.map(tag => {
                         const isSelected = editData.subsidy_tag === tag.id;
                         const colors = SUBSIDY_TAG_COLORS[tag.id] || {};
-                        // Terminal value locks the field — Admin can still change it.
+                        // Terminal value locks the field - Admin can still change it.
                         const isLocked = isFinalTagValue(customer.subsidy_tag, SUBSIDY_TAGS) && user?.userType !== 'admin';
                         return (
                             <button

@@ -1,5 +1,5 @@
 -- ============================================================================
--- Duplicate `bom` rows — the cause of "Material Integration data disappeared".
+-- Duplicate `bom` rows - the cause of "Material Integration data disappeared".
 --
 -- HOW IT HAPPENED (now fixed in MaterialIntegrationTab.jsx):
 --   1. Before saving, the code looked up the existing bom row but did NOT
@@ -7,7 +7,7 @@
 --   2. If that read failed, `existing` was undefined, so it took the INSERT
 --      branch and created a SECOND bom row for the same admin_id.
 --   3. loadBomForCustomer then used .maybeSingle(), which ERRORS when more than
---      one row matches — so from that point the BOM could never be read again.
+--      one row matches - so from that point the BOM could never be read again.
 --   4. The error was swallowed and a blank template was shown instead.
 --      The data was never deleted. It was unreachable.
 --
@@ -55,7 +55,7 @@ order by a.customer_name, b.created_at;
 
 -- ── 3. FIX: keep the richest row per customer, delete the empty extras ──────
 -- "Richest" = most bom_items, tie-broken by earliest created_at.
--- Review block 2 first — if a customer's data is SPLIT across two rows, sort
+-- Review block 2 first - if a customer's data is SPLIT across two rows, sort
 -- that one out by hand instead of running this.
 --
 -- with ranked as (
@@ -92,7 +92,7 @@ order by a.customer_name, b.created_at;
 
 -- ── 5. Re-run block 1. EXPECT: 0 rows. ─────────────────────────────────────
 
--- Orphaned items (belonging to no bom row at all) — should be 0.
+-- Orphaned items (belonging to no bom row at all) - should be 0.
 select count(*) as orphaned_bom_items
 from public.bom_items i
 where not exists (select 1 from public.bom b where b.id = i.bom_id);

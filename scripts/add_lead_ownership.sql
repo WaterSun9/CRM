@@ -1,6 +1,6 @@
 -- ─── Add per-lead ownership to public.admin ─────────────────────────────────
 -- Needed for "a Channel Partner sees only their own leads". Today the admin
--- table has no owner column at all — the only per-person marker is
+-- table has no owner column at all - the only per-person marker is
 -- application_done_by, a plain name string written in two places
 -- (Dashboard.jsx:593 and AgentPortal.jsx:359).
 --
@@ -12,7 +12,7 @@
 -- Take a snapshot first: STEP 3 writes to every matched row.
 -- ────────────────────────────────────────────────────────────────────────────
 
--- STEP 0 — confirm the columns this script relies on actually exist.
+-- STEP 0 - confirm the columns this script relies on actually exist.
 select column_name, data_type, is_nullable
 from information_schema.columns
 where table_schema = 'public' and table_name = 'admin'
@@ -23,7 +23,7 @@ order by column_name;
 -- created_at. If created_by is already listed, skip STEP 1.
 
 
--- STEP 1 — add the owner column, FK and index. Safe to re-run.
+-- STEP 1 - add the owner column, FK and index. Safe to re-run.
 alter table public.admin
     add column if not exists created_by uuid null;
 
@@ -42,7 +42,7 @@ end $$;
 create index if not exists idx_admin_created_by on public.admin using btree (created_by);
 
 
--- STEP 2 — preview the backfill.
+-- STEP 2 - preview the backfill.
 -- 2a: how many leads can be matched by name, and how many cannot.
 select
     count(*) filter (where p.id is not null)                    as will_be_set,
@@ -60,14 +60,14 @@ left join lateral (
 ) p on true
 where a.created_by is null;
 
--- 2b: names that match MORE THAN ONE profile — ambiguous, skipped by STEP 3.
+-- 2b: names that match MORE THAN ONE profile - ambiguous, skipped by STEP 3.
 select upper(trim(name)) as duplicate_name, count(*) as profile_count
 from public.profiles
 group by upper(trim(name))
 having count(*) > 1
 order by profile_count desc;
 
--- 2c: leads whose application_done_by matches no profile — these stay NULL.
+-- 2c: leads whose application_done_by matches no profile - these stay NULL.
 select distinct a.application_done_by, count(*) as lead_count
 from public.admin a
 where a.created_by is null
@@ -80,7 +80,7 @@ group by a.application_done_by
 order by lead_count desc;
 
 
--- STEP 3 — apply. Only unambiguous single-profile name matches are set.
+-- STEP 3 - apply. Only unambiguous single-profile name matches are set.
 update public.admin a
 set created_by = m.id
 from (
@@ -96,7 +96,7 @@ where a.created_by is null
   and upper(trim(a.application_done_by)) = m.uname;
 
 
--- STEP 4 — what is still unowned after the backfill.
+-- STEP 4 - what is still unowned after the backfill.
 select count(*) as leads_without_owner
 from public.admin
 where created_by is null;

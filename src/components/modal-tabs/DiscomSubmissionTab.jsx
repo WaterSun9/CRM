@@ -142,7 +142,7 @@ export default function DiscomSubmissionTab({
         }
     };
 
-    /* Recall — pull back from stamp maker */
+    /* Recall - pull back from stamp maker */
     const handleRecall = async () => {
         setShowConfirmRecall(false);
         setRecalling(true);
@@ -222,7 +222,7 @@ export default function DiscomSubmissionTab({
             if (ok === false) throw new Error('The database did not accept the send-back.');
             await logActivity(
                 user.id, 'update',
-                `${customer.customer_name}: Stamp sent back to Stamp Maker — "${sendBackRemark.trim()}"`,
+                `${customer.customer_name}: Stamp sent back to Stamp Maker - "${sendBackRemark.trim()}"`,
                 '', customer.id
             );
             // Reflect in editData so UI updates immediately
@@ -412,7 +412,7 @@ export default function DiscomSubmissionTab({
                 {/* ── Send to Stamp Maker footer & PM Surya Ghar Stamp ── */}
                 <div className="border-t border-stone-100 pt-4 flex flex-col gap-3">
                     {isSentToStampMaker ? (
-                        /* Already sent — show status */
+                        /* Already sent - show status */
                         <div className="flex flex-col gap-4">
                             <div className="flex items-center justify-between gap-3 flex-wrap">
                                 <div className="flex items-center gap-2">
@@ -632,7 +632,7 @@ export default function DiscomSubmissionTab({
                                             <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Sent Back to Stamp Maker</p>
                                             <p className="text-xs text-amber-800 font-semibold mt-0.5">"{submissionData.stamp_sendback_remark}"</p>
                                             {submissionData.stamp_sendback_by && (
-                                                <p className="text-[10px] text-amber-600 font-medium mt-0.5">— {submissionData.stamp_sendback_by}</p>
+                                                <p className="text-[10px] text-amber-600 font-medium mt-0.5">- {submissionData.stamp_sendback_by}</p>
                                             )}
                                         </div>
                                     </div>

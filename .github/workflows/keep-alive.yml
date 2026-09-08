@@ -19,7 +19,7 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
           echo "Supabase ping status: $STATUS"
           if [ "$STATUS" != "200" ]; then
-            echo "::error::Supabase ping returned $STATUS — check your secrets or project status."
+            echo "::error::Supabase ping returned $STATUS - check your secrets or project status."
             exit 1
           fi
           echo "Supabase is alive ✅"
