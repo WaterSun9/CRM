@@ -1,56 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='7' fill='%23f7a01d'/%3E%3Cg stroke='%23f7a01d' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M16 2v3.5M16 26.5V30M2 16h3.5M26.5 16h3.5'/%3E%3Cpath d='M6.1 6.1l2.5 2.5M23.4 23.4l2.5 2.5M6.1 25.9l2.5-2.5M23.4 8.6l2.5-2.5'/%3E%3C/g%3E%3C/svg%3E" />
-    <title>Watersun CRM</title>
-    <meta name="description"
-        content="CRM &amp; Project Management for Watersun Solar Energy - Track customers through the solar installation pipeline" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700;800&family=Nunito+Sans:ital,opsz,wght@0,6..12,200..1000;1,6..12,200..1000&display=swap"
-        rel="stylesheet">
-    <script>
-        // Stale-index.html rescue.
-        //
-        // GitHub Pages serves index.html with `cache-control: max-age=600`, and
-        // a deploy DELETES the previous hashed bundle. So for up to 10 minutes a
-        // browser can hold an index.html pointing at a bundle that now 404s -
-        // the app renders nothing, and no JS runs, so the in-app update banner
-        // cannot help. This catches that one case and reloads once.
-        //
-        // sessionStorage guards against a reload loop: if the second attempt
-        // also fails the problem is not staleness, and we stop.
-        (function () {
-            window.addEventListener('error', function (e) {
-                var el = e && e.target;
-                if (!el || el.tagName !== 'SCRIPT' || !el.src) return;
-                try {
-                    if (sessionStorage.getItem('ws_stale_reload')) return;
-                    sessionStorage.setItem('ws_stale_reload', '1');
-                } catch (_) { return; }   // private mode: do nothing rather than loop
-                location.reload();
-            }, true);
-
-            // The app loaded, so clear the flag for next time.
-            window.addEventListener('load', function () {
-                try { sessionStorage.removeItem('ws_stale_reload'); } catch (_) { /* ignore */ }
-            });
-        })();
-    </script>
-  <script type="module" crossorigin src="./assets/index-D1P03XAS.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/chunk-QTnfLwEv.js">
-  <link rel="stylesheet" crossorigin href="./assets/index-GD7FU7Ii.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="robots" content="noindex" />
+  <title>Scheduled Update - Watersun CRM</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center;
+      justify-content: center; padding: 24px; background: #fafaf9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .card {
+      width: 100%; max-width: 440px; padding: 48px 32px; text-align: center;
+      background: white; border: 1px solid #f5f5f4; border-radius: 28px;
+      box-shadow: 0 10px 40px rgba(28, 25, 23, 0.08);
+    }
+    .sun { width: 52px; height: 52px; margin: 0 auto 20px; color: #f59e0b; }
+    h1 { margin: 0 0 8px; color: #1c1917; font-size: 23px; font-weight: 900; }
+    .brand { margin: 0 0 26px; color: #a8a29e; font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .message { margin: 0; color: #57534e; font-size: 14px; font-weight: 500; line-height: 1.65; }
+    .status { display: inline-flex; align-items: center; gap: 8px; margin-top: 28px; padding: 10px 14px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 14px; font-size: 12px; font-weight: 800; }
+    .dot { width: 8px; height: 8px; border-radius: 999px; background: #f59e0b; }
+  </style>
 </head>
-
 <body>
-    <div id="root"></div>
+  <main class="card">
+    <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4"></circle>
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M17.66 6.34l1.41-1.41"></path>
+    </svg>
+    <h1>Scheduled CRM Update</h1>
+    <p class="brand">Watersun Solar Energy</p>
+    <p class="message">The CRM is temporarily unavailable while an update is being completed. Please try again shortly.</p>
+    <div class="status"><span class="dot"></span> Maintenance in progress</div>
+  </main>
 </body>
-
 </html>
