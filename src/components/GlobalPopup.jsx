@@ -6,18 +6,22 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { createContext, useCallback, useContext, useState } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 
 const GlobalPopupContext = createContext(null);
 
 const ICONS = {
     error: { Icon: AlertCircle, className: 'bg-rose-100 text-rose-600' },
+    danger: { Icon: AlertTriangle, className: 'bg-rose-100 text-rose-700' },
     warning: { Icon: AlertTriangle, className: 'bg-amber-100 text-amber-700' },
     success: { Icon: CheckCircle2, className: 'bg-emerald-100 text-emerald-700' },
+    info: { Icon: Info, className: 'bg-blue-100 text-blue-700' },
 };
 
 export function GlobalPopupProvider({ children }) {
     const [popup, setPopup] = useState(null);
+    const popupIcon = popup ? (ICONS[popup.type] || ICONS.warning) : ICONS.warning;
+    const PopupIcon = popupIcon.Icon;
 
     const showAlert = useCallback((message, opts = {}) => {
         return new Promise((resolve) => {
@@ -75,8 +79,8 @@ export function GlobalPopupProvider({ children }) {
                         className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl border border-stone-150 animate-in zoom-in-95 duration-200 text-center space-y-4"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ${ICONS[popup.type].className}`}>
-                            {(() => { const { Icon } = ICONS[popup.type]; return <Icon size={24} />; })()}
+                        <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ${popupIcon.className}`}>
+                            <PopupIcon size={24} />
                         </div>
                         <div>
                             <h4 className="text-sm font-extrabold text-stone-850">{popup.title}</h4>
