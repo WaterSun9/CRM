@@ -75,6 +75,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     const [loading, setLoading] = useState(false);
     const [showAddLead, setShowAddLead] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [homeSearchQuery, setHomeSearchQuery] = useState('');
     
     // Customer details view
     const [selectedCust, setSelectedCust] = useState(null);
@@ -475,7 +476,8 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         return newCustomer;
     };
 
-    // Filter customers
+    // The workdesk search is intentionally stage-scoped. The home search below
+    // is the directory-wide search across every customer visible through RLS.
     const filteredCustomers = (customers || []).filter(c => {
         if (!searchQuery.trim()) return true;
         const q = searchQuery.trim().toLowerCase();
@@ -485,6 +487,17 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             String(c?.consumer_no || '').toLowerCase().includes(q)
         );
     });
+
+    const homeSearchResults = homeSearchQuery.trim()
+        ? (customers || []).filter(c => {
+            const q = homeSearchQuery.trim().toLowerCase();
+            return (
+                String(c?.customer_name || '').toLowerCase().includes(q) ||
+                String(c?.phone_number || '').toLowerCase().includes(q) ||
+                String(c?.consumer_no || '').toLowerCase().includes(q)
+            );
+        })
+        : [];
 
     const getTelephoneHref = (phone) => {
         const normalized = String(phone || '').replace(/[^\d+]/g, '');
@@ -650,10 +663,6 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
 
     // Filter customers for workdesk
     const getWorkdeskCustomers = (stageTab) => {
-        // On mobile, search is a directory-wide search across every customer
-        // already returned by RLS for this Agent/Dealer. With no search, keep
-        // the normal stage-specific work queue.
-        if (searchQuery.trim()) return filteredCustomers;
         return filteredCustomers.filter(c => c.stage === stageTab);
     };
 
@@ -980,6 +989,63 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                         </div>
                     </section>
 
+                    <section className="rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm">
+                        <div className="mb-3">
+                            <p className="text-xs font-black text-stone-900">Find any customer</p>
+                            <p className="mt-0.5 text-[10px] font-medium text-stone-400">Search every customer visible to you, across all stages.</p>
+                        </div>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                            <input
+                                type="search"
+                                placeholder="Search name, phone or consumer no..."
+                                value={homeSearchQuery}
+                                onChange={(event) => setHomeSearchQuery(event.target.value)}
+                                className="w-full rounded-xl border border-stone-200 bg-stone-50 py-3 pl-9 pr-9 text-xs font-semibold text-stone-800 placeholder-stone-400 outline-none transition focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-100"
+                            />
+                            {homeSearchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setHomeSearchQuery('')}
+                                    aria-label="Clear customer search"
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+
+                        {homeSearchQuery.trim() && (
+                            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                                {homeSearchResults.length === 0 ? (
+                                    <div className="rounded-xl border border-dashed border-stone-200 px-3 py-5 text-center text-[11px] font-semibold text-stone-400">
+                                        No matching customers found.
+                                    </div>
+                                ) : homeSearchResults.map(cust => (
+                                    <button
+                                        type="button"
+                                        key={cust.id}
+                                        onClick={() => handleSelectCustomerForStage(cust, cust.stage)}
+                                        className="flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 px-3 py-3 text-left transition hover:border-amber-300 hover:bg-amber-50/40"
+                                    >
+                                        <span className="min-w-0">
+                                            <span className="block truncate text-xs font-black text-stone-900">{cust.customer_name || 'Unnamed Customer'}</span>
+                                            <span className="mt-0.5 block truncate text-[10px] font-semibold text-stone-400">
+                                                {[cust.phone_number, cust.consumer_no].filter(Boolean).join(' · ') || 'No phone or consumer number'}
+                                            </span>
+                                        </span>
+                                        <span className="flex shrink-0 items-center gap-2">
+                                            <span className="max-w-[92px] truncate rounded-full bg-stone-100 px-2 py-1 text-[9px] font-black uppercase text-stone-500">
+                                                {PRIMARY_STAGES.find(stage => stage.id === cust.stage)?.label || cust.stage || 'Unknown stage'}
+                                            </span>
+                                            <ChevronRight size={14} className="text-stone-400" />
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+
                     <section className="grid grid-cols-2 gap-3">
                         {[
                             { label: 'Total customers', value: customers.length, icon: Users, tone: 'bg-stone-100 text-stone-700' },
@@ -1086,7 +1152,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                         </button>
                         <div>
                             <h2 className="text-sm md:text-lg font-black text-stone-900 uppercase tracking-tight flex items-center gap-2">
-                                {searchQuery.trim() ? 'Search Results' : (PRIMARY_STAGES.find(s => s.id === activeWorkdeskTab)?.label || activeWorkdeskTab)}
+                                {PRIMARY_STAGES.find(s => s.id === activeWorkdeskTab)?.label || activeWorkdeskTab}
                             </h2>
                         </div>
                     </div>
@@ -1133,8 +1199,10 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                 </header>
 
                 
-                {/* MOBILE SEARCH BAR */}
-                <div className="sm:hidden px-4 py-3 bg-white border-b border-stone-150 shrink-0 shadow-sm z-10">
+                {/* Stage search stays visible at every viewport width. The portal
+                    can be displayed in a phone-like shell on a wider laptop,
+                    where breakpoint-only mobile controls would otherwise vanish. */}
+                <div className="px-4 py-3 bg-white border-b border-stone-150 shrink-0 shadow-sm z-10">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
                         <input
@@ -1173,7 +1241,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                             {getWorkdeskCustomers(activeWorkdeskTab).map((cust) => (
                                 <div
                                     key={cust.id}
-                                    onClick={() => handleSelectCustomerForStage(cust, searchQuery.trim() ? cust.stage : activeWorkdeskTab)}
+                                    onClick={() => handleSelectCustomerForStage(cust, activeWorkdeskTab)}
                                     className="bg-white p-4 md:p-5 rounded-2xl border border-stone-200/80 shadow-sm hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] flex flex-col justify-between"
                                 >
                                     <div>

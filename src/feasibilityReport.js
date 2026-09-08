@@ -10,6 +10,31 @@ const VENDOR = {
 };
 
 const clean = value => String(value ?? '').trim();
+// pdf-lib's built-in Helvetica font uses WinAnsi and throws when imported
+// customer text contains Cyrillic look-alikes (for example `М` instead of
+// Latin `M`) or another unsupported glyph. Normalize those characters only in
+// the generated PDF; never alter the value stored on the customer record.
+const CYRILLIC_LOOKALIKES = {
+    А: 'A', В: 'B', Е: 'E', К: 'K', М: 'M', Н: 'H', О: 'O', Р: 'P', С: 'C', Т: 'T', Х: 'X', У: 'Y',
+    а: 'a', в: 'b', е: 'e', к: 'k', м: 'm', н: 'h', о: 'o', р: 'p', с: 'c', т: 't', х: 'x', у: 'y'
+};
+const pdfSafe = value => clean(value)
+    .normalize('NFKD')
+    .split('')
+    .map(char => {
+        if (CYRILLIC_LOOKALIKES[char]) return CYRILLIC_LOOKALIKES[char];
+        if (char === '–' || char === '—' || char === '−') return '-';
+        if (char === '“' || char === '”') return '"';
+        if (char === '‘' || char === '’') return "'";
+        const code = char.charCodeAt(0);
+        if (code >= 32 && code <= 126) return char;
+        // Combining marks introduced by NFKD can be safely omitted. For any
+        // other unsupported script, use a visible placeholder instead of
+        // aborting the whole PDF download.
+        if (/\p{Mark}/u.test(char)) return '';
+        return '?';
+    })
+    .join('');
 const money = value => {
     const raw = clean(value).replace(/[^0-9.]/g, '');
     return raw ? `Rs. ${Number(raw).toLocaleString('en-IN')}` : '';
@@ -49,8 +74,11 @@ export function getMissingFeasibilityFields(data, hasSitePhoto) {
     return checks.filter(([, , value]) => !value).map(([field, tab]) => ({ field, tab }));
 }
 
+export const shouldSaveGeneratedSiteFeasibility = documents =>
+    !(documents || []).some(doc => doc?.doc_type === 'site_feasibility');
+
 const wrap = (text, font, size, width) => {
-    const words = clean(text).split(/\s+/).filter(Boolean);
+    const words = pdfSafe(text).split(/\s+/).filter(Boolean);
     const lines = [];
     let line = '';
     words.forEach(word => {
@@ -68,7 +96,7 @@ async function embedImage(pdf, source) {
     try { return await pdf.embedPng(bytes); } catch { return await pdf.embedJpg(bytes); }
 }
 
-export async function createFeasibilityPdf(data, { sitePhotoUrl, stampUrl = '/stamp.png' } = {}) {
+export async function createFeasibilityPdf(data, { sitePhotoUrl, stampUrl = '/stamp.png', highlightMapped = false } = {}) {
     const pdf = await PDFDocument.create();
     const regular = await pdf.embedFont(StandardFonts.Helvetica);
     const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -85,10 +113,20 @@ export async function createFeasibilityPdf(data, { sitePhotoUrl, stampUrl = '/st
         page.drawText(`Page ${number} of 3`, { x: 500, y: 28, size: 9, font: regular, color: rgb(.4, .4, .4) });
         addStamp(page);
     };
-    const field = (page, label, value, y) => {
+    const field = (page, label, value, y, highlight = false) => {
         page.drawText(label, { x: 56, y, size: 10, font: regular, color: black });
         const x = 56 + regular.widthOfTextAtSize(label, 10) + 4;
-        const shown = clean(value) || '________________________';
+        const shown = pdfSafe(value) || '________________________';
+        if (highlightMapped && highlight) {
+            page.drawRectangle({
+                x: x - 2,
+                y: y - 3,
+                width: Math.min(470 - x, Math.max(72, bold.widthOfTextAtSize(shown, 10) + 6)),
+                height: 15,
+                color: rgb(1, 0.94, 0.55),
+                opacity: 0.72
+            });
+        }
         page.drawText(shown, { x, y, size: 10, font: bold, color: black, maxWidth: 470 - x });
     };
 
@@ -109,7 +147,7 @@ export async function createFeasibilityPdf(data, { sitePhotoUrl, stampUrl = '/st
         ['13. EPC:', VENDOR.epc, false]
     ];
     let y = 742;
-    rows.forEach(([label, value]) => { field(p1, label, value, y); y -= 25; });
+    rows.forEach(([label, value, mapped]) => { field(p1, label, value, y, mapped); y -= 25; });
     p1.drawText('14. EPC Contractor Bank Details:', { x: 56, y, size: 10, font: regular }); y -= 23;
     p1.drawText('A/c No :-', { x: 72, y, size: 10, font: regular });
     p1.drawRectangle({ x: 126, y: y - 6, width: 135, height: 20, borderWidth: 1, borderColor: black });
@@ -117,8 +155,8 @@ export async function createFeasibilityPdf(data, { sitePhotoUrl, stampUrl = '/st
     p1.drawText('IFSC CODE :-', { x: 274, y, size: 10, font: regular });
     p1.drawRectangle({ x: 351, y: y - 6, width: 128, height: 20, borderWidth: 1, borderColor: black });
     p1.drawText(VENDOR.ifsc, { x: 362, y, size: 10, font: bold }); y -= 25;
-    field(p1, '14. RTS Capacity in KW Applied:', data.capacity, y); y -= 25;
-    field(p1, '15. Actual RTS Capacity to be installed:', data.capacity, y); y -= 25;
+    field(p1, '14. RTS Capacity in KW Applied:', data.capacity, y, true); y -= 25;
+    field(p1, '15. Actual RTS Capacity to be installed:', data.capacity, y, true); y -= 25;
     field(p1, '16. Is the vendor registered in MNRE Portal:', 'Yes / No', y); y -= 18;
     p1.drawText('(Note: Only vendors registered in MNRE portal will be allowed)', { x: 74, y, size: 9, font: bold }); y -= 27;
     p1.drawText('17. Feasibility Report Status:', { x: 56, y, size: 10, font: regular }); y -= 24;
@@ -128,7 +166,7 @@ export async function createFeasibilityPdf(data, { sitePhotoUrl, stampUrl = '/st
     p1.drawText('Feasible', { x: 106, y, size: 10, font: regular });
     p1.drawRectangle({ x: 192, y: y - 4, width: 14, height: 14, borderWidth: 1, borderColor: black });
     p1.drawText('Not Feasible', { x: 212, y, size: 10, font: regular }); y -= 27;
-    field(p1, '18. Project Cost (All inclusive):', data.projectCost, y); y -= 25;
+    field(p1, '18. Project Cost (All inclusive):', data.projectCost, y, true); y -= 25;
     p1.drawText('19. Site Layout - Images (2-4 Images to be uploaded):', { x: 56, y, size: 10, font: regular });
     p1.drawText('Authorised Signatory of the vendor with Stamp', { x: 315, y: 82, size: 9, font: bold });
     footer(p1, 1);
@@ -144,13 +182,15 @@ export async function createFeasibilityPdf(data, { sitePhotoUrl, stampUrl = '/st
     ];
     y = 728;
     paragraphs.forEach(text => { const lines = wrap(text, regular, 10, 480); lines.forEach(line => { p2.drawText(line, { x: 56, y, size: 10, font: regular }); y -= 14; }); y -= 12; });
-    field(p2, 'Signature Date:', data.signatureDate, y); y -= 40;
+    field(p2, 'Signature Date:', data.signatureDate, y, true); y -= 40;
     p2.drawText('Name of the Borrower:', { x: 56, y, size: 10, font: regular });
     p2.drawRectangle({ x: 210, y: y - 22, width: 300, height: 42, borderWidth: 1, borderColor: black });
-    p2.drawText(data.consumerName, { x: 220, y: y - 4, size: 11, font: bold }); y -= 58;
+    if (highlightMapped) p2.drawRectangle({ x: 216, y: y - 10, width: 286, height: 22, color: rgb(1, .94, .55), opacity: .72 });
+    p2.drawText(pdfSafe(data.consumerName) || '________________________', { x: 220, y: y - 4, size: 11, font: bold }); y -= 58;
     p2.drawText('Address:', { x: 56, y, size: 10, font: regular });
     p2.drawRectangle({ x: 208, y: y - 65, width: 302, height: 72, borderWidth: 1, borderColor: black });
     const address = `${data.address}, ${data.district}, ${data.state} - ${data.pincode}`;
+    if (highlightMapped) p2.drawRectangle({ x: 214, y: y - 59, width: 288, height: 60, color: rgb(1, .94, .55), opacity: .72 });
     wrap(address, bold, 11, 282).forEach((line, index) => p2.drawText(line, { x: 218, y: y - 18 - index * 15, size: 11, font: bold }));
     footer(p2, 2);
 

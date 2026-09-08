@@ -4,7 +4,7 @@ import { LOAN_TAGS, LOAN_TAG_COLORS, isFinalTagValue } from '../../constants';
 import { CheckboxRemarkItem, EditableDetailItem } from './shared';
 import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
 import { getViewUrl, downloadFileWithSaveAs } from '../../utils';
-import { createFeasibilityPdf, getMissingFeasibilityFields, mapFeasibilityReport } from '../../feasibilityReport';
+import { createFeasibilityPdf, getMissingFeasibilityFields, mapFeasibilityReport, shouldSaveGeneratedSiteFeasibility } from '../../feasibilityReport';
 import { useGlobalPopup } from '../GlobalPopup';
 
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
@@ -38,6 +38,7 @@ export default function LoanTab({
     const [isEditingAppDetails, setIsEditingAppDetails] = useState(false);
     const [feasibilityBusy, setFeasibilityBusy] = useState(false);
     const [feasibilityPreviewUrl, setFeasibilityPreviewUrl] = useState('');
+    const [feasibilityPreviewInputs, setFeasibilityPreviewInputs] = useState(null);
     useEffect(() => () => {
         if (feasibilityPreviewUrl) URL.revokeObjectURL(feasibilityPreviewUrl);
     }, [feasibilityPreviewUrl]);
@@ -194,30 +195,34 @@ export default function LoanTab({
     // Filter timeline entries for general status history (excluding internal payment item rows)
     const timelineEntries = historyList.filter(e => !['Down Payment', 'Total Quotation', 'Quotation'].includes(e.status));
 
-    const getFeasibilityInputs = async () => {
+    const getFeasibilityInputs = async ({ allowIncomplete = false } = {}) => {
         const data = mapFeasibilityReport(editData);
         const photoDoc = documents.find(doc => ['house_geo_tag_photo', 'house_geo_tag'].includes(doc.doc_type));
         const missing = getMissingFeasibilityFields(data, Boolean(photoDoc));
-        if (missing.length) {
+        if (!allowIncomplete && missing.length) {
             showAlert(
                 `Please fill these values first:\n\n${missing.map(item => `• ${item.field} - ${item.tab} tab`).join('\n')}`,
                 { title: 'Feasibility report is incomplete', type: 'warning' }
             );
             return null;
         }
-        const sitePhotoUrl = await getViewUrl(photoDoc.storage_path);
-        if (!sitePhotoUrl) throw new Error('The House Geo Tag Photo could not be opened. Please upload it again in the Leads tab.');
-        return { data, sitePhotoUrl };
+        const sitePhotoUrl = photoDoc ? await getViewUrl(photoDoc.storage_path) : '';
+        if (!allowIncomplete && !sitePhotoUrl) throw new Error('The House Geo Tag Photo could not be opened. Please upload it again in the Leads tab.');
+        return { data, sitePhotoUrl, missing };
     };
 
     const handlePreviewFeasibility = async () => {
         if (feasibilityBusy) return;
         setFeasibilityBusy(true);
         try {
-            const inputs = await getFeasibilityInputs();
+            const inputs = await getFeasibilityInputs({ allowIncomplete: true });
             if (!inputs) return;
-            const blob = await createFeasibilityPdf(inputs.data, { sitePhotoUrl: inputs.sitePhotoUrl });
+            const blob = await createFeasibilityPdf(inputs.data, { sitePhotoUrl: inputs.sitePhotoUrl, highlightMapped: true });
             if (feasibilityPreviewUrl) URL.revokeObjectURL(feasibilityPreviewUrl);
+            // Keep the exact values and validation state used to open this
+            // preview. Uploading the generated PDF triggers a realtime customer
+            // refresh; that must not make the Download button disappear.
+            setFeasibilityPreviewInputs(inputs);
             setFeasibilityPreviewUrl(URL.createObjectURL(blob));
         } catch (error) {
             showAlert(error.message || 'The feasibility preview could not be created.', { type: 'error' });
@@ -228,12 +233,20 @@ export default function LoanTab({
         if (feasibilityBusy) return;
         setFeasibilityBusy(true);
         try {
-            const inputs = await getFeasibilityInputs();
+            const inputs = feasibilityPreviewInputs?.missing?.length === 0
+                ? feasibilityPreviewInputs
+                : await getFeasibilityInputs();
             if (!inputs) return;
             const blob = await createFeasibilityPdf(inputs.data, { sitePhotoUrl: inputs.sitePhotoUrl });
             const safeName = (inputs.data.consumerName || 'Customer').replace(/[^a-z0-9]+/gi, '_');
             const file = new File([blob], `Feasibility_Report_${safeName}.pdf`, { type: 'application/pdf' });
-            await onFileUpload({ target: { files: [file], value: '' } }, 'feasibility_document');
+            // Save the generated report into the Loan tab's Site Feasibility
+            // slot only when it is empty. Never replace/delete a file the
+            // client already uploaded there; repeated generation still
+            // downloads the fresh PDF to the device.
+            if (shouldSaveGeneratedSiteFeasibility(documents)) {
+                await onFileUpload({ target: { files: [file], value: '' } }, 'site_feasibility');
+            }
             await downloadFileWithSaveAs(URL.createObjectURL(blob), file.name);
         } catch (error) {
             showAlert(error.message || 'The feasibility report could not be generated.', { type: 'error' });
@@ -362,16 +375,12 @@ export default function LoanTab({
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div>
                                 <p className="text-xs font-bold text-stone-800">Solar Feasibility Report</p>
-                                <p className="mt-0.5 text-[10px] font-medium text-stone-500">Preview mapped values, then save the same 3-page PDF to Documents and your device.</p>
+                                <p className="mt-0.5 text-[10px] font-medium text-stone-500">Preview anytime. Yellow fields show mapped values to verify; the saved PDF has no highlights.</p>
                             </div>
                             <div className="flex gap-2">
                                 <button type="button" onClick={handlePreviewFeasibility} disabled={feasibilityBusy}
                                     className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-2 text-[10px] font-bold text-stone-700 disabled:opacity-50 cursor-pointer">
                                     <Eye size={13} /> Preview
-                                </button>
-                                <button type="button" onClick={handleGenerateFeasibility} disabled={feasibilityBusy}
-                                    className="inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-3 py-2 text-[10px] font-bold text-white disabled:opacity-50 cursor-pointer">
-                                    {feasibilityBusy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Generate & Save
                                 </button>
                             </div>
                         </div>
@@ -900,20 +909,17 @@ export default function LoanTab({
         {feasibilityPreviewUrl && (
             <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm" onClick={() => setFeasibilityPreviewUrl('')}>
                 <div className="flex h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
-                    <div className="flex items-center justify-between border-b border-stone-200 px-4 py-3">
-                        <div>
-                            <p className="text-sm font-bold text-stone-900">Feasibility Report Preview</p>
-                            <p className="text-[10px] font-medium text-stone-500">Review the complete report before generating and saving it.</p>
-                        </div>
-                        <button type="button" onClick={() => setFeasibilityPreviewUrl('')} className="rounded-lg p-2 hover:bg-stone-100 cursor-pointer"><X size={17} /></button>
-                    </div>
-                    <iframe title="Solar feasibility report preview" src={feasibilityPreviewUrl} className="min-h-0 flex-1 bg-stone-100" />
-                    <div className="flex justify-end gap-2 border-t border-stone-200 p-3">
-                        <button type="button" onClick={() => setFeasibilityPreviewUrl('')} className="rounded-xl border border-stone-200 px-4 py-2 text-xs font-bold cursor-pointer">Close</button>
-                        <button type="button" onClick={handleGenerateFeasibility} disabled={feasibilityBusy} className="inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50 cursor-pointer">
-                            {feasibilityBusy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Generate, Save & Download
+                    <div className="flex h-12 shrink-0 items-center justify-end gap-2 border-b border-stone-700 bg-stone-900 px-3">
+                        <button type="button" onClick={handleGenerateFeasibility} disabled={feasibilityBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-400 px-3 py-2 text-xs font-black text-stone-950 disabled:opacity-50 cursor-pointer">
+                            {feasibilityBusy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Download
                         </button>
+                        <button type="button" aria-label="Close feasibility preview" onClick={() => setFeasibilityPreviewUrl('')} className="rounded-lg p-2 text-white hover:bg-white/10 cursor-pointer"><X size={18} /></button>
                     </div>
+                    <iframe
+                        title="Solar feasibility report preview"
+                        src={`${feasibilityPreviewUrl}#toolbar=0&navpanes=0`}
+                        className="min-h-0 flex-1 bg-stone-100"
+                    />
                 </div>
             </div>
         )}
