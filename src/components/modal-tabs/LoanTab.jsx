@@ -9,6 +9,9 @@ import { useGlobalPopup } from '../GlobalPopup';
 
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
 
+const shouldUseNativeMobilePdfViewer = () => typeof window !== 'undefined'
+    && window.matchMedia('(max-width: 767px)').matches;
+
 export default function LoanTab({
     customer,
     editData,
@@ -210,18 +213,40 @@ export default function LoanTab({
 
     const handlePreviewFeasibility = async () => {
         if (feasibilityBusy) return;
+        // Mobile browsers generally cannot render a blob PDF inside an iframe;
+        // they replace it with a restricted "Open" placeholder. Open a tab
+        // synchronously (before PDF generation awaits) so popup blockers still
+        // recognise it as a direct user action, then send the finished preview
+        // to the phone's full-screen native PDF viewer.
+        const useNativeMobileViewer = shouldUseNativeMobilePdfViewer();
+        const mobilePreviewTab = useNativeMobileViewer ? window.open('', '_blank') : null;
         setFeasibilityBusy(true);
         try {
             const inputs = await getFeasibilityInputs({ allowIncomplete: true });
-            if (!inputs) return;
+            if (!inputs) {
+                mobilePreviewTab?.close();
+                return;
+            }
             const blob = await createFeasibilityPdf(inputs.data, { highlightMapped: true });
             if (feasibilityPreviewUrl) URL.revokeObjectURL(feasibilityPreviewUrl);
             // Keep the exact values and validation state used to open this
             // preview. Uploading the generated PDF triggers a realtime customer
             // refresh; that must not make the Download button disappear.
             setFeasibilityPreviewInputs(inputs);
-            setFeasibilityPreviewUrl(URL.createObjectURL(blob));
+            const previewUrl = URL.createObjectURL(blob);
+            if (useNativeMobileViewer && mobilePreviewTab) {
+                mobilePreviewTab.opener = null;
+                mobilePreviewTab.location.replace(previewUrl);
+                // Give the external viewer enough time to finish reading the
+                // blob without retaining it for the rest of the CRM session.
+                window.setTimeout(() => URL.revokeObjectURL(previewUrl), 5 * 60 * 1000);
+            } else {
+                // Desktop keeps the inline modal. This is also the safe fallback
+                // if a phone blocks opening the new tab.
+                setFeasibilityPreviewUrl(previewUrl);
+            }
         } catch (error) {
+            mobilePreviewTab?.close();
             showAlert(error.message || 'The feasibility preview could not be created.', { type: 'error' });
         } finally { setFeasibilityBusy(false); }
     };

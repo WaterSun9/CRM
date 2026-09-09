@@ -128,6 +128,9 @@ database-changing sections while staff are actively working.
 - [ ] Stress-test single-PDF Download All on representative Android and iPhone devices with unusually large customer document sets; move merging server-side only if mobile memory limits remain a problem.
 - [ ] Verify browser Save As behaviour for PDF, PNG/JPG, and ZIP where supported.
 - [ ] Verify PCR Certificate uploads as a document without requiring a new boolean column.
+- [ ] Replace the temporary mobile native-viewer feasibility preview with an
+      inline PDF.js page renderer so all three pages remain inside the CRM and
+      the app-controlled validation/download flow cannot be bypassed.
 
 ## 9. Workflow regression test
 
