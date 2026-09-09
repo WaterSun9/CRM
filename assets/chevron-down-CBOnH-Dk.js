@@ -1,0 +1,1 @@
+import{Nt as e}from"./index-XMpgpfQ_.js";var t=e(`ChevronDown`,[[`path`,{d:`m6 9 6 6 6-6`,key:`qrunsl`}]]);export{t};
