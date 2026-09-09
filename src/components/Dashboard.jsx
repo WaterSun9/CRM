@@ -572,10 +572,13 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 if (partner) {
                     const { data: existing } = await supabase
                         .from('metadata')
-                        .select('id')
-                        .eq('category', 'channel_partner')
-                        .eq('label', partner);
-                    if (!existing || existing.length === 0) {
+                        .select('id, label')
+                        .eq('category', 'channel_partner');
+                    const normalizedPartner = partner.toLocaleLowerCase();
+                    const alreadyListed = (existing || []).some(row =>
+                        String(row?.label || '').trim().toLocaleLowerCase() === normalizedPartner
+                    );
+                    if (!alreadyListed) {
                         // Non-blocking: the lead itself is already saved; this only
                         // seeds the dropdown for next time.
                         const { error: metaErr } = await supabase
@@ -1040,7 +1043,16 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     // Distinct Channel Partner names from metadata table for dropdowns and top filter suggestions
-    const uniqueChannelPartners = [...new Set(meta['channel_partner'] || [])].sort();
+    const uniqueChannelPartners = [...(meta['channel_partner'] || []).reduce((byName, rawLabel) => {
+        const label = String(rawLabel || '').trim();
+        const key = label.toLocaleLowerCase();
+        if (!key) return byName;
+        const current = byName.get(key);
+        const labelIsUppercase = label === label.toLocaleUpperCase();
+        const currentIsUppercase = current === String(current || '').toLocaleUpperCase();
+        if (!current || (labelIsUppercase && !currentIsUppercase)) byName.set(key, label);
+        return byName;
+    }, new Map()).values()].sort((a, b) => a.localeCompare(b));
     const channelPartnerSuggestions = channelPartnerFilterInput.trim()
         ? uniqueChannelPartners.filter(p => (p || '').toLowerCase().includes(channelPartnerFilterInput.trim().toLowerCase()))
         : uniqueChannelPartners;

@@ -58,7 +58,7 @@ export function mapFeasibilityReport(customer) {
     };
 }
 
-export function getMissingFeasibilityFields(data, hasSitePhoto) {
+export function getMissingFeasibilityFields(data) {
     const checks = [
         ['Consumer Name', 'Leads', data.consumerName],
         ['Consumer No', 'Leads', data.consumerNo],
@@ -68,8 +68,7 @@ export function getMissingFeasibilityFields(data, hasSitePhoto) {
         ['System Capacity', 'Leads', data.capacity],
         ['PM Surya Ghar Portal / Feasibility No', 'Registration', data.feasibilityNo],
         ['Jan Samarth Application No', 'Loan', data.janSamarthNo],
-        ['Total Quotation Amount', 'Loan', data.projectCost],
-        ['House Geo Tag Photo', 'Leads', hasSitePhoto]
+        ['Total Quotation Amount', 'Loan', data.projectCost]
     ];
     return checks.filter(([, , value]) => !value).map(([field, tab]) => ({ field, tab }));
 }
@@ -96,13 +95,12 @@ async function embedImage(pdf, source) {
     try { return await pdf.embedPng(bytes); } catch { return await pdf.embedJpg(bytes); }
 }
 
-export async function createFeasibilityPdf(data, { sitePhotoUrl, stampUrl = '/stamp.png', highlightMapped = false } = {}) {
+export async function createFeasibilityPdf(data, { stampUrl = '/stamp.png', highlightMapped = false } = {}) {
     const pdf = await PDFDocument.create();
     const regular = await pdf.embedFont(StandardFonts.Helvetica);
     const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
     const black = rgb(0.08, 0.08, 0.08);
     const stamp = await embedImage(pdf, stampUrl).catch(() => null);
-    const sitePhoto = await embedImage(pdf, sitePhotoUrl).catch(() => null);
     const addStamp = page => {
         if (!stamp) return;
         const ratio = stamp.width / stamp.height;
@@ -197,12 +195,6 @@ export async function createFeasibilityPdf(data, { sitePhotoUrl, stampUrl = '/st
     const p3 = pdf.addPage(A4);
     p3.drawText('Site Photos:', { x: 56, y: 790, size: 15, font: bold });
     p3.drawLine({ start: { x: 56, y: 787 }, end: { x: 56 + bold.widthOfTextAtSize('Site Photos:', 15), y: 787 }, thickness: 1 });
-    p3.drawText('House Geo Tag Photo', { x: 56, y: 762, size: 11, font: bold });
-    if (sitePhoto) {
-        const maxW = 470, maxH = 475, scale = Math.min(maxW / sitePhoto.width, maxH / sitePhoto.height);
-        const width = sitePhoto.width * scale, height = sitePhoto.height * scale;
-        p3.drawImage(sitePhoto, { x: (A4[0] - width) / 2, y: 245 + (475 - height) / 2, width, height });
-    }
     p3.drawText(`EPC Code: ${VENDOR.epc}`, { x: 56, y: 105, size: 9, font: regular });
     p3.drawText('Authorised Signatory of the vendor with Stamp', { x: 315, y: 82, size: 9, font: bold });
     footer(p3, 3);

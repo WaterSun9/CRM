@@ -4,6 +4,28 @@ import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit
 import { logActivity, runWrite } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 
+const normalizeDirectoryLabel = (value) => String(value || '').trim().toLocaleLowerCase();
+
+// Metadata predates case-insensitive duplicate protection, so the same partner
+// can exist as (for example) "Radhe Solar" and "RADHE SOLAR". Keep the rows in
+// Supabase untouched, but expose only one directory item. When available, use
+// the already-uppercase row as the canonical UI entry because new entries are
+// stored uppercase.
+const dedupeChannelPartnerDirectory = (items) => {
+    const byName = new Map();
+    for (const item of items) {
+        const key = normalizeDirectoryLabel(item?.label);
+        if (!key) continue;
+        const current = byName.get(key);
+        const itemLabel = String(item.label).trim();
+        const currentLabel = String(current?.label || '').trim();
+        const itemIsUppercase = itemLabel === itemLabel.toLocaleUpperCase();
+        const currentIsUppercase = currentLabel === currentLabel.toLocaleUpperCase();
+        if (!current || (itemIsUppercase && !currentIsUppercase)) byName.set(key, item);
+    }
+    return [...byName.values()];
+};
+
 export default function ChannelPartnerManagementView({ customers = [], currentUser }) {
     const { showAlert } = useGlobalPopup();
     const [partners, setPartners] = useState([]);
@@ -87,7 +109,9 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             if (metaRes.error) throw metaRes.error;
             const data = metaRes.data || [];
 
-            const partnerList = data.filter(d => d.category === 'channel_partner');
+            const partnerList = dedupeChannelPartnerDirectory(
+                data.filter(d => d.category === 'channel_partner')
+            );
             const brandList = data.filter(d => d.category === 'module_brand');
             const registrationList = data.filter(d => d.category === 'registration_by');
             const integrationList = data.filter(d => d.category === 'integration_by');
@@ -298,7 +322,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         if (!val) return;
 
         // Check for duplicates
-        if ((partners || []).some(p => String(p?.label || '').toLowerCase() === val.toLowerCase())) {
+        if ((partners || []).some(p => normalizeDirectoryLabel(p?.label) === normalizeDirectoryLabel(val))) {
             showAlert('This Channel Partner already exists.');
             return;
         }
@@ -560,7 +584,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
         else if (category === 'integration_by') listToCheck = integrations;
         else if (category === 'inverter_make') listToCheck = inverters;
 
-        if (listToCheck.some(x => x.id !== id && x.label.toLowerCase() === trimmed.toLowerCase())) {
+        if (listToCheck.some(x => x.id !== id && normalizeDirectoryLabel(x.label) === normalizeDirectoryLabel(trimmed))) {
             showAlert('This entry already exists.');
             return;
         }

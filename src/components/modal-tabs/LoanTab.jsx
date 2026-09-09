@@ -3,7 +3,7 @@ import { History, Paperclip, IndianRupee, CheckCircle2, Lock, Edit3, X, Clipboar
 import { LOAN_TAGS, LOAN_TAG_COLORS, isFinalTagValue } from '../../constants';
 import { CheckboxRemarkItem, EditableDetailItem } from './shared';
 import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
-import { getViewUrl, downloadFileWithSaveAs } from '../../utils';
+import { downloadFileWithSaveAs } from '../../utils';
 import { createFeasibilityPdf, getMissingFeasibilityFields, mapFeasibilityReport, shouldSaveGeneratedSiteFeasibility } from '../../feasibilityReport';
 import { useGlobalPopup } from '../GlobalPopup';
 
@@ -197,8 +197,7 @@ export default function LoanTab({
 
     const getFeasibilityInputs = async ({ allowIncomplete = false } = {}) => {
         const data = mapFeasibilityReport(editData);
-        const photoDoc = documents.find(doc => ['house_geo_tag_photo', 'house_geo_tag'].includes(doc.doc_type));
-        const missing = getMissingFeasibilityFields(data, Boolean(photoDoc));
+        const missing = getMissingFeasibilityFields(data);
         if (!allowIncomplete && missing.length) {
             showAlert(
                 `Please fill these values first:\n\n${missing.map(item => `• ${item.field} - ${item.tab} tab`).join('\n')}`,
@@ -206,9 +205,7 @@ export default function LoanTab({
             );
             return null;
         }
-        const sitePhotoUrl = photoDoc ? await getViewUrl(photoDoc.storage_path) : '';
-        if (!allowIncomplete && !sitePhotoUrl) throw new Error('The House Geo Tag Photo could not be opened. Please upload it again in the Leads tab.');
-        return { data, sitePhotoUrl, missing };
+        return { data, missing };
     };
 
     const handlePreviewFeasibility = async () => {
@@ -217,7 +214,7 @@ export default function LoanTab({
         try {
             const inputs = await getFeasibilityInputs({ allowIncomplete: true });
             if (!inputs) return;
-            const blob = await createFeasibilityPdf(inputs.data, { sitePhotoUrl: inputs.sitePhotoUrl, highlightMapped: true });
+            const blob = await createFeasibilityPdf(inputs.data, { highlightMapped: true });
             if (feasibilityPreviewUrl) URL.revokeObjectURL(feasibilityPreviewUrl);
             // Keep the exact values and validation state used to open this
             // preview. Uploading the generated PDF triggers a realtime customer
@@ -237,7 +234,7 @@ export default function LoanTab({
                 ? feasibilityPreviewInputs
                 : await getFeasibilityInputs();
             if (!inputs) return;
-            const blob = await createFeasibilityPdf(inputs.data, { sitePhotoUrl: inputs.sitePhotoUrl });
+            const blob = await createFeasibilityPdf(inputs.data);
             const safeName = (inputs.data.consumerName || 'Customer').replace(/[^a-z0-9]+/gi, '_');
             const file = new File([blob], `Feasibility_Report_${safeName}.pdf`, { type: 'application/pdf' });
             // Save the generated report into the Loan tab's Site Feasibility
