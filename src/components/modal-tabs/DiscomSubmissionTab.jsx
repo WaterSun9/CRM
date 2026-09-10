@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
-import { ClipboardList, Save, FileText, Printer, RotateCcw, AlertTriangle, CheckCircle2, SendHorizonal, Loader2 } from 'lucide-react';
+import { ClipboardList, Save, FileText, Printer, RotateCcw, AlertTriangle, CheckCircle2, SendHorizonal, Loader2, Upload } from 'lucide-react';
 import { Page1 } from '../agreement/Page1';
 import { CheckboxRemarkItem } from './shared';
 import { formatDateToDDMMYYYY } from '../../utils';
@@ -18,6 +18,7 @@ export default function DiscomSubmissionTab({
     saving,
     setSaving,
     onGenerateAgreement,
+    onAddAgreementToDocuments,
     documents = [],
     onFileUpload,
     onFileDelete,
@@ -255,11 +256,13 @@ export default function DiscomSubmissionTab({
                     <CheckboxRemarkItem label="DCR Certificate" field="dcr_certificate" value={editData.dcr_certificate} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                     <CheckboxRemarkItem label="PCR Certificate" field="pcr_certificate" value={editData.pcr_certificate} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                     <CheckboxRemarkItem label="Signature" field="signature_pic" value={editData.signature_pic} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                    <CheckboxRemarkItem label="PM Surya Ghar Model Agreement" field="discom_agreement" value={editData.discom_agreement} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={onFileUpload} onDelete={onFileDelete} onPreview={onFilePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                 </div>
                 {isEditable && (
                     editData.dcr_certificate !== customer.dcr_certificate || 
                     editData.pcr_certificate !== customer.pcr_certificate ||
-                    editData.signature_pic !== customer.signature_pic
+                    editData.signature_pic !== customer.signature_pic ||
+                    editData.discom_agreement !== customer.discom_agreement
                 ) && (
                     <div className="flex justify-end pt-2">
                         <button
@@ -271,7 +274,8 @@ export default function DiscomSubmissionTab({
                                 if (await onUpdate(customer.id, {
                                     dcr_certificate: editData.dcr_certificate,
                                     pcr_certificate: editData.pcr_certificate,
-                                    signature_pic: editData.signature_pic
+                                    signature_pic: editData.signature_pic,
+                                    discom_agreement: editData.discom_agreement
                                 }) === false) { setSaving(false); return; }
                                 await logActivity(
                                     user.id, 
@@ -920,6 +924,15 @@ export default function DiscomSubmissionTab({
                             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/10 flex items-center gap-1.5 cursor-pointer"
                         >
                             <Printer className="w-4 h-4" /> Pop Open & Print Agreement
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onAddAgreementToDocuments}
+                            disabled={saving}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                            <Upload className="w-4 h-4" />
+                            {documents.some(doc => doc?.doc_type === 'discom_agreement') ? 'Replace in Documents' : 'Add to Documents'}
                         </button>
                     </div>
                 </div>

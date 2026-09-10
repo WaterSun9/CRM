@@ -1,15 +1,61 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Page1 } from './Page1';
 import { Page2 } from './Page2';
 import { Page3 } from './Page3';
 import { Page4 } from './Page4';
-import { Printer, ZoomIn, ZoomOut, FileText, Eye, EyeOff, X, Type, RotateCw } from 'lucide-react';
+import { Printer, ZoomIn, ZoomOut, FileText, Eye, EyeOff, X, Type, RotateCw, Upload, Loader2 } from 'lucide-react';
 
-export const AgreementPreview = ({ data, onChange, onClose }) => {
+export const AgreementPreview = ({ data, onChange, onClose, onAddToDocuments, existingDocument = false, autoAdd = false }) => {
   const [zoom, setZoom] = useState(100);
   const [fontSize, setFontSize] = useState('text-[17px]');
   const [stampRotation, setStampRotation] = useState(0);
   const containerRef = useRef(null);
+  const autoAddStartedRef = useRef(false);
+  const [adding, setAdding] = useState(false);
+
+  const handleAddToDocuments = async () => {
+    if (adding || !onAddToDocuments || !containerRef.current) return;
+    setAdding(true);
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf')
+      ]);
+      const pageElements = Array.from(containerRef.current.querySelectorAll('[id^="crm-agreement-page-"]'));
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      for (let index = 0; index < pageElements.length; index += 1) {
+        const page = pageElements[index];
+        const highlights = Array.from(page.querySelectorAll('[style*="background-color"]'));
+        const previousBackgrounds = highlights.map(element => element.style.backgroundColor);
+        highlights.forEach(element => { element.style.backgroundColor = 'transparent'; });
+        const canvas = await html2canvas(page, {
+          scale: 1.5,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: page.scrollWidth,
+          windowHeight: page.scrollHeight,
+        });
+        highlights.forEach((element, position) => { element.style.backgroundColor = previousBackgrounds[position]; });
+        if (index > 0) pdf.addPage('a4', 'portrait');
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.88), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      }
+      const safeName = (data?.consumerName || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeConsumerNo = (data?.consumerNo || 'Agreement').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const blob = pdf.output('blob');
+      const file = new File([blob], `Discom_Agreement_${safeName}_${safeConsumerNo}.pdf`, { type: 'application/pdf' });
+      await onAddToDocuments(file);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!autoAdd || autoAddStartedRef.current) return;
+    autoAddStartedRef.current = true;
+    const frame = requestAnimationFrame(() => { handleAddToDocuments(); });
+    return () => cancelAnimationFrame(frame);
+  }, [autoAdd]);
 
   const handlePrint = () => {
     const printContainer = containerRef.current;
@@ -220,6 +266,16 @@ export const AgreementPreview = ({ data, onChange, onClose }) => {
             </div>
 
             {/* Print Button */}
+            {onAddToDocuments && (
+              <button
+                onClick={handleAddToDocuments}
+                disabled={adding}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition text-xs cursor-pointer"
+              >
+                {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                <span>{adding ? 'Generating PDF...' : existingDocument ? 'Replace in Documents' : 'Add to Documents'}</span>
+              </button>
+            )}
             <button
               onClick={handlePrint}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg shadow-blue-600/20 transition text-xs cursor-pointer"

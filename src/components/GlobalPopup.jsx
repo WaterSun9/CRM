@@ -5,8 +5,8 @@
 // each screen inventing its own or falling back to the plain browser dialog.
 // ────────────────────────────────────────────────────────────────────────────
 
-import { createContext, useCallback, useContext, useState } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, Share2 } from 'lucide-react';
 
 const GlobalPopupContext = createContext(null);
 
@@ -22,6 +22,40 @@ export function GlobalPopupProvider({ children }) {
     const [popup, setPopup] = useState(null);
     const popupIcon = popup ? (ICONS[popup.type] || ICONS.warning) : ICONS.warning;
     const PopupIcon = popupIcon.Icon;
+
+    useEffect(() => {
+        const handleDownloadComplete = (event) => {
+            const file = event.detail?.file || null;
+            const canShareFile = Boolean(
+                file && navigator.share &&
+                (!navigator.canShare || navigator.canShare({ files: [file] }))
+            );
+            setPopup({
+                mode: 'download-complete',
+                title: 'Download complete',
+                message: canShareFile
+                    ? `${event.detail?.fileName || 'Your file'} is ready. You can now share it through WhatsApp or another app.`
+                    : `${event.detail?.fileName || 'Your file'} has been downloaded to this device.`,
+                type: 'success',
+                file,
+                canShareFile,
+            });
+        };
+        window.addEventListener('watersun:download-complete', handleDownloadComplete);
+        return () => window.removeEventListener('watersun:download-complete', handleDownloadComplete);
+    }, []);
+
+    const shareDownloadedFile = async () => {
+        if (!popup?.file || !popup.canShareFile) return;
+        try {
+            await navigator.share({ files: [popup.file], title: popup.file.name });
+            setPopup(null);
+        } catch (error) {
+            // Cancelling the native share sheet is normal; leave the action open
+            // so the user can try again or simply close the confirmation.
+            if (error?.name !== 'AbortError') console.error('Native file sharing failed:', error);
+        }
+    };
 
     const showAlert = useCallback((message, opts = {}) => {
         return new Promise((resolve) => {
@@ -86,7 +120,26 @@ export function GlobalPopupProvider({ children }) {
                             <h4 className="text-sm font-extrabold text-stone-850">{popup.title}</h4>
                             <p className="text-xs text-stone-500 font-medium mt-1.5 leading-relaxed whitespace-pre-line">{popup.message}</p>
                         </div>
-                        {popup.mode === 'choice' ? (
+                        {popup.mode === 'download-complete' ? (
+                            <div className="space-y-2">
+                                {popup.canShareFile && (
+                                    <button
+                                        type="button"
+                                        onClick={shareDownloadedFile}
+                                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2"
+                                    >
+                                        <Share2 size={15} /> Share file
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setPopup(null)}
+                                    className="w-full py-3 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold transition cursor-pointer active:scale-[0.98]"
+                                >
+                                    Done
+                                </button>
+                            </div>
+                        ) : popup.mode === 'choice' ? (
                             <div className="space-y-2">
                                 <button
                                     type="button"

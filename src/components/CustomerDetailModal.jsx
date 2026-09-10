@@ -302,6 +302,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const saveBomRef = useRef(null);
     const prevCustomerRef = useRef(customer);
     const [showAgreementPopup, setShowAgreementPopup] = useState(false);
+    const [agreementAutoAdd, setAgreementAutoAdd] = useState(false);
     const [agreementData, setAgreementData] = useState({
         executionDate: '',
         consumerName: '',
@@ -408,10 +409,19 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         }
     }, [showAgreementPopup, editData, documents]);
 
-    const handleGenerateAgreement = async () => {
-        if (!String(editData.district || '').trim()) {
-            showAlert('District is empty. Please enter the client district in Leads before generating the agreement.', {
-                title: 'District Required',
+    const handleGenerateAgreement = async (addToDocuments = false) => {
+        const requiredFields = [
+            ['Consumer Name', editData.customer_name, 'Leads'],
+            ['Consumer No', editData.consumer_no, 'Leads'],
+            ['Village', editData.villages, 'Leads'],
+            ['Taluka / Sub Division', editData.sub_divisions, 'Leads'],
+            ['District', editData.district, 'Leads'],
+            ['Agreement Execution Date', editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0], 'DISCOM Submission'],
+        ];
+        const missing = requiredFields.filter(([, value]) => !String(value || '').trim());
+        if (missing.length) {
+            showAlert(`Please fill these values first:\n\n${missing.map(([field, , tab]) => `• ${field} - ${tab} tab`).join('\n')}`, {
+                title: 'Agreement is incomplete',
                 type: 'warning'
             });
             return;
@@ -467,6 +477,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             showHighlights: true,
         });
 
+        setAgreementAutoAdd(addToDocuments);
         setShowAgreementPopup(true);
     };
     const ACTION_COLORS = {
@@ -557,9 +568,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 ).catch(console.error);
                 fetchLogs();
             }
+            return Boolean(newDoc);
         } catch (err) {
             console.error('Document upload failed:', err);
             showAlert('Document upload failed: ' + (err.message || 'Please check your connection and try again.'), { type: 'error' });
+            return false;
         } finally {
             setUploading(false);
             if (e.target) e.target.value = '';
@@ -1612,7 +1625,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         onDownload: handleDownloadDoc,
         onUpdateRemark: handleUpdateDocRemark, 
         onUpdate: handleSectionUpdate, logActivity, fetchLogs, saving, setSaving, handleAdvanceStage,
-        saveBomRef, onDirty: () => setIsFormDirty(true), onGenerateAgreement: handleGenerateAgreement,
+        saveBomRef, onDirty: () => setIsFormDirty(true), onGenerateAgreement: () => handleGenerateAgreement(false),
+        onAddAgreementToDocuments: () => handleGenerateAgreement(true),
         isInstallationDetailsEditable,
         isSfdcEditable: isEditable,
         onSfdcSaved: () => {
@@ -2046,7 +2060,23 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 <AgreementPreview
                     data={agreementData}
                     onChange={setAgreementData}
-                    onClose={() => setShowAgreementPopup(false)}
+                    onClose={() => { setShowAgreementPopup(false); setAgreementAutoAdd(false); }}
+                    existingDocument={documents.some(doc => doc?.doc_type === 'discom_agreement')}
+                    autoAdd={agreementAutoAdd}
+                    onAddToDocuments={async (file) => {
+                        const replacing = documents.some(doc => doc?.doc_type === 'discom_agreement');
+                        const uploaded = await handleFileUpload({ target: { files: [file], value: '' } }, 'discom_agreement');
+                        if (uploaded) {
+                            setShowAgreementPopup(false);
+                            setAgreementAutoAdd(false);
+                            showAlert(
+                                replacing
+                                    ? 'The DISCOM agreement was regenerated and replaced in Documents.'
+                                    : 'The DISCOM agreement was generated and added to Documents.',
+                                { title: 'Document saved', type: 'success' }
+                            );
+                        }
+                    }}
                 />
             )}
 

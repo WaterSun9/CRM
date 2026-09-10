@@ -826,6 +826,13 @@ export const getDownloadUrl = async (storagePath, fileName) => {
     return data?.signedUrl || null;
 };
 
+const announceCompletedDownload = (file, fileName) => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('watersun:download-complete', {
+        detail: { file: file || null, fileName: file?.name || fileName || 'document' }
+    }));
+};
+
 /**
  * Downloads a file, prompting the user with the native OS "Save As" location dialog
  * when supported (Chrome, Edge, Opera, Desktop), with standard fallback.
@@ -851,6 +858,9 @@ export const downloadFileWithSaveAs = async (url, fileName) => {
             const writableStream = await fileHandle.createWritable();
             await writableStream.write(blob);
             await writableStream.close();
+            announceCompletedDownload(new File([blob], fileName || 'document', {
+                type: blob.type || 'application/octet-stream'
+            }), fileName);
             return;
         } catch (err) {
             if (err.name === 'AbortError') {
@@ -861,14 +871,35 @@ export const downloadFileWithSaveAs = async (url, fileName) => {
         }
     }
 
-    // Fallback: standard browser download trigger
+    // Standard browser download. Fetching the file first also lets mobile
+    // browsers pass the real file to the native share sheet after download.
+    let downloadUrl = url;
+    let downloadedFile = null;
+    let objectUrl = null;
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Network response was not ok');
+        const blob = await response.blob();
+        downloadedFile = new File([blob], fileName || 'document', {
+            type: blob.type || 'application/octet-stream'
+        });
+        objectUrl = URL.createObjectURL(blob);
+        downloadUrl = objectUrl;
+    } catch (error) {
+        // Cross-origin URLs can still be downloaded even when JavaScript is not
+        // allowed to read their bytes; sharing is simply unavailable in that case.
+        console.warn('File could not be prepared for native sharing:', error);
+    }
+
     const a = document.createElement('a');
-    a.href = url;
+    a.href = downloadUrl;
     a.download = fileName || 'download';
     a.target = '_blank';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    announceCompletedDownload(downloadedFile, fileName);
 };
 
 const safeDownloadName = (value, fallback = 'file') => {
@@ -1048,6 +1079,7 @@ export const downloadDocumentsAsPdf = async (documents, customerName) => {
         const writable = await saveHandle.createWritable();
         await writable.write(pdfBlob);
         await writable.close();
+        announceCompletedDownload(new File([pdfBlob], pdfName, { type: 'application/pdf' }), pdfName);
         return { downloaded: included, failed: failures, cancelled: false };
     }
 
@@ -1062,6 +1094,7 @@ export const downloadDocumentsAsPdf = async (documents, customerName) => {
     } finally {
         setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     }
+    announceCompletedDownload(new File([pdfBlob], pdfName, { type: 'application/pdf' }), pdfName);
     return { downloaded: included, failed: failures, cancelled: false };
 };
 

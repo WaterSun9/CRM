@@ -274,7 +274,8 @@ export const DOC_TYPE_LABELS = {
     feasibilty_document: 'Feasibility Document',
     feasibility_document: 'Feasibility Document',
     subsidy_token_photo: 'Subsidy Token Photo',
-    digital_certificate: 'Digital Certificate'
+    digital_certificate: 'Digital Certificate',
+    discom_agreement: 'PM Surya Ghar Model Agreement'
 };
 
 // Which doc_type actually corresponds to a real boolean column on `admin`.
@@ -307,6 +308,7 @@ export const DOC_TYPE_FLAG_COLUMN = {
     warranty_card:              'warranty_card',
     insurance_status:           'insurance_status',
     pm_surya_ghar_stamp:        'pm_surya_ghar_stamp',
+    discom_agreement:           'discom_agreement',
     // Aliases -> the one real column they belong to
     signature_pic:              'signature_pic',
     signature:                  'signature_pic',

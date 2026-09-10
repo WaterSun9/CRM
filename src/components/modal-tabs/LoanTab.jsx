@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { History, Paperclip, IndianRupee, CheckCircle2, Lock, Edit3, X, ClipboardList, Download, Eye, Loader2 } from 'lucide-react';
+import { History, Paperclip, IndianRupee, CheckCircle2, Lock, Edit3, X, ClipboardList, Upload, Eye, Loader2 } from 'lucide-react';
 import { LOAN_TAGS, LOAN_TAG_COLORS, isFinalTagValue } from '../../constants';
 import { CheckboxRemarkItem, EditableDetailItem } from './shared';
 import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
-import { downloadFileWithSaveAs } from '../../utils';
-import { createFeasibilityPdf, getMissingFeasibilityFields, mapFeasibilityReport, shouldSaveGeneratedSiteFeasibility } from '../../feasibilityReport';
+import { createFeasibilityPdf, getMissingFeasibilityFields, mapFeasibilityReport } from '../../feasibilityReport';
 import { useGlobalPopup } from '../GlobalPopup';
 
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
@@ -231,7 +230,7 @@ export default function LoanTab({
             if (feasibilityPreviewUrl) URL.revokeObjectURL(feasibilityPreviewUrl);
             // Keep the exact values and validation state used to open this
             // preview. Uploading the generated PDF triggers a realtime customer
-            // refresh; that must not make the Download button disappear.
+            // refresh; that must not make the document action disappear.
             setFeasibilityPreviewInputs(inputs);
             const previewUrl = URL.createObjectURL(blob);
             if (useNativeMobileViewer && mobilePreviewTab) {
@@ -262,14 +261,16 @@ export default function LoanTab({
             const blob = await createFeasibilityPdf(inputs.data);
             const safeName = (inputs.data.consumerName || 'Customer').replace(/[^a-z0-9]+/gi, '_');
             const file = new File([blob], `Feasibility_Report_${safeName}.pdf`, { type: 'application/pdf' });
-            // Save the generated report into the Loan tab's Site Feasibility
-            // slot only when it is empty. Never replace/delete a file the
-            // client already uploaded there; repeated generation still
-            // downloads the fresh PDF to the device.
-            if (shouldSaveGeneratedSiteFeasibility(documents)) {
-                await onFileUpload({ target: { files: [file], value: '' } }, 'site_feasibility');
+            const uploaded = await onFileUpload({ target: { files: [file], value: '' } }, 'site_feasibility');
+            if (uploaded) {
+                setFeasibilityPreviewUrl('');
+                showAlert(
+                    documents.some(doc => doc?.doc_type === 'site_feasibility')
+                        ? 'The feasibility report was regenerated and replaced in Documents.'
+                        : 'The feasibility report was generated and added to Documents.',
+                    { title: 'Document saved', type: 'success' }
+                );
             }
-            await downloadFileWithSaveAs(URL.createObjectURL(blob), file.name);
         } catch (error) {
             showAlert(error.message || 'The feasibility report could not be generated.', { type: 'error' });
         } finally { setFeasibilityBusy(false); }
@@ -403,6 +404,11 @@ export default function LoanTab({
                                 <button type="button" onClick={handlePreviewFeasibility} disabled={feasibilityBusy}
                                     className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-2 text-[10px] font-bold text-stone-700 disabled:opacity-50 cursor-pointer">
                                     <Eye size={13} /> Preview
+                                </button>
+                                <button type="button" onClick={handleGenerateFeasibility} disabled={feasibilityBusy}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer">
+                                    {feasibilityBusy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                                    {documents.some(doc => doc?.doc_type === 'site_feasibility') ? 'Replace in Documents' : 'Add to Documents'}
                                 </button>
                             </div>
                         </div>
@@ -932,8 +938,9 @@ export default function LoanTab({
             <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm" onClick={() => setFeasibilityPreviewUrl('')}>
                 <div className="flex h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
                     <div className="flex h-12 shrink-0 items-center justify-end gap-2 border-b border-stone-700 bg-stone-900 px-3">
-                        <button type="button" onClick={handleGenerateFeasibility} disabled={feasibilityBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-400 px-3 py-2 text-xs font-black text-stone-950 disabled:opacity-50 cursor-pointer">
-                            {feasibilityBusy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Download
+                        <button type="button" onClick={handleGenerateFeasibility} disabled={feasibilityBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-black text-white disabled:opacity-50 cursor-pointer">
+                            {feasibilityBusy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                            {documents.some(doc => doc?.doc_type === 'site_feasibility') ? 'Replace in Documents' : 'Add to Documents'}
                         </button>
                         <button type="button" aria-label="Close feasibility preview" onClick={() => setFeasibilityPreviewUrl('')} className="rounded-lg p-2 text-white hover:bg-white/10 cursor-pointer"><X size={18} /></button>
                     </div>
