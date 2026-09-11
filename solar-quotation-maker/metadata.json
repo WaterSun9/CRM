@@ -1,6 +1,0 @@
-{
-  "name": "Solar Quotation Maker",
-  "description": "Custom 3-page solar quotation generator with real-time editing, calculations, customizable notes, and print-ready format.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
