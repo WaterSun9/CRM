@@ -2,6 +2,7 @@ import React from 'react';
 import { User, ClipboardList, Edit3, X } from 'lucide-react';
 import { SectionHeader, EditableDetailItem, CheckboxRemarkItem } from './shared';
 import { useGlobalPopup } from '../GlobalPopup';
+import { calculateSystemCapacityKwp } from '../../utils/capacity';
 
 export default function LeadsTab({
     editData,
@@ -31,13 +32,11 @@ export default function LeadsTab({
     const { showAlert } = useGlobalPopup();
 
     const autoCalcCapacity = () => {
-        const wp = parseFloat(String(editData.module_wp || '').replace(/,/g, ''));
-        const count = parseFloat(String(editData.no_of_modules || '').replace(/,/g, ''));
-        if (isNaN(wp) || isNaN(count) || wp <= 0 || count <= 0) {
+        const kwp = calculateSystemCapacityKwp(editData.module_wp, editData.no_of_modules);
+        if (kwp == null) {
             showAlert('Enter Module Wp and No of Modules first.', { title: 'Cannot calculate', type: 'warning' });
             return;
         }
-        const kwp = Math.round((wp * count) / 1000 * 100) / 100;
         handleChange('system_capacity_kwp', String(kwp));
     };
 

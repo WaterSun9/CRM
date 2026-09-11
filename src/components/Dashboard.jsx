@@ -29,6 +29,8 @@ const InstallationPaymentsView = lazyWithRetry(() => import('./InstallationPayme
 const DeliveryBatchesView = lazyWithRetry(() => import('./DeliveryBatchesView'));
 import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
+import QuotationModule, { openQuotations } from '../quotations/QuotationModule';
+import { quotationRepository } from '../quotations/client';
 
 const ViewLoader = () => <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -960,7 +962,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         }, wait);
     };
 
-    const handleAddLead = async (data, attachedFiles = []) => {
+    const handleAddLead = async (data, attachedFiles = [], quotation = null) => {
         const leadData = { ...data, application_done_by: user.name, created_at: new Date().toISOString() };
 
         // Clean up or format numeric values safely
@@ -985,7 +987,10 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         });
 
 
-        const { data: newCustomer, error } = await supabase.from('admin').insert(insertData).select().single();
+        // The quotation branch is retained for the deferred Add to Leads feature.
+        const { data: newCustomer, error } = quotation
+            ? await quotationRepository.insertConversionLead(quotation, insertData, user)
+            : await supabase.from('admin').insert(insertData).select().single();
         if (error) {
             console.error("Error adding lead to Supabase:", error);
             showAlert(`Failed to add lead: ${error.message} (Code: ${error.code})`, { type: 'error' });
@@ -1140,6 +1145,8 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                     <NavBtn view="installation_tags" icon={Wrench} label="Installation Tags" count={installationTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
 
 
+
+                    {['admin', 'sales'].includes(user.userType) && <button onClick={() => { setSidebarOpen(false); openQuotations(); }} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-100"><Tag className="w-4 h-4" /> Quotation Maker</button>}
 
                     {/* Project Stages - identical for every role */}
                     <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-4 pb-2 tracking-widest">Project Stages</div>
@@ -1428,6 +1435,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 />
                 </Suspense>
             )}
+            <QuotationModule user={user} meta={meta} channelPartners={uniqueChannelPartners} onCreateLead={handleAddLead} onViewLead={handleGlobalSelect} />
             {showAddLead && <Suspense fallback={<ViewLoader />}><AddLeadModal isOpen={showAddLead} onClose={() => setShowAddLead(false)} onSave={handleAddLead} meta={meta} channel_partners={uniqueChannelPartners} user={user} /></Suspense>}
         </div>
     );

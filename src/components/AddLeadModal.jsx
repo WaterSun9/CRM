@@ -11,6 +11,7 @@ import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
 import { toIndianCommas, fetchAgent2SubAgents, sanitizePhoneNumber, downloadFileWithSaveAs } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
+import { calculateSystemCapacityKwp } from '../utils/capacity';
 
 // Dropdown component for metadata fields (clean single outline)
 function AddLeadMetaSelect({ label, field, value, onChange, options = [] }) {
@@ -211,7 +212,7 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
     );
 }
 
-export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, channel_partners = [], user }) {
+export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, channel_partners = [], user, initialValues = null }) {
     const { showAlert, showConfirm } = useGlobalPopup();
     const [formData, setFormData] = useState({ ...DEFAULT_LEAD_FORM });
     const [pendingFiles, setPendingFiles] = useState({}); // { [doc_type]: File }
@@ -242,7 +243,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
 
     useEffect(() => {
         if (isOpen) {
-            const defaults = { ...DEFAULT_LEAD_FORM };
+            const defaults = { ...DEFAULT_LEAD_FORM, ...initialValues };
             if (isAgent2) {
                 defaults.channel_partner = user?.channel_partner || partnerName || '';
                 defaults.sub_channel_partner = user?.name || '';
@@ -257,7 +258,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             setSaving(false);
             setIsFormDirty(false);
         }
-    }, [isOpen, user, isAgent, isAgent2, isChannelPartnerOffice, partnerName]);
+    }, [isOpen, user, isAgent, isAgent2, isChannelPartnerOffice, partnerName, initialValues]);
 
     // Esc closes the form through the same guard. Declared before the early
     // return below so the hook runs on every render.
@@ -307,9 +308,8 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     // Module Wp x No of Modules, on demand only. This used to run on every
     // keystroke in either field, silently overwriting a value typed by hand.
     const autoCalcCapacity = () => {
-        const wp = parseFloat(String(formData.module_wp || '').replace(/,/g, ''));
-        const count = parseFloat(String(formData.no_of_modules || '').replace(/,/g, ''));
-        if (isNaN(wp) || isNaN(count) || wp <= 0 || count <= 0) {
+        const kwp = calculateSystemCapacityKwp(formData.module_wp, formData.no_of_modules);
+        if (kwp == null) {
             showAlert('Enter Module Wp and No of Modules first.', { title: 'Cannot calculate', type: 'warning' });
             return;
         }
@@ -320,7 +320,6 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         // and any lead created through this button had a capacity 1000x too big.
         //
         // Two decimals, trailing zeros trimmed: 3.24 stays 3.24, 3.00 becomes 3.
-        const kwp = Math.round((wp * count) / 1000 * 100) / 100;
         handleChange('system_capacity_kwp', String(kwp));
     };
 

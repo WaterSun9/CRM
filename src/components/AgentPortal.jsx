@@ -13,6 +13,8 @@ import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploa
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS } from '../constants';
 import AddLeadModal from './AddLeadModal';
+import QuotationModule, { openQuotations } from '../quotations/QuotationModule';
+import { quotationRepository } from '../quotations/client';
 import { FilePreviewModal, CheckboxRemarkItem } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
@@ -390,7 +392,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     // Submit new lead from AddLeadModal
-    const handleSubmitLead = async (formData, attachedFiles = []) => {
+    const handleSubmitLead = async (formData, attachedFiles = [], quotation = null) => {
         const parentCp = user.channel_partner || user.name;
         const subCp = user.name;
 
@@ -423,11 +425,10 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             }
         });
 
-        const { data: newCustomer, error } = await supabase
-            .from('admin')
-            .insert(insertData)
-            .select()
-            .single();
+        // The quotation branch is retained for the deferred Add to Leads feature.
+        const { data: newCustomer, error } = quotation
+            ? await quotationRepository.insertConversionLead(quotation, insertData, user)
+            : await supabase.from('admin').insert(insertData).select().single();
 
         if (error) {
             console.error('Submit error:', error);
@@ -989,6 +990,8 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                         </div>
                     </section>
 
+                    <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span><ChevronRight size={18} /></button>
+
                     <section className="rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm">
                         <div className="mb-3">
                             <p className="text-xs font-black text-stone-900">Find any customer</p>
@@ -1323,6 +1326,8 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             </main>
             </div></div>
             )}
+
+            <QuotationModule user={user} meta={meta} onCreateLead={handleSubmitLead} onViewLead={lead => handleSelectCustomerForStage(lead, lead.stage || STAGE_IDS.LEADS)} />
 
             {/* Unified Add Lead Modal */}
             {showAddLead && (
