@@ -18,8 +18,11 @@ name: Daily Supabase Backup
 #   YYYY/MM/DD/HH-MM/   one folder per run, India time. A second run on the same
 #                       day gets its own folder; nothing is ever overwritten.
 #     summary.csv       rows saved vs rows on the server, per table
-#     <table>.csv       or <table>_part01.csv, _part02 ... for big tables. Each
-#                       file stays under 500 KB so GitHub shows it as a table.
+#     <table>.csv       ONE file per table with every row (the export pages
+#                       through the API 1,000 rows at a time and writes them
+#                       all into this one file). Big tables are over GitHub's
+#                       512 KB table-view limit, so GitHub shows them as raw
+#                       text - use "Download raw file" and open in Excel.
 #     db/               full database dump (only when SUPABASE_DB_URL is set)
 #   Older YYYY/MM/DD/ folders from the previous workflow are left as they are.
 #
@@ -63,7 +66,16 @@ jobs:
         run: |
           # Export into a temporary folder first; it is moved into the backup repo
           # only if the whole export succeeded, so a failed run saves nothing.
-          python3 scripts/backup/export_tables.py export-tmp
+          # One CSV per table: lift the script's 500 KB-per-file split so every
+          # table is written as a single <table>.csv.
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, 'scripts/backup')
+          import export_tables
+          export_tables.MAX_PART_BYTES = 10 ** 12   # effectively no split
+          sys.argv = ['export_tables.py', 'export-tmp']
+          export_tables.main()
+          PY
           mkdir -p "backup-repo/$FOLDER"
           mv export-tmp/* "backup-repo/$FOLDER/"
 

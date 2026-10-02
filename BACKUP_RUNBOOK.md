@@ -6,7 +6,7 @@ The daily backup (`.github/workflows/daily-backup.yml`) runs at 1:30 AM IST and 
 
 | What | Where in the backup repo | Needs |
 |---|---|---|
-| Every table, all rows (customers, activity log, documents list, BOM, delivery batches, drivers, vendors, quotations, profiles, metadata), as CSV | `<table>.csv`, or `<table>_part01.csv`, `_part02` … for big tables | existing secrets |
+| Every table, all rows (customers, activity log, documents list, BOM, delivery batches, drivers, vendors, quotations, profiles, metadata, and optional chat, calendar, service issues/visits/files, and payment review flags), as CSV | `<table>.csv`, or `<table>_part01.csv`, `_part02` … for big tables | existing secrets |
 | Login accounts (no passwords) | `auth_users.csv` | existing secrets |
 | Rows saved vs rows on the server, per table; last line says BACKUP COMPLETE | `summary.csv` | existing secrets |
 | Full database: structure (tables, RLS rules, functions, triggers) and data, restorable in one command | `db/schema.sql`, `data.sql`, `auth.sql` | `SUPABASE_DB_URL` |

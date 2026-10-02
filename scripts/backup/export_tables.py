@@ -43,8 +43,12 @@ REQUIRED_TABLES = [
     'bom', 'bom_items', 'delivery_batches', 'drivers', 'vendors', 'quotations',
 ]
 # Optional tables: backed up when they exist, skipped with a warning when not
-# (the chat / availability / audit-history SQL may not have been run yet).
-OPTIONAL_TABLES = ['crm_chat_messages', 'crm_availability', 'admin_history']
+# (their SQL may not have been run yet).
+OPTIONAL_TABLES = [
+    'crm_chat_messages', 'crm_availability', 'admin_history',
+    'service_issues', 'service_visits', 'service_issue_files',
+    'customer_payment_review_flags',
+]
 
 
 def request(url, key, extra_headers=None):
