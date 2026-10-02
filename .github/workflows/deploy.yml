@@ -1,26 +1,54 @@
 name: Deploy to GitHub Pages
 
+# Every push to main goes live. Since Oct 2026 the site is only published if
+# lint (errors only - existing warnings are allowed), the unit tests and the
+# build all pass. A failing check stops the deploy and the live site stays as it was.
+#
+# Rollback: Actions tab -> this workflow -> pick the last good run -> "Re-run all jobs",
+# or locally: git revert <bad commit> && git push.
+
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout 
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install and Build 
-        run: |
-          npm install
-          npm run build
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # npm ci installs exactly the versions in package-lock.json.
+      # --legacy-peer-deps is required: vite 8 is newer than the range
+      # @vitejs/plugin-react 4 declares, and plain `npm ci` refuses to install.
+      - name: Install
+        run: npm ci --legacy-peer-deps
+
+      - name: Lint (errors block the deploy, warnings do not)
+        run: npx eslint . --quiet
+
+      - name: Unit tests
+        run: node --test tests/*.test.mjs tests/quotations/*.test.mjs
+
+      - name: Build
+        run: npm run build
         env:
           # This passes your Supabase keys to the build process
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
-      - name: Deploy 
+      - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: dist # Vite builds into the 'dist' folder

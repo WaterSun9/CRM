@@ -1,83 +1,147 @@
 name: Daily Supabase Backup
 
+# What changed (Oct 2026 audit):
+#  - The old version asked for each table in ONE request. The API returns at most
+#    1,000 rows per request, so every backup held only 1,000 of ~5,000 customers
+#    and 1,000 of ~22,000 activity-log entries. scripts/backup/export_tables.py
+#    now pages through every table and checks the count against the server.
+#  - A failed request used to be saved as the CSV and the job still went green.
+#    Now any error or short table FAILS the job and nothing is committed.
+#  - 7 tables that were never backed up are now included (documents, bom,
+#    bom_items, delivery_batches, drivers, vendors, quotations) plus login accounts.
+#  - Optional full database dump (structure + data, restorable in one command)
+#    when the SUPABASE_DB_URL secret is set.
+#  - Optional copy of uploaded files when the storage secrets are set.
+#  - Optional alert on failure when ALERT_WEBHOOK_URL is set.
+#
+# Layout in the backup repo:
+#   snapshot/          today's full copy, overwritten every day. Every past day
+#                      is in git history (git log -- snapshot/), and git stores
+#                      only the rows that changed, so the repo stays small.
+#   YYYY/MM/DD/        older date folders from the previous workflow (left as is).
+#
+# Secrets used (existing):  BACKUP_PAT, BACKUP_REPO, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# Secrets used (optional):  SUPABASE_DB_URL, ALERT_WEBHOOK_URL,
+#                           STORAGE_S3_ENDPOINT, STORAGE_S3_REGION, STORAGE_S3_KEY_ID, STORAGE_S3_SECRET,
+#                           OFFSITE_S3_ENDPOINT, OFFSITE_S3_KEY_ID, OFFSITE_S3_SECRET, OFFSITE_S3_BUCKET
+# See BACKUP_RUNBOOK.md for what each one is and how to restore.
+
 on:
   schedule:
     - cron: '0 20 * * *'   # 8:00 PM UTC = 1:30 AM IST
   workflow_dispatch:         # manual trigger for testing
 
+concurrency:
+  group: daily-backup
+  cancel-in-progress: false
+
 jobs:
   backup:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
+      - name: Check out this repo (for the export script)
+        uses: actions/checkout@v4
+
       - name: Clone private backup repo
         run: |
           echo "Starting backup at $(date -u)..."
           git clone "https://x-access-token:${{ secrets.BACKUP_PAT }}@github.com/${{ secrets.BACKUP_REPO }}.git" backup-repo
 
-      # Year/month/day folder - each day gets its own snapshot
-      - name: Set folder path
-        run: echo "FOLDER=$(date +%Y/%m/%d)" >> $GITHUB_ENV
-
-      - name: Create date folder
-        run: mkdir -p backup-repo/${{ env.FOLDER }}
-
-      # ── Fetch all 4 tables using SERVICE ROLE KEY (bypasses RLS) ────────────
-
-      - name: Backup admin table (customers)
+      - name: Export every table (paged and verified)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/admin?select=*" \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            -H "Accept: text/csv" \
-            -o "backup-repo/${{ env.FOLDER }}/admin.csv"
-          LINES=$(wc -l < "backup-repo/${{ env.FOLDER }}/admin.csv" | tr -d ' ')
-          echo "admin.csv: $LINES rows"
-          if [ "$LINES" -le 1 ]; then
-            echo "::warning::admin.csv has no data rows - check if table is empty or secrets are wrong"
+          # Export into a fresh folder first; it only replaces snapshot/ if the
+          # whole export succeeded, so a failure never overwrites a good copy.
+          python3 scripts/backup/export_tables.py export-tmp
+          rm -rf backup-repo/snapshot
+          mkdir -p backup-repo/snapshot
+          mv export-tmp/* backup-repo/snapshot/
+
+      - name: Full database dump (structure + data)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::SUPABASE_DB_URL is not set - skipping the full database dump (tables were still exported above)."
+            exit 0
           fi
+          # pg_dump must be at least as new as the server; v17 dumps Postgres 15 and 17.
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+          mkdir -p backup-repo/snapshot/db
+          # Structure: tables, RLS policies, functions, triggers
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" --schema=public --schema-only --no-owner --no-privileges \
+            -f backup-repo/snapshot/db/schema.sql
+          # Data, as plain SQL (one COPY row per line, so git stores only changes)
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" --schema=public --data-only --no-owner --no-privileges \
+            -f backup-repo/snapshot/db/data.sql
+          # Login accounts
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" --data-only --table=auth.users --table=auth.identities \
+            --no-owner --no-privileges -f backup-repo/snapshot/db/auth.sql
+          for f in backup-repo/snapshot/db/*.sql; do
+            [ -s "$f" ] || { echo "::error::$f is empty"; exit 1; }
+            echo "$(basename "$f"): $(wc -l < "$f") lines"
+          done
 
-      - name: Backup profiles table
-        run: |
-          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/profiles?select=*" \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            -H "Accept: text/csv" \
-            -o "backup-repo/${{ env.FOLDER }}/profiles.csv"
-          LINES=$(wc -l < "backup-repo/${{ env.FOLDER }}/profiles.csv" | tr -d ' ')
-          echo "profiles.csv: $LINES rows"
-
-      - name: Backup activity_log table
-        run: |
-          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/activity_log?select=*&order=created_at.desc&limit=5000" \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            -H "Accept: text/csv" \
-            -o "backup-repo/${{ env.FOLDER }}/activity_log.csv"
-          LINES=$(wc -l < "backup-repo/${{ env.FOLDER }}/activity_log.csv" | tr -d ' ')
-          echo "activity_log.csv: $LINES rows"
-
-      - name: Backup metadata table
-        run: |
-          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/metadata?select=*" \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            -H "Accept: text/csv" \
-            -o "backup-repo/${{ env.FOLDER }}/metadata.csv"
-          LINES=$(wc -l < "backup-repo/${{ env.FOLDER }}/metadata.csv" | tr -d ' ')
-          echo "metadata.csv: $LINES rows"
-
-      # ── Commit - each day is a new folder, git history tracks everything ────
-
-      - name: Commit backup files
+      - name: Commit backup
         run: |
           cd backup-repo
           git config user.name  "backup-bot"
           git config user.email "backup-bot@users.noreply.github.com"
-          git add ${{ env.FOLDER }}/admin.csv \
-                  ${{ env.FOLDER }}/profiles.csv \
-                  ${{ env.FOLDER }}/activity_log.csv \
-                  ${{ env.FOLDER }}/metadata.csv
+          git add snapshot
           git commit -m "Daily snapshot $(date +'%d %b %Y, %H:%M UTC')" || echo "No changes since last backup"
           git push
           echo "Backup complete ✅"
+          cat snapshot/manifest.json
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          MSG="⚠️ Watersun CRM daily backup FAILED on $(date -u +'%d %b %Y'). Open: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "::error::$MSG"
+          if [ -n "$ALERT_WEBHOOK_URL" ]; then
+            # Works with Slack and Discord-style incoming webhooks.
+            curl -sS -X POST -H 'Content-Type: application/json' \
+              -d "{\"text\": \"$MSG\", \"content\": \"$MSG\"}" "$ALERT_WEBHOOK_URL" || true
+          fi
+
+  # Uploaded files (PDFs, photos) are several GB - too large for a git repo.
+  # This job copies only new or changed files from Supabase Storage to separate
+  # cloud storage (e.g. Cloudflare R2 or Backblaze B2). It does nothing until
+  # the storage secrets are added.
+  storage-files:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Copy uploaded files to off-site storage
+        env:
+          SRC_ENDPOINT: ${{ secrets.STORAGE_S3_ENDPOINT }}
+          SRC_REGION: ${{ secrets.STORAGE_S3_REGION }}
+          SRC_KEY_ID: ${{ secrets.STORAGE_S3_KEY_ID }}
+          SRC_SECRET: ${{ secrets.STORAGE_S3_SECRET }}
+          DST_ENDPOINT: ${{ secrets.OFFSITE_S3_ENDPOINT }}
+          DST_KEY_ID: ${{ secrets.OFFSITE_S3_KEY_ID }}
+          DST_SECRET: ${{ secrets.OFFSITE_S3_SECRET }}
+          DST_BUCKET: ${{ secrets.OFFSITE_S3_BUCKET }}
+        run: |
+          if [ -z "$SRC_ENDPOINT" ] || [ -z "$DST_ENDPOINT" ]; then
+            echo "::warning::Storage backup secrets are not set - uploaded files are NOT being backed up. See BACKUP_RUNBOOK.md."
+            exit 0
+          fi
+          curl -fsSL https://rclone.org/install.sh | sudo bash
+          export RCLONE_CONFIG_SUPA_TYPE=s3 RCLONE_CONFIG_SUPA_PROVIDER=Other \
+                 RCLONE_CONFIG_SUPA_ENDPOINT="$SRC_ENDPOINT" RCLONE_CONFIG_SUPA_REGION="$SRC_REGION" \
+                 RCLONE_CONFIG_SUPA_ACCESS_KEY_ID="$SRC_KEY_ID" RCLONE_CONFIG_SUPA_SECRET_ACCESS_KEY="$SRC_SECRET"
+          export RCLONE_CONFIG_DEST_TYPE=s3 RCLONE_CONFIG_DEST_PROVIDER=Other \
+                 RCLONE_CONFIG_DEST_ENDPOINT="$DST_ENDPOINT" \
+                 RCLONE_CONFIG_DEST_ACCESS_KEY_ID="$DST_KEY_ID" RCLONE_CONFIG_DEST_SECRET_ACCESS_KEY="$DST_SECRET"
+          # "copy" never deletes from the backup, so a file removed in the CRM is still recoverable.
+          rclone copy supa:customer-documents "dest:$DST_BUCKET/customer-documents" --transfers 8 --checksum --stats-one-line -v
