@@ -14,11 +14,18 @@ Read-only: it only sends GET requests.
 Usage:
   SUPABASE_URL=... SUPABASE_KEY=<service role key> python3 export_tables.py <out_dir>
 
-Writes, per table:  <table>.json  (exact values, for restoring)
-                    <table>.csv   (same rows, for opening in Excel)
-and a manifest.json with row counts.
+Writes CSV only, one or more files per table:
+  <table>.csv                     when the table fits in one file, or
+  <table>_part01.csv, _part02 ... when it does not. Each part is kept under
+                                  500 KB so GitHub still shows it as a table
+                                  (GitHub only renders CSV files up to 512 KB).
+                                  Every part has the header row.
+  auth_users.csv                  login accounts (no passwords)
+  summary.csv                     one row per table: rows, server total, files
+  failures.txt                    only when something went wrong
 """
 import csv
+import io
 import json
 import os
 import sys
@@ -105,35 +112,48 @@ def export_table(base_url, key, table):
     return rows, server_total
 
 
-def write_json_lines(path, rows):
-    """A JSON array with one row per line and keys in a fixed order.
-    Git stores only the rows that changed since yesterday, which keeps the
-    backup repo small even though the whole table is written every day."""
-    with open(path, 'w', encoding='utf-8') as handle:
-        handle.write('[\n')
-        for index, row in enumerate(rows):
-            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True))
-            handle.write(',\n' if index < len(rows) - 1 else '\n')
-        handle.write(']\n')
+MAX_PART_BYTES = 500 * 1024   # GitHub renders CSV as a table only up to 512 KB
 
 
-def write_csv(path, rows):
-    columns = []
-    for row in rows:
-        for column in row.keys():
-            if column not in columns:
-                columns.append(column)
-    with open(path, 'w', newline='', encoding='utf-8') as handle:
-        writer = csv.writer(handle)
-        writer.writerow(columns)
+def _csv_line(values):
+    buffer = io.StringIO()
+    csv.writer(buffer).writerow(values)
+    return buffer.getvalue()
+
+
+def _cell(value):
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)   # json columns stay readable and restorable
+    return '' if value is None else value
+
+
+def write_csv_parts(out_dir, name, rows, columns=None):
+    """Writes <name>.csv, or <name>_partNN.csv files each under MAX_PART_BYTES.
+    Returns the list of file names written."""
+    if columns is None:
+        columns = []
         for row in rows:
-            out = []
-            for column in columns:
-                value = row.get(column)
-                if isinstance(value, (dict, list)):
-                    value = json.dumps(value, ensure_ascii=False)
-                out.append('' if value is None else value)
-            writer.writerow(out)
+            for column in row.keys():
+                if column not in columns:
+                    columns.append(column)
+    header = _csv_line(columns)
+    parts, current, size = [], [], len(header.encode('utf-8'))
+    for row in rows:
+        line = _csv_line([_cell(row.get(column)) for column in columns])
+        line_bytes = len(line.encode('utf-8'))
+        if current and size + line_bytes > MAX_PART_BYTES:
+            parts.append(current)
+            current, size = [], len(header.encode('utf-8'))
+        current.append(line)
+        size += line_bytes
+    parts.append(current)   # always at least one file, even for an empty table
+
+    names = [f'{name}.csv'] if len(parts) == 1 else [f'{name}_part{i:02d}.csv' for i in range(1, len(parts) + 1)]
+    for file_name, lines in zip(names, parts):
+        with open(os.path.join(out_dir, file_name), 'w', newline='', encoding='utf-8') as handle:
+            handle.write(header)
+            handle.writelines(lines)
+    return names
 
 
 def export_auth_users(base_url, key, out_dir):
@@ -151,8 +171,9 @@ def export_auth_users(base_url, key, out_dir):
         if len(batch) < 1000:
             break
         page += 1
-    write_json_lines(os.path.join(out_dir, 'auth_users.json'), users)
-    return len(users)
+    columns = ['id', 'email', 'phone', 'role', 'created_at', 'last_sign_in_at',
+               'email_confirmed_at', 'banned_until', 'user_metadata', 'app_metadata']
+    return len(users), write_csv_parts(out_dir, 'auth_users', users, columns)
 
 
 def main():
@@ -187,14 +208,13 @@ def main():
             failures.append(message)
             print(f'::error::{message}')
 
-        write_json_lines(os.path.join(out_dir, f'{table}.json'), rows)
-        write_csv(os.path.join(out_dir, f'{table}.csv'), rows)
-        manifest['tables'][table] = {'rows': len(rows), 'server_total': server_total}
-        print(f'{table}: {len(rows)} rows (server total {server_total})')
+        files = write_csv_parts(out_dir, table, rows)
+        manifest['tables'][table] = {'rows': len(rows), 'server_total': server_total, 'files': files}
+        print(f'{table}: {len(rows)} rows (server total {server_total}) in {len(files)} file(s)')
 
     if not skip_auth:
         try:
-            manifest['auth_users'] = export_auth_users(base_url, key, out_dir)
+            manifest['auth_users'], manifest['auth_files'] = export_auth_users(base_url, key, out_dir)
             print(f"auth users: {manifest['auth_users']}")
         except RuntimeError as err:
             failures.append(str(err))
@@ -205,10 +225,23 @@ def main():
     if customers < 100:
         failures.append(f'admin: only {customers} rows exported - refusing to treat this as a good backup')
 
-    manifest['ok'] = not failures
-    manifest['failures'] = failures
-    with open(os.path.join(out_dir, 'manifest.json'), 'w', encoding='utf-8') as handle:
-        json.dump(manifest, handle, indent=1)
+    ok = not failures
+    with open(os.path.join(out_dir, 'summary.csv'), 'w', newline='', encoding='utf-8') as handle:
+        writer = csv.writer(handle)
+        writer.writerow(['table', 'rows_saved', 'rows_on_server', 'matches', 'files'])
+        for table, info in manifest['tables'].items():
+            total = info['server_total']
+            writer.writerow([table, info['rows'], '' if total is None else total,
+                             'yes' if total is None or total == info['rows'] else 'NO',
+                             ' '.join(info['files'])])
+        if 'auth_users' in manifest:
+            writer.writerow(['auth_users', manifest['auth_users'], '', 'yes', ' '.join(manifest['auth_files'])])
+        for note in manifest['warnings']:
+            writer.writerow([note, '', '', '', ''])
+        writer.writerow(['BACKUP COMPLETE' if ok else 'BACKUP INCOMPLETE', '', '', 'yes' if ok else 'NO', ''])
+    if failures:
+        with open(os.path.join(out_dir, 'failures.txt'), 'w', encoding='utf-8') as handle:
+            handle.write('\n'.join(failures) + '\n')
 
     if failures:
         print('BACKUP INCOMPLETE:\n  ' + '\n  '.join(failures))

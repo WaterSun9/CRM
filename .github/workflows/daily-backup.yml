@@ -14,11 +14,14 @@ name: Daily Supabase Backup
 #  - Optional copy of uploaded files when the storage secrets are set.
 #  - Optional alert on failure when ALERT_WEBHOOK_URL is set.
 #
-# Layout in the backup repo:
-#   snapshot/          today's full copy, overwritten every day. Every past day
-#                      is in git history (git log -- snapshot/), and git stores
-#                      only the rows that changed, so the repo stays small.
-#   YYYY/MM/DD/        older date folders from the previous workflow (left as is).
+# Layout in the backup repo (same year/month/day folders as before, plus the time):
+#   YYYY/MM/DD/HH-MM/   one folder per run, India time. A second run on the same
+#                       day gets its own folder; nothing is ever overwritten.
+#     summary.csv       rows saved vs rows on the server, per table
+#     <table>.csv       or <table>_part01.csv, _part02 ... for big tables. Each
+#                       file stays under 500 KB so GitHub shows it as a table.
+#     db/               full database dump (only when SUPABASE_DB_URL is set)
+#   Older YYYY/MM/DD/ folders from the previous workflow are left as they are.
 #
 # Secrets used (existing):  BACKUP_PAT, BACKUP_REPO, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 # Secrets used (optional):  SUPABASE_DB_URL, ALERT_WEBHOOK_URL,
@@ -49,17 +52,20 @@ jobs:
           echo "Starting backup at $(date -u)..."
           git clone "https://x-access-token:${{ secrets.BACKUP_PAT }}@github.com/${{ secrets.BACKUP_REPO }}.git" backup-repo
 
+      # Year/month/day/time folder (India time), e.g. 2026/10/02/19-08
+      - name: Set folder path
+        run: echo "FOLDER=$(TZ=Asia/Kolkata date +%Y/%m/%d/%H-%M)" >> $GITHUB_ENV
+
       - name: Export every table (paged and verified)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          # Export into a fresh folder first; it only replaces snapshot/ if the
-          # whole export succeeded, so a failure never overwrites a good copy.
+          # Export into a temporary folder first; it is moved into the backup repo
+          # only if the whole export succeeded, so a failed run saves nothing.
           python3 scripts/backup/export_tables.py export-tmp
-          rm -rf backup-repo/snapshot
-          mkdir -p backup-repo/snapshot
-          mv export-tmp/* backup-repo/snapshot/
+          mkdir -p "backup-repo/$FOLDER"
+          mv export-tmp/* "backup-repo/$FOLDER/"
 
       - name: Full database dump (structure + data)
         env:
@@ -74,17 +80,17 @@ jobs:
           sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
-          mkdir -p backup-repo/snapshot/db
+          mkdir -p "backup-repo/$FOLDER/db"
           # Structure: tables, RLS policies, functions, triggers
           /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" --schema=public --schema-only --no-owner --no-privileges \
-            -f backup-repo/snapshot/db/schema.sql
+            -f "backup-repo/$FOLDER/db"/schema.sql
           # Data, as plain SQL (one COPY row per line, so git stores only changes)
           /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" --schema=public --data-only --no-owner --no-privileges \
-            -f backup-repo/snapshot/db/data.sql
+            -f "backup-repo/$FOLDER/db"/data.sql
           # Login accounts
           /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" --data-only --table=auth.users --table=auth.identities \
-            --no-owner --no-privileges -f backup-repo/snapshot/db/auth.sql
-          for f in backup-repo/snapshot/db/*.sql; do
+            --no-owner --no-privileges -f "backup-repo/$FOLDER/db"/auth.sql
+          for f in "backup-repo/$FOLDER"/db/*.sql; do
             [ -s "$f" ] || { echo "::error::$f is empty"; exit 1; }
             echo "$(basename "$f"): $(wc -l < "$f") lines"
           done
@@ -94,11 +100,11 @@ jobs:
           cd backup-repo
           git config user.name  "backup-bot"
           git config user.email "backup-bot@users.noreply.github.com"
-          git add snapshot
-          git commit -m "Daily snapshot $(date +'%d %b %Y, %H:%M UTC')" || echo "No changes since last backup"
+          git add "$FOLDER"
+          git commit -m "Backup $(TZ=Asia/Kolkata date +'%d %b %Y, %H:%M IST')" || echo "Nothing to commit"
           git push
           echo "Backup complete ✅"
-          cat snapshot/manifest.json
+          cat "$FOLDER/summary.csv"
 
       - name: Alert on failure
         if: failure()
