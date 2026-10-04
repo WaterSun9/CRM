@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as ImageIcon, Download, MessageSquare, Check } from 'lucide-react';
+import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as ImageIcon, Download, MessageSquare, Check, Crop } from 'lucide-react';
 import { formatINR, toIndianCommas, parseIndianNumber, formatInputValue } from '../../utils';
 import { supabase } from '../../supabase';
 import { useGlobalPopup } from '../GlobalPopup';
@@ -291,7 +291,7 @@ export function EditableDetailItem({ label, field, value, onChange, type = 'text
 }
 
 // ─── FilePreviewModal ─────────────────────────────────────────────────────────
-export function FilePreviewModal({ file, fileUrl, onClose, onDownload, onUpdateRemark }) {
+export function FilePreviewModal({ file, fileUrl, onClose, onDownload, onUpdateRemark, onCrop }) {
     const [remark, setRemark] = useState(file?.remark || '');
     const [savingRemark, setSavingRemark] = useState(false);
     const [remarkSaved, setRemarkSaved] = useState(false);
@@ -323,6 +323,15 @@ export function FilePreviewModal({ file, fileUrl, onClose, onDownload, onUpdateR
                         <p className="text-sm font-bold text-stone-800 truncate">{file.file_name}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                        {onCrop && isImage && /^(image\/jpeg|image\/png|image\/webp)$/i.test(file.file_type || '') && (
+                            <button
+                                type="button"
+                                onClick={onCrop}
+                                className="flex items-center gap-1.5 border border-stone-200 bg-white hover:bg-stone-100 text-stone-800 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                            >
+                                <Crop size={12} /> Crop
+                            </button>
+                        )}
                         <button
                             onClick={onDownload}
                             className="flex items-center gap-1.5 bg-stone-900 hover:bg-stone-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"

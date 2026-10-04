@@ -6,7 +6,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
 
 const GlobalPopupContext = createContext(null);
 
@@ -61,6 +61,11 @@ export function GlobalPopupProvider({ children }) {
                 confirmLabel: opts.confirmLabel || 'Save',
                 discardLabel: opts.discardLabel || 'Discard',
                 cancelLabel: opts.cancelLabel || 'Keep Editing',
+                // closeAs: the corner X answers with this value ('discard' for
+                // the unsaved-changes prompt); the separate Discard button is
+                // then not shown.
+                closeAs: opts.closeAs || null,
+                closeLabel: opts.closeLabel || 'Close',
                 onResolve: (result) => { setPopup(null); resolve(result); },
             });
         });
@@ -89,9 +94,20 @@ export function GlobalPopupProvider({ children }) {
                     onClick={() => { if (popup.mode === 'alert') popup.onResolve(); else if (popup.mode === 'choice') popup.onResolve('cancel'); }}
                 >
                     <div
-                        className="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl border border-stone-150 animate-in zoom-in-95 duration-200 text-center space-y-4"
+                        className="relative w-full max-w-sm rounded-[28px] bg-white p-6 shadow-2xl border border-stone-150 animate-in zoom-in-95 duration-200 text-center space-y-4"
                         onClick={(e) => e.stopPropagation()}
                     >
+                        {popup.mode === 'choice' && popup.closeAs && (
+                            <button
+                                type="button"
+                                onClick={() => popup.onResolve(popup.closeAs)}
+                                aria-label={popup.closeLabel}
+                                title={popup.closeLabel}
+                                className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-stone-400 hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        )}
                         <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ${popupIcon.className}`}>
                             <PopupIcon size={24} />
                         </div>
@@ -126,13 +142,13 @@ export function GlobalPopupProvider({ children }) {
                                     >
                                         {popup.cancelLabel}
                                     </button>
-                                    <button
+                                    {popup.closeAs !== 'discard' && <button
                                         type="button"
                                         onClick={() => popup.onResolve('discard')}
                                         className="flex-1 py-3 bg-white border border-stone-200 text-stone-500 hover:text-rose-700 hover:border-rose-200 hover:bg-rose-50 rounded-xl text-xs font-bold transition cursor-pointer active:scale-[0.98]"
                                     >
                                         {popup.discardLabel}
-                                    </button>
+                                    </button>}
                                 </div>
                             </div>
                         ) : popup.mode === 'alert' ? (

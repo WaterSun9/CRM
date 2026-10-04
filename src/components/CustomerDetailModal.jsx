@@ -84,6 +84,23 @@ const formatDateTime = (date) => {
 // is not mistaken for a change from the form's '1,71,000' - which would leave
 // the form looking unsaved after a successful save - and jsonb key order does
 // not count as a change.
+// Screen-only flags on history rows (isNew marks a row added in this session).
+// They are stripped before saving, so they must not count as a change - they
+// kept the form "unsaved" after a successful save, and the next tab switch
+// asked to save again with nothing changed.
+const withoutUiFlags = (value) => (Array.isArray(value)
+    ? value.map(item => (item && typeof item === 'object' && 'isNew' in item ? (({ isNew, ...rest }) => rest)(item) : item))
+    : value);
+
+// Yes/No toggles that show a blank value as "No". Blank and "No" are the
+// same answer, so No -> Yes -> No is not a change.
+const BLANK_MEANS_NO = new Set(['meter_installation', 'discom_inspection', 'geo_tag_status']);
+const toggleValue = (key, value) => {
+    if (!BLANK_MEANS_NO.has(key)) return value;
+    const text = key === 'meter_installation' ? normalizeMeterInstallation(value) : String(value ?? '').trim();
+    return text || 'No';
+};
+
 const getChangedFields = (draft = {}, saved = {}) => {
     const changed = new Set();
     const ignoreKeys = new Set(['id', 'created_at', 'updated_at', 'crn']);
@@ -91,7 +108,7 @@ const getChangedFields = (draft = {}, saved = {}) => {
 
     keys.forEach(key => {
         if (ignoreKeys.has(key)) return;
-        if (!valuesMatch(draft?.[key], saved?.[key])) changed.add(key);
+        if (!valuesMatch(toggleValue(key, withoutUiFlags(draft?.[key])), toggleValue(key, withoutUiFlags(saved?.[key])))) changed.add(key);
     });
 
     return changed;
@@ -99,7 +116,7 @@ const getChangedFields = (draft = {}, saved = {}) => {
 
 // ─── CustomerDetailModal ──────────────────────────────────────────────────────
 export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, onRaiseServiceIssue, user, meta, channel_partners = [], defaultTab }) {
-    const { showAlert, showConfirm } = useGlobalPopup();
+    const { showAlert, showConfirm, showChoice } = useGlobalPopup();
     const [activeTab, setActiveTab] = useState(() => {
         if (defaultTab) return defaultTab;
         
@@ -162,6 +179,43 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             setIsFormDirty(getChangedFields(next, savedDataRef.current).size > 0);
             return next;
         });
+    };
+
+    // Set by Material Integration when its BOM details are edited (they live in
+    // that tab, not in editData).
+    const bomDirtyRef = useRef(false);
+
+    // Before closing or switching tab with unsaved changes: Save & Continue,
+    // Keep Editing, or the corner X to discard. The prompt names the changed
+    // fields. If nothing really differs from what is stored (the old prompt
+    // could fire with no change), it does not ask at all.
+    // Resolves true when it is OK to continue.
+    const resolveUnsaved = async (confirmLabel) => {
+        if (!isFormDirty) return true;
+        const fields = [...getChangedFields(editData, savedDataRef.current)].map(fieldLabel);
+        if (bomDirtyRef.current) fields.push('Bill of Materials');
+        if (fields.length === 0) {
+            setIsFormDirty(false);
+            return true;
+        }
+        const shown = fields.slice(0, 6).join(', ') + (fields.length > 6 ? ` and ${fields.length - 6} more` : '');
+        const choice = await showChoice(
+            `Changed: ${shown}.\n\nSave them, keep editing, or press ✕ to discard.`,
+            { title: 'Unsaved changes', confirmLabel, cancelLabel: 'Keep Editing', closeAs: 'discard', closeLabel: 'Discard changes', type: 'success' }
+        );
+        if (choice === 'confirm') {
+            if (!(await handleSave())) return false;
+            bomDirtyRef.current = false;
+            return true;
+        }
+        if (choice === 'discard') {
+            setEditData({ ...savedDataRef.current });
+            setIsFormDirty(false);
+            setEditingSection(null);
+            bomDirtyRef.current = false;
+            return true;
+        }
+        return false;
     };
 
     // ── One source of truth for the record (data-loss audit, Oct 2026) ───────
@@ -1555,8 +1609,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
         let changeSummary = [];
         Object.keys(updates).forEach(key => {
-            if (updates[key] !== customer[key] && key !== 'id' && key !== 'updated_at' && typeof updates[key] !== 'object') {
-                changeSummary.push(`${key.replace(/_/g, ' ').toUpperCase()}: ${customer[key] || 'None'} → ${updates[key] || 'None'}`);
+            if (updates[key] !== savedDataRef.current?.[key] && key !== 'id' && key !== 'updated_at' && typeof updates[key] !== 'object') {
+                changeSummary.push(`${key.replace(/_/g, ' ').toUpperCase()}: ${savedDataRef.current?.[key] || 'None'} → ${updates[key] || 'None'}`);
             }
         });
 
@@ -1568,7 +1622,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         }
 
         // Compare subsidy_history
-        const oldSubsidy = customer.subsidy_history || [];
+        // Compare with the stored record (savedDataRef), not the slim list copy:
+        // the list row has no history, so every existing entry was logged as
+        // "Added Entry N" on each save.
+        const oldSubsidy = savedDataRef.current?.subsidy_history || [];
         const newSubsidy = updates.subsidy_history || [];
         if (JSON.stringify(oldSubsidy) !== JSON.stringify(newSubsidy)) {
             const subChanges = [];
@@ -1606,7 +1663,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         }
 
         // Compare loan_history
-        const oldLoan = customer.loan_history || [];
+        const oldLoan = savedDataRef.current?.loan_history || [];
         const newLoan = updates.loan_history || [];
         if (JSON.stringify(oldLoan) !== JSON.stringify(newLoan)) {
             const loanChanges = [];
@@ -1788,6 +1845,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 return false;   // keeps the window open on Save & Close
             }
             pendingConflictsRef.current.clear();   // saved (or knowingly overwritten)
+            bomDirtyRef.current = false;
             setEditingSection(null);
             if (stageChanged) setActiveTab(editData.stage);
             // The customer update is already confirmed. Refreshing the activity
@@ -1897,7 +1955,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         onDownload: handleDownloadDoc,
         onUpdateRemark: handleUpdateDocRemark, 
         onUpdate: handleSectionUpdate, logActivity, fetchLogs, saving, setSaving, handleAdvanceStage,
-        saveBomRef, onDirty: () => setIsFormDirty(true),
+        saveBomRef, onDirty: () => { bomDirtyRef.current = true; setIsFormDirty(true); },
         // false until the full record has loaded - the panel list stays
         // read-only until then so it can never be rebuilt from a partial copy.
         fullRecordLoaded, onGenerateAgreement: () => handleGenerateAgreement(false),
@@ -1980,10 +2038,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         )}
                         {isAdmin && <button onClick={() => setShowDeleteConfirm(true)} className="p-2 text-white/30 hover:text-red-400"><Trash2 size={18} /></button>}
                         <button onClick={async () => {
-                            if (isFormDirty) {
-                                const shouldSave = await showConfirm('You have unsaved changes. Save them before closing?', { title: 'Unsaved changes', confirmLabel: 'Save & Close', cancelLabel: 'Keep Editing', type: 'success' });
-                                if (!shouldSave || !(await handleSave())) return;
-                            }
+                            if (!(await resolveUnsaved('Save & Close'))) return;
                             onClose();
                         }} className="p-2 text-white/30 hover:text-white"><X size={24} /></button>
                     </div>
@@ -2002,10 +2057,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         { id: 'history', label: 'Notes & History', icon: History },
                     ].map(tab => (
                         <button key={tab.id} onClick={async () => {
-                            if (tab.id !== activeTab && isFormDirty) {
-                            const shouldSave = await showConfirm('You have unsaved changes. Save them before continuing?', { title: 'Unsaved changes', confirmLabel: 'Save & Continue', cancelLabel: 'Keep Editing', type: 'success' });
-                            if (!shouldSave || !(await handleSave())) return;
-                            }
+                            if (tab.id !== activeTab && !(await resolveUnsaved('Save & Continue'))) return;
                             setActiveTab(tab.id); setEditingSection(null);
                         }}
                             className={`flex items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-widest transition-all border-b-2 flex-shrink-0 ${activeTab === tab.id ? 'text-amber-400 border-amber-400' : 'text-stone-500 border-transparent hover:text-stone-300'}`}>
@@ -2360,6 +2412,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     onClose={() => setFilePreview({ doc: null, url: null })}
                     onDownload={() => handleDownloadDoc(filePreview.doc)}
                     onUpdateRemark={handleUpdateDocRemark}
+                    onCrop={canDeleteDocs && isEditable ? () => { setCroppingDoc(filePreview.doc); setFilePreview({ doc: null, url: null }); } : undefined}
                 />
             )}
 

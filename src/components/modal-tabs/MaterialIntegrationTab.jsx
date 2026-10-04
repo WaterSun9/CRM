@@ -167,8 +167,10 @@ export default function MaterialIntegrationTab({
     // While Loading is on the list is locked: only the tick boxes work.
     const canEditPanels = isEditable && !loadingMode && fullRecordLoaded !== false;
 
+    // Serial edits go through setEditData, which works out whether anything
+    // really changed. They used to force the form "unsaved" - adding blank
+    // rows (+5) with no serial typed was enough to trigger the save prompt.
     const handlePanelSerialChange = (idx, val) => {
-        onDirty?.();
         const next = [...panelSerials];
         next[idx] = val;
         setPanelSerials(next);
@@ -178,7 +180,6 @@ export default function MaterialIntegrationTab({
     };
 
     const addPanelSerial = (count = 1) => {
-        onDirty?.();
         if (panelSerials.length >= 100) return;
         const toAdd = Math.min(count, 100 - panelSerials.length);
         const newItems = Array(toAdd).fill('');
@@ -186,7 +187,6 @@ export default function MaterialIntegrationTab({
     };
 
     const removePanelSerial = (idx) => {
-        onDirty?.();
         const next = panelSerials.filter((_, i) => i !== idx);
         const finalVal = next.length > 0 ? next : [''];
         setPanelSerials(finalVal);
@@ -196,7 +196,6 @@ export default function MaterialIntegrationTab({
     };
 
     const handleBulkPasteApply = () => {
-        onDirty?.();
         if (!bulkText.trim()) return;
         const lines = bulkText
             .split(/[\n,]+/)

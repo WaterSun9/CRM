@@ -70,13 +70,22 @@ export default function MeterInstallationTab({
                                     disabled={!canEditMeter}
                                     onClick={() => {
                                         const todayStr = new Date().toISOString().split('T')[0];
+                                        const saved = customer || {};
+                                        const savedMeter = normalizeMeterInstallation(saved.meter_installation) || 'No';
                                         setEditData(prev => ({
                                             ...prev,
-                                            meter_installation: tag.id,
+                                            // Picking the value that is already stored puts back the
+                                            // stored value itself. A blank meter shows as "No", so
+                                            // Yes -> No used to leave 'No' vs blank and the form kept
+                                            // saying it had changes.
+                                            meter_installation: tag.id === savedMeter ? (saved.meter_installation ?? null) : tag.id,
                                             // The meter date shares the installation_date column (a separate
                                             // meter column is planned). Choosing "No" must not wipe the real
-                                            // installation date, which payouts and stage checks rely on.
-                                            installation_date: tag.id === 'Yes' ? (prev.installation_date || todayStr) : prev.installation_date
+                                            // installation date, which payouts and stage checks rely on - but
+                                            // a date that "Yes" filled in just now is undone.
+                                            installation_date: tag.id === 'Yes'
+                                                ? (prev.installation_date || todayStr)
+                                                : (savedMeter !== 'Yes' && 'installation_date' in saved ? saved.installation_date : prev.installation_date)
                                         }));
                                     }}
                                     className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-2 w-full cursor-pointer ${
