@@ -299,7 +299,8 @@ serve(async (req) => {
 
         // ── CREATE USER ───────────────────────────────────────────────────
         if (action === "create") {
-            console.log("Body:", JSON.stringify(body))
+            // Request bodies include passwords. Never write them to function logs.
+            console.log("Account creation requested by", caller.id)
 
             let { name, email, password, role, user_type, channel_partner } = body
 

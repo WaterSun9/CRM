@@ -1,7 +1,14 @@
-import { FolderOpen, Plus, Search, FileText, Eye, Trash2, Image as ImageIcon, Download, Loader2 } from "lucide-react";
-import { DocGalleryRemarkRow } from "./shared";
+import { FolderOpen, Plus, Search, FileText, Eye, Trash2, Image as ImageIcon, Download, Loader2, Crop } from "lucide-react";
+import { DocGalleryRemarkRow, isReplacedDocument } from "./shared";
 import { formatDateToDDMMYYYY } from "../../utils";
+import { APP_ROLES } from "../../constants";
 import { useGlobalPopup } from "../GlobalPopup";
+
+const uploaderRoleLabel = (role) => {
+    if (!role) return '';
+    return APP_ROLES.find(item => item.user_type === role)?.label
+        || role.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+};
 
 export default function CustomerDocumentsTab({
     documents,
@@ -13,6 +20,7 @@ export default function CustomerDocumentsTab({
     handleFileUpload,
     getDocTypeLabel,
     handlePreviewDoc,
+    handleCropDoc,
     handleDeleteDoc,
     handleUpdateDocRemark,
     handleDownloadAllDocuments,
@@ -35,7 +43,8 @@ export default function CustomerDocumentsTab({
         const docLabel = String(getDocTypeLabel(doc?.doc_type) || '').toLowerCase();
         const fileName = String(doc?.file_name || '').toLowerCase();
         const remarkText = String(doc?.remark || '').toLowerCase();
-        return fileName.includes(q) || docLabel.includes(q) || remarkText.includes(q);
+        const uploader = `${doc?.uploaded_by_name || ''} ${uploaderRoleLabel(doc?.uploaded_by_role)}`.toLowerCase();
+        return fileName.includes(q) || docLabel.includes(q) || remarkText.includes(q) || uploader.includes(q);
     });
 
     return (
@@ -95,7 +104,7 @@ export default function CustomerDocumentsTab({
                         <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
                         <input
                             type="text"
-                            placeholder="Search documents by name, category, or remark..."
+                            placeholder="Search documents by file, category, uploader, or remark..."
                             value={docSearchQuery}
                             onChange={e => setDocSearchQuery(e.target.value)}
                             className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-medium text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
@@ -128,6 +137,7 @@ export default function CustomerDocumentsTab({
                                                     <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-white text-stone-700 border border-stone-200">
                                                         {docLabel}
                                                     </span>
+                                                    {isReplacedDocument(doc) && <span className="rounded bg-stone-200 px-1.5 py-0.5 text-[9px] font-bold text-stone-600">Replaced copy</span>}
                                                     {doc.created_at && (
                                                         <span className="text-[10px] text-stone-400 font-medium">
                                                             · {formatDateToDDMMYYYY(doc.created_at)}
@@ -137,6 +147,12 @@ export default function CustomerDocumentsTab({
                                                 <p className="text-xs font-bold text-stone-800 truncate mt-1" title={doc.file_name}>
                                                     {doc.file_name}
                                                 </p>
+                                                {(doc.uploaded_by_name || doc.uploaded_by_role) && (
+                                                    <p className="text-[10px] text-stone-500 mt-1" title="Recorded by the database when this file was uploaded">
+                                                        Uploaded by {doc.uploaded_by_name || 'Unknown user'}
+                                                        {doc.uploaded_by_role ? ` · ${uploaderRoleLabel(doc.uploaded_by_role)}` : ''}
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
 
@@ -150,7 +166,8 @@ export default function CustomerDocumentsTab({
                                                 <Eye size={13} className="text-stone-500" />
                                                 <span>View</span>
                                             </button>
-                                            {canDelete && (
+                                            {isImage && canDelete && isEditable && /^(image\/jpeg|image\/png|image\/webp)$/i.test(doc.file_type || '') && <button type="button" onClick={() => handleCropDoc(doc)} className="px-2.5 py-1.5 text-xs font-bold bg-white border border-stone-200 rounded-xl flex items-center gap-1" title="Crop and replace photo"><Crop size={13} /> Crop</button>}
+                                            {canDelete && !isReplacedDocument(doc) && (
                                                 <button
                                                     type="button"
                                                     onClick={() => handleUpdateDocRemark(doc.id, '[RETURNED] Please upload the correct document.')}

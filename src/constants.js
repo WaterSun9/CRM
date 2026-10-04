@@ -8,6 +8,10 @@ import {
     Clock, AlertTriangle, Banknote, Tag, ShoppingBag
 } from 'lucide-react';
 
+// Deferred to the October R&D session. Keep the draft UI code inactive until
+// the customer red-flag SQL has been reviewed and applied to the CRM project.
+export const CUSTOMER_RED_FLAGS_ENABLED = true;
+
 export const PRIMARY_STAGES = [
     { id: 'LEADS', label: 'Leads', icon: Users },
     { id: 'REGISTRATION', label: 'Registration', icon: ClipboardList },
@@ -78,6 +82,22 @@ export const LOAN_TAG_COLORS = {
 // Supabase metadata table categories (one per managed dropdown)
 export const META_CATEGORIES = ['payment_type', 'module_brand', 'payment_method_modes', 'subsidy_approval_status', 'registration_by'];
 
+// Field service is scheduled for October week 2 with WhatsApp integration.
+export const TECHNICIAN_FEATURE_ENABLED = false;
+
+// Quotation Maker is hidden (button, sidebar count, #/quotations screen) until
+// its open issues are fixed. Saved quotations stay in the database untouched.
+export const QUOTATION_FEATURE_ENABLED = false;
+
+// Personal (one-to-one) chats: CPO <-> their staff/dealers, and starting a chat
+// with one person. Off for now: chat is the "Office team" group chat plus
+// announcements. Office replies to a person still reach that person.
+export const DIRECT_MESSAGES_ENABLED = false;
+
+// Local Role Preview chat uses browser-tab test messages, never the CRM database.
+// Set false when the temporary chat test window is no longer needed.
+export const ROLE_PREVIEW_CHAT_ENABLED = true;
+
 export const APP_ROLES = [
     { id: 'admin', label: 'Admin', user_type: 'admin', role: 'Admin' },
     { id: 'office', label: 'Office', user_type: 'sales', role: 'Office' },
@@ -86,6 +106,7 @@ export const APP_ROLES = [
     { id: 'agent2', label: 'Dealer', user_type: 'agent2', role: 'Channel Partner' },
     { id: 'channel_partner', label: 'Channel Partners', user_type: 'agent', role: 'Channel Partners' },
     { id: 'vendor', label: 'Vendors', user_type: 'vendor', role: 'Vendors' },
+    ...(TECHNICIAN_FEATURE_ENABLED ? [{ id: 'technician', label: 'Technician', user_type: 'technician', role: 'Technician' }] : []),
     { id: 'stamp', label: 'Stamp Guy', user_type: 'stamp', role: 'Stamp' },
 ];
 
@@ -402,6 +423,11 @@ export const ADMIN_COLUMNS = new Set([
     'delivery_batch_id',
     'delivery_status',
     'digital_certificate',
+    // Real boolean column (PM Surya Ghar Model Agreement checkbox). It was
+    // missing here, so sanitizeAdminUpdate silently dropped it from every
+    // save: the box ticked on screen and the log said "→ true", but no
+    // customer ever had it stored as ticked (found 2026-10-01).
+    'discom_agreement',
     'discom_inspection',
     'discom_submission',
     'driver_name',
@@ -506,7 +532,9 @@ export const ADMIN_NUMERIC_COLUMNS = [
     'invoice_value',
     'module_wp',
     'no_of_modules',
-    'phone_number',
+    // phone_number is NOT here: it has been a text column since 1 Sep (so it
+    // can keep a leading "+"). Treating it as a number stripped the "+" on
+    // every save. Savers run it through sanitizePhoneNumber instead.
     'structure_front_leg_height',
     'structure_rear_leg_height',
     'system_capacity_kwp',
@@ -530,7 +558,7 @@ export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, email_add
 // complete record is fetched only when a vendor opens one assignment.
 export const VENDOR_LIST_COLUMNS = 'id, customer_name, phone_number, email_address, consumer_no, folder_no, stage, vendor, deleted_at, installation_status, geo_tag_status, villages, sub_divisions, district, system_capacity_kwp, module_brand, module_wp, no_of_modules, created_at, updated_at';
 
-export const DELIVERY_PICKER_COLUMNS = 'id, customer_name, phone_number, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, system_capacity_kwp, module_wp, no_of_modules, invoice_value, delivery_batch_id, delivery_status, material_delivery_date, driver_name, driver_phone_number, vehicle_number, vendor, created_at, updated_at, deleted_at';
+export const DELIVERY_PICKER_COLUMNS = 'id, customer_name, phone_number, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, system_capacity_kwp, module_wp, no_of_modules, invoice_value, delivery_batch_id, delivery_status, material_delivery_date, driver_name, driver_phone_number, vehicle_number, vendor, villages, sub_divisions, inverter_serial_no, created_at, updated_at, deleted_at';
 
 // A tag value is "final" when it is the terminal state of its set. Reaching it
 // locks the field for everyone except Admin. Driven by the isFinal flag on the

@@ -2,6 +2,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+const htmlEscapes: Record<string, string> = {
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}
+const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => htmlEscapes[char])
+
 // Same reason as add_user: the custom domain needs to be an allowed origin.
 const ALLOWED_ORIGINS = ['https://watersun.deeprootsystems.in', 'https://watersun9.github.io']
 
@@ -41,8 +46,6 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}))
     const customer_id = body.customer_id
-    const passedVendorEmail = body.vendor_email
-    const passedVendorName = body.vendor_name
 
     if (!customer_id) {
       return new Response(JSON.stringify({ error: 'customer_id is required' }), {
@@ -74,7 +77,7 @@ Deno.serve(async (req) => {
       .select('user_type')
       .eq('id', user.id)
       .maybeSingle()
-    if (!['admin', 'sales', 'office'].includes(String(callerProfile?.user_type || '').toLowerCase())) {
+    if (!['admin', 'sales'].includes(String(callerProfile?.user_type || '').toLowerCase())) {
       return new Response(JSON.stringify({ error: 'Only Admin or Office can send Material Delivery emails' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -95,35 +98,33 @@ Deno.serve(async (req) => {
       })
     }
 
-    // 2. Resolve vendor email
-    let targetVendorEmail = passedVendorEmail
-    let targetVendorName = passedVendorName || lead.vendor || 'Vendor'
-
-    if (!targetVendorEmail && lead.vendor) {
-      const { data: vendor } = await supabase
-        .from('vendors')
-        .select('name, email')
-        .ilike('name', lead.vendor.trim())
-        .maybeSingle()
-
-      if (vendor?.email) {
-        targetVendorEmail = vendor.email
-        targetVendorName = vendor.name || targetVendorName
-      }
-    }
-
-    if (!targetVendorEmail) {
-      return new Response(JSON.stringify({ error: 'Vendor email not found' }), {
+    // Resolve the recipient from the saved assignment. A caller-supplied email
+    // must not redirect a customer's details to an arbitrary address.
+    if (!lead.vendor?.trim()) {
+      return new Response(JSON.stringify({ error: 'No vendor is assigned to this customer' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+    const { data: vendor, error: vendorError } = await supabase
+      .from('vendors')
+      .select('name, email')
+      .ilike('name', lead.vendor.trim())
+      .maybeSingle()
+    if (vendorError || !vendor?.email) {
+      return new Response(JSON.stringify({ error: 'Assigned vendor email not found' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const targetVendorEmail = vendor.email
+    const targetVendorName = vendor.name || lead.vendor
 
     // 3. Build the email body from lead data
     const rows = [
       ['Customer Name', lead.customer_name],
       ['Phone Number', lead.phone_number],
-      ['Email', lead.email],
+      ['Email', lead.email_address],
       ['Villages', lead.villages],
       ['Folder No', lead.folder_no],
       ['Channel Partner', lead.channel_partner],
@@ -143,13 +144,13 @@ Deno.serve(async (req) => {
       .filter(([, v]) => v !== null && v !== undefined && v !== '')
       .map(
         ([label, value]) =>
-          `<tr><td style="padding:6px 12px;border:1px solid #e5e5e5;font-weight:600;background:#fafafa;">${label}</td><td style="padding:6px 12px;border:1px solid #e5e5e5;">${value}</td></tr>`
+          `<tr><td style="padding:6px 12px;border:1px solid #e5e5e5;font-weight:600;background:#fafafa;">${escapeHtml(label)}</td><td style="padding:6px 12px;border:1px solid #e5e5e5;">${escapeHtml(value)}</td></tr>`
       )
       .join('')
 
     const htmlContent = `
       <div style="font-family:Arial,sans-serif;max-width:600px;">
-        <h2 style="color:#333;">Material Delivery Assigned: ${lead.customer_name || 'N/A'}</h2>
+        <h2 style="color:#333;">Material Delivery Assigned: ${escapeHtml(lead.customer_name || 'N/A')}</h2>
         <table style="border-collapse:collapse;width:100%;">${rows}</table>
         <p>Please log in to the Vendor Portal to review the delivery and installation work.</p>
       </div>

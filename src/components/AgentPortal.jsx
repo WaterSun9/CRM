@@ -7,17 +7,20 @@ import {
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
     ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
-    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal
+    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal, Flag
 } from 'lucide-react';
-import { logActivity, toIndianCommas, formatInputValue, parseIndianNumber, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
+import { logActivity, logFieldChanges, readAdminFields, toIndianCommas, formatInputValue, parseIndianNumber, normalizePhoneForSave, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
-import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS } from '../constants';
+import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS, QUOTATION_FEATURE_ENABLED } from '../constants';
 import AddLeadModal from './AddLeadModal';
 import QuotationModule, { openQuotations } from '../quotations/QuotationModule';
 import { quotationRepository } from '../quotations/client';
+import { canUseQuotations } from '../quotations/model';
 import { FilePreviewModal, CheckboxRemarkItem } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
+import { RedFlagBadge, RedFlagToggle } from './RedFlag';
 import BrandMark from './BrandMark';
+import { newestCustomerFirst } from '../utils/customerActivity';
 import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
 import LoanTab from './modal-tabs/LoanTab';
@@ -35,6 +38,7 @@ import FinalReviewTab from './modal-tabs/FinalReviewTab';
 import AgentStageDetails from './AgentStageDetails';
 import BomPrintModal from './BomPrintModal';
 import { loadBomForCustomer, getBomTypeForCustomer } from '../utils/bom';
+import { findUnsavedFields, fieldLabel } from '../utils/saveCheck';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [];
@@ -68,7 +72,7 @@ function DetailRow({ label, value, children }) {
     );
 }
 
-export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
+export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpenDevSwitcher }) {
     const { showAlert, showConfirm } = useGlobalPopup();
     const [view, setView] = useState('menu');
     const [activeWorkdeskTab, setActiveWorkdeskTab] = useState(STAGE_IDS.LEADS);
@@ -90,41 +94,32 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     const [showBomPrint, setShowBomPrint] = useState(false);
     const [showAgreementPopup, setShowAgreementPopup] = useState(false);
     const [agreementData, setAgreementData] = useState({});
-    const [loadingDocs, setLoadingDocs] = useState(false);
     const [previewDoc, setPreviewDoc] = useState(null);
-    const [showStageSidebar, setShowStageSidebar] = useState(false);
     // The customer record retains its real CRM stage. This controls the stage
     // panel currently being viewed in the customer workdesk.
     const [activeCustomerStage, setActiveCustomerStage] = useState(null);
-    const [activeDealerTab, setActiveDealerTab] = useState('ORDER'); // 'ORDER', 'METER', 'INSPECTION', 'PROFILE'
-    const [editingSection, setEditingSection] = useState(null);
-    const [uploadingDoc, setUploadingDoc] = useState(false);
-    const [uploadDocType, setUploadDocType] = useState('adhaar_card_front');
+    const uploadDocType = 'adhaar_card_front';
     const fileInputRef = useRef(null);
     const [validationIssues, setValidationIssues] = useState([]);
     const [showValidationModal, setShowValidationModal] = useState(false);
     const [validationNextStage, setValidationNextStage] = useState('');
-    const [customAlert, setCustomAlert] = useState(null);
+    const alertAgent = ({ title, message, type }) => showAlert(message, { title, type });
+
+    // Open quotations (draft + issued) for the sidebar badge. Refreshed when
+    // the Quotation Maker is closed, so new/converted ones show straight away.
+    const [quotationOpenCount, setQuotationOpenCount] = useState(0);
+    useEffect(() => {
+        if (!QUOTATION_FEATURE_ENABLED || !canUseQuotations(user)) return undefined;
+        let active = true;
+        const load = () => quotationRepository.counts().then(c => { if (active) setQuotationOpenCount(c.open); }).catch(() => {});
+        load();
+        const onHash = () => { if (!window.location.hash.startsWith('#/quotations')) load(); };
+        window.addEventListener('hashchange', onHash);
+        return () => { active = false; window.removeEventListener('hashchange', onHash); };
+    }, [user]);
 
     const handleChange = (field, val) => {
         setEditData(prev => ({ ...prev, [field]: val }));
-    };
-
-    const getStageRemarks = (value) => {
-        if (value && typeof value === 'object') return value;
-        if (typeof value === 'string') {
-            try {
-                const parsed = JSON.parse(value);
-                if (parsed && typeof parsed === 'object') return parsed;
-            } catch { /* not valid JSON, fall through to default */ }
-        }
-        return {};
-    };
-
-    const handleSaveStageRemark = async () => {
-        if (!selectedCust) return;
-        const remarks = getStageRemarks(editData.stages_remarks);
-        await handleUpdateCustomer(selectedCust.id, { stages_remarks: remarks });
     };
 
     // Metadata
@@ -151,7 +146,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                 return;
             }
             const buildQuery = () => {
-                let q = supabase.from('admin').select('*').is('deleted_at', null).order('created_at', { ascending: false });
+                let q = supabase.from('admin').select('*').is('deleted_at', null).order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
                 const myName = (user?.name || '').trim();
 
                 if (isAgent2) {
@@ -275,29 +270,21 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
 
     // Load documents and sync customer data when a customer profile is opened
     useEffect(() => {
+        let cancelled = false;
         if (selectedCust?.id) {
-            setLoadingDocs(true);
             getCustomerDocuments(selectedCust.id)
-                .then(docs => setCustDocs(docs || []))
-                .finally(() => setLoadingDocs(false));
+                .then(docs => { if (!cancelled) setCustDocs(docs || []); })
+                .catch(err => { if (!cancelled) alertAgent({ title: 'Documents unavailable', message: err.message || 'Could not load documents.', type: 'error' }); });
 
             setEditData({ ...selectedCust });
             setActiveCustomerStage(selectedCust.stage === STAGE_IDS.COMPLETED ? STAGE_IDS.LEADS : selectedCust.stage);
 
-            if (selectedCust.stage === STAGE_IDS.MATERIAL_ORDER) {
-                setActiveDealerTab('ORDER');
-            } else if (selectedCust.stage === STAGE_IDS.METER_INSTALLATION) {
-                setActiveDealerTab('METER');
-            } else if (selectedCust.stage === STAGE_IDS.DISCOM_INSPECTION) {
-                setActiveDealerTab('INSPECTION');
-            } else {
-                setActiveDealerTab('LEAD_INFO');
-            }
         } else {
             setCustDocs([]);
             setEditData({});
             setActiveCustomerStage(null);
         }
+        return () => { cancelled = true; };
     }, [selectedCust?.id]);
 
     // Material Integration is view-only for Channel Partners. Load its BOM
@@ -354,22 +341,39 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                 cleanUpdates[field] = (parsed === '' || Number.isNaN(parsed)) ? null : parsed;
             }
         });
+        // Text column: keep the leading "+", strip spaces/dashes, '' or '+' -> NULL.
+        if (cleanUpdates.phone_number !== undefined) cleanUpdates.phone_number = normalizePhoneForSave(cleanUpdates.phone_number);
         try {
+            // Stored values before the write, for the field-level log below.
+            const beforeRow = await readAdminFields(id, Object.keys(cleanUpdates));
             const { data: savedRow, error } = await supabase
                 .from('admin')
                 .update(cleanUpdates)
                 .eq('id', id)
-                .select('id')
+                .select('*')
                 .maybeSingle();
 
             if (error) throw error;
             if (!savedRow?.id) throw new Error('No customer row was updated. Please sign in with a real Agent account and try again.');
+            const unsaved = findUnsavedFields(cleanUpdates, savedRow);
+            if (unsaved.length) throw new Error(`The database did not store: ${unsaved.map(fieldLabel).join(', ')}. Refresh this customer before trying again.`);
 
-            setSelectedCust(prev => ({ ...prev, ...cleanUpdates }));
-            setEditData(prev => ({ ...prev, ...cleanUpdates }));
+            // Agent portal saves used to leave no value-level record.
+            const loggedCustomer = customers.find(customer => customer.id === id) || selectedCust;
+            void logFieldChanges(
+                user?.id,
+                id,
+                loggedCustomer?.customer_name,
+                beforeRow || loggedCustomer || {},
+                cleanUpdates,
+                'Agent portal'
+            );
+
+            setSelectedCust(prev => ({ ...prev, ...cleanUpdates, updated_at: savedRow.updated_at }));
+            setEditData(prev => ({ ...prev, ...cleanUpdates, updated_at: savedRow.updated_at }));
             // The server has already confirmed the update. Keep the local list
             // in sync instead of downloading every lead again after each edit.
-            setCustomers(prev => prev.map(customer => customer.id === id ? { ...customer, ...cleanUpdates } : customer));
+            setCustomers(prev => prev.map(customer => customer.id === id ? { ...customer, ...cleanUpdates, updated_at: savedRow.updated_at } : customer));
             return true;
         } catch (err) {
             console.error('Update failed:', err);
@@ -380,7 +384,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                 hint: err?.hint,
                 fields: Object.keys(cleanUpdates),
             });
-            setCustomAlert({
+            alertAgent({
                 title: 'Update Failed',
                 message: [err?.message, err?.details, err?.hint].filter(Boolean).join('\n') || 'Could not save changes to the database.',
                 type: 'error'
@@ -425,7 +429,8 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             }
         });
 
-        // The quotation branch is retained for the deferred Add to Leads feature.
+        // From a quotation, the lead id is derived from the quotation so a retry
+        // or two devices converting at once cannot create duplicate leads.
         const { data: newCustomer, error } = quotation
             ? await quotationRepository.insertConversionLead(quotation, insertData, user)
             : await supabase.from('admin').insert(insertData).select().single();
@@ -452,7 +457,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             }
             }));
             if (failedUploads.length > 0) {
-            setCustomAlert({
+            alertAgent({
                 title: 'Some documents did not upload',
                 message:
                     `The lead was saved, but ${failedUploads.length} document(s) did NOT upload: `
@@ -487,7 +492,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             String(c?.phone_number || '').toLowerCase().includes(q) ||
             String(c?.consumer_no || '').toLowerCase().includes(q)
         );
-    });
+    }).sort(newestCustomerFirst);
 
     const homeSearchResults = homeSearchQuery.trim()
         ? (customers || []).filter(c => {
@@ -595,26 +600,28 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         if (![STAGE_IDS.LEADS, STAGE_IDS.REGISTRATION].includes(activeCustomerStage) && 
             !([STAGE_IDS.METER_INSTALLATION].includes(activeCustomerStage) && docType.includes('meter')) &&
             !([STAGE_IDS.DISCOM_SUBMISSION, STAGE_IDS.DISCOM_INSPECTION].includes(activeCustomerStage) && (docType.includes('signature') || docType.includes('stamp') || docType.includes('dcr')))) {
-            setCustomAlert({ title: 'Permission Denied', message: 'You can only upload lead documents during the Leads and Registration stages.', type: 'error' });
+            alertAgent({ title: 'Permission Denied', message: 'You can only upload lead documents during the Leads and Registration stages.', type: 'error' });
             if (fileInputRef.current) fileInputRef.current.value = '';
-            return;
+            return false;
         }
         const file = e.target.files?.[0];
-        if (!file || !selectedCust?.id) return;
-        setUploadingDoc(true);
+        if (!file || !selectedCust?.id) return false;
         try {
-            await uploadDocument(file, selectedCust.id, docType || uploadDocType, user?.id);
+            const uploadedDoc = await uploadDocument(file, selectedCust.id, docType || uploadDocType, user?.id);
             const updatedDocs = await getCustomerDocuments(selectedCust.id);
-            setCustDocs(updatedDocs || []);
+            setCustDocs(prev => updatedDocs?.some(doc => doc.id === uploadedDoc.id)
+                ? updatedDocs
+                : [uploadedDoc, ...prev.filter(doc => doc.id !== uploadedDoc.id)]);
+            return true;
         } catch (err) {
             console.error('Upload failed:', err);
-            setCustomAlert({
+            alertAgent({
                 title: 'Upload Failed',
                 message: err.message || 'Failed to upload the document.',
                 type: 'error'
             });
+            return false;
         } finally {
-            setUploadingDoc(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
@@ -622,7 +629,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     const handleDeleteDoc = async (doc) => {
         const wasReturned = String(doc?.remark || '').trim().toUpperCase().startsWith('[RETURNED]');
         if (!wasReturned) {
-            setCustomAlert({
+            alertAgent({
                 title: 'Permission Denied',
                 message: 'This document is locked. Admin or Office must send it back before it can be replaced.',
                 type: 'warning'
@@ -633,13 +640,13 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             const { deleteDocument } = await import('../utils');
             const res = await deleteDocument(doc.id, doc.storage_path);
             if (!res?.ok) {
-                setCustomAlert({ title: 'Replacement Failed', message: res?.error?.message || 'The old document could not be removed.', type: 'error' });
+                alertAgent({ title: 'Replacement Failed', message: res?.error?.message || 'The old document could not be removed.', type: 'error' });
                 return false;
             }
             setCustDocs(prev => prev.filter(item => item.id !== doc.id));
             return true;
         } catch (err) {
-            setCustomAlert({ title: 'Replacement Failed', message: err.message || 'Could not replace the returned document.', type: 'error' });
+            alertAgent({ title: 'Replacement Failed', message: err.message || 'Could not replace the returned document.', type: 'error' });
             return false;
         }
     };
@@ -647,7 +654,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
     const handleUpdateDocRemark = async (docId, newRemark) => {
         const res = await updateDocumentRemark(docId, newRemark);
         if (!res?.ok) {
-            setCustomAlert({ title: 'Remark not saved', message: res?.error?.message || 'The remark was not saved.', type: 'error' });
+            alertAgent({ title: 'Remark not saved', message: res?.error?.message || 'The remark was not saved.', type: 'error' });
             return false;
         }
         setCustDocs(prev => prev.map(d => d.id === docId ? { ...d, remark: newRemark } : d));
@@ -667,21 +674,15 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
         return filteredCustomers.filter(c => c.stage === stageTab);
     };
 
-    const leadsCount = customers.filter(c => c.stage === STAGE_IDS.LEADS).length;
-    const registrationCount = customers.filter(c => c.stage === STAGE_IDS.REGISTRATION).length;
     const materialOrderCount = customers.filter(c => c.stage === STAGE_IDS.MATERIAL_ORDER).length;
-    const materialIntegrationCount = customers.filter(c => c.stage === STAGE_IDS.MATERIAL_INTEGRATION).length;
-    const materialDeliveryCount = customers.filter(c => c.stage === STAGE_IDS.MATERIAL_DELIVERY).length;
     const meterPendingCount = customers.filter(c => c.stage === STAGE_IDS.METER_INSTALLATION).length;
     const inspPendingCount = customers.filter(c => c.stage === STAGE_IDS.DISCOM_INSPECTION).length;
-    const operationalQueueCount = materialOrderCount + meterPendingCount + inspPendingCount;
-    const inProgressCount = materialIntegrationCount + materialDeliveryCount + meterPendingCount + inspPendingCount;
     const priorityWorkdeskTab = meterPendingCount > 0
-        ? 'METER_INSTALLATION'
+        ? STAGE_IDS.METER_INSTALLATION
         : inspPendingCount > 0
-            ? 'DISCOM_INSPECTION'
+            ? STAGE_IDS.DISCOM_INSPECTION
             : materialOrderCount > 0
-                ? 'MATERIAL_ORDER'
+                ? STAGE_IDS.MATERIAL_ORDER
                 : STAGE_IDS.LEADS;
     const displayedStage = activeCustomerStage || selectedCust?.stage;
     const customerStageNavigation = PRIMARY_STAGES;
@@ -858,7 +859,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             // This is the last Stage Operations task, so return to its filtered list.
             setSelectedCust(null);
             setActiveCustomerStage(null);
-            setActiveWorkdeskTab('DISCOM_INSPECTION');
+            setActiveWorkdeskTab(STAGE_IDS.DISCOM_INSPECTION);
         }
         return didSave;
     };
@@ -990,7 +991,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                         </div>
                     </section>
 
-                    <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span><ChevronRight size={18} /></button>
+                    {QUOTATION_FEATURE_ENABLED && <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span>{quotationOpenCount > 0 && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}<ChevronRight size={18} /></button>}
 
                     <section className="rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm">
                         <div className="mb-3">
@@ -1249,10 +1250,16 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                 >
                                     <div>
                                         <div className="flex justify-between items-start gap-2 mb-3">
-                                            <h4 className="text-sm font-black text-stone-900 group-hover:text-blue-600 transition-colors leading-snug">
-                                                {cust.customer_name}
+                                            <h4 className="text-sm font-black text-stone-900 group-hover:text-blue-600 transition-colors leading-snug flex items-center gap-1.5">
+                                                <span>{cust.customer_name}</span>
+                                                <RedFlagBadge customerId={cust.id} user={user} size={13} />
                                             </h4>
                                             <div className="flex items-center gap-1.5">
+                                                {cust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(cust); }}
+                                                    aria-label={`Raise service issue for ${cust.customer_name || 'customer'}`} title="Raise service issue"
+                                                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 text-[10px] font-bold text-amber-800 hover:bg-amber-100">
+                                                    <Flag size={12} /> Raise issue
+                                                </button>}
                                                 {getTelephoneHref(cust.phone_number) && (
                                                     <a
                                                         href={getTelephoneHref(cust.phone_number)}
@@ -1303,10 +1310,10 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 {cust.payment_type}
                                             </span>
                                         )}
-                                        {cust.discom_inspection === 'Yes' && activeWorkdeskTab === 'DISCOM_INSPECTION' && (
+                                        {cust.discom_inspection === 'Yes' && activeWorkdeskTab === STAGE_IDS.DISCOM_INSPECTION && (
                                             <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Inspected</span>
                                         )}
-                                        {cust.meter_installation === 'Yes' && activeWorkdeskTab === 'METER_INSTALLATION' && (
+                                        {cust.meter_installation === 'Yes' && activeWorkdeskTab === STAGE_IDS.METER_INSTALLATION && (
                                             <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Installed</span>
                                         )}
                                     </div>
@@ -1327,7 +1334,7 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
             </div></div>
             )}
 
-            <QuotationModule user={user} meta={meta} onCreateLead={handleSubmitLead} onViewLead={lead => handleSelectCustomerForStage(lead, lead.stage || STAGE_IDS.LEADS)} />
+            {QUOTATION_FEATURE_ENABLED && <QuotationModule user={user} meta={meta} onCreateLead={handleSubmitLead} onViewLead={lead => handleSelectCustomerForStage(lead, lead.stage || STAGE_IDS.LEADS)} />}
 
             {/* Unified Add Lead Modal */}
             {showAddLead && (
@@ -1356,8 +1363,9 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         {PRIMARY_STAGES.find(s => s.id === selectedCust.stage)?.label || selectedCust.stage}
                                     </span>
                                 </div>
-                                <h3 className="text-base font-black text-stone-900 uppercase leading-tight pt-0.5">
-                                    {selectedCust.customer_name}
+                                <h3 className="text-base font-black text-stone-900 uppercase leading-tight pt-0.5 flex items-center gap-1.5">
+                                    <span>{selectedCust.customer_name}</span>
+                                    <RedFlagBadge customerId={selectedCust.id} user={user} size={15} />
                                 </h3>
                                 <div className="flex flex-wrap items-center gap-2 text-xs text-stone-600 font-semibold pt-0.5">
                                     <span className="flex items-center gap-1">
@@ -1382,6 +1390,11 @@ export default function AgentPortal({ user, onLogout, onOpenDevSwitcher }) {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 ml-3">
+                                <RedFlagToggle customer={selectedCust} user={user} tone="light" className="h-9 w-9 rounded-full" />
+                                {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(selectedCust)}
+                                    className="inline-flex h-9 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 text-[10px] font-bold text-amber-800 hover:bg-amber-100">
+                                    <Flag size={13} /> Raise issue
+                                </button>}
                                 {getTelephoneHref(selectedCust.phone_number) && (
                                     <a
                                         href={getTelephoneHref(selectedCust.phone_number)}

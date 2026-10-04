@@ -8,10 +8,12 @@ import {
     Printer, ShoppingBag, Layers, Ruler, IndianRupee, Package, FileText, Truck, Check, Wrench, RefreshCw, Save, Terminal
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
-import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, VENDOR_LIST_COLUMNS, isFinalTagValue } from '../constants';
+import { STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, VENDOR_LIST_COLUMNS, isFinalTagValue } from '../constants';
 import { isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
+import AvailabilityCalendar from './AvailabilityCalendar';
+import VendorPaymentsView from './VendorPaymentsView';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
@@ -74,11 +76,11 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     const [vendorNote, setVendorNote] = useState('');
     
     // Material Delivery State
-    const [inverterSerialNo, setInverterSerialNo] = useState('');
-    const [invoiceNo, setInvoiceNo] = useState('');
-    const [driverName, setDriverName] = useState('');
-    const [driverPhone, setDriverPhone] = useState('');
-    const [panelSerials, setPanelSerials] = useState(['']);
+    const [, setInverterSerialNo] = useState('');
+    const [, setInvoiceNo] = useState('');
+    const [, setDriverName] = useState('');
+    const [, setDriverPhone] = useState('');
+    const [, setPanelSerials] = useState(['']);
     
     const [saving, setSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
@@ -90,143 +92,12 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     const [previewDoc, setPreviewDoc] = useState(null);
     const fileInputRef = useRef(null);
     // Set when replacing a photo that Admin/Office sent back.
-    const replacingPhotoRef = useRef(null);
-
-    // BOM Print Modal for Vendor (Read-Only)
-    const [showBomModal, setShowBomModal] = useState(false);
-    const [targetBomCust, setTargetBomCust] = useState(null);
-    const [bomData, setBomData] = useState(null);
-    const [bomItems, setBomItems] = useState([]);
-    const [loadingBom, setLoadingBom] = useState(false);
-    const vendorBomPrintRef = useRef(null);
 
     // Give Up Project Modal state
     const [showGiveUpModal, setShowGiveUpModal] = useState(false);
     const [giveUpReason, setGiveUpReason] = useState('');
     const [givingUp, setGivingUp] = useState(false);
 
-
-    // Fetch BOM for Print (Read-Only)
-    const handleOpenBomModal = async (cust) => {
-        const target = cust || selectedCust;
-        if (!target?.id) return;
-        setTargetBomCust(target);
-        setShowBomModal(true);
-        setLoadingBom(true);
-        try {
-            const { data: bom, error: bomErr } = await supabase
-                .from('bom')
-                .select('*')
-                .eq('admin_id', target.id)
-                .maybeSingle();
-
-            // A failed query used to leave `bom` null, which fell through to the
-            // "no BOM yet" branch below and showed a blank template - identical
-            // to a customer who genuinely has no BOM. The vendor had no way to
-            // tell a load failure from an empty materials list.
-            if (bomErr) throw bomErr;
-
-            if (bom) {
-                setBomData(bom);
-                const { data: items, error: itemsErr } = await supabase
-                    .from('bom_items')
-                    .select('*')
-                    .eq('bom_id', bom.id)
-                    .order('sr_no', { ascending: true });
-                if (itemsErr) throw itemsErr;
-                setBomItems(items || []);
-            } else {
-                const template = (target.roof_shed || '').toLowerCase().includes('shed') ? SHED_BOM_TEMPLATE : ROOF_BOM_TEMPLATE;
-                setBomData({
-                    bom_type: target.roof_shed || 'Roof',
-                    paper_prepared_by: '',
-                    material_loaded_by: ''
-                });
-                setBomItems(template.map((t, idx) => ({
-                    sr_no: idx + 1,
-                    product_name: t.product_name,
-                    make: t.default_make || 'Standard',
-                    uom: t.uom || 'Nos',
-                    integration_by: t.default_integration || 'Vendor',
-                    note: ''
-                })));
-            }
-        } catch (e) {
-            console.error('Error fetching BOM for vendor:', e);
-            showAlert(
-                'The Bill of Materials could not be loaded, so a blank template is being shown. Do not treat this as the final materials list - please retry or contact the office.',
-                { title: 'BOM not loaded', type: 'error' }
-            );
-            const template = (target.roof_shed || '').toLowerCase().includes('shed') ? SHED_BOM_TEMPLATE : ROOF_BOM_TEMPLATE;
-            setBomData({ bom_type: target.roof_shed || 'Roof' });
-            setBomItems(template.map((t, idx) => ({
-                sr_no: idx + 1,
-                product_name: t.product_name,
-                make: t.default_make || 'Standard',
-                uom: t.uom || 'Nos',
-                integration_by: t.default_integration || 'Vendor',
-                note: ''
-            })));
-        } finally {
-            setLoadingBom(false);
-        }
-    };
-
-    // Keep the read-only Material Integration reference card current without
-    // forcing the vendor to open the print preview first.
-    useEffect(() => {
-        if (activeTab !== 'MATERIAL' || !selectedCust?.id) return;
-        let cancelled = false;
-
-        supabase
-            .from('bom')
-            .select('*')
-            .eq('admin_id', selectedCust.id)
-            .maybeSingle()
-            .then(({ data }) => {
-                if (!cancelled) setBomData(data || null);
-            });
-
-        return () => { cancelled = true; };
-    }, [activeTab, selectedCust?.id]);
-
-    const handlePrintVendorBom = () => {
-        const documentBody = vendorBomPrintRef.current;
-        if (!documentBody) return;
-
-        const cleanName = String(targetBomCust?.customer_name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const cleanRef = String(targetBomCust?.folder_no || targetBomCust?.consumer_no || 'Site').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const docTitle = `BOM_Vendor_Dispatch_${cleanName}_${cleanRef}`;
-        const prevDocTitle = document.title;
-
-        // Remove any old print portal
-        const existing = document.getElementById('native-print-portal');
-        if (existing) existing.remove();
-
-        const printPortal = document.createElement('div');
-        printPortal.id = 'native-print-portal';
-        printPortal.innerHTML = documentBody.innerHTML;
-        document.body.appendChild(printPortal);
-
-        document.body.classList.add('is-printing-document');
-        document.title = docTitle;
-
-        const cleanup = () => {
-            document.body.classList.remove('is-printing-document');
-            document.title = prevDocTitle;
-            if (document.body.contains(printPortal)) {
-                document.body.removeChild(printPortal);
-            }
-            window.removeEventListener('afterprint', cleanup);
-        };
-
-        window.addEventListener('afterprint', cleanup);
-
-        setTimeout(() => {
-            window.print();
-            setTimeout(cleanup, 2000);
-        }, 100);
-    };
 
     const registeredVendorNamesRef = useRef([]);
 
@@ -306,7 +177,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                     .from('admin')
                     .select(VENDOR_LIST_COLUMNS)
                     .in('vendor', searchNames)
-                    .order('created_at', { ascending: false })
+                    .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
                     .range(from, from + pageSize - 1);
                 if (error) throw error;
                 if (!page || page.length === 0) break;
@@ -469,30 +340,17 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         if (!file || !selectedCust) return;
 
         setUploadingPhoto(true);
+        let photoUploaded = false;
         try {
             // Upload FIRST. Deleting the previous photo before the upload meant
             // a vendor on a flaky mobile connection lost the original with
             // nothing to fall back on.
             const newDoc = await uploadDocument(file, selectedCust.id, 'geo_tag_image', user?.id);
+            if (!newDoc) throw new Error('The new photo was not saved. The existing photo is still available.');
+            photoUploaded = true;
+            setDocuments(prev => [newDoc, ...(prev || [])]);
 
             if (newDoc) {
-                const existingGeo = (documents || []).filter(d =>
-                    (d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag') && d.id !== newDoc.id);
-                for (const oldDoc of existingGeo) {
-                    try {
-                        await deleteDocument(oldDoc);
-                    } catch (delErr) {
-                        console.warn('New geo tag photo saved, but removing the old one failed:', delErr);
-                    }
-                }
-            }
-            if (newDoc) {
-                setDocuments(prev => [
-                    newDoc,
-                    ...(prev || []).filter(d => d.doc_type !== 'geo_tag_image' && d.doc_type !== 'geo_tag')
-                ]);
-                setGeoTagImage(true);
-                
                 const nextGeoStatus = geoTagStatus === 'Pending' ? 'Proceed' : geoTagStatus;
                 // Unchecked before: the photo uploaded but the flag/status did
                 // not save, and a missing geo_tag_image blocks the move to
@@ -502,6 +360,22 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                     geo_tag_status: nextGeoStatus
                 });
                 if (!geoOk) throw geoErr;
+
+                const existingGeo = (documents || []).filter(d =>
+                    (d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag') && d.id !== newDoc.id);
+                const undeleted = [];
+                for (const oldDoc of existingGeo) {
+                    const removed = await deleteDocument(oldDoc);
+                    if (!removed?.ok) {
+                        undeleted.push(oldDoc);
+                        console.warn('New geo tag photo saved, but removing the old one failed:', removed?.error);
+                    }
+                }
+                setDocuments(prev => [
+                    newDoc, ...undeleted,
+                    ...(prev || []).filter(d => d.doc_type !== 'geo_tag_image' && d.doc_type !== 'geo_tag')
+                ]);
+                setGeoTagImage(true);
 
                 if (geoTagStatus === 'Pending') {
                     setGeoTagStatus('Proceed');
@@ -519,14 +393,11 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             }
         } catch (err) {
             console.error('Error uploading geo photo:', err);
-            showAlert('Failed to upload photo: ' + (err.message || err), {
+            showAlert((photoUploaded ? 'The photo uploaded, but its customer status could not be completed: ' : 'Failed to upload photo: ') + (err.message || err), {
                 title: 'Upload Error',
                 type: 'error'
             });
         } finally {
-            const replaced = replacingPhotoRef.current;
-            replacingPhotoRef.current = null;
-            if (replaced) await handlePhotoDelete(replaced);
             setUploadingPhoto(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
@@ -544,27 +415,6 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         return true;
     };
 
-    // Removes the returned photo once its replacement has uploaded.
-    const handlePhotoDelete = async (doc) => {
-        try {
-            await deleteDocument(doc);
-            const remaining = (documents || []).filter(d => d.id !== doc.id);
-            setDocuments(remaining);
-            const hasOtherGeo = remaining.some(d => d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag');
-            if (!hasOtherGeo) {
-                setGeoTagImage(false);
-                const { ok: clearOk, error: clearGeoErr } = await updateAdminRecord(selectedCust.id, { geo_tag_image: false });
-                if (!clearOk) throw clearGeoErr;
-            }
-        } catch (err) {
-            console.error('Error deleting photo:', err);
-            showAlert(err.message || 'Could not delete the selected photo.', {
-                title: 'Delete Failed',
-                type: 'error'
-            });
-        }
-    };
-
     // Preview photo handler
     const handlePhotoPreview = async (doc) => {
         try {
@@ -577,20 +427,10 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
     };
 
-    const canMoveToGeoTag = normalizeInstallationStatus(installationStatus) === 'Yes';
-
     const isInstallationDirty = Boolean(
         String(installationStatus || 'Pending').trim() !== String(selectedCust?.installation_status || 'Pending').trim() ||
         String(installationDate || '').trim() !== String(selectedCust?.installation_date || '').trim() ||
         String(vendorNote || '').trim() !== String(selectedCust?.vendor_note || '').trim()
-    );
-
-    const isDeliveryDirty = Boolean(
-        String(inverterSerialNo || '').trim() !== String(selectedCust?.inverter_serial_no || '').trim() ||
-        String(invoiceNo || '').trim() !== String(selectedCust?.invoice_no || '').trim() ||
-        String(driverName || '').trim() !== String(selectedCust?.driver_name || '').trim() ||
-        String(driverPhone || '').trim() !== String(selectedCust?.driver_phone_number || '').trim() ||
-        JSON.stringify(panelSerials.filter(Boolean)) !== JSON.stringify(parsePanelSerials(selectedCust?.panel_serial_no).filter(Boolean))
     );
 
     const isGeoTagDirty = Boolean(
@@ -887,12 +727,24 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     return (
-        <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans flex flex-col pb-8">
+        <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans flex flex-col pb-24 sm:pb-8">
             {/* Top Header */}
-            <header className="bg-white border-b border-stone-100 px-4 py-3 sticky top-0 z-30 flex items-center justify-between shadow-sm">
+            <header className="bg-white border-b border-stone-100 px-3 sm:px-4 py-3 sticky top-0 z-30 flex flex-wrap gap-2 items-center justify-between shadow-sm">
                 <BrandMark label="Vendor Portal" />
-                <div className="flex items-center gap-3">
-                    <div className="text-right">
+                <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3 ml-auto">
+                    <button type="button" onClick={async () => {
+                        if (view === 'details' && !(await saveBeforeVendorExit('Open calendar'))) return;
+                        setView(view === 'calendar' ? 'list' : 'calendar');
+                    }} className="text-xs font-bold text-amber-700 border border-amber-200 rounded-lg px-2 min-h-9">
+                        {view === 'calendar' ? 'Projects' : 'My calendar'}
+                    </button>
+                    <button type="button" onClick={async () => {
+                        if (view === 'details' && !(await saveBeforeVendorExit('Open payments'))) return;
+                        setView(view === 'payments' ? 'list' : 'payments');
+                    }} className="text-xs font-bold text-amber-700 border border-amber-200 rounded-lg px-2 min-h-9">
+                        {view === 'payments' ? 'Projects' : 'Payments'}
+                    </button>
+                    <div className="hidden sm:block text-right">
                         <span className="text-xs font-bold text-stone-800 block truncate max-w-[150px]">{user.name}</span>
                         {user.email && <span className="text-[10px] text-stone-400 font-medium block truncate max-w-[150px]">{user.email}</span>}
                     </div>
@@ -927,7 +779,11 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 </div>
             </header>
 
-            {view === 'list' ? (
+            {view === 'calendar' ? (
+                <main className="flex-1 min-w-0 px-2 py-3 sm:p-4"><AvailabilityCalendar user={user} /></main>
+            ) : view === 'payments' ? (
+                <VendorPaymentsView user={user} />
+            ) : view === 'list' ? (
                 <main className="flex-1 p-4 max-w-md mx-auto w-full space-y-4 animate-in fade-in duration-300">
                     {/* Welcome banner */}
                     <div className="bg-gradient-to-br from-stone-900 to-stone-850 text-white p-5 rounded-[24px] shadow-lg relative overflow-hidden">
@@ -1029,7 +885,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                 let badgeLabel, badgeClass, chips;
 
                                 if (isIntegration) {
-                                    badgeLabel = cust.system_capacity_kwp ? `${cust.system_capacity_kwp} kWp` : 'BOM Ready';
+                                    badgeLabel = cust.system_capacity_kwp ? `${cust.system_capacity_kwp} kWp` : 'Material ready';
                                     badgeClass = 'bg-amber-100 text-amber-800';
                                     chips = [
                                         cust.consumer_no && ['Consumer', cust.consumer_no],
@@ -1103,24 +959,6 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                             <ChevronRight className="w-4.5 h-4.5 text-stone-300 group-hover:text-stone-700 transition-colors flex-shrink-0" />
                                         </div>
 
-                                        {isIntegration && (
-                                            <div className="flex items-center justify-between pt-2 border-t border-stone-100">
-                                                <span className="text-[9px] font-bold text-stone-400 flex items-center gap-1">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                                                    Open BOM details or print
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleOpenBomModal(cust);
-                                                    }}
-                                                    className="text-[10px] font-bold uppercase tracking-wide text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-200 px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer"
-                                                >
-                                                    <Printer size={11} /> Print BOM
-                                                </button>
-                                            </div>
-                                        )}
                                     </div>
                                 );
                             })
@@ -1249,26 +1087,19 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                     : activeTab === 'INSTALLATION' 
                                         ? 'Installation Status & Details' 
                                         : activeTab === 'MATERIAL'
-                                            ? 'Material Integration & BOM'
+                                            ? 'Material Integration'
                                             : 'Geo Tag Photo Report'}
                             </h3>
 
-                            {/* ─── Active Tab: MATERIAL INTEGRATION & BOM ─── */}
+                            {/* ─── Active Tab: MATERIAL INTEGRATION (no BOM for vendors) ─── */}
                             {activeTab === 'MATERIAL' && (
                                 <div className="space-y-4">
                                     <div className="rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50/70 to-white p-4 shadow-xs">
                                         <div className="flex items-start justify-between gap-3 border-b border-amber-200/70 pb-3">
                                             <div>
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-amber-900">BOM Details</p>
-                                                <p className="mt-0.5 text-[10px] font-medium text-stone-500">View the full material checklist, specifications, and signatures.</p>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-amber-900">Material Details</p>
+                                                <p className="mt-0.5 text-[10px] font-medium text-stone-500">Order specifications and site reference.</p>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleOpenBomModal(selectedCust)}
-                                                className="shrink-0 rounded-xl bg-amber-500 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white shadow-sm transition hover:bg-amber-600 cursor-pointer flex items-center gap-1.5"
-                                            >
-                                                <Printer size={12} /> View & Print
-                                            </button>
                                         </div>
                                         <div className="space-y-4 pt-3">
                                             <div>
@@ -1285,14 +1116,6 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                     {[
                                                         ['Customer Name', selectedCust.customer_name], ['Phone Number', selectedCust.phone_number], ['Email Address', selectedCust.email], ['Consumer No', selectedCust.consumer_no], ['Villages', selectedCust.villages], ['Sub Division', selectedCust.sub_divisions], ['Channel Partner Name', selectedCust.channel_partner], ['Dealer Name', selectedCust.sub_channel_partner], ['Module Brand', selectedCust.module_brand], ['Module WP', selectedCust.module_wp], ['No of Modules', selectedCust.no_of_modules], ['System Capacity (kWp)', selectedCust.system_capacity_kwp ? toIndianCommas(selectedCust.system_capacity_kwp) : '–'],
                                                     ].map(([label, value]) => <div key={label}><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">{label}</p><p className="font-semibold text-stone-900 break-words">{value || '–'}</p></div>)}
-                                                </div>
-                                            </div>
-                                            <div className="border-t border-amber-200/70 pt-3">
-                                                <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-stone-400">Procurement & Loading Milestones <span className="ml-1 font-semibold normal-case tracking-normal">(View Only)</span></p>
-                                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                                                    {[
-                                                        ['Paper Prepared By', bomData?.paper_prepared_by], ['Paper Prepared Date', bomData?.paper_prepared_date], ['Material Loaded By', bomData?.material_loaded_by], ['Material Loaded Date', bomData?.material_loaded_date],
-                                                    ].map(([label, value]) => <div key={label}><p className="text-[9px] font-bold uppercase tracking-wide text-stone-400">{label}</p><p className="font-semibold text-stone-900">{value || '–'}</p></div>)}
                                                 </div>
                                             </div>
                                         </div>
@@ -1430,7 +1253,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                                     <button
                                                                         type="button"
                                                                         disabled={!canEditGeoTag}
-                                                                        onClick={() => { replacingPhotoRef.current = doc; fileInputRef.current?.click(); }}
+                                                                        onClick={() => fileInputRef.current?.click()}
                                                                         className="text-blue-600 hover:text-blue-800 p-1 rounded-lg hover:bg-blue-50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                                                         title="Replace the returned photo"
                                                                     >
@@ -1768,188 +1591,6 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 </div>
             )}
 
-            {/* BOM View & Print Modal for Vendor (Read-Only) */}
-            {showBomModal && targetBomCust && (
-                <div className="print-only-modal fixed inset-0 z-[999] bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-                        {/* Modal Top Bar */}
-                        <div className="px-5 py-4 bg-stone-900 text-white flex items-center justify-between no-print">
-                            <div className="flex items-center gap-2">
-                                <Printer size={16} className="text-amber-400" />
-                                <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider">
-                                    Bill of Materials (BOM) - {targetBomCust.customer_name}
-                                </h3>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={handlePrintVendorBom}
-                                    className="bg-amber-500 hover:bg-amber-400 text-stone-950 px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md"
-                                >
-                                    <Printer size={13} /> Print Document
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowBomModal(false)}
-                                    className="text-stone-400 hover:text-white p-1 rounded-lg transition"
-                                >
-                                    <X size={18} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Modal Body */}
-                        <div ref={vendorBomPrintRef} className="flex-1 overflow-y-auto p-6 bg-white text-stone-900 print-document" id="printable-vendor-bom">
-                            {loadingBom ? (
-                                <div className="py-16 flex flex-col items-center justify-center text-stone-400">
-                                    <Loader2 className="w-7 h-7 animate-spin text-amber-500 mb-2" />
-                                    <p className="text-xs font-bold">Loading Bill of Materials...</p>
-                                </div>
-                            ) : (
-                                <>
-                                    {/* Company Header */}
-                                    <div className="border-b-2 border-stone-900 pb-3 mb-5 text-center">
-                                        <h1 className="text-lg font-black uppercase tracking-wider text-stone-950">Watersun Electrical Solutions Pvt Ltd</h1>
-                                        <p className="text-[11px] font-semibold text-stone-600">Solar PV Project Integration & Material Loading Checklist</p>
-                                        <div className="inline-block mt-2 px-2.5 py-0.5 bg-stone-100 border border-stone-300 rounded text-[10px] font-black uppercase tracking-widest text-stone-800">
-                                            BILL OF MATERIALS (BOM) - {bomData?.bom_type ? `${bomData.bom_type} TYPE` : 'GENERAL'}
-                                        </div>
-                                    </div>
-
-                                    {/* Customer Reference */}
-                                    <div className="mb-4">
-                                        <h3 className="text-[11px] font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">1. Customer & Site Reference</h3>
-                                        <table className="w-full text-[11px] border border-stone-300">
-                                            <tbody>
-                                                <tr className="border-b border-stone-200">
-                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Customer Name:</td>
-                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.customer_name || '–'}</td>
-                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Phone Number:</td>
-                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.phone_number || '–'}</td>
-                                                </tr>
-                                                <tr className="border-b border-stone-200">
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Email Address:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.email_address || targetBomCust.email || '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Consumer No:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.consumer_no || '–'}</td>
-                                                </tr>
-                                                <tr className="border-b border-stone-200">
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Villages:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.villages || '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Sub Division:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.sub_divisions || '–'}</td>
-                                                </tr>
-                                                <tr className="border-b border-stone-200">
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Channel Partner Name:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.channel_partner || '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Dealer Name:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.sub_channel_partner || '–'}</td>
-                                                </tr>
-                                                <tr className="border-b border-stone-200">
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">MODULE BRAND:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.module_brand || '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">MODULE WP:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.module_wp || '–'}</td>
-                                                </tr>
-                                                <tr>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">No of Modules:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.no_of_modules || '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">System Capacity (kWp):</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">
-                                                        {targetBomCust.system_capacity_kwp ? `${toIndianCommas(targetBomCust.system_capacity_kwp)} kWp` : '–'}
-                                                    </td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    {/* Material Order Specifications */}
-                                    <div className="mb-4">
-                                        <h3 className="text-[11px] font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">2. Material Order Specifications</h3>
-                                        <table className="w-full text-[11px] border border-stone-300">
-                                            <tbody>
-                                                <tr className="border-b border-stone-200">
-                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Roof / Shed:</td>
-                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">{targetBomCust.roof_shed || '–'}</td>
-                                                    <td className="w-1/4 p-1.5 bg-stone-50 font-bold text-stone-600">Structure Leg Height:</td>
-                                                    <td className="w-1/4 p-1.5 font-bold text-stone-900">
-                                                        {targetBomCust.structure_front_leg_height ? `${targetBomCust.structure_front_leg_height} ft / ${targetBomCust.structure_rear_leg_height || '–'} ft` : '–'}
-                                                    </td>
-                                                </tr>
-                                                <tr className="border-b border-stone-200">
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">DC Cable Length:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.dc_cable ? `${targetBomCust.dc_cable} Meters` : '–'}</td>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">AC Cable Length:</td>
-                                                    <td className="p-1.5 font-bold text-stone-900">{targetBomCust.ac_cable ? `${targetBomCust.ac_cable} Meters` : '–'}</td>
-                                                </tr>
-                                                <tr>
-                                                    <td className="p-1.5 bg-stone-50 font-bold text-stone-600">Invoice Value:</td>
-                                                    <td colSpan={3} className="p-1.5 font-bold text-stone-900">{targetBomCust.invoice_value ? `₹ ${toIndianCommas(targetBomCust.invoice_value)}` : '–'}</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    {/* BOM Items Table */}
-                                    <div className="mb-6">
-                                        <h3 className="text-[11px] font-black uppercase tracking-wider text-stone-900 border-b border-stone-400 pb-1 mb-2">3. BOM Equipment Checklist</h3>
-                                        {bomItems.length > 0 ? (
-                                            <table className="w-full text-[11px] border-collapse border border-stone-400">
-                                                <thead>
-                                                    <tr className="bg-stone-100 text-stone-900 uppercase font-black text-[9px]">
-                                                        <th className="border border-stone-400 p-1.5 text-center w-8">#</th>
-                                                        <th className="border border-stone-400 p-1.5 text-left">Product Name</th>
-                                                        <th className="border border-stone-400 p-1.5 text-left w-24">Make</th>
-                                                        <th className="border border-stone-400 p-1.5 text-center w-14">UOM</th>
-                                                        <th className="border border-stone-400 p-1.5 text-left w-28">Integration By</th>
-                                                        <th className="border border-stone-400 p-1.5 text-left">Note</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {bomItems.map((item, idx) => (
-                                                        <tr key={idx} className="border-b border-stone-300">
-                                                            <td className="border border-stone-400 p-1.5 text-center font-bold text-stone-500">{idx + 1}</td>
-                                                            <td className="border border-stone-400 p-1.5 font-bold text-stone-900">{item.product_name || '–'}</td>
-                                                            <td className="border border-stone-400 p-1.5 font-medium">{item.make || '–'}</td>
-                                                            <td className="border border-stone-400 p-1.5 text-center font-semibold">{item.uom || '–'}</td>
-                                                            <td className="border border-stone-400 p-1.5 font-medium">{item.integration_by || '–'}</td>
-                                                            <td className="border border-stone-400 p-1.5 text-stone-600">{item.note || '–'}</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        ) : (
-                                            <p className="text-xs text-stone-400 italic text-center py-4 bg-stone-50 rounded-xl border border-stone-200">
-                                                No BOM checklist items configured yet for this customer.
-                                            </p>
-                                        )}
-                                    </div>
-
-                                    {/* Signatures */}
-                                    <div className="grid grid-cols-3 gap-4 pt-6 text-center border-t border-stone-300 text-[10px]">
-                                        <div>
-                                            <div className="border-b border-stone-400 pb-6 mb-1 font-bold text-stone-700">
-                                                {bomData?.paper_prepared_by || ''}
-                                            </div>
-                                            <p className="font-black uppercase text-stone-900">Prepared By</p>
-                                        </div>
-                                        <div>
-                                            <div className="border-b border-stone-400 pb-6 mb-1 font-bold text-stone-700">
-                                                {bomData?.material_loaded_by || ''}
-                                            </div>
-                                            <p className="font-black uppercase text-stone-900">Loaded By</p>
-                                        </div>
-                                        <div>
-                                            <div className="border-b border-stone-400 pb-6 mb-1"></div>
-                                            <p className="font-black uppercase text-stone-900">Vendor Signature</p>
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
 
 
 

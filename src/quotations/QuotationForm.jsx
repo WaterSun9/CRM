@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Save, Trash2 } from 'lucide-react';
-import { calculate, fromRow, money, newForm, STEPS, validate } from './model';
+import { calculate, fromRow, money, newForm, STEPS } from './model';
 import { brandedTemplate } from './branding';
 import { quotationRepository as repo } from './client';
 import { readRecovery, removeRecovery, writeRecovery } from './recovery';
@@ -160,7 +160,7 @@ export default function QuotationForm({ id,initialRow,user,onDirty,onSaved,onPre
         <div className="q-panel">
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
                 <p className="q-eyebrow" style={{margin:0}}>STEP {step + 1} OF 4</p>
-                <button type="button" onClick={fillTestValues} style={{background:'#fef3c7',borderColor:'#f59e0b',color:'#92400e',fontSize:12,padding:'4px 10px',minHeight:32}}>⚡ Fill Test Values</button>
+                {import.meta.env.DEV && <button type="button" onClick={fillTestValues} style={{background:'#fef3c7',borderColor:'#f59e0b',color:'#92400e',fontSize:12,padding:'4px 10px',minHeight:32}}>⚡ Fill Test Values</button>}
             </div>
             <h2>{STEPS[step]}</h2>
             {step === 0 && <div className="q-grid">{customerFields.map(([key,label,type,maxLength,readOnly]) => <Field key={key} label={label} type={type} maxLength={maxLength} readOnly={readOnly} value={form[key]} onChange={value => update(key,value)} />)}</div>}

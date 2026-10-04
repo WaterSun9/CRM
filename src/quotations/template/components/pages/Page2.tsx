@@ -64,7 +64,7 @@ export const Page2: React.FC<Page2Props> = ({
     : defaultBrands;
 
   return (
-    <div className="a4-page bg-white shadow-xl print:shadow-none border border-gray-200 print:border-none mx-auto w-[210mm] min-h-[297mm] p-[12mm_15mm] flex flex-col justify-between text-gray-900 text-sm relative box-border overflow-hidden">
+    <div className="a4-page quotation-page-2 bg-white shadow-xl print:shadow-none border border-gray-200 print:border-none mx-auto w-[210mm] min-h-[297mm] p-[12mm_15mm] flex flex-col justify-between text-gray-900 text-sm relative box-border overflow-hidden">
       {/* Top Section */}
       <div>
         <DocumentHeader
@@ -74,7 +74,7 @@ export const Page2: React.FC<Page2Props> = ({
         />
 
         {/* Title Header (Corporate Blue in proposal) */}
-        <div className="text-center my-3">
+        <div className="quotation-proposal-title text-center my-3">
           <h2 className="text-xl font-bold text-[#0c3882] tracking-tight">
             Techno Commercial Proposal For
           </h2>
@@ -95,7 +95,7 @@ export const Page2: React.FC<Page2Props> = ({
 
         {/* Table 1: Equipment & Project Details matching PDF structure */}
         <div className="w-full my-3">
-          <table className="w-full border-collapse border border-black text-[12px]">
+          <table className="quotation-equipment-table w-full border-collapse border border-black text-[12px]">
             <thead>
               <tr className="bg-gray-50/70">
                 <th className="border border-black px-3 py-1.5 text-left font-bold w-[40%]">
@@ -125,24 +125,7 @@ export const Page2: React.FC<Page2Props> = ({
                 </td>
               </tr>
 
-              {/* Row 3: GEB / GEDA Charge (Merged Make & Quantity - line removed) */}
-              <tr>
-                <td className="border border-black px-3 py-1.5 font-bold text-gray-900">
-                  Geb / Geda Charge
-                </td>
-                <td className="border border-black px-3 py-1.5 text-gray-800 font-medium">
-                  <HighlightWrapper
-                    isChanged={isFieldChanged('page2.gebGedaCharge')}
-                    active={highlightChanges}
-                    fieldLabel="Geb / Geda Charge"
-                    onClick={() => onEditField?.('page2.gebGedaCharge')}
-                  >
-                    <span>{page2.gebGedaCharge}</span>
-                  </HighlightWrapper>
-                </td>
-              </tr>
-
-              {/* Row 4: Project (Merged Make & Quantity - line removed) */}
+              {/* Project type remains in the equipment summary. */}
               <tr>
                 <td className="border border-black px-3 py-1.5 font-bold text-gray-900">
                   Project
@@ -164,23 +147,20 @@ export const Page2: React.FC<Page2Props> = ({
 
         {/* Table 2: Financial Proposal with Project Size, 3 Brand Columns, 3 Values & 3 Totals */}
         <div className="w-full my-3">
-          <table className="w-full border-collapse border border-black text-[11px]">
+          <table className="quotation-financial-table w-full border-collapse border border-black text-[11px]">
+            <colgroup>
+              <col className="w-[4%]" />
+              <col className="w-[34%]" />
+              <col className="w-[11%]" />
+              <col className="w-[17%]" />
+              <col className="w-[17%]" />
+              <col className="w-[17%]" />
+            </colgroup>
             <thead>
-              <tr className="bg-gray-50/70">
-                <th rowSpan={2} className="border border-black px-1.5 py-1 text-center font-bold w-[4%]">
-                  Sr
-                </th>
-                <th rowSpan={2} className="border border-black px-2 py-1 text-left font-bold w-[34%]">
-                  Description
-                </th>
-                <th rowSpan={2} className="border border-black px-1.5 py-1 text-center font-bold w-[11%]">
-                  Project Size
-                </th>
-                <th colSpan={3} className="border border-black px-2 py-1 text-center font-bold text-[#0c3882] bg-blue-50/60 text-[11px] uppercase tracking-wide">
-                  Value (INR)
-                </th>
-              </tr>
               <tr className="bg-gray-100/90">
+                <th className="border border-black px-1.5 py-1 text-center font-bold w-[4%]">Sr</th>
+                <th className="border border-black px-2 py-1 text-left font-bold w-[34%]">Description</th>
+                <th className="border border-black px-1.5 py-1 text-center font-bold w-[11%]">Project Size</th>
                 {brands.map((brand, idx) => (
                   <th
                     key={idx}
@@ -200,7 +180,7 @@ export const Page2: React.FC<Page2Props> = ({
             </thead>
             <tbody>
               {/* Row 1: System Scope, Project Size & 3 Base Values */}
-              <tr>
+              <tr className="quotation-financial-main-row">
                 <td className="border border-black px-1.5 py-2 text-center align-top font-bold text-gray-900">
                   1
                 </td>
@@ -238,7 +218,7 @@ export const Page2: React.FC<Page2Props> = ({
               </tr>
 
               {/* Row 2: Discount */}
-              <tr>
+              <tr className="quotation-financial-summary-row">
                 <td colSpan={3} className="border border-black px-2.5 py-1 text-right font-medium text-gray-900 text-[10.5px]">
                   Discount
                 </td>
@@ -259,8 +239,27 @@ export const Page2: React.FC<Page2Props> = ({
                 ))}
               </tr>
 
+              {/* The inclusion choice applies to each option, after its discount. */}
+              <tr className="quotation-financial-summary-row">
+                <td colSpan={3} className="border border-black px-2.5 py-1 text-right font-medium text-gray-900 text-[10.5px]">
+                  GEB / GEDA Charge
+                </td>
+                {brands.map((brand, idx) => (
+                  <td key={idx} className="border border-black px-1.5 py-1 text-right font-semibold text-gray-900 text-[10.5px]">
+                    <HighlightWrapper
+                      isChanged={isFieldChanged('page2.gebGedaCharge')}
+                      active={highlightChanges}
+                      fieldLabel="GEB / GEDA Charge"
+                      onClick={() => onEditField?.('page2.gebGedaCharge')}
+                    >
+                      <span>{page2.gebGedaCharge}</span>
+                    </HighlightWrapper>
+                  </td>
+                ))}
+              </tr>
+
               {/* Row 3: Net Payable Amount (Sub-Totals) */}
-              <tr className="bg-gray-50/50">
+              <tr className="quotation-financial-summary-row bg-gray-50/50">
                 <td colSpan={3} className="border border-black px-2.5 py-1 text-right font-bold text-gray-950 text-[10.5px]">
                   Net Payable Amount
                 </td>
@@ -275,7 +274,7 @@ export const Page2: React.FC<Page2Props> = ({
               </tr>
 
               {/* Row 4: Subsidy */}
-              <tr>
+              <tr className="quotation-financial-summary-row">
                 <td colSpan={3} className="border border-black px-2.5 py-1 text-right text-[9.5px] text-gray-800">
                   Subsidy (Subsidy Will be credited To The Customer Account)
                 </td>
@@ -297,7 +296,7 @@ export const Page2: React.FC<Page2Props> = ({
               </tr>
 
               {/* Row 5: Net Price After Receiving Subsidies (Three Totals) */}
-              <tr className="bg-blue-50/50">
+              <tr className="quotation-financial-summary-row bg-blue-50/50">
                 <td colSpan={3} className="border border-black px-2.5 py-1.5 text-right font-extrabold text-[#0c3882] text-[11px]">
                   Net Price After Receiving Subsidies
                 </td>
@@ -321,7 +320,7 @@ export const Page2: React.FC<Page2Props> = ({
         </div>
 
         {/* Note Section (Consolidated as per user directive) */}
-        <div className="w-full my-3">
+        <div className="quotation-proposal-notes w-full my-3">
           <div className="font-bold text-[13px] text-[#0c3882] mb-1">
             Note :
           </div>

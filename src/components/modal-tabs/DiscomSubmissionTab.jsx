@@ -39,7 +39,7 @@ export default function DiscomSubmissionTab({
 
     const [sendBackRemark, setSendBackRemark] = useState('');
     const [sendingBack, setSendingBack] = useState(false);
-    const [sendBackDone, setSendBackDone] = useState(false);
+    const [, setSendBackDone] = useState(false);
     const [sendingToStamp, setSendingToStamp] = useState(false);
     // Stamp makers come from the actual login accounts (profiles.user_type =
     // 'stamp'), not a separate name list - a separate list drifts from the real

@@ -1,12 +1,18 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, toIndianCommas, normalizeInstallationStatus, runWrite } from '../utils';
-import { CUSTOMER_CARD_COLUMNS } from '../constants';
+import { CUSTOMER_CARD_COLUMNS, CUSTOMER_RED_FLAGS_ENABLED } from '../constants';
 import { 
     Search, CreditCard, CheckCircle2, AlertCircle, Calendar, 
-    Building2, Users, Check, Loader2, RefreshCw 
+    Building2, Users, Check, Loader2, RefreshCw, Flag, Download
 } from 'lucide-react';
 import { useGlobalPopup } from './GlobalPopup';
+import { buildPayoutLedgerWorkbook } from '../utils/vendorPaymentsWorkbook';
+
+// Only the columns this ledger renders. created_at is the last-resort payout
+// date for records with no delivery or installation date; without it the
+// payout month fell back to "today" and moved forward every month.
+const LEDGER_COLUMNS = 'id, customer_name, phone_number, consumer_no, system_capacity_kwp, vendor, vendor_quote, vendor_payment_status, vendor_paid_date, vendor_paid_by, material_delivery_date, installation_date, installation_status, created_at';
 
 export default function InstallationPaymentsView({ onSelectCustomer, currentUser }) {
     const { showAlert } = useGlobalPopup();
@@ -18,6 +24,20 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
     const [payingAll, setPayingAll] = useState(false);
     const [installations, setInstallations] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [reviewFlags, setReviewFlags] = useState({});
+    const [exportMonthKey, setExportMonthKey] = useState('All');
+
+    const loadReviewFlags = useCallback(async () => {
+        const { data, error } = await supabase.from('customer_payment_review_flags').select('admin_id,active');
+        if (error) { console.error('Payment review flags could not load:', error); return; }
+        setReviewFlags(Object.fromEntries((data || []).map(row => [row.admin_id, row])));
+    }, []);
+    useEffect(() => { if (CUSTOMER_RED_FLAGS_ENABLED) loadReviewFlags(); }, [loadReviewFlags]);
+    useEffect(() => {
+        if (!CUSTOMER_RED_FLAGS_ENABLED) return undefined;
+        window.addEventListener('watersun-red-flag-updated', loadReviewFlags);
+        return () => window.removeEventListener('watersun-red-flag-updated', loadReviewFlags);
+    }, [loadReviewFlags]);
 
     // Helper to compute payout details (1st of month M+1)
     const getPayoutDetails = (dateStr, fallbackDateStr) => {
@@ -27,8 +47,6 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         const parts = targetDateStr.split('-');
         const year = parseInt(parts[0], 10);
         const month = parseInt(parts[1], 10) - 1; // 0-indexed
-        const day = parseInt(parts[2], 10) || 1;
-        const instDate = new Date(year, month, day);
 
         // Move to the 1st day of the next month
         const payoutDate = new Date(year, month + 1, 1);
@@ -50,17 +68,26 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
     const fetchInstallations = useCallback(async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('admin')
-                // Only the columns this ledger renders. It was select('*'), pulling
-                // ~90 columns for every installed customer - now 3,278 rows since
-                // the installation_status filter was fixed.
-                .select('id, customer_name, phone_number, consumer_no, system_capacity_kwp, vendor, vendor_quote, vendor_payment_status, vendor_paid_date, material_delivery_date, installation_date, installation_status')
-                .is('deleted_at', null)
-                .not('vendor', 'is', null)
-                .neq('vendor', '')
-                .or('installation_status.ilike.%yes%,installation_status.ilike.%installed%')
-                .order('created_at', { ascending: false });
+            // Paged: the API returns at most 1,000 rows per request, so a single
+            // request would silently drop installations beyond the first 1,000
+            // and every total on this page would be short.
+            let data = [];
+            let error = null;
+            for (let from = 0; ; from += 1000) {
+                const page = await supabase
+                    .from('admin')
+                    .select(LEDGER_COLUMNS)
+                    .is('deleted_at', null)
+                    .not('vendor', 'is', null)
+                    .neq('vendor', '')
+                    .or('installation_status.ilike.%yes%,installation_status.ilike.%installed%')
+                    .order('created_at', { ascending: false })
+                    .order('id', { ascending: true })
+                    .range(from, from + 999);
+                if (page.error) { error = page.error; break; }
+                data = data.concat(page.data || []);
+                if (!page.data || page.data.length < 1000) break;
+            }
 
             if (!error && data) {
                 setInstallations(data);
@@ -72,7 +99,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                     // Only the columns this ledger renders. It was select('*'), pulling
                 // ~90 columns for every installed customer - now 3,278 rows since
                 // the installation_status filter was fixed.
-                .select('id, customer_name, phone_number, consumer_no, system_capacity_kwp, vendor, vendor_quote, vendor_payment_status, vendor_paid_date, material_delivery_date, installation_date, installation_status')
+                .select(LEDGER_COLUMNS)
                     .is('deleted_at', null)
                     .not('vendor', 'is', null)
                     .neq('vendor', '')
@@ -162,6 +189,30 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
     }, [records]);
 
     const uniqueMonths = Object.keys(monthGroups).sort((a, b) => b.localeCompare(a)); // Descending
+
+    // Excel export: one payout month or all time, paid and unpaid together.
+    // Follows the Vendor filter, so one vendor's statement can be exported.
+    const exportRecords = useMemo(() => records
+        .filter(r => exportMonthKey === 'All' || r.payoutMonthKey === exportMonthKey)
+        .filter(r => selectedVendor === 'All' || String(r.vendor || '').trim().toLowerCase() === selectedVendor.trim().toLowerCase())
+        .sort((a, b) => (a.payoutSortKey - b.payoutSortKey)
+            || String(a.vendor || '').localeCompare(String(b.vendor || ''))
+            || String(a.customer_name || '').localeCompare(String(b.customer_name || ''))),
+    [records, exportMonthKey, selectedVendor]);
+
+    const exportLedger = () => {
+        if (exportRecords.length === 0) return;
+        const bytes = buildPayoutLedgerWorkbook(exportRecords);
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+        const vendorPart = selectedVendor === 'All' ? '' : `-${selectedVendor.trim().replace(/[^a-z0-9]+/gi, '_')}`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `vendor-commission-${exportMonthKey === 'All' ? 'all-time' : exportMonthKey}${vendorPart}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
 
     // Change Individual Payment Status: Unpaid (Pending) <-> Paid
     const handleStatusChange = async (customerRecord, nextStatus) => {
@@ -329,6 +380,21 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                         Track installations completed with tag <b>"Yes"</b>, manage vendor commissions, and process payouts.
                     </p>
                 </div>
+                <div className="flex flex-wrap items-end gap-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                        Export
+                        <select value={exportMonthKey} onChange={e => setExportMonthKey(e.target.value)}
+                            className="mt-1 block min-h-10 rounded-xl border border-stone-200 bg-white px-3 text-xs font-semibold normal-case tracking-normal text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500">
+                            <option value="All">All time</option>
+                            {uniqueMonths.map(m => <option key={m} value={m}>{monthGroups[m].label}</option>)}
+                        </select>
+                    </label>
+                    <button type="button" onClick={exportLedger} disabled={loading || exportRecords.length === 0}
+                        title={selectedVendor === 'All' ? 'All vendors' : `Only ${selectedVendor} (Vendor filter)`}
+                        className="flex min-h-10 items-center gap-1.5 rounded-xl bg-stone-900 px-4 text-xs font-bold text-white hover:bg-stone-800 disabled:opacity-50">
+                        <Download size={13} /> Export Excel ({exportRecords.length})
+                    </button>
+                </div>
             </div>
 
             {/* Quick Metrics Grid with Live Rupee Totals */}
@@ -495,6 +561,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                                     <th className="px-5 py-3.5 text-[9px] font-black text-stone-400 uppercase tracking-widest">Installation Date</th>
                                     <th className="px-5 py-3.5 text-[9px] font-black text-stone-400 uppercase tracking-widest">Payout Date</th>
                                     <th className="px-5 py-3.5 text-[9px] font-black text-stone-400 uppercase tracking-widest">Payment Status</th>
+                                    {CUSTOMER_RED_FLAGS_ENABLED && <th className="px-5 py-3.5 text-[9px] font-black text-stone-400 uppercase tracking-widest">Red flag</th>}
                                 </tr>
                             </thead>
                             <tbody>
@@ -604,6 +671,9 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                                                     </span>
                                                 )}
                                             </td>
+                                            {CUSTOMER_RED_FLAGS_ENABLED && <td className="px-5 py-3.5">
+                                                {reviewFlags[r.id]?.active && <Flag size={16} className="fill-red-500 text-red-500" aria-label="Red flag" />}
+                                            </td>}
                                         </tr>
                                     );
                                 })}

@@ -1,4 +1,4 @@
-import React from 'react';
+import watersunLogoBlue from '../../../assets/watersun-logo-blue.png?inline';
 
 interface LogoProps {
   customLogoUrl?: string;
@@ -6,106 +6,17 @@ interface LogoProps {
 }
 
 /**
- * High-fidelity Watersun Solar Energy Logo
- * Matches exact font styling, water droplet in A, solar grid in U, and sun in SOLAR
- * Scaled up by an additional 25% (total 75px)
+ * Watersun Solar Energy Logo
+ * Uses the crisp official 1500x330 inlined brand asset
  */
 export const WatersunLogo: React.FC<LogoProps> = ({ customLogoUrl, className = 'h-[75px]' }) => {
-  if (customLogoUrl) {
-    return <img src={customLogoUrl} alt="Watersun Solar Energy" className={`object-contain ${className}`} referrerPolicy="no-referrer" />;
-  }
-
   return (
-    <div className={`flex flex-col select-none ${className}`}>
-      {/* Primary Brand Name: WATERSUN (scaled additional 25% to 75px) */}
-      <svg viewBox="0 0 380 75" className="h-[65px] md:h-[75px] w-auto overflow-visible">
-        {/* W */}
-        <text x="0" y="58" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="62" fill="#0c3882" letterSpacing="-1">
-          W
-        </text>
-
-        {/* A with Water Droplet inside */}
-        <text x="64" y="58" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="62" fill="#0c3882" letterSpacing="-1">
-          A
-        </text>
-        {/* Droplet in A */}
-        <path
-          d="M93 30 C90 38 84 44 84 49 C84 54 88 58 93 58 C98 58 102 54 102 49 C102 44 96 38 93 30 Z"
-          fill="#1d75d8"
-        />
-        <circle cx="91" cy="48" r="1.5" fill="#ffffff" opacity="0.8" />
-
-        {/* T */}
-        <text x="116" y="58" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="62" fill="#0c3882" letterSpacing="-1">
-          T
-        </text>
-
-        {/* E */}
-        <text x="156" y="58" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="62" fill="#0c3882" letterSpacing="-1">
-          E
-        </text>
-        {/* Middle stylized bar of E */}
-        <rect x="166" y="32" width="24" height="6.5" fill="#0c3882" rx="1" />
-
-        {/* R */}
-        <text x="204" y="58" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="62" fill="#0c3882" letterSpacing="-1">
-          R
-        </text>
-
-        {/* S */}
-        <text x="250" y="58" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="62" fill="#0c3882" letterSpacing="-1">
-          S
-        </text>
-
-        {/* U with Solar Grid in base */}
-        <text x="290" y="58" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="62" fill="#0c3882" letterSpacing="-1">
-          U
-        </text>
-        {/* Solar panel grid clipping inside U's curve */}
-        <g transform="translate(298, 38)">
-          <path d="M0,0 Q18,22 36,0 L36,4 Q18,25 0,4 Z" fill="#2563eb" opacity="0.3" />
-          <rect x="1" y="2" width="34" height="17" rx="3" fill="#1e40af" />
-          {/* Grid lines */}
-          <line x1="1" y1="7" x2="35" y2="7" stroke="#ffffff" strokeWidth="0.8" opacity="0.9" />
-          <line x1="1" y1="12" x2="35" y2="12" stroke="#ffffff" strokeWidth="0.8" opacity="0.9" />
-          <line x1="10" y1="2" x2="10" y2="19" stroke="#ffffff" strokeWidth="0.8" opacity="0.9" />
-          <line x1="18" y1="2" x2="18" y2="19" stroke="#ffffff" strokeWidth="0.8" opacity="0.9" />
-          <line x1="26" y1="2" x2="26" y2="19" stroke="#ffffff" strokeWidth="0.8" opacity="0.9" />
-        </g>
-
-        {/* N */}
-        <text x="340" y="58" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="62" fill="#0c3882" letterSpacing="-1">
-          N
-        </text>
-      </svg>
-
-      {/* Sub-text: S ☀️ L A R   E N E R G Y (scaled additional 25%) */}
-      <div className="flex items-center justify-end gap-2 text-[17px] font-extrabold tracking-[0.28em] text-gray-950 -mt-1.5 pr-1">
-        <span>S</span>
-        {/* Sun Icon replacing O */}
-        <span className="inline-flex items-center justify-center relative -top-px mx-0.5">
-          <svg className="w-[21px] h-[21px]" viewBox="0 0 24 24">
-            {/* Rays */}
-            <circle cx="12" cy="12" r="5" fill="#f59e0b" />
-            <path
-              d="M12 1.5v3m0 15v3M1.5 12h3m15 0h3m-3.9-6.6l-2.1 2.1m-8.8 8.8l-2.1 2.1m0-13l2.1 2.1m8.8 8.8l2.1 2.1"
-              stroke="#f59e0b"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-            />
-          </svg>
-        </span>
-        <span>L</span>
-        <span>A</span>
-        <span>R</span>
-        <span className="ml-2">E</span>
-        <span>N</span>
-        <span>E</span>
-        <span>R</span>
-        <span>G</span>
-        <span>Y</span>
-      </div>
-    </div>
+    <img
+      src={customLogoUrl || watersunLogoBlue}
+      alt="Watersun Solar Energy"
+      className={`object-contain ${className}`}
+      referrerPolicy="no-referrer"
+    />
   );
 };
 
@@ -204,7 +115,7 @@ export const MnreEmblem: React.FC<LogoProps> = ({ customLogoUrl, className = 'h-
 export const SuryaGharQuoteBanner: React.FC<LogoProps> = ({ customLogoUrl }) => {
   if (customLogoUrl) {
     return (
-      <div className="w-full my-2.5 rounded-sm overflow-hidden border border-sky-300 shadow-xs">
+      <div className="quotation-surya-banner w-full my-2.5 rounded-sm overflow-hidden border border-sky-300 shadow-xs">
         <img src={customLogoUrl} alt="PM Surya Ghar Muft Bijli Yojana Banner" className="w-full h-auto object-cover" referrerPolicy="no-referrer" />
       </div>
     );
@@ -276,54 +187,39 @@ export const SuryaGharQuoteBanner: React.FC<LogoProps> = ({ customLogoUrl }) => 
 
 /**
  * Tata Power Solaroof Channel Partner Logo matching Screenshot 3
- * Scaled up by an additional 50% (total 81px)
+ * Sized for the compact quotation footer while preserving source proportions.
  */
-export const TataPowerSolaroofLogo: React.FC<LogoProps> = ({ customLogoUrl, className = 'h-[81px]' }) => {
-  if (customLogoUrl) {
-    return <img src={customLogoUrl} alt="Tata Power Solaroof" className={`object-contain ${className}`} referrerPolicy="no-referrer" />;
-  }
+export const TataPowerSolaroofLogo: React.FC<LogoProps> = ({ customLogoUrl, className = 'h-[57px]' }) => {
+  const tataEmblemUrl = `${import.meta.env.BASE_URL}tata-2.png`;
+  const tataWordmarkUrl = `${import.meta.env.BASE_URL}tata.jpeg`;
 
   return (
-    <div className={`flex items-center gap-4 select-none ${className}`}>
-      {/* Blue Oval Tata Emblem (scaled additional 50%) */}
-      <div className="w-[78px] h-[58px] rounded-[50%] bg-[#00529b] flex items-center justify-center text-white flex-shrink-0 shadow-xs">
-        <svg viewBox="0 0 24 24" className="w-10 h-9 fill-current">
-          {/* Distinctive Tata T */}
-          <path d="M5 5 L19 5 L14 18 L10 18 Z" />
-          <path d="M8 8 L16 8 L12 16 Z" fill="#00529b" />
-          <path d="M10 6 L14 6 L13 14 L11 14 Z" fill="#ffffff" />
-        </svg>
-      </div>
-
-      {/* TATA POWER / SOLAROOF (scaled additional 50%) */}
-      <div className="flex flex-col leading-none">
-        <div className="text-[28px] font-black text-[#00529b] tracking-wider font-sans">
-          TATA POWER
+    <div className={`flex w-[270px] items-center gap-[6px] select-none ${className}`}>
+      <img
+        src={tataEmblemUrl}
+        alt="Tata"
+        className="h-[57px] w-[86px] shrink-0 object-contain"
+        referrerPolicy="no-referrer"
+      />
+      {customLogoUrl ? (
+        <img
+          src={customLogoUrl}
+          alt="Tata Power Solaroof"
+          className="h-[51px] w-[167px] object-contain"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        /* Preserve the supplied Tata wordmark's original proportions. */
+        <div className="h-[51px] w-[167px] shrink-0 overflow-hidden">
+          <img
+            src={tataWordmarkUrl}
+            alt="Tata Power Solaroof"
+            className="block h-auto w-full max-w-none"
+            style={{ transform: 'translateY(-55px)' }}
+            referrerPolicy="no-referrer"
+          />
         </div>
-        {/* Orange dividing line */}
-        <div className="w-full h-[3.5px] bg-[#f59e0b] my-1.5" />
-        {/* SOLAROOF with sun in first O */}
-        <div className="flex items-center text-[27px] font-black tracking-wide text-[#ea580c]">
-          <span>S</span>
-          {/* Radiant Sun in O */}
-          <span className="inline-flex items-center justify-center relative mx-1">
-            <svg className="w-[25px] h-[25px]" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="6" fill="#0284c7" stroke="#ea580c" strokeWidth="1.5" />
-              {/* Solar cell lines inside */}
-              <line x1="12" y1="6" x2="12" y2="18" stroke="#ffffff" strokeWidth="0.8" />
-              <line x1="6" y1="12" x2="18" y2="12" stroke="#ffffff" strokeWidth="0.8" />
-              {/* Sun rays outside */}
-              <path
-                d="M12 1v3m0 16v3M1 12h3m16 0h3m-4.2-7.8l-2.1 2.1m-9.4 9.4l-2.1 2.1m0-13.6l2.1 2.1m9.4 9.4l2.1 2.1"
-                stroke="#f97316"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </span>
-          <span>LAROOF</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

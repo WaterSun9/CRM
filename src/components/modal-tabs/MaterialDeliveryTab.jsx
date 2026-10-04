@@ -1,33 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers, Printer, Truck, User, Edit3, IndianRupee, Calendar } from 'lucide-react';
 import { SectionHeader, EditableDetailItem, fetchVendorNames } from './shared';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
 import { formatInputValue } from '../../utils';
-
-const parsePanelSerials = (raw) => {
-    if (!raw) return [''];
-    if (Array.isArray(raw)) {
-        const serials = raw.map(value => String(value || '').trim()).filter(Boolean);
-        return serials.length > 0 ? serials : [''];
-    }
-
-    const rawText = String(raw);
-    try {
-        const parsed = JSON.parse(rawText);
-        if (Array.isArray(parsed)) {
-            const serials = parsed.map(value => String(value || '').trim()).filter(Boolean);
-            return serials.length > 0 ? serials : [''];
-        }
-    } catch { /* not valid JSON, fall through to default */ }
-
-    if (rawText.includes('\n')) {
-        return rawText.split('\n').map(s => s.trim()).filter(Boolean);
-    }
-    if (rawText.includes(',')) {
-        return rawText.split(',').map(s => s.trim()).filter(Boolean);
-    }
-    return [rawText.trim()];
-};
 
 export default function MaterialDeliveryTab({
     customer,
@@ -57,12 +32,6 @@ export default function MaterialDeliveryTab({
     const [localDeliveryStatus, setLocalDeliveryStatus] = useState(null);
     const [showPrintModal, setShowPrintModal] = useState(false);
     const printableDeliveryRef = useRef(null);
-
-    const panelSerials = useMemo(() => {
-        return parsePanelSerials(editData?.panel_serial_no || customer?.panel_serial_no);
-    }, [editData?.panel_serial_no, customer?.panel_serial_no]);
-
-    const filledCount = panelSerials.filter(Boolean).length;
 
     useEffect(() => {
         // Cached in shared.jsx - this tab re-mounts on every open, and the

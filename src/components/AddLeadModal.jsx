@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
-import { toIndianCommas, fetchAgent2SubAgents, sanitizePhoneNumber, downloadFileWithSaveAs } from '../utils';
+import { fetchAgent2SubAgents, sanitizePhoneNumber, downloadFileWithSaveAs } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 import { calculateSystemCapacityKwp } from '../utils/capacity';
 
@@ -445,6 +445,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                     <div className="flex items-center gap-2">
                         <button 
                             onClick={handleRequestClose} 
+                            aria-label="Close lead form"
                             className="p-2 hover:bg-stone-100 text-stone-400 hover:text-stone-700 rounded-xl transition cursor-pointer"
                         >
                             <X size={18} />

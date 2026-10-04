@@ -10,10 +10,11 @@
 
 import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { supabase } from '../supabase';
-import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, lazyWithRetry, sanitizeAdminUpdate, runWrite } from '../utils';
-import { PRIMARY_STAGES, STAGE_IDS, CUSTOMER_CARD_COLUMNS, ADMIN_NUMERIC_COLUMNS } from '../constants';
+import { logActivity, exportAllToCSV, uploadDocument, parseIndianNumber, normalizePhoneForSave, lazyWithRetry, sanitizeAdminUpdate, runWrite } from '../utils';
+import { PRIMARY_STAGES, STAGE_IDS, CUSTOMER_CARD_COLUMNS, ADMIN_NUMERIC_COLUMNS, QUOTATION_FEATURE_ENABLED } from '../constants';
 import DashboardView from './DashboardView';
 import CustomerCard from './CustomerCard';
+import { newestCustomerFirst } from '../utils/customerActivity';
 
 // Secondary views and modals with auto-retry on new deployments
 const SubsidyView = lazyWithRetry(() => import('./SubsidyView'));
@@ -27,10 +28,13 @@ const TrashView = lazyWithRetry(() => import('./TrashView'));
 const ChannelPartnerManagementView = lazyWithRetry(() => import('./ChannelPartnerManagementView'));
 const InstallationPaymentsView = lazyWithRetry(() => import('./InstallationPaymentsView'));
 const DeliveryBatchesView = lazyWithRetry(() => import('./DeliveryBatchesView'));
+const AvailabilityCalendar = lazyWithRetry(() => import('./AvailabilityCalendar'));
 import { useGlobalPopup } from './GlobalPopup';
+import { missingDetailsForMove, STAGE_REQUIREMENT_COLUMNS } from '../utils/stageRequirements';
 import BrandMark from './BrandMark';
 import QuotationModule, { openQuotations } from '../quotations/QuotationModule';
 import { quotationRepository } from '../quotations/client';
+import { canUseQuotations } from '../quotations/model';
 
 const ViewLoader = () => <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -53,7 +57,7 @@ const getMonthBounds = (monthValue, timestamp = false) => {
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck
+    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays
 } from 'lucide-react';
 
 // ── NavBtn ────────────────────────────────────────────────────────────────────
@@ -80,16 +84,19 @@ const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, 
     );
 };
 
-export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
-    const { showAlert } = useGlobalPopup();
+export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenDevSwitcher }) {
+    const { showAlert, showConfirm } = useGlobalPopup();
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const stageCacheRef = useRef(new Map());
+    const activeStageQueryRef = useRef('');
+    const stageFetchSeqRef = useRef(0);
     
     // Remember current view across page reloads
     const [currentView, setCurrentView] = useState(() => {
         if (typeof window !== 'undefined') {
             const saved = window.sessionStorage.getItem('watersun_current_view');
-            if (saved) return saved;
+            if (saved && saved !== 'quotations' && saved !== 'team_chat') return saved;
         }
         return 'dashboard';
     });
@@ -121,6 +128,19 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     const [showAddLead, setShowAddLead] = useState(false);
     const globalSearchRef = useRef(null);
     const [meta, setMeta] = useState({});
+
+    // Open quotations (draft + issued) for the sidebar badge. Refreshed when
+    // the Quotation Maker is closed, so new/converted ones show straight away.
+    const [quotationOpenCount, setQuotationOpenCount] = useState(0);
+    useEffect(() => {
+        if (!QUOTATION_FEATURE_ENABLED || !canUseQuotations(user)) return undefined;
+        let active = true;
+        const load = () => quotationRepository.counts().then(c => { if (active) setQuotationOpenCount(c.open); }).catch(() => {});
+        load();
+        const onHash = () => { if (!window.location.hash.startsWith('#/quotations')) load(); };
+        window.addEventListener('hashchange', onHash);
+        return () => { active = false; window.removeEventListener('hashchange', onHash); };
+    }, [user]);
 
     // Synchronize navigation state to sessionStorage
     useEffect(() => {
@@ -218,6 +238,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                     .from('admin')
                     .select('*')
                     .is('deleted_at', null)
+                    .order('updated_at', { ascending: false, nullsFirst: false })
                     .order('created_at', { ascending: false })
                     .range(from, from + CHUNK_SIZE - 1);
 
@@ -229,7 +250,8 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 if (dealerFilter) query = query.ilike('sub_channel_partner', dealerFilter);
 
                 const { data, error } = await query;
-                if (error || !data || data.length === 0) {
+                if (error) throw error;
+                if (!data || data.length === 0) {
                     keepGoing = false;
                 } else {
                     allRows = allRows.concat(data);
@@ -242,7 +264,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             }
 
             if (allRows.length > 0) {
-                exportAllToCSV(allRows);
+                await exportAllToCSV(allRows);
             } else {
                 showAlert('No customer records found to export.');
             }
@@ -315,8 +337,23 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
 
 
     const fetchStageCustomers = async (stage = selectedStage, pageNum = 0) => {
-        setLoading(true);
         const normalizedStage = (stage || STAGE_IDS.LEADS).toUpperCase();
+        const queryKey = JSON.stringify([user?.id, normalizedStage, isChannelPartnerOffice ? partnerName : channelPartnerFilter, dealerFilter, normalizedStage === STAGE_IDS.LEADS ? leadMonthFilter : '', normalizedStage === STAGE_IDS.REGISTRATION ? registrationMonthFilter : '']);
+        if (pageNum === 0) {
+            activeStageQueryRef.current = queryKey;
+            const cached = stageCacheRef.current.get(queryKey);
+            if (cached) {
+                setCustomers(cached.data);
+                setHasMore(cached.hasMore);
+                setLoading(false);
+            } else {
+                setCustomers([]);
+                setLoading(true);
+            }
+        } else {
+            setLoading(true);
+        }
+        const fetchSeq = ++stageFetchSeqRef.current;
         let query = supabase
             .from('admin')
             // Was select('*') - ~90 columns for 50 cards that render 10 fields.
@@ -329,6 +366,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             // matches exactly the same rows. ILIKE cannot use an index and
             // forced a case-folding comparison over every row on each switch.
             .eq('stage', normalizedStage)
+            .order('updated_at', { ascending: false, nullsFirst: false })
             .order('created_at', { ascending: false })
             .range(pageNum * 50, (pageNum + 1) * 50 - 1);
             
@@ -362,8 +400,10 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         }
 
         const { data, error } = await query;
+        if (queryKey !== activeStageQueryRef.current || fetchSeq !== stageFetchSeqRef.current) return;
         if (!error && data) {
             if (pageNum === 0) {
+                stageCacheRef.current.set(queryKey, { data, hasMore: data.length === 50 });
                 setCustomers(data);
             } else {
                 setCustomers(prev => {
@@ -376,7 +416,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             setHasMore(data.length === 50);
         } else {
             console.error("Error fetching stage customers:", error);
-            if (pageNum === 0) setCustomers([]);
+            if (pageNum === 0 && !stageCacheRef.current.has(queryKey)) setCustomers([]);
         }
         setLoading(false);
     };
@@ -389,9 +429,13 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
 
     useEffect(() => {
         setPage(0);
-        fetchMetricsAndMeta();
         fetchStageCustomers(selectedStage, 0);
     }, [selectedStage, channelPartnerFilter, dealerFilter, leadMonthFilter, registrationMonthFilter, isChannelPartnerOffice, partnerName]);
+
+    // Stage and month changes affect cards, not the sidebar counts or metadata.
+    useEffect(() => {
+        fetchMetricsAndMeta();
+    }, [channelPartnerFilter, dealerFilter, isChannelPartnerOffice, partnerName]);
 
     // Refresh when the operator returns to the tab. This is what actually keeps
     // the grid current for most people - they switch away, come back, and see
@@ -485,14 +529,23 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         // captured in a stale closure.
     }, [selectedStage, user?.userType, isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter]);
 
-    // Sync selectedCustomer state with fresh database values when updates occur
+    // Tell the open customer window when its row changed in the database.
+    // Only a newer updated_at counts: the list row has fewer columns than the
+    // open customer, so comparing the whole object used to "change" on every
+    // list refresh and made the window re-read for nothing. The list values are
+    // merged in rather than replacing the object, so columns the list does not
+    // carry are not dropped. (The window loads its own full record either way;
+    // this only prompts it to re-read.)
     useEffect(() => {
         if (selectedCustomer) {
             const fresh = customers.find(c => c.id === selectedCustomer.id);
-            if (fresh && JSON.stringify(fresh) !== JSON.stringify(selectedCustomer)) {
-                setSelectedCustomer(fresh);
-            }
+            if (!fresh) return;
+            const changed = fresh.updated_at && selectedCustomer.updated_at
+                ? fresh.updated_at !== selectedCustomer.updated_at
+                : JSON.stringify(fresh) !== JSON.stringify(selectedCustomer);
+            if (changed) setSelectedCustomer(prev => (prev && prev.id === fresh.id ? { ...prev, ...fresh } : prev));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [customers]);
 
     // Close global search / poc dropdowns when clicking outside
@@ -649,6 +702,8 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 }
             }
         }
+        // Text column: keep the leading "+", strip spaces/dashes, '' or '+' -> NULL.
+        if (cleanUpdates.phone_number !== undefined) cleanUpdates.phone_number = normalizePhoneForSave(cleanUpdates.phone_number);
 
         // Clean history arrays if present
         if (Array.isArray(cleanUpdates.loan_history)) {
@@ -675,14 +730,20 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
 
         // 2. Background Database Save
         try {
-            // .select('id') so we can tell "saved" from "matched no rows".
+            // Return the database timestamp so the edited card can move to the
+            // top immediately, without waiting for a list refresh.
             // An RLS-filtered UPDATE returns error: null with 0 rows changed, so
             // "no error" was NOT proof of a save - the user saw success and the
             // data was never written.
             const { data: changed, error } = await supabase
-                .from('admin').update(cleanUpdates).eq('id', id).select('id');
+                .from('admin').update(cleanUpdates).eq('id', id).select('id,updated_at');
 
             if (!error && changed && changed.length > 0) {
+                const updatedAt = changed[0].updated_at;
+                setCustomers(prev => prev.map(c => c.id === id ? { ...c, updated_at: updatedAt } : c));
+                if (selectedCustomer?.id === id) {
+                    setSelectedCustomer(prev => ({ ...prev, updated_at: updatedAt }));
+                }
                 syncMetadata(cleanUpdates);
                 return true;
             } else if (!error) {
@@ -716,7 +777,12 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                     onLogout?.();
                     return false;
                 }
-                showAlert('Database Save Error: ' + (error.message || 'Unknown database error'), { type: 'error' });
+                showAlert(
+                    'Database Save Error: ' + (error.message || 'Unknown database error')
+                    + (error.code ? `\nCode: ${error.code}` : '')
+                    + (error.details ? `\nDetails: ${error.details}` : ''),
+                    { type: 'error' }
+                );
                 
                 // Rollback on failure
                 const previousCustomer = customers.find(c => c.id === id);
@@ -729,6 +795,11 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         } catch (err) {
             console.error('Exception updating customer:', err);
             showAlert('Database Connection Error: ' + err.message, { type: 'error' });
+            const previousCustomer = customers.find(c => c.id === id);
+            if (previousCustomer) {
+                setCustomers(prev => prev.map(c => c.id === id ? previousCustomer : c));
+                if (selectedCustomer?.id === id) setSelectedCustomer(previousCustomer);
+            }
             return false;
         }
     };
@@ -846,6 +917,41 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             }
         }
 
+        // Moving past Material Integration / Material Delivery from the card used
+        // to skip every required-detail check (22 customers moved ahead with
+        // inverter, panels or vendor never entered). The card only holds the slim
+        // list row, so read the real values first. Admins may still move ahead,
+        // after confirming, and the skip is recorded; others are stopped. (A
+        // matching database check was designed but is not live - docs/BACKLOG.md.)
+        let skippedDetails = [];
+        if (missingDetailsForMove(oldStage, newStage, {}).length > 0) {
+            const { data: stored, error: readError } = await supabase
+                .from('admin')
+                .select(STAGE_REQUIREMENT_COLUMNS.join(','))
+                .eq('id', id)
+                .maybeSingle();
+            if (readError || !stored) {
+                showAlert('Could not check this customer\'s details, so the stage was not changed. Please try again.', { type: 'error' });
+                return;
+            }
+            skippedDetails = missingDetailsForMove(oldStage, newStage, stored);
+            if (skippedDetails.length > 0) {
+                const list = `• ${skippedDetails.join('\n• ')}`;
+                if (user?.userType !== 'admin') {
+                    showAlert(
+                        `${customer.customer_name} cannot move to ${newStage} yet. Missing:\n\n${list}\n\nOpen the customer to fill these in.`,
+                        { title: 'Details missing', type: 'warning' }
+                    );
+                    return;
+                }
+                const proceed = await showConfirm(
+                    `${customer.customer_name} is missing details for the stages being skipped:\n\n${list}\n\nMove to ${newStage} anyway? The skip and the missing details will be recorded in the activity log.`,
+                    { title: 'Move ahead with details missing?', confirmLabel: 'Move anyway', cancelLabel: 'Cancel', type: 'warning' }
+                );
+                if (!proceed) return;
+            }
+        }
+
         // Extract old remark before clearing it from the JSON mapping
         const oldRemark = (typeof customer.stages_remarks === 'object' && customer.stages_remarks ? customer.stages_remarks[oldStage] : '') || '';
 
@@ -871,7 +977,8 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         if (error) {
             console.error('Error moving stage:', error);
             showAlert('Error moving stage: ' + error.message, { type: 'error' });
-            // Rollback on failure by reloading this stage
+            setCustomers(prev => prev.map(c => c.id === id ? customer : c));
+            if (selectedCustomer?.id === id) setSelectedCustomer(customer);
             fetchStageCustomers(selectedStage, page);
             return;
         }
@@ -893,7 +1000,14 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         // send a project lost at Subsidy Status back to Leads.
         if (newStage === STAGE_IDS.LOST_PROJECT) {
             let existing = {};
-            const raw = customer.hold_procurement;
+            // The card's list row does not carry hold_procurement, so read the
+            // stored value first - merging into {} erased earlier hold status
+            // and comments.
+            let raw = customer.hold_procurement;
+            if (raw === undefined) {
+                const { data: current } = await supabase.from('admin').select('hold_procurement').eq('id', id).maybeSingle();
+                raw = current?.hold_procurement;
+            }
             if (raw) {
                 try {
                     existing = typeof raw === 'string' ? (JSON.parse(raw) || {}) : (raw || {});
@@ -942,6 +1056,15 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             `Stage: ${oldStage || 'Empty'} → ${newStage || 'Empty'}`,
             id
         );
+        if (skippedDetails.length > 0) {
+            await logActivity(
+                user.id,
+                'update',
+                `${customer.customer_name}: STAGE SKIP by admin - moved ${oldStage} → ${newStage} with details missing: ${skippedDetails.join(', ')}`,
+                '',
+                id
+            );
+        }
     };
 
     // Collapses a burst of realtime events into one metrics refresh.
@@ -987,7 +1110,8 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
         });
 
 
-        // The quotation branch is retained for the deferred Add to Leads feature.
+        // From a quotation, the lead id is derived from the quotation so a retry
+        // or two devices converting at once cannot create duplicate leads.
         const { data: newCustomer, error } = quotation
             ? await quotationRepository.insertConversionLead(quotation, insertData, user)
             : await supabase.from('admin').insert(insertData).select().single();
@@ -1032,21 +1156,12 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     };
 
     // ── Derived data (active = non-deleted only) ───────────────────────────────
-    const { active, trashed } = useMemo(() => {
+    const { trashed } = useMemo(() => {
         const nextActive = [];
         const nextTrashed = [];
         customers.forEach(customer => (customer?.deleted_at ? nextTrashed : nextActive).push(customer));
         return { active: nextActive, trashed: nextTrashed };
     }, [customers]);
-    const isAuthorized = (c) => {
-        if (user?.userType === 'admin' || user?.userType === 'sales') return true;
-        if (user?.userType === 'agent' || isChannelPartnerOffice) {
-            const myPartner = partnerName.toLowerCase();
-            return (c?.channel_partner || '').trim().toLowerCase() === myPartner;
-        }
-        return false;
-    };
-
     // Distinct Channel Partner names from metadata table for dropdowns and top filter suggestions
     const uniqueChannelPartners = [...(meta['channel_partner'] || []).reduce((byName, rawLabel) => {
         const label = String(rawLabel || '').trim();
@@ -1061,13 +1176,6 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     const channelPartnerSuggestions = channelPartnerFilterInput.trim()
         ? uniqueChannelPartners.filter(p => (p || '').toLowerCase().includes(channelPartnerFilterInput.trim().toLowerCase()))
         : uniqueChannelPartners;
-
-    const matchesChannelPartnerFilter = (c) => {
-        if (isChannelPartnerOffice) {
-            return (c?.channel_partner || '').trim().toLowerCase() === partnerName.toLowerCase();
-        }
-        return !channelPartnerFilter || (c?.channel_partner || '').toLowerCase() === channelPartnerFilter.toLowerCase();
-    };
 
     // Everything downstream - stage counts, the stages grid, dashboard stats
     // is built from this one channel partner-scoped list
@@ -1101,7 +1209,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
             String(c?.phone_number || '').includes(stageSearch) ||
             String(c?.consumer_no || '').toLowerCase().includes(q) ||
             String(c?.folder_no || '').toLowerCase().includes(q);
-    });
+    }).sort(newestCustomerFirst);
 
     // ── Nav button helper ─────────────────────────────────────────────────────
     
@@ -1110,6 +1218,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
     const headerTitle =
         currentView === 'dashboard' ? 'Business Dashboard'
             : currentView === 'delivery_batches' ? 'Material Delivery Batches'
+            : currentView === 'availability' ? 'Vendor Calendar'
             : currentView === 'subsidy' ? 'Subsidy Tag Tracking'
                 : currentView === 'loan_tags' ? 'Loan Tag Tracking'
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
@@ -1142,11 +1251,11 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                     )}
                     <NavBtn view="subsidy" icon={Tag} label="Subsidy Tags" count={subsidyTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     <NavBtn view="loan_tags" icon={IndianRupee} label="Loan Tags" count={loanTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                    {QUOTATION_FEATURE_ENABLED && ['admin', 'sales'].includes(user.userType) && <button onClick={() => { setSidebarOpen(false); openQuotations(); }} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-100"><Tag className="w-4 h-4" /><span className="flex-1 text-left">Quotation Maker</span>{quotationOpenCount > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-bold bg-stone-100 text-stone-500" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}</button>}
                     <NavBtn view="installation_tags" icon={Wrench} label="Installation Tags" count={installationTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
 
 
 
-                    {['admin', 'sales'].includes(user.userType) && <button onClick={() => { setSidebarOpen(false); openQuotations(); }} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-100"><Tag className="w-4 h-4" /> Quotation Maker</button>}
 
                     {/* Project Stages - identical for every role */}
                     <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-4 pb-2 tracking-widest">Project Stages</div>
@@ -1154,15 +1263,19 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         <NavBtn key={s.id} view="stages" stage={s.id} icon={s.icon} label={s.label} count={stageCounts[s.id] || 0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     ))}
 
-                    {/* System - admin only */}
-                    {user.userType === 'admin' && (
+                    {/* Office system tools */}
+                    {['admin', 'sales'].includes(user.userType) && (
                         <>
                             <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-5 pb-2 tracking-widest">System</div>
+                            {user.userType === 'admin' && <>
                             <NavBtn view="channel_partner_mgmt" icon={Users} label="Operations" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                            <NavBtn view="availability" icon={CalendarDays} label="Vendor Calendar" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                             <NavBtn view="installation_payments" icon={CreditCard} label="Installation Payments" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                             <NavBtn view="activity" icon={Activity} label="Activity Log" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                             <NavBtn view="users" icon={UserCog} label="User Management" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                             <NavBtn view="trash" icon={Trash2} label="Trash" count={trashCount} redBadge currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                            </>}
+                            {user.userType === 'sales' && <NavBtn view="availability" icon={CalendarDays} label="Vendor Calendar" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />}
                         </>
                     )}
 
@@ -1171,8 +1284,10 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                         <>
                             <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-5 pb-2 tracking-widest">Partner Office</div>
                             <NavBtn view="users" icon={UserCog} label="User Management" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                            <NavBtn view="availability" icon={CalendarDays} label="Vendor Calendar" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                         </>
                     )}
+                    {user.userType === 'office2' && <NavBtn view="availability" icon={CalendarDays} label="Vendor Calendar" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />}
                 </div>
 
                 {/* User + Logout */}
@@ -1345,6 +1460,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                             onOpenCustomerModal={setSelectedCustomer} 
                         />
                     )}
+                    {currentView === 'availability' && ['admin', 'sales', 'channel_partner_office', 'office2'].includes(user.userType) && <AvailabilityCalendar user={user} />}
                     {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
@@ -1394,7 +1510,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                             <div className="space-y-4">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                                     {filtered.map(c => (
-                                        <CustomerCard key={c.id} customer={c} onSelect={setSelectedCustomer} onMoveStage={handleMoveStage} currentUser={user} />
+                                        <CustomerCard key={c.id} customer={c} onSelect={setSelectedCustomer} onMoveStage={handleMoveStage} onRaiseServiceIssue={onRaiseServiceIssue} currentUser={user} />
                                     ))}
                                 </div>
                                 {hasMore && (
@@ -1428,6 +1544,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                     onClose={() => setSelectedCustomer(null)}
                     onUpdate={handleUpdateCustomer}
                     onDelete={handleSoftDelete}
+                    onRaiseServiceIssue={onRaiseServiceIssue}
                     user={user}
                     meta={meta}
                     channel_partners={uniqueChannelPartners}
@@ -1435,7 +1552,7 @@ export default function Dashboard({ user, onLogout, onOpenDevSwitcher }) {
                 />
                 </Suspense>
             )}
-            <QuotationModule user={user} meta={meta} channelPartners={uniqueChannelPartners} onCreateLead={handleAddLead} onViewLead={handleGlobalSelect} />
+            {QUOTATION_FEATURE_ENABLED && <QuotationModule user={user} meta={meta} channelPartners={uniqueChannelPartners} onCreateLead={handleAddLead} onViewLead={handleGlobalSelect} />}
             {showAddLead && <Suspense fallback={<ViewLoader />}><AddLeadModal isOpen={showAddLead} onClose={() => setShowAddLead(false)} onSave={handleAddLead} meta={meta} channel_partners={uniqueChannelPartners} user={user} /></Suspense>}
         </div>
     );

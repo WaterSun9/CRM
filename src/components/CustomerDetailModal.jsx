@@ -14,10 +14,10 @@ import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
-    Eye, Search, Image as ImageIcon, MessageSquare, Calendar
+    Eye, Search, Image as ImageIcon, MessageSquare, Calendar, Flag
 } from 'lucide-react';
 import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN } from '../constants';
-import { logActivity, formatDateToDDMMYYYY, formatINR, parseIndianNumber, fetchAgent2SubAgents, normalizeMeterInstallation, sanitizePhoneNumber } from '../utils';
+import { logActivity, formatDateToDDMMYYYY, parseIndianNumber, fetchAgent2SubAgents, normalizeMeterInstallation, sanitizePhoneNumber, logFieldChanges, readAdminFields } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
@@ -32,6 +32,7 @@ const getDocTypeLabel = (type) => {
 };
 
 import CustomerModalTabsRouter from './CustomerModalTabsRouter';
+import CropPhotoModal from './CropPhotoModal';
 import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
 import LoanTab from './modal-tabs/LoanTab';
@@ -51,11 +52,12 @@ import HistoryTab from './modal-tabs/HistoryTab';
 import CustomerDocumentsTab from './modal-tabs/CustomerDocumentsTab';
 import { FilePreviewModal, DocGalleryRemarkRow, getStageRemarkFromData } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
+import { RedFlagBadge, RedFlagToggle } from './RedFlag';
 import ConflictResolutionModal from './ConflictResolutionModal';
 import { normalizeInstallationStatus } from '../utils';
-
-// ─── formatMoney: uses centralized Indian comma system from utils ─────────────
-const fmt = formatINR;
+import { findUnsavedFields, fieldLabel, valuesMatch, mergeServerRecord } from '../utils/saveCheck';
+import { missingDetailsForMove } from '../utils/stageRequirements';
+import { formatCustomerTimestamp } from '../utils/customerActivity';
 
 // ─── formatDateTime: helper to format date as "04 Aug, 11:01 PM" ──────────────
 const formatDateTime = (date) => {
@@ -77,6 +79,11 @@ const formatDateTime = (date) => {
 
 // ─── Subsidy status options ───────────────────────────────────────────────────
 
+// Keys whose draft value differs from the saved value. Uses the same rules as
+// the save check (valuesMatch), so a number the database returns as 171000
+// is not mistaken for a change from the form's '1,71,000' - which would leave
+// the form looking unsaved after a successful save - and jsonb key order does
+// not count as a change.
 const getChangedFields = (draft = {}, saved = {}) => {
     const changed = new Set();
     const ignoreKeys = new Set(['id', 'created_at', 'updated_at', 'crn']);
@@ -84,27 +91,14 @@ const getChangedFields = (draft = {}, saved = {}) => {
 
     keys.forEach(key => {
         if (ignoreKeys.has(key)) return;
-        const draftValue = draft?.[key];
-        const savedValue = saved?.[key];
-        if (typeof draftValue === 'boolean' || typeof savedValue === 'boolean') {
-            if (Boolean(draftValue) !== Boolean(savedValue)) changed.add(key);
-            return;
-        }
-        const draftEmpty = draftValue === undefined || draftValue === null || draftValue === '';
-        const savedEmpty = savedValue === undefined || savedValue === null || savedValue === '';
-        if (draftEmpty && savedEmpty) return;
-        if (typeof draftValue === 'object' || typeof savedValue === 'object') {
-            if (JSON.stringify(draftValue ?? null) !== JSON.stringify(savedValue ?? null)) changed.add(key);
-            return;
-        }
-        if (String(draftValue ?? '').trim() !== String(savedValue ?? '').trim()) changed.add(key);
+        if (!valuesMatch(draft?.[key], saved?.[key])) changed.add(key);
     });
 
     return changed;
 };
 
 // ─── CustomerDetailModal ──────────────────────────────────────────────────────
-export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, user, meta, channel_partners = [], defaultTab }) {
+export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, onRaiseServiceIssue, user, meta, channel_partners = [], defaultTab }) {
     const { showAlert, showConfirm } = useGlobalPopup();
     const [activeTab, setActiveTab] = useState(() => {
         if (defaultTab) return defaultTab;
@@ -123,16 +117,15 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const [editData, setEditData] = useState({ ...customer });
     const savedDataRef = useRef({ ...customer });
     const loadedUpdatedAtRef = useRef(customer?.updated_at || null);
+    const [lastUpdatedAt, setLastUpdatedAt] = useState(customer?.updated_at || null);
     const [concurrentConflict, setConcurrentConflict] = useState(null);
     const [remoteUpdateAlert, setRemoteUpdateAlert] = useState(false);
-    // TEMPORARILY DISABLED for the launch (2026-08-30).
-    // The "a colleague just saved changes" banner was firing for single editors.
-    // Three causes were fixed (client-clock baseline, pre-coercion baseline, and
-    // realtime echoing our own writes) but that work is not yet proven in
-    // production, so the banner stays hidden rather than alarming users.
-    // The realtime SYNC below still runs - only the banner is suppressed.
-    // Flip to true to re-enable once the fixes have been verified live.
-    const SHOW_REMOTE_UPDATE_ALERT = false;
+    // Re-enabled (Oct 2026). It was hidden because it fired for people editing
+    // alone - it guessed "own save" from a 5-second window. It is now raised only
+    // when a fresh read shows fields changed that this window did NOT just write
+    // (applyServerRecord), and only while the user has unsaved edits.
+    // remoteUpdateAlert = false | { fields: [...], conflicts: [...] }
+    const SHOW_REMOTE_UPDATE_ALERT = true;
     // Realtime fires for EVERY update to this row, our own included. Stamp the
     // time of our own writes so the echo is not reported to the user as
     // "a colleague updated this record".
@@ -171,52 +164,191 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         });
     };
 
-    // Realtime watch for concurrent updates to this specific customer
+    // ── One source of truth for the record (data-loss audit, Oct 2026) ───────
+    // savedDataRef is "what the database holds". Save sends only the fields that
+    // differ from it, so it MUST be correct. It used to be overwritten from four
+    // places, including the Dashboard's slim list row (~33 columns, no inverter
+    // or panel serials). Once that happened, Save treated a typed value as
+    // already saved and silently left it out - the cause of the lost inverter and
+    // panel values - and saved values showed as blank on screen.
+    //
+    // Now the baseline only ever comes from a FULL read of the row
+    // (applyServerRecord), and every outside signal (list refresh, realtime
+    // event) just triggers a fresh full read. Fields the user has changed but not
+    // saved are always kept. Replies that are older than a later read or save are
+    // ignored, so a slow reload can never overwrite newer data.
+    const isDemoCustomer = String(customer?.id || '').startsWith('demo-');
+    const [fullRecordLoaded, setFullRecordLoaded] = useState(isDemoCustomer);
+    const fetchSeqRef = useRef(0);
+    const openedIdRef = useRef(null);
+    const subscribedOnceRef = useRef(false);   // live feed: first connect vs reconnect
+    const savingRef = useRef(false);           // mirrors `saving` for listeners set up once
+
+    // Any save of ours makes every reload that is still in flight out of date.
+    const invalidatePendingReloads = () => { fetchSeqRef.current += 1; };
+
+    // Every write from this window goes through here, so we know which fields
+    // WE just wrote. A change to those is our own save echoing back, not a
+    // colleague's edit - no timing guesswork for the colleague warning.
+    const recentWritesRef = useRef({});              // field -> time we last wrote it
+    const hasFullBaselineRef = useRef(false);        // first full read compares against the slim copy - not a "remote change"
+    const pendingConflictsRef = useRef(new Set());   // fields both I (unsaved) and a colleague changed
+    const writeRecord = (id, payload) => {
+        const now = Date.now();
+        Object.keys(payload || {}).forEach(key => { recentWritesRef.current[key] = now; });
+        lastSelfWriteRef.current = now;
+        invalidatePendingReloads();
+        return onUpdate(id, payload);
+    };
+
+    const applyServerRecord = (row) => {
+        if (!row || row.id !== customer.id) return;
+        const previousBaseline = savedDataRef.current;
+        // Fields someone else changed in the database since our last read
+        // (ignoring fields we wrote in the last 30s and database-set timestamps).
+        const now = Date.now();
+        const remoteKeys = hasFullBaselineRef.current
+            ? Object.keys(row).filter(key =>
+                !['updated_at', 'completed_at'].includes(key)
+                && now - (recentWritesRef.current[key] || 0) > 30000
+                && !valuesMatch(row[key], previousBaseline?.[key]))
+            : [];
+        hasFullBaselineRef.current = true;
+        savedDataRef.current = { ...row };
+        loadedUpdatedAtRef.current = row.updated_at || loadedUpdatedAtRef.current;
+        setLastUpdatedAt(row.updated_at || null);
+        setEditData(prev => {
+            // Fields the user changed relative to the old baseline stay as typed.
+            const { next, unsavedKeys } = mergeServerRecord(prev, previousBaseline, row);
+            // Same field changed by me (unsaved) and by a colleague, to a different
+            // value: remember it, so Save asks instead of silently overwriting.
+            unsavedKeys
+                .filter(key => remoteKeys.includes(key) && !valuesMatch(row[key], prev[key]))
+                .forEach(key => pendingConflictsRef.current.add(key));
+            [...pendingConflictsRef.current].forEach(key => {
+                if (!unsavedKeys.includes(key)) pendingConflictsRef.current.delete(key);
+            });
+            if (remoteKeys.length > 0 && unsavedKeys.length > 0) {
+                setRemoteUpdateAlert({ fields: remoteKeys, conflicts: [...pendingConflictsRef.current] });
+            }
+            setIsFormDirty(getChangedFields(next, savedDataRef.current).size > 0);
+            return next;
+        });
+        setFullRecordLoaded(true);
+    };
+
+    const refreshFullRecord = async () => {
+        if (!customer?.id || isDemoCustomer) return;
+        const seq = ++fetchSeqRef.current;
+        const { data, error } = await supabase.from('admin').select('*').eq('id', customer.id).maybeSingle();
+        if (seq !== fetchSeqRef.current) return;   // a newer read or a save happened meanwhile
+        if (error) {
+            console.warn('Could not reload the customer record:', error.message);
+            return;
+        }
+        if (data) applyServerRecord(data);
+    };
+
+    // Opened (or switched to) a customer: start from what we were given, then
+    // load the full record. Same customer with a new prop object (list refresh,
+    // stage move, optimistic update): re-read rather than trust the list copy.
     useEffect(() => {
-        if (!customer?.id || String(customer.id).startsWith('demo-')) return;
-        
+        if (!customer?.id) return;
+        if (openedIdRef.current !== customer.id) {
+            const switched = openedIdRef.current !== null;
+            openedIdRef.current = customer.id;
+            if (switched) {
+                hasFullBaselineRef.current = false;
+                pendingConflictsRef.current.clear();
+                recentWritesRef.current = {};
+                setRemoteUpdateAlert(false);
+                savedDataRef.current = { ...customer };
+                loadedUpdatedAtRef.current = customer.updated_at || null;
+                setLastUpdatedAt(customer.updated_at || null);
+                setEditData({ ...customer });
+                setIsFormDirty(false);
+                setFullRecordLoaded(isDemoCustomer);
+            }
+        }
+        refreshFullRecord();
+        fetchLogs();
+        // Deliberately keyed on the customer prop only: the helpers are re-created
+        // every render and must not re-trigger the reload.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [customer]);
+
+    // Realtime watch for updates to this specific customer
+    useEffect(() => {
+        if (!customer?.id || isDemoCustomer) return;
+
         const channel = supabase.channel(`customer_modal_concurrency_${customer.id}`)
             .on('postgres_changes', {
                 event: 'UPDATE',
                 schema: 'public',
                 table: 'admin',
                 filter: `id=eq.${customer.id}`
-            }, (payload) => {
-                if (payload.new) {
-                    const serverRecord = payload.new;
-                    // Our own save echoes back here. Without this test the user
-                    // was told a colleague had edited the record they had just
-                    // saved themselves.
-                    const isOwnWrite =
-                        (serverRecord.updated_at && serverRecord.updated_at === loadedUpdatedAtRef.current) ||
-                        (Date.now() - lastSelfWriteRef.current) < 5000;
-
-                    if (!isFormDirty) {
-                        loadedUpdatedAtRef.current = serverRecord.updated_at || loadedUpdatedAtRef.current;
-                        savedDataRef.current = { ...serverRecord };
-                        setEditData({ ...serverRecord });
-                        setRemoteUpdateAlert(false);
-                    } else if (!isOwnWrite) {
-                        // A colleague changed the record while we have unsaved edits.
-                        setRemoteUpdateAlert(true);
-                    }
-                }
+            }, () => {
+                // payload.new can leave out large unchanged columns, so it is
+                // never used as the record itself - re-read the full row. The
+                // merge keeps anything the user is still editing, and raises
+                // the colleague warning only for fields this window did not
+                // just write itself (our own saves echo back here too).
+                refreshFullRecord();
             })
-            .subscribe();
+            .subscribe((status) => {
+                // The live feed drops while the laptop sleeps or the network is
+                // down, and changes made meanwhile are never replayed. When it
+                // reconnects, re-read the record to catch up on what was missed.
+                if (status !== 'SUBSCRIBED') return;
+                if (subscribedOnceRef.current) refreshFullRecord();
+                subscribedOnceRef.current = true;
+            });
 
         return () => {
+            subscribedOnceRef.current = false;
             supabase.removeChannel(channel);
         };
-    }, [customer?.id, isFormDirty]);
+        // One subscription per customer; it reads current state through refs.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [customer?.id]);
 
-    // Keep editData in sync with realtime prop updates if the user isn't currently editing
+    // Catch up after being away. A window left open over lunch or overnight
+    // misses colleagues' changes (the live feed above is down while the laptop
+    // sleeps), so the next Save could not spot a clash. Re-read the record when:
+    //  - the tab becomes visible again after 30s or more in the background,
+    //  - the browser comes back online,
+    //  - the laptop wakes from sleep (a 30s timer that fires minutes late).
+    // The re-read uses the same merge as every other reload: unsaved typing is
+    // kept and same-field clashes are flagged. Skipped while a save is running.
     useEffect(() => {
-        if (!isFormDirty && customer) {
-            loadedUpdatedAtRef.current = customer.updated_at || loadedUpdatedAtRef.current;
-            savedDataRef.current = { ...customer };
-            setEditData({ ...customer });
-        }
-    }, [customer, isFormDirty]);
+        if (!customer?.id || isDemoCustomer) return;
+        const AWAY_MS = 30000;
+        let hiddenAt = document.visibilityState === 'hidden' ? Date.now() : null;
+        let lastTick = Date.now();
+        const catchUp = () => { if (!savingRef.current) refreshFullRecord(); };
+
+        const onVisibility = () => {
+            if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+            if (hiddenAt !== null && Date.now() - hiddenAt >= AWAY_MS) catchUp();
+            hiddenAt = null;
+        };
+        const onOnline = () => catchUp();
+        const timer = setInterval(() => {
+            const now = Date.now();
+            if (now - lastTick > 4 * AWAY_MS) catchUp();   // timer paused = machine slept
+            lastTick = now;
+        }, AWAY_MS);
+
+        document.addEventListener('visibilitychange', onVisibility);
+        window.addEventListener('online', onOnline);
+        return () => {
+            clearInterval(timer);
+            document.removeEventListener('visibilitychange', onVisibility);
+            window.removeEventListener('online', onOnline);
+        };
+        // Reads current state through refs; one set of listeners per customer.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [customer?.id]);
 
     // Protect against accidental browser refresh or tab close when form has unsaved edits
     useEffect(() => {
@@ -232,15 +364,14 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     }, [isFormDirty]);
     const [followUpText, setFollowUpText] = useState('');
     const [saving, setSaving] = useState(false);
-    const [sendingInfo, setSendingInfo] = useState(false);
-    const [infoSentStatus, setInfoSentStatus] = useState(null);
+    useEffect(() => { savingRef.current = saving; }, [saving]);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [validationError, setValidationError] = useState(null);
     const [validationIssues, setValidationIssues] = useState([]);
     const [showValidationModal, setShowValidationModal] = useState(false);
     const [showCompletedConfirm, setShowCompletedConfirm] = useState(false);
     const [activityLogs, setActivityLogs] = useState([]);
     const [documents, setDocuments] = useState([]);
+    const [croppingDoc, setCroppingDoc] = useState(null);
     const [docSearchQuery, setDocSearchQuery] = useState('');
     const [uploading, setUploading] = useState(false);
     const [filePreview, setFilePreview] = useState({ doc: null, url: null });
@@ -282,25 +413,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     // Status. All other installation status/details remain view-only.
     const isInstallationDetailsEditable = isEditable && !isChannelPartnerManager;
 
-    // Fetch full customer record in background if opened from lightweight views (Subsidy, Loan, Installation)
-    useEffect(() => {
-        if (!customer?.id || String(customer.id).startsWith('demo-')) return;
-        supabase.from('admin').select('*').eq('id', customer.id).single().then(({ data }) => {
-            if (data) {
-                loadedUpdatedAtRef.current = data.updated_at || loadedUpdatedAtRef.current;
-                savedDataRef.current = { ...data };
-                setEditData(prev => {
-                    if (isFormDirty) {
-                        return { ...data, ...prev };
-                    }
-                    return { ...data };
-                });
-            }
-        });
-    }, [customer?.id, isFormDirty]);
+    // (The full record is loaded by refreshFullRecord above - the separate
+    // background fetch that used to live here re-ran whenever the form's edited
+    // state flipped, and could land after a newer save.)
 
     const saveBomRef = useRef(null);
-    const prevCustomerRef = useRef(customer);
     const [showAgreementPopup, setShowAgreementPopup] = useState(false);
     const [agreementAutoAdd, setAgreementAutoAdd] = useState(false);
     const [agreementData, setAgreementData] = useState({
@@ -488,10 +605,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const fetchLogs = useCallback(async () => {
         const { data } = await supabase.from('activity_log').select('*, profiles(name)')
-            .or(`new_value.eq.${customer.id},message.ilike.%${customer.customer_name}%`)
+            // Match on the customer's id. The old name match also pulled in other
+            // customers ("Ram" matched "Ramesh") and broke on names with commas.
+            .or(`customer_id.eq.${customer.id},new_value.eq.${customer.id}`)
             .order('created_at', { ascending: false }).limit(25);
         if (data) setActivityLogs(data);
-    }, [customer.id, customer.customer_name]);
+    }, [customer.id]);
 
     const urlCacheRef = useRef({});
 
@@ -503,7 +622,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         }
     }, [customer?.id]);
 
-    const handleFileUpload = async (e, docType = null, replacingDocId = null) => {
+    const handleFileUpload = async (e, docType = null, replacingDocId = null, strictReplacement = false) => {
         const file = e.target.files[0];
         if (!file) return;
 
@@ -521,8 +640,13 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     : (docType ? documents.filter(d => d.doc_type === docType && d.id !== newDoc.id) : []);
                 for (const oldDoc of supersededDocs) {
                     try {
-                        await deleteDocument(oldDoc.id, oldDoc.storage_path);
+                        const removed = await deleteDocument(oldDoc.id, oldDoc.storage_path);
+                        if (removed?.ok === false) throw removed.error || new Error('Could not replace the original document.');
                     } catch (delErr) {
+                        if (strictReplacement) {
+                            await deleteDocument(newDoc.id, newDoc.storage_path);
+                            throw delErr;
+                        }
                         // The new file is safely stored; a stale old row is a
                         // tidiness problem, not a data-loss one.
                         console.warn('New document saved, but removing the previous one failed:', delErr);
@@ -543,14 +667,29 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 // raw doc_type made Postgres reject the whole update whenever
                 // the type was an alias or had no column.
                 const flagColumn = docType ? DOC_TYPE_FLAG_COLUMN[docType] : null;
-                if (flagColumn) {
+                // Cropping replaces an existing document and must not rewrite
+                // the customer's checklist flag in public.admin.
+                if (flagColumn && !strictReplacement) {
                     setEditData(prev => ({ ...prev, [flagColumn]: true }));
                     lastSelfWriteRef.current = Date.now();
+                    invalidatePendingReloads();
                     // onUpdate RESOLVES false on failure, it does not reject, so
                     // the .catch() that used to be here could never fire - the
                     // checkbox was ticked on screen and the warning was dead
                     // code. Await the result and untick on refusal.
-                    const flagOk = await onUpdate(customer.id, { [flagColumn]: true });
+                    const flagBefore = await readAdminFields(customer.id, [flagColumn]);
+                    const flagOk = await writeRecord(customer.id, { [flagColumn]: true });
+                    if (flagOk !== false) {
+                        // The automatic checklist tick used to be saved with no log entry.
+                        void logFieldChanges(
+                            user?.id,
+                            customer.id,
+                            customer.customer_name,
+                            flagBefore || savedDataRef.current,
+                            { [flagColumn]: true },
+                            `Document upload (${DOC_TYPE_LABELS[docType] || docType})`
+                        );
+                    }
                     if (flagOk === false) {
                         setEditData(prev => ({ ...prev, [flagColumn]: false }));
                         showAlert(
@@ -721,41 +860,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         fetchLogs();
     };
 
-    useEffect(() => {
-        setEditData(prev => {
-            // On first mount or customer ID change, do a full reset
-            if (!prev || prev.id !== customer.id) {
-                prevCustomerRef.current = customer;
-                return { ...customer };
-            }
-            // Smart merge: only update fields user hasn't locally changed
-            const merged = { ...prev };
-            const prevCust = prevCustomerRef.current;
-            for (const key of Object.keys(customer)) {
-                // If the field in prev still matches the OLD customer value
-                // (i.e. user didn't touch it), accept the new server value
-                const prevVal = prev[key];
-                const oldCustVal = prevCust?.[key];
-                // Use JSON.stringify for objects/arrays (e.g. subsidy_history)
-                const isSame = typeof prevVal === 'object' && prevVal !== null
-                    ? JSON.stringify(prevVal) === JSON.stringify(oldCustVal)
-                    : prevVal === oldCustVal;
-                if (isSame) {
-                    merged[key] = customer[key];
-                }
-                // Otherwise keep the user's local edit (prev[key])
-            }
-            // Also bring in any new keys from server that weren't in prev
-            for (const key of Object.keys(customer)) {
-                if (!(key in merged)) {
-                    merged[key] = customer[key];
-                }
-            }
-            prevCustomerRef.current = customer;
-            return merged;
-        });
-        fetchLogs();
-    }, [customer]);
+    // (A third sync effect used to merge the Dashboard's list row into the form
+    // here. The list row can be partial or older than the database, so the
+    // record now only ever comes from refreshFullRecord; the activity list
+    // refresh that lived here moved into that effect.)
 
 
 
@@ -829,16 +937,61 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     // Child tabs have their own Save buttons. Once one succeeds, merge only
     // that saved patch into the baseline and keep the popup active solely for
     // any other fields that are still genuinely unsaved.
+    // Tells the user - and the activity log - that a save left fields out.
+    // The typed values stay on screen (still marked unsaved) so nothing is lost.
+    const reportUnsavedFields = (fields) => {
+        const labels = fields.map(fieldLabel).join(', ');
+        showAlert(
+            `These changes did NOT save: ${labels}.\n\nThey are still on your screen. Press Save again. If it keeps failing, copy the values somewhere safe and tell the admin.`,
+            { title: 'Not saved', type: 'error' }
+        );
+        if (user?.id) {
+            void logActivity(user.id, 'update', `${customer.customer_name}: SAVE CHECK FAILED - not stored: ${labels}`, '', customer.id);
+        }
+    };
+
     const handleSectionUpdate = async (id, patch) => {
         lastSelfWriteRef.current = Date.now();
-        const result = await onUpdate(id, patch);
+        invalidatePendingReloads();
+        // Read the stored values of these fields before writing, so the log's
+        // "before" side is the database, not the (possibly stale) local copy.
+        const beforeRow = await readAdminFields(id, Object.keys(patch || {}));
+        const result = await writeRecord(id, patch);
         if (result === false) return false;
-        savedDataRef.current = { ...savedDataRef.current, ...patch };
+
+        // Save check: re-read exactly these fields and confirm they were stored.
+        const afterRow = await readAdminFields(id, Object.keys(patch || {}));
+        if (!afterRow) {
+            showAlert('The update was sent, but its saved values could not be verified. Keep this window open and refresh the customer before trying again.', { type: 'error' });
+            return false;
+        }
+        const unsaved = findUnsavedFields(patch, afterRow);
+        const storedPatch = { ...patch };
+        unsaved.forEach(key => { delete storedPatch[key]; });
+
+        // Every tab save now leaves a value-level record (field: old → new),
+        // covering only what the database actually stored.
+        void logFieldChanges(
+            user?.id,
+            id,
+            customer?.customer_name,
+            beforeRow || savedDataRef.current,
+            storedPatch,
+            `${activeTab} tab`
+        );
+        // Baseline = what the database holds, so an unsaved field stays "unsaved".
+        const storedValuesOfUnsaved = {};
+        unsaved.forEach(key => { storedValuesOfUnsaved[key] = afterRow[key]; });
+        savedDataRef.current = { ...savedDataRef.current, ...storedPatch, ...storedValuesOfUnsaved };
         setEditData(previous => {
             const next = { ...previous, ...patch };
             setIsFormDirty(getChangedFields(next, savedDataRef.current).size > 0);
             return next;
         });
+        if (unsaved.length > 0) {
+            reportUnsavedFields(unsaved);
+            return false;
+        }
         return result;
     };
 
@@ -891,43 +1044,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     const nextStageLabel = nextStageId ? PRIMARY_STAGES.find(s => s.id === nextStageId)?.label : '';
 
-    const isLeadFieldsFilled = !!(
-        editData.customer_name?.trim() &&
-        editData.phone_number?.toString().trim() &&
-        (editData.email_address?.trim() || editData.email_address?.trim()) &&
-        editData.consumer_no?.toString().trim() &&
-        editData.villages?.trim() &&
-        editData.channel_partner?.trim() &&
-// editData.sub_channel_partner?.trim() && // Sub Channel Partner is optional
-        editData.module_brand?.trim() &&
-        editData.module_wp?.toString().trim() &&
-        editData.no_of_modules?.toString().trim() &&
-        editData.system_capacity_kwp &&
-        editData.sub_divisions?.trim() &&
-        editData.payment_type?.trim()
-    );
-
     const hasFeasibilityDoc = documents.some(d => d.doc_type === 'feasibilty_document' || d.doc_type === 'feasibility_document') || !!editData.feasibilty_document;
     const hasSubsidyTokenDoc = documents.some(d => d.doc_type === 'subsidy_token_photo') || !!editData.subsidy_token_photo;
     const hasApplicationAcknowledgment = documents.some(d => d.doc_type === 'application_acknowledgment') || !!editData.application_acknowledgment;
     const hasVendorFeasibility = documents.some(d => d.doc_type === 'vendor_feasibility') || !!editData.vendor_feasibility;
     const hasSiteFeasibility = documents.some(d => d.doc_type === 'site_feasibility') || !!editData.site_feasibility;
-    const isRegistrationFieldsFilled = !!(
-        editData.registration_date &&
-        editData.registration_by?.trim() &&
-        (editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim())
-    );
-    const isRegistrationReady = isRegistrationFieldsFilled && hasFeasibilityDoc && hasSubsidyTokenDoc && hasApplicationAcknowledgment;
-
-    const isMaterialOrderFilled = Boolean(
-        editData.roof_shed &&
-        editData.dc_cable && Number(parseIndianNumber(editData.dc_cable)) > 0 &&
-        editData.ac_cable && Number(parseIndianNumber(editData.ac_cable)) > 0 &&
-        String(editData.structure_front_leg_height || '').trim() &&
-        String(editData.structure_rear_leg_height || '').trim() &&
-        editData.invoice_value && Number(parseIndianNumber(editData.invoice_value)) > 0
-    );
-
     const getMissingStageRequirements = () => {
         const issues = [];
         const requireField = (condition, label) => { if (!condition) issues.push(label); };
@@ -1035,17 +1156,24 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             } catch (err) {
                 console.error('Error saving BOM during stage advance:', err);
                 setSaving(false);
-                showAlert('Failed to save the Material Integration BOM, so the stage was not advanced: ' + (err.message || 'Unknown error'), { type: 'error' });
+                showAlert('Failed to save the Material Integration BOM, so the stage was not advanced: ' + (err.message || 'Unknown error') + (err.code ? ` (code ${err.code})` : ''), { type: 'error' });
                 return;
             }
         }
 
         if (editData.stage === STAGE_IDS.MATERIAL_INTEGRATION) {
-            const { data: bomData } = await supabase
+            const { data: bomData, error: bomError } = await supabase
                 .from('bom')
                 .select('paper_prepared_by, paper_prepared_date, material_loaded_by, material_loaded_date')
                 .eq('admin_id', customer.id)
+                .order('created_at', { ascending: true })
+                .limit(1)
                 .maybeSingle();
+            if (bomError) {
+                showAlert('The BOM milestones could not be checked: ' + bomError.message, { type: 'error' });
+                setSaving(false);
+                return;
+            }
 
             if (!bomData || !bomData.paper_prepared_by || !bomData.paper_prepared_date || !bomData.material_loaded_by || !bomData.material_loaded_date) {
                 const missingMilestones = [];
@@ -1128,13 +1256,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             updates.loan_history = updates.loan_history.map(({ isNew, ...rest }) => rest);
         }
 
-        let changeSummary = [];
-        Object.keys(updates).forEach(key => {
-            if (updates[key] !== customer[key] && key !== 'id' && key !== 'created_at' && key !== 'crn' && key !== 'updated_at' && key !== 'stage' && key !== 'stages_remarks' && typeof updates[key] !== 'object') {
-                changeSummary.push(`${key.replace(/_/g, ' ').toUpperCase()}: ${customer[key] || 'None'} → ${updates[key] || 'None'}`);
-            }
-        });
-
         delete updates.id;
         delete updates.created_at;
         delete updates.crn;
@@ -1150,6 +1271,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         narrowed.stage = destStageId;
         narrowed.stages_remarks = updatedRemarks;
 
+        const originalStage = editData.stage;
+        const originalRemarks = editData.stages_remarks;
         setEditingSection(null);
         setEditData(updates);
 
@@ -1158,11 +1281,54 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         // the new stage even when the write had failed. Await the result and
         // only advance the UI once the database has accepted it.
         lastSelfWriteRef.current = Date.now();
+        invalidatePendingReloads();
+        const fieldKeys = Object.keys(narrowed).filter(key => key !== 'stage' && key !== 'stages_remarks');
+        let storedFields = {};
+        let beforeRow = null;
         try {
-            const ok = await onUpdate(customer.id, narrowed);
-            if (ok === false) throw new Error('The database did not accept the stage change.');
+            beforeRow = await readAdminFields(customer.id, Object.keys(narrowed));
 
-            savedDataRef.current = { ...savedDataRef.current, ...narrowed };
+            // Step 1 - save the details first and confirm the database holds
+            // them. The stage only moves once they are stored, so a customer can
+            // never move ahead of its details (the Gulabnabi case: the screen
+            // showed the inverter, the database did not, the stage moved anyway).
+            if (fieldKeys.length > 0) {
+                const fieldsPart = {};
+                fieldKeys.forEach(key => { fieldsPart[key] = narrowed[key]; });
+                const fieldsOk = await writeRecord(customer.id, fieldsPart);
+                if (fieldsOk === false) throw Object.assign(new Error('The database did not accept the changes.'), { alreadyReported: true });
+                const afterFields = await readAdminFields(customer.id, fieldKeys);
+                if (!afterFields) throw new Error('The details were sent, but their saved values could not be verified. Refresh this customer before moving the stage.');
+                const unsavedFields = findUnsavedFields(fieldsPart, afterFields);
+                storedFields = { ...fieldsPart };
+                unsavedFields.forEach(key => { delete storedFields[key]; });
+                const storedValuesOfUnsaved = {};
+                unsavedFields.forEach(key => { storedValuesOfUnsaved[key] = afterFields[key]; });
+                savedDataRef.current = { ...savedDataRef.current, ...storedFields, ...storedValuesOfUnsaved };
+                if (unsavedFields.length > 0) {
+                    const labels = unsavedFields.map(fieldLabel).join(', ');
+                    if (user?.id) {
+                        void logActivity(user.id, 'update', `${customer.customer_name}: SAVE CHECK FAILED - not stored: ${labels}`, '', customer.id);
+                    }
+                    throw new Error(`These details did not save: ${labels}. They are still on your screen - press Save, then move the stage again.`);
+                }
+            }
+
+            // Step 2 - move the stage, and confirm it moved.
+            const stagePart = { stage: destStageId, stages_remarks: updatedRemarks };
+            const ok = await writeRecord(customer.id, stagePart);
+            if (ok === false) throw Object.assign(new Error('The database did not accept the stage change.'), { alreadyReported: true });
+            const afterStage = await readAdminFields(customer.id, ['stage']);
+            if (!afterStage) throw new Error('The stage change was sent, but its saved value could not be verified. Refresh this customer before trying again.');
+            if (findUnsavedFields({ stage: destStageId }, afterStage).length > 0) {
+                throw new Error('The database did not store the new stage.');
+            }
+
+            savedDataRef.current = { ...savedDataRef.current, ...stagePart };
+            setEditData(previous => {
+                setIsFormDirty(getChangedFields(previous, savedDataRef.current).size > 0);
+                return previous;
+            });
             setActiveTab(destStageId);
 
             void logActivity(
@@ -1172,13 +1338,31 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 `Stage: ${oldStage || 'Empty'} → ${destStageId || 'Empty'}`,
                 customer.id
             );
-            if (changeSummary.length > 0) {
-                void logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id);
-            }
             void fetchLogs();
         } catch (err) {
             console.error('Stage advance failed:', err);
-            showAlert(`The stage was NOT changed.\n\n${err.message || 'Unknown error'}`, { type: 'error' });
+            // The form was switched to the new stage before writing. Put it back,
+            // or a later Save would send the stage change on its own.
+            setEditData(previous => {
+                const next = { ...previous, stage: originalStage, stages_remarks: originalRemarks };
+                setIsFormDirty(getChangedFields(next, savedDataRef.current).size > 0);
+                return next;
+            });
+            if (!err.alreadyReported) {
+                showAlert(`The stage was NOT changed.\n\n${err.message || 'Unknown error'}`, { type: 'error' });
+            }
+        }
+        // Log the details the database actually stored in step 1 (even when the
+        // stage move itself then failed), with stored "before" values.
+        if (Object.keys(storedFields).length > 0) {
+            void logFieldChanges(
+                user?.id,
+                customer.id,
+                customer.customer_name,
+                beforeRow || savedDataRef.current,
+                storedFields,
+                `${oldStage} - Move to next stage`
+            );
         }
         setSaving(false);
     };
@@ -1224,7 +1408,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         };
 
         lastSelfWriteRef.current = Date.now();
-        const ok = await onUpdate(customer.id, {
+        invalidatePendingReloads();
+        const ok = await writeRecord(customer.id, {
             stage: STAGE_IDS.LOST_PROJECT,
             hold_procurement: payload,
         });
@@ -1266,7 +1451,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 if (bomSaved === false) throw new Error('The BOM could not be saved.');
             } catch (err) {
                 console.error('Error saving BOM during handleSave:', err);
-                showAlert(`Your BOM was not saved. Please try again.\n\n${err.message || ''}`, { type: 'error' });
+                showAlert(`Your BOM was not saved. Please try again.\n\n${err.message || ''}${err.code ? ` (code ${err.code})` : ''}`, { type: 'error' });
                 setSaving(false);
                 return false;
             }
@@ -1295,6 +1480,25 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             updates.vendor_quote = String(parseIndianNumber(updates.vendor_quote));
         } else if (updates.vendor_quote === '') {
             updates.vendor_quote = null;
+        }
+
+        // A colleague changed a field that I have also changed and not saved
+        // (spotted when their save was merged in). Ask before overwriting it.
+        if (!forceOverwrite && pendingConflictsRef.current.size > 0) {
+            const myChanges = getChangedFields(updates, savedDataRef.current);
+            const clashes = [...pendingConflictsRef.current].filter(key => myChanges.has(key));
+            if (clashes.length > 0) {
+                setSaving(false);
+                setConcurrentConflict({
+                    serverData: { ...savedDataRef.current },
+                    localUpdates: updates,
+                    localChanges: clashes,
+                    remoteChanges: clashes,
+                    overlappingFields: clashes,
+                    serverUpdatedAt: loadedUpdatedAtRef.current
+                });
+                return false;
+            }
         }
 
         // Concurrency Conflict Check before writing to database
@@ -1442,8 +1646,33 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         // We do not run safeParse here because regular save should allow partial/invalid data to be saved as drafts.
         // Validation only happens strictly when advancing stages.
 
-        const stageChanged = editData.stage !== customer.stage;
+        // Compare with the stored stage, not the Dashboard's list copy.
+        const previousStage = savedDataRef.current?.stage ?? customer.stage;
+        const stageChanged = editData.stage !== previousStage;
         delete updates.id; delete updates.created_at; delete updates.crn; delete updates.updated_at;
+
+        // An admin changing the stage with the regular Save button skips the
+        // required-detail checks too. Show what is missing and record the skip.
+        let overrideSkipped = [];
+        if (stageChanged) {
+            overrideSkipped = missingDetailsForMove(previousStage, updates.stage, { ...savedDataRef.current, ...updates });
+            if (overrideSkipped.length > 0) {
+                const list = `• ${overrideSkipped.join('\n• ')}`;
+                if (!isAdmin) {
+                    showAlert(`This customer cannot move to ${updates.stage} yet. Missing:\n\n${list}`, { title: 'Details missing', type: 'warning' });
+                    setSaving(false);
+                    return false;
+                }
+                const proceed = await showConfirm(
+                    `This customer is missing details for the stages being skipped:\n\n${list}\n\nMove to ${updates.stage} anyway? The skip and the missing details will be recorded in the activity log.`,
+                    { title: 'Move ahead with details missing?', confirmLabel: 'Move anyway', cancelLabel: 'Cancel', type: 'warning' }
+                );
+                if (!proceed) {
+                    setSaving(false);
+                    return false;
+                }
+            }
+        }
         
         try {
             // Send only the fields this editor actually changed. Sending the whole
@@ -1473,25 +1702,17 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             }
 
             lastSelfWriteRef.current = Date.now();
-            const promises = [onUpdate(customer.id, narrowedUpdates)];
-            if (changeSummary.length > 0) promises.push(logActivity(user.id, 'update', `${customer.customer_name}: ${changeSummary.join(' | ')}`, '', customer.id));
-            const [updateResult] = await Promise.all(promises);
-            if (updateResult === false) throw new Error('The database did not accept the changes.');
-
-            // Admins can override a customer's stage and then use the regular
-            // Save button. That route previously persisted the stage but never
-            // wrote a stage_change entry because `stage` is intentionally
-            // excluded from the generic field summary above.
-            if (stageChanged) {
-                await logActivity(
-                    user.id,
-                    'stage_change',
-                    `${customer.customer_name}: Stage changed by admin override`,
-                    `Stage: ${customer.stage || 'Empty'} → ${editData.stage || 'Empty'}`,
-                    customer.id
-                );
-            }
-
+            invalidatePendingReloads();
+            // The log used to be written at the same moment as the save, even
+            // when the save failed or left fields out, and its "before" values
+            // came from the slim list card (hence "None → ..." everywhere).
+            // Now: read the stored values first, save, and log only after the
+            // database confirms - and only the fields that were actually sent.
+            const beforeRow = await readAdminFields(customer.id, Object.keys(narrowedUpdates));
+            const updateResult = await writeRecord(customer.id, narrowedUpdates);
+            // Dashboard already displayed the database's actual error. A second
+            // generic alert here replaced it, leaving only "not saved" visible.
+            if (updateResult === false) return false;
             // Re-read what the server actually stored, and use ITS updated_at as
             // the new baseline. Two separate bugs made the conflict dialog fire
             // on a single editor's own second save:
@@ -1503,23 +1724,71 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             //     coerces numeric strings ('5' -> 5), so the stored row genuinely
             //     differed from our baseline and every numeric field showed up as a
             //     "remote change".
-            const { data: savedRow } = await supabase
+            const { data: savedRow, error: savedRowError } = await supabase
                 .from('admin')
                 .select('*')
                 .eq('id', customer.id)
                 .maybeSingle();
-
-            if (savedRow) {
-                savedDataRef.current = { ...savedRow };
-                loadedUpdatedAtRef.current = savedRow.updated_at || new Date().toISOString();
-            } else {
-                savedDataRef.current = { ...savedDataRef.current, ...narrowedUpdates };
-                loadedUpdatedAtRef.current = new Date().toISOString();
+            if (savedRowError || !savedRow) {
+                throw new Error('The update was sent, but its saved values could not be verified. Keep this window open and refresh the customer before trying again.');
             }
+
+            // Save check: anything we sent that the database does not hold is
+            // reported now, and stays on screen as unsaved, instead of looking
+            // saved and vanishing later (the lost inverter / panel values).
+            const unsaved = findUnsavedFields(narrowedUpdates, savedRow);
+            const storedUpdates = { ...narrowedUpdates };
+            unsaved.forEach(key => { delete storedUpdates[key]; });
+            if (unsaved.length === 0) {
+                const historyLines = changeSummary.filter(line => line.startsWith('SUBSIDY STATUS:') || line.startsWith('LOAN STATUS:'));
+                if (historyLines.length > 0) {
+                    void logActivity(user.id, 'update', `${customer.customer_name}: ${historyLines.join(' | ')}`, '', customer.id);
+                }
+            }
+            if (stageChanged && !unsaved.includes('stage')) {
+                void logActivity(
+                    user.id,
+                    'stage_change',
+                    `${customer.customer_name}: Stage changed by admin override`,
+                    `Stage: ${previousStage || 'Empty'} → ${editData.stage || 'Empty'}`,
+                    customer.id
+                );
+                if (overrideSkipped.length > 0) {
+                    void logActivity(
+                        user.id,
+                        'update',
+                        `${customer.customer_name}: STAGE SKIP by admin - moved ${previousStage} → ${editData.stage} with details missing: ${overrideSkipped.join(', ')}`,
+                        '',
+                        customer.id
+                    );
+                }
+            }
+            void logFieldChanges(
+                user?.id,
+                customer.id,
+                customer.customer_name,
+                beforeRow || savedDataRef.current,
+                storedUpdates,
+                `${activeTab} - Save`
+            );
+
+            savedDataRef.current = { ...savedRow };
+            loadedUpdatedAtRef.current = savedRow.updated_at || new Date().toISOString();
+            setLastUpdatedAt(savedRow.updated_at || null);
             setRemoteUpdateAlert(false);
             setConcurrentConflict(null);
+            // Still "edited" only if something did not stick (or the user kept typing).
+            setEditData(previous => {
+                setIsFormDirty(getChangedFields(previous, savedDataRef.current).size > 0);
+                return previous;
+            });
+            if (unsaved.length > 0) {
+                reportUnsavedFields(unsaved);
+                void fetchLogs();
+                return false;   // keeps the window open on Save & Close
+            }
+            pendingConflictsRef.current.clear();   // saved (or knowingly overwritten)
             setEditingSection(null);
-            setIsFormDirty(false);
             if (stageChanged) setActiveTab(editData.stage);
             // The customer update is already confirmed. Refreshing the activity
             // list does not need to delay Save & Close.
@@ -1545,6 +1814,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         savedDataRef.current = { ...serverRecord };
         setEditData(prev => ({ ...serverRecord, ...prev }));
         loadedUpdatedAtRef.current = serverRecord.updated_at;
+        setLastUpdatedAt(serverRecord.updated_at || null);
         setConcurrentConflict(null);
         setTimeout(() => handleSave(true), 50);
     };
@@ -1555,8 +1825,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         savedDataRef.current = { ...serverRecord };
         setEditData({ ...serverRecord });
         loadedUpdatedAtRef.current = serverRecord.updated_at;
+        setLastUpdatedAt(serverRecord.updated_at || null);
         setIsFormDirty(false);
         setRemoteUpdateAlert(false);
+        pendingConflictsRef.current.clear();
         setConcurrentConflict(null);
         showAlert('Reloaded latest data from server. Your unsaved edits were discarded.', { type: 'info' });
     };
@@ -1625,7 +1897,10 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         onDownload: handleDownloadDoc,
         onUpdateRemark: handleUpdateDocRemark, 
         onUpdate: handleSectionUpdate, logActivity, fetchLogs, saving, setSaving, handleAdvanceStage,
-        saveBomRef, onDirty: () => setIsFormDirty(true), onGenerateAgreement: () => handleGenerateAgreement(false),
+        saveBomRef, onDirty: () => setIsFormDirty(true),
+        // false until the full record has loaded - the panel list stays
+        // read-only until then so it can never be rebuilt from a partial copy.
+        fullRecordLoaded, onGenerateAgreement: () => handleGenerateAgreement(false),
         onAddAgreementToDocuments: () => handleGenerateAgreement(true),
         isInstallationDetailsEditable,
         isSfdcEditable: isEditable,
@@ -1643,41 +1918,32 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     <div className="bg-amber-500 text-white px-6 py-2.5 text-xs font-semibold flex items-center justify-between shadow-inner shrink-0 animate-fadeIn">
                         <div className="flex items-center gap-2">
                             <AlertTriangle className="w-4 h-4 text-amber-200 shrink-0" />
-                            <span>A colleague just saved changes to this customer in another session.</span>
+                            <span>
+                                {remoteUpdateAlert.conflicts?.length > 0
+                                    ? `A colleague also changed ${remoteUpdateAlert.conflicts.map(fieldLabel).join(', ')}. Saving will ask which value to keep.`
+                                    : `A colleague just updated ${(remoteUpdateAlert.fields || []).slice(0, 4).map(fieldLabel).join(', ')}${(remoteUpdateAlert.fields || []).length > 4 ? '…' : ''}. Their changes are loaded; your unsaved edits are kept.`}
+                            </span>
                         </div>
                         <button
                             type="button"
-                            onClick={async () => {
-                                const { data } = await supabase.from('admin').select('*').eq('id', customer.id).single();
-                                if (data) {
-                                    const localChangedSet = getChangedFields(editData, savedDataRef.current);
-                                    const remoteChangedSet = getChangedFields(data, savedDataRef.current);
-                                    const localChanges = Array.from(localChangedSet);
-                                    // Same rule as the save path: only fields we and the
-                                    // server both changed, to DIFFERENT values, are a
-                                    // real conflict. Everything else can just sync.
-                                    const overlappingFields = localChanges.filter(
-                                        k => remoteChangedSet.has(k) && JSON.stringify(data[k]) !== JSON.stringify(editData[k])
-                                    );
-                                    if (overlappingFields.length === 0) {
-                                        savedDataRef.current = { ...data };
-                                        loadedUpdatedAtRef.current = data.updated_at || loadedUpdatedAtRef.current;
-                                        setRemoteUpdateAlert(false);
-                                        return;
-                                    }
-                                    setConcurrentConflict({
-                                        serverData: data,
-                                        localUpdates: editData,
-                                        localChanges: overlappingFields,
-                                        remoteChanges: overlappingFields,
-                                        overlappingFields,
-                                        serverUpdatedAt: data.updated_at
-                                    });
+                            onClick={() => {
+                                const clashes = [...pendingConflictsRef.current];
+                                if (clashes.length === 0) {
+                                    setRemoteUpdateAlert(false);
+                                    return;
                                 }
+                                setConcurrentConflict({
+                                    serverData: { ...savedDataRef.current },
+                                    localUpdates: editData,
+                                    localChanges: clashes,
+                                    remoteChanges: clashes,
+                                    overlappingFields: clashes,
+                                    serverUpdatedAt: loadedUpdatedAtRef.current
+                                });
                             }}
                             className="px-3 py-1 bg-black/20 hover:bg-black/30 text-white font-bold rounded-lg transition-colors cursor-pointer ml-3"
                         >
-                            Review Differences
+                            {remoteUpdateAlert.conflicts?.length > 0 ? 'Review Differences' : 'OK'}
                         </button>
                     </div>
                 )}
@@ -1687,20 +1953,24 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     <div>
                         <div className="flex items-center gap-3">
                             <h2 className="text-xl font-bold text-white">{customer.customer_name}</h2>
+                            <RedFlagBadge customerId={customer.id} user={user} size={17} />
                             {isCompleted && (
                                 <span className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-widest ${isFrozen ? 'bg-stone-700 text-stone-400' : 'bg-amber-500/20 text-amber-400'}`}>
                                     {isFrozen ? <><Lock size={9} /> Frozen</> : <><Unlock size={9} /> Unlocked</>}
                                 </span>
                             )}
                         </div>
-                        {customer.created_at && (
-                            <p className="text-[11px] text-stone-400 font-medium mt-0.5 flex items-center gap-1.5">
-                                <Calendar size={11} className="text-stone-400 flex-shrink-0" />
-                                <span>Lead Created: {new Date(customer.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })} IST</span>
-                            </p>
-                        )}
+                        <p className="text-[11px] text-stone-400 font-medium mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                            <span className="inline-flex items-center gap-1.5"><Calendar size={11} className="flex-shrink-0" />Lead Created: {customer.created_at ? `${formatCustomerTimestamp(customer.created_at)} IST` : '—'}</span>
+                            <span className="inline-flex items-center gap-1.5"><Calendar size={11} className="flex-shrink-0" />Updated: {lastUpdatedAt ? `${formatCustomerTimestamp(lastUpdatedAt)} IST` : '—'}</span>
+                        </p>
                     </div>
                     <div className="flex items-center gap-2">
+                        {isCompleted && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(savedDataRef.current)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-500/15 px-2.5 py-1.5 text-[10px] font-bold text-amber-300 hover:bg-amber-500/25">
+                            <Flag size={13} /> Raise issue
+                        </button>}
+                        <RedFlagToggle customer={customer} user={user} tone="dark" />
                         {/* Admin unlock/lock toggle for completed cards */}
                         {isCompleted && isAdmin && (
                             <button onClick={() => { setAdminUnlocked(prev => !prev); setEditingSection(null); }}
@@ -1861,6 +2131,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             handleFileUpload={handleFileUpload}
                             getDocTypeLabel={getDocTypeLabel}
                             handlePreviewDoc={handlePreviewDoc}
+                            handleCropDoc={setCroppingDoc}
                             handleDeleteDoc={handleDeleteDoc}
                             handleUpdateDocRemark={handleUpdateDocRemark}
                             handleDownloadAllDocuments={handleDownloadAllDocuments}
@@ -2081,6 +2352,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             )}
 
             {/* File Preview Modal */}
+            {croppingDoc && <CropPhotoModal doc={croppingDoc} onClose={() => setCroppingDoc(null)} onSave={file => handleFileUpload({ target: { files: [file], value: '' } }, croppingDoc.doc_type, croppingDoc.id, true)} />}
             {filePreview.doc && (
                 <FilePreviewModal
                     file={filePreview.doc}

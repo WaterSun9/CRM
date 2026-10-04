@@ -39,10 +39,11 @@ export function calculate(options) {
 export function validate(form) {
     const errors = [];
     const required = (key, title, step) => { if (!String(form[key] ?? '').trim()) errors.push(`${STEPS[step]}: ${title} is required`); };
-    [['customer_name','Customer name'],['quotation_date','Quotation date'],['owner_name_snapshot','Salesperson name'],['owner_phone_snapshot','Salesperson phone']].forEach(([key,title]) => required(key,title,0));
+    [['customer_name','Customer name'],['quotation_date','Quotation date'],['owner_name_snapshot','Salesperson name']].forEach(([key,title]) => required(key,title,0));
     const validPhone = value => /^(?:91)?[6-9]\d{9}$/.test(String(value || '').replace(/[\s()+-]/g,''));
     if (!validPhone(form.customer_phone)) errors.push('Customer: Enter a valid Indian mobile number');
-    if (!validPhone(form.owner_phone_snapshot)) errors.push('Customer: Enter a valid salesperson mobile number');
+    // Salesperson phone is profile-derived and optional. Keep it on the document
+    // when available, but never block saving, previewing, or issuing a quotation.
     if (!/^\d{4}-\d{2}-\d{2}$/.test(form.quotation_date) || !Number.isFinite(Date.parse(form.quotation_date))) errors.push('Customer: Enter a valid quotation date');
     if (form.valid_until && form.valid_until < form.quotation_date) errors.push('Customer: Valid-until date cannot precede quotation date');
     if (form.customer_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customer_email)) errors.push('Customer: Enter a valid email');
@@ -83,7 +84,7 @@ export function documentFor(row) {
     const form = fromRow(row);
     const data = clone(row.quotation_data?.template || INITIAL_QUOTATION);
     data.page1 = { ...data.page1, customerName: form.customer_name || '', customerPhone: form.customer_phone || '',
-        quotationNo: row.quotation_no ? `Quote-${row.quotation_no}` : 'Quote-DRAFT', date: form.quotation_date ? form.quotation_date.split('-').reverse().join('-') : '',
+        quotationNo: quoteLabel(row), date: form.quotation_date ? form.quotation_date.split('-').reverse().join('-') : '',
         capacityKw: form.capacity_kw ? `${form.capacity_kw} kWp` : '', yoursTrulyName: form.owner_name_snapshot || '', yoursTrulyPhone: form.owner_phone_snapshot || '',
         address: [form.full_address, form.village, form.taluka, form.district, form.pincode].filter(Boolean).join(', '),
         email: form.customer_email || '', validUntil: form.valid_until || '' };
@@ -94,4 +95,20 @@ export function documentFor(row) {
     if (form.valid_until) data.page3.termsAndConditions = data.page3.termsAndConditions.map(t => t.sr === 10 ? { ...t, remarks: `Valid until ${form.valid_until.split('-').reverse().join('-')}` } : t);
     return data;
 }
-export const pdfName = row => `Quotation_${row.quotation_no}_${row.customer_name.replace(/[^\p{L}\p{N}_-]/gu,'_').slice(0,80)}.pdf`;
+// Revisions: { baseNo, n }. n = 0 for the original quotation.
+export function revisionInfo(row) {
+    const r = row?.quotation_data?.revision || row?.revision;
+    return r ? { baseNo: r.base_no, n: r.n } : { baseNo: row?.quotation_no, n: 0 };
+}
+export const quoteLabel = row => {
+    const { baseNo, n } = revisionInfo(row);
+    if (!baseNo) return 'Quote-DRAFT';
+    return n ? `Quote-${baseNo}-R${n}` : `Quote-${baseNo}`;
+};
+// Saved under the customer's full name, e.g. "Ramesh Kumar Patel.pdf" (a
+// revision adds "(R1)"). Only characters that file systems reject are removed.
+export const pdfName = row => {
+    const name = String(row.customer_name || 'Quotation').replace(/[\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim().slice(0,100) || 'Quotation';
+    const { n } = revisionInfo(row);
+    return `${name}${n ? ` (R${n})` : ''}.pdf`;
+};

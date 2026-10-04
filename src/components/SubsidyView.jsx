@@ -97,7 +97,7 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                 // and unused. The detail modal fetches the full record on open.
                 .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
-                .order('created_at', { ascending: false })
+                .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 
             if (targetPartner) {

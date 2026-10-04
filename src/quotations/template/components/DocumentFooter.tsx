@@ -1,6 +1,7 @@
 import React from 'react';
 import { TataPowerSolaroofLogo } from './CompanyLogos';
 import { QuotationData } from '../types';
+import referenceFooter from '../../../assets/quotation-reference-footer.jpg?inline';
 
 interface DocumentFooterProps {
   footer: QuotationData['footer'];
@@ -9,34 +10,44 @@ interface DocumentFooterProps {
 }
 
 export const DocumentFooter: React.FC<DocumentFooterProps> = ({ footer, assets, onEditLogo }) => {
+  const matchesReference = !assets?.tataSolaroofLogoUrl
+    && footer.authorizedPartner === 'TATA POWER SOLAROOF'
+    && footer.corporateOffice === 'Plot No. 40 Kandla Highway, GIDC, Radhanpur, Gujarat-385340'
+    && footer.branchOffice === 'E-5, Third floor, New Bus Port, Palanpur';
+  if (matchesReference) {
+    return (
+      <img
+        src={referenceFooter}
+        alt="Authorized Channel Partner: Tata Power Solaroof. Corporate and branch office addresses."
+        className="quotation-reference-footer"
+      />
+    );
+  }
+  const footerOrange = '#F89520';
+  const corporateParts = footer.corporateOffice.split(',').map((part) => part.trim()).filter(Boolean);
+  const hasBalancedCorporateLines = corporateParts.length >= 3;
+  const corporateLine1 = hasBalancedCorporateLines
+    ? corporateParts.slice(0, -2).join(', ')
+    : footer.corporateOffice;
+  const corporateLine2 = hasBalancedCorporateLines
+    ? corporateParts.slice(-2).join(', ')
+    : '';
+
   return (
     <div className="w-full mt-auto pt-3 select-none">
-      <div className="flex items-center justify-between gap-4">
-        {/* Left: Authorized Partner with quick click-to-replace */}
-        <div className="flex flex-col items-start relative group">
-          <span className="text-[10.5px] font-bold text-[#0c3882] tracking-tight mb-1">
+      <div className="flex items-end justify-between gap-2">
+        {/* Left: Authorized Partner */}
+        <div className="ml-5 flex w-[270px] shrink-0 flex-col items-start">
+          <span className="mb-3 self-center whitespace-nowrap text-[11.5px] font-extrabold font-sans text-[#0c3882] tracking-tight">
             Authorized Channel Partner
           </span>
-          <div
-            onClick={onEditLogo}
-            className={`cursor-pointer transition-opacity ${onEditLogo ? 'hover:opacity-90' : ''}`}
-            title="Click to replace Tata Solaroof logo with Screenshot 3"
-          >
-            <TataPowerSolaroofLogo customLogoUrl={assets?.tataSolaroofLogoUrl} className="h-[81px]" />
+          <div className="mb-2">
+            <TataPowerSolaroofLogo customLogoUrl={assets?.tataSolaroofLogoUrl} className="h-[57px]" />
           </div>
-          {onEditLogo && (
-            <button
-              type="button"
-              onClick={onEditLogo}
-              className="print:hidden absolute -bottom-2 left-0 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-bold text-sky-700 bg-sky-50 border border-sky-300 rounded px-1.5 py-0.5 shadow-2xs flex items-center gap-1 z-10"
-            >
-              <span>Replace with Screenshot 3</span>
-            </button>
-          )}
         </div>
 
         {/* Right: Office Address Badge with exact rounded diagonal slant & orange accent matching reference */}
-        <div className="relative flex-1 max-w-[510px] min-h-[72px] flex items-center justify-end">
+        <div className="relative flex-1 max-w-[369px] min-h-[64px] flex items-center justify-end">
           <svg
             viewBox="0 0 510 74"
             preserveAspectRatio="none"
@@ -49,53 +60,47 @@ export const DocumentFooter: React.FC<DocumentFooterProps> = ({ footer, assets, 
               </linearGradient>
             </defs>
 
-            {/* Main Deep Navy Blue Body with Rounded Top-Left & Slanted Left Face */}
-            {/* Starts bottom-left at (10, 71), slants up-right to (48, 14), rounds smoothly into top horizontal at (66, 3), goes to (510, 3), down to (510, 71), back to (10, 71) */}
+            {/* Fill reaches the very bottom so there is no white seam above the navy strip. */}
             <path
-              d="M 12,71 L 46,15 Q 54,3 68,3 L 510,3 L 510,71 L 12,71 Z"
+              d="M 0,74 L 510,74 L 510,3 L 68,3 Q 54,3 46,15 L 0,74 Z"
               fill="url(#footerNavyRef)"
             />
 
-            {/* Continuous Orange Contour Border: Top horizontal + Rounded Corner + Diagonal Slanted Left Edge */}
+            {/* Orange exists only on the top and curved diagonal edge. */}
             <path
-              d="M 510,3 L 68,3 Q 54,3 46,15 L 12,71"
-              stroke="#f39200"
+              d="M 510,3 L 68,3 Q 54,3 46,15 L 0,74"
+              stroke={footerOrange}
               strokeWidth="3.5"
-              strokeLinecap="round"
+              strokeLinecap="butt"
               strokeLinejoin="round"
               fill="none"
-            />
-
-            {/* Bottom Orange Border along the base of the blue block */}
-            <line
-              x1="12"
-              y1="71"
-              x2="510"
-              y2="71"
-              stroke="#f39200"
-              strokeWidth="3.5"
-              strokeLinecap="square"
             />
           </svg>
 
           {/* Address Text Content matching reference screenshot (pure white text with bold headings) */}
-          <div className="relative z-10 py-2.5 px-4 pr-3 pl-16 text-right flex flex-col justify-center min-h-[72px] w-full">
-            <div className="flex flex-col gap-1 text-[10.5px] leading-snug font-serif text-white">
+          <div className="relative z-10 py-1.5 pr-2 pl-[29px] flex flex-col justify-center min-h-[64px] w-full">
+            <div
+              className="flex flex-col gap-1 text-[9.9px] leading-[1.2] text-center text-white"
+              style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+            >
               <div>
                 <span className="font-bold">Corporate Office:</span>{' '}
-                <span className="font-normal">{footer.corporateOffice}</span>
+                <span className="font-semibold">
+                  {corporateLine1}
+                  {hasBalancedCorporateLines && <><br />{corporateLine2}</>}
+                </span>
               </div>
               <div>
                 <span className="font-bold">Branch Office:</span>{' '}
-                <span className="font-normal">{footer.branchOffice}</span>
+                <span className="font-semibold">{footer.branchOffice}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Full-width bottom orange accent bar connecting the entire footer */}
-      <div className="w-full h-[3.5px] bg-[#f39200] mt-1 rounded-full" />
+      {/* Continue the diagonal accent as the single bottom rule across the footer. */}
+      <div className="w-full h-[3px]" style={{ backgroundColor: footerOrange }} />
     </div>
   );
 };

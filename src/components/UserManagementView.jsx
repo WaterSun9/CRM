@@ -687,7 +687,7 @@ export default function UserManagementView({ currentUser }) {
     // and error-checked, but it is a large multi-row write on live data and a
     // half-applied rename would silently hide records from that user.
     //
-    // Proper fix is the UUID migration - see MIGRATION_PLAN_uuid_identity.md.
+    // Proper fix is the UUID migration - see docs/BACKLOG.md (UUID migration).
     // After that, renaming is a single profiles.name update and this can be
     // switched on permanently.
     const ALLOW_NAME_EDIT = false;

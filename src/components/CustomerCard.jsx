@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar } from 'lucide-react';
+import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar, Flag } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
+import { formatCustomerTimestamp } from '../utils/customerActivity';
+import { RedFlagBadge } from './RedFlag';
 
-const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStage, currentUser }) {
+const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStage, onRaiseServiceIssue, currentUser }) {
     const [showStageMenu, setShowStageMenu] = useState(false);
     const [menuDirection, setMenuDirection] = useState('down');
     const dropdownRef = useRef(null);
@@ -46,14 +48,18 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
             {/* Clickable top section */}
             <div className="p-5 cursor-pointer flex-1" onClick={() => onSelect(customer)}>
                 <div className="flex justify-between items-start mb-3">
-                    <h3 className="font-bold text-stone-800 group-hover:text-amber-600 transition-colors leading-tight">
-                        {customer?.customer_name || 'Unnamed Customer'}
+                    <h3 className="font-bold text-stone-800 group-hover:text-amber-600 transition-colors leading-tight flex items-center gap-1.5">
+                        <span>{customer?.customer_name || 'Unnamed Customer'}</span>
+                        <RedFlagBadge customerId={customer?.id} user={currentUser} size={14} />
                     </h3>
-                    {tagInfo && (
-                        <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ml-2 whitespace-nowrap border ${tagColors.bg} ${tagColors.text} ${tagColors.border}`}>
-                            {tagInfo.label}
-                        </span>
-                    )}
+                    <div className="ml-2 flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        {tagInfo && <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase whitespace-nowrap border ${tagColors.bg} ${tagColors.text} ${tagColors.border}`}>{tagInfo.label}</span>}
+                        {isCompleted && onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(customer); }}
+                            aria-label={`Raise service issue for ${customer.customer_name || 'customer'}`} title="Raise service issue"
+                            className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800 hover:bg-amber-100">
+                            <Flag size={12} /> Raise issue
+                        </button>}
+                    </div>
                 </div>
                 <div className="grid grid-cols-2 gap-y-1.5 mb-3">
                     <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
@@ -94,17 +100,18 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                             <span className="truncate">Batch: {customer.delivery_batch_id}</span>
                         </div>
                     )}
-                    {customer.created_at && (
-                        <div className="flex items-center gap-1.5 text-[10px] text-stone-400 font-medium col-span-2 pt-0.5">
-                            <Calendar size={11} className="text-stone-300 flex-shrink-0" />
-                            <span>{new Date(customer.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</span>
-                        </div>
-                    )}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-stone-400 font-medium col-span-2 pt-0.5">
+                        <span className="inline-flex items-center gap-1.5"><Calendar size={11} className="text-stone-300 flex-shrink-0" />Created: {formatCustomerTimestamp(customer.created_at)}</span>
+                        <span className="inline-flex items-center gap-1.5"><Calendar size={11} className="text-stone-300 flex-shrink-0" />Updated: {formatCustomerTimestamp(customer.updated_at)}</span>
+                    </div>
                 </div>
             </div>
 
-            {/* Bottom strip - not clickable (stops propagation via parent) */}
-            <div className="border-t border-stone-100 bg-stone-50/60 rounded-b-2xl animate-in fade-in duration-300" onClick={e => e.stopPropagation()}>
+            {/* The lower card area opens the customer too; only its action buttons opt out. */}
+            <div
+                className="border-t border-stone-100 bg-stone-50/60 rounded-b-2xl animate-in fade-in duration-300 cursor-pointer"
+                onClick={() => onSelect(customer)}
+            >
                 {/* Stage remarks preview */}
                 {currentStageRemark && (
                     <div className="px-4 pb-3 border-t border-stone-100 pt-2">
@@ -148,7 +155,11 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                                 </div>
                                 {PRIMARY_STAGES.map(stage => (
                                     <button key={stage.id}
-                                        onClick={() => { onMoveStage(customer.id, stage.id); setShowStageMenu(false); }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onMoveStage(customer.id, stage.id);
+                                            setShowStageMenu(false);
+                                        }}
                                         className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-stone-50 transition-colors ${customer.stage === stage.id ? 'bg-amber-50 font-bold text-amber-700' : 'text-stone-600'}`}>
                                         <stage.icon className="w-3.5 h-3.5 text-stone-400 flex-shrink-0" />
                                         {stage.label}

@@ -9,9 +9,6 @@ import { useMemo } from 'react';
 
 import { FolderOpen, Activity, CheckCircle2 } from 'lucide-react';
 import { PRIMARY_STAGES } from '../constants';
-import { formatINRCompact } from '../utils';
-
-const fmtLakh = formatINRCompact;
 
 const MetricBox = ({ label, value, sub, icon: Icon, color }) => {
     const colorMap = {

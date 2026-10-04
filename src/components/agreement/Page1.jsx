@@ -1,5 +1,9 @@
 import React from 'react';
 
+// Shown when a field is empty, so a printed agreement has a line to fill in
+// instead of another customer's sample details.
+const BLANK = '____________';
+
 export const Page1 = ({ data, fontSizeClass = 'text-[17px]' }) => {
   const getHighlightStyle = () => ({
     backgroundColor: data.showHighlights ? data.highlightColor : 'transparent',
@@ -24,7 +28,7 @@ export const Page1 = ({ data, fontSizeClass = 'text-[17px]' }) => {
         <p className="text-justify font-normal">
           This agreement is executed on{' '}
           <span className="font-normal" style={getHighlightStyle()}>
-            {data.executionDate || '23-06-2026'}
+            {data.executionDate || BLANK}
           </span>{' '}
           for design, supply, installation, commissioning and 5-year comprehensive maintenance of RTS project/system along with warranty under PM Surya Ghar: Muft Bijli Yojana
         </p>
@@ -36,19 +40,19 @@ export const Page1 = ({ data, fontSizeClass = 'text-[17px]' }) => {
 
         <p className="text-justify font-normal">
           <span className="font-normal" style={getHighlightStyle()}>
-            {data.consumerName || 'MALEK HUSENABEN IKBALBHAI'}
+            {data.consumerName || BLANK}
           </span>{' '}
           ,Consumer No-{' '}
           <span className="font-normal" style={getHighlightStyle()}>
-            {data.consumerNo || '72101170051'}
+            {data.consumerNo || BLANK}
           </span>{' '}
           having address at Vill{' '}
           <span className="font-normal" style={getHighlightStyle()}>
-            {data.village || 'RADHANPUR'}
+            {data.village || BLANK}
           </span>
           ,Tal:{' '}
           <span className="font-normal" style={getHighlightStyle()}>
-            {data.taluka || 'RADHANPUR'}
+            {data.taluka || BLANK}
           </span>{' '}
           Dist:{' '}
           <span className="font-normal" style={getHighlightStyle()}>

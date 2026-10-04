@@ -1,5 +1,9 @@
 import React from 'react';
 
+// Shown when a field is empty, so a printed agreement has a line to fill in
+// instead of another customer's sample details.
+const BLANK = '____________';
+
 export const Page4 = ({ data, fontSizeClass = 'text-[17px]' }) => {
   const getHighlightStyle = () => ({
     backgroundColor: data.showHighlights ? data.highlightColor : 'transparent',
@@ -74,16 +78,16 @@ export const Page4 = ({ data, fontSizeClass = 'text-[17px]' }) => {
             <div>
               <span className="font-semibold">Name: </span>
               <span className="font-normal" style={getHighlightStyle()}>
-                {data.consumerName || 'MALEK HUSENABEN IKBALBHAI'}
+                {data.consumerName || BLANK}
               </span>
             </div>
 
             <div>
               <span className="font-semibold">Address </span>
               <span>Vill: </span>
-              <span className="font-normal" style={getHighlightStyle()}>{data.village || 'RADHANPUR'}</span>
+              <span className="font-normal" style={getHighlightStyle()}>{data.village || BLANK}</span>
               <span> Tal: </span>
-              <span className="font-normal" style={getHighlightStyle()}>{data.taluka || 'RADHANPUR'}</span>
+              <span className="font-normal" style={getHighlightStyle()}>{data.taluka || BLANK}</span>
               <span> Dist: </span>
               <span className="font-normal" style={getHighlightStyle()}>{data.district || ''}</span>
             </div>
@@ -110,7 +114,7 @@ export const Page4 = ({ data, fontSizeClass = 'text-[17px]' }) => {
             <div className="pt-2">
               <span className="font-semibold">Date-</span>
               <span className="font-normal" style={getHighlightStyle()}>
-                {data.executionDate || '23-06-2026'}
+                {data.executionDate || BLANK}
               </span>
             </div>
           </div>
@@ -156,7 +160,7 @@ export const Page4 = ({ data, fontSizeClass = 'text-[17px]' }) => {
             <div className="pt-2 text-right">
               <span className="font-semibold">Date:</span>
               <span className="font-normal" style={getHighlightStyle()}>
-                {data.executionDate || '23-06-2026'}
+                {data.executionDate || BLANK}
               </span>
             </div>
 

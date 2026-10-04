@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ClipboardList, Save, Printer, ShoppingBag, User, Clock, AlertCircle, X, Layers, Zap, Copy, Check, ClipboardPaste, Plus, Trash2 } from 'lucide-react';
+import { ClipboardList, Save, Printer, ShoppingBag, User, Clock, AlertCircle, X, Layers, Zap, Copy, Check, ClipboardPaste, Plus, Trash2, PackageCheck } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { SectionHeader, EditableDetailItem } from './shared';
 import BomPrintModal from '../BomPrintModal';
 import { ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, COMMON_BOM_ITEMS } from '../../constants';
-import { loadBomForCustomer, getBomTemplateForType } from '../../utils/bom';
+import { loadBomForCustomer } from '../../utils/bom';
 import { useGlobalPopup } from '../GlobalPopup';
 
 const parsePanelSerials = (raw) => {
@@ -32,6 +32,26 @@ const parsePanelSerials = (raw) => {
     return [rawText.trim()];
 };
 
+const isSolarPanelItem = item => String(item?.product_name || '').trim().toLowerCase() === 'solar panel';
+const panelLoadedDate = value => value ? new Date(value).toLocaleDateString('en-IN') : '';
+let panelLoadingTableMissing = false;
+// customer id + BOM type -> last BOM read, for instant display on reopen.
+const bomCache = new Map();
+
+// A plain tick box: empty square, or green with a check mark. Shown only
+// while the Loading switch is on.
+function TickBox({ label, checked, disabled, onToggle }) {
+    return (
+        <button type="button" role="checkbox" aria-checked={checked} aria-label={label}
+            disabled={disabled} onClick={onToggle} title={checked ? 'Loaded - tap to untick' : 'Tap to tick as loaded'}
+            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg hover:bg-emerald-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500 disabled:cursor-not-allowed disabled:opacity-50">
+            <span className={`flex h-6 w-6 items-center justify-center rounded-md border-2 transition-colors ${checked ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-stone-300 bg-white'}`}>
+                {checked && <Check size={14} strokeWidth={3} />}
+            </span>
+        </button>
+    );
+}
+
 export default function MaterialIntegrationTab({
     customer,
     editData,
@@ -48,12 +68,14 @@ export default function MaterialIntegrationTab({
     saving,
     setSaving,
     saveBomRef,
-    onDirty
+    onDirty,
+    fullRecordLoaded
 }) {
     const { showAlert } = useGlobalPopup();
     // The BOM is fetched after the first paint, so these fields rendered as "–"
     // for a moment before the real values arrived - which read as data loss.
     const [loadingBom, setLoadingBom] = useState(true);
+    const [refreshingBom, setRefreshingBom] = useState(false);
     // True when the BOM could not be read. The tab then shows the blank
     // template, and saving would replace the real bom_items with template
     // defaults - so saveBOM refuses while this is set.
@@ -64,10 +86,24 @@ export default function MaterialIntegrationTab({
     const [paperPreparedDate, setPaperPreparedDate] = useState('');
     const [materialLoadedBy, setMaterialLoadedBy] = useState('');
     const [materialLoadedDate, setMaterialLoadedDate] = useState('');
-    const [actionSaving, setActionSaving] = useState(false);
     const [errorMessage, setErrorMessage] = useState(null);
+    const bomDirtyRef = useRef(false);
+    const bomEditVersionRef = useRef(0);
+    const markBomDirty = () => {
+        bomDirtyRef.current = true;
+        bomEditVersionRef.current += 1;
+        onDirty?.();
+    };
 
     const [panelSerials, setPanelSerials] = useState(() => parsePanelSerials(customer?.panel_serial_no || editData?.panel_serial_no));
+    const [loadingMode, setLoadingMode] = useState(false);
+    const [loadingModeBusy, setLoadingModeBusy] = useState(false);
+    const loadingMarkedRef = useRef(false);
+    const [panelLoadBySerial, setPanelLoadBySerial] = useState({});
+    const [panelLoadReady, setPanelLoadReady] = useState(false);
+    const [panelLoadError, setPanelLoadError] = useState(null);
+    const [panelRetryKey, setPanelRetryKey] = useState(0);
+    const [panelTickBusy, setPanelTickBusy] = useState(false);
     const [showBulkPaste, setShowBulkPaste] = useState(false);
     const [bulkText, setBulkText] = useState('');
     const [copiedIdx, setCopiedIdx] = useState(null);
@@ -77,9 +113,59 @@ export default function MaterialIntegrationTab({
         ? meta['inverter_make']
         : ['test1', 'test2', 'test3'];
 
+    // Show the working value (editData) - it already holds the saved value plus
+    // anything typed. Re-sync only when it differs from what is on screen, so
+    // blank rows the user just added are not wiped. (This used to prefer the
+    // saved copy, so a refresh mid-edit could show different serials from the
+    // ones that would actually be saved.)
+    const workingPanelValue = editData?.panel_serial_no ?? customer?.panel_serial_no;
     useEffect(() => {
-        setPanelSerials(parsePanelSerials(customer?.panel_serial_no || editData?.panel_serial_no));
-    }, [customer?.panel_serial_no]);
+        const target = parsePanelSerials(workingPanelValue).filter(Boolean);
+        setPanelSerials(prev => {
+            const onScreen = prev.filter(Boolean);
+            if (onScreen.join('\n') === target.join('\n')) return prev;
+            return target.length > 0 ? target : [''];
+        });
+    }, [workingPanelValue]);
+
+    useEffect(() => {
+        if (!customer?.id) return undefined;
+        let active = true;
+        setPanelLoadReady(false);
+        setPanelLoadError(null);
+        const loadPanelStatus = async () => {
+            if (panelLoadingTableMissing) {
+                if (active) setPanelLoadError('missing');
+                return;
+            }
+            try {
+                const { data, error } = await supabase.from('panel_loading')
+                    .select('serial_no,loaded,loaded_at').eq('customer_id', customer.id);
+                if (!active) return;
+                if (error) {
+                    const missing = ['PGRST205', '42P01'].includes(error.code)
+                        || /could not find the table|relation .*panel_loading.* does not exist/i.test(error.message || '');
+                    if (missing) panelLoadingTableMissing = true;
+                    setPanelLoadError(missing ? 'missing' : 'connection');
+                    return;
+                }
+                setPanelLoadBySerial(Object.fromEntries((data || []).map(row => [row.serial_no, row])));
+                setPanelLoadError(null);
+                setPanelLoadReady(true);
+            } catch {
+                if (active) setPanelLoadError('connection');
+            }
+        };
+        void loadPanelStatus();
+        window.addEventListener('online', loadPanelStatus);
+        return () => { active = false; window.removeEventListener('online', loadPanelStatus); };
+    }, [customer?.id, panelRetryKey]);
+
+    // Until the full record has loaded, the panel list may be built from a
+    // partial copy (it showed "0 panels" for a customer with 7 saved). Editing
+    // it then would replace the real serials, so it stays read-only.
+    // While Loading is on the list is locked: only the tick boxes work.
+    const canEditPanels = isEditable && !loadingMode && fullRecordLoaded !== false;
 
     const handlePanelSerialChange = (idx, val) => {
         onDirty?.();
@@ -143,10 +229,6 @@ export default function MaterialIntegrationTab({
     };
 
     const filledCount = panelSerials.filter(Boolean).length;
-    const originalSerialized = (parsePanelSerials(customer?.panel_serial_no) || []).filter(Boolean).join('\n');
-    const currentSerialized = panelSerials.filter(Boolean).join('\n');
-    const isSerialsDirty = originalSerialized !== currentSerialized;
-
     const [showPrintModal, setShowPrintModal] = useState(false);
 
     // Integration By dropdown options. No placeholder fallback - fabricated
@@ -159,20 +241,46 @@ export default function MaterialIntegrationTab({
     const roofShedVal = (editData?.roof_shed || customer?.roof_shed || '').toUpperCase();
     const activeType = roofShedVal.includes('SHED') ? 'SHED' : 'ROOF';
 
-    const getTemplateForType = getBomTemplateForType;
-
+    // Show the last copy of this BOM at once while the fresh copy loads, so
+    // the table no longer blanks out every time the tab is opened. A sequence
+    // number drops answers from older requests (a ROOF load finishing after
+    // the SHED load used to replace the right BOM with the wrong template).
+    const loadSeqRef = useRef(0);
     const loadBOM = async () => {
         if (!customer?.id) return;
-        setLoadingBom(true);
+        const seq = ++loadSeqRef.current;
+        const cacheKey = `${customer.id}:${activeType}`;
+        const cached = bomCache.get(cacheKey);
+        if (cached) {
+            setPaperPreparedBy(cached.bom?.paper_prepared_by || '');
+            setPaperPreparedDate(cached.bom?.paper_prepared_date || '');
+            setMaterialLoadedBy(cached.bom?.material_loaded_by || '');
+            setMaterialLoadedDate(cached.bom?.material_loaded_date || '');
+            setBom(cached.bom);
+            setBomItems(cached.items);
+        }
+        setLoadingBom(!cached);
+        setRefreshingBom(true);
         bomLoadFailedRef.current = false;
+        const editVersionAtLoad = bomEditVersionRef.current;
         try {
             const { bom: bomData, items, loadError } = await loadBomForCustomer({ ...customer, ...editData }, activeType);
+            if (seq !== loadSeqRef.current) return;
+            // Never replace the user's unsaved edits with a background refresh.
+            if (bomEditVersionRef.current !== editVersionAtLoad) return;
             bomLoadFailedRef.current = !!loadError;
             if (loadError) {
+                if (cached) {
+                    // The copy on screen is the last one read from the database.
+                    bomLoadFailedRef.current = false;
+                    return;
+                }
                 showAlert(
                     'The Bill of Materials could not be loaded, so a blank template is shown. Do NOT save over it - your existing BOM is still in the database. Please reload and try again.',
                     { title: 'BOM not loaded', type: 'error' }
                 );
+            } else {
+                bomCache.set(cacheKey, { bom: bomData, items });
             }
             setPaperPreparedBy(bomData?.paper_prepared_by || '');
             setPaperPreparedDate(bomData?.paper_prepared_date || '');
@@ -180,16 +288,26 @@ export default function MaterialIntegrationTab({
             setMaterialLoadedDate(bomData?.material_loaded_date || '');
             setBom(bomData);
             setBomItems(items);
+            bomDirtyRef.current = false;
         } catch (err) {
             console.error('loadBOM exception:', err);
         } finally {
-            setLoadingBom(false);
+            if (seq === loadSeqRef.current) {
+                setLoadingBom(false);
+                setRefreshingBom(false);
+            }
         }
     };
 
     useEffect(() => {
         loadBOM();
-    }, [customer?.id, editData?.roof_shed, customer?.roof_shed]);
+    }, [customer?.id, activeType]);
+
+    // Keep the instant-display copy in step with ticks and saves.
+    useEffect(() => {
+        if (!customer?.id || loadingBom || refreshingBom || bomLoadFailedRef.current || !bom?.id) return;
+        bomCache.set(`${customer.id}:${activeType}`, { bom, items: bomItems });
+    }, [customer?.id, activeType, bom, bomItems, loadingBom, refreshingBom]);
 
     const latestStateRef = useRef({});
     latestStateRef.current = {
@@ -204,7 +322,7 @@ export default function MaterialIntegrationTab({
     };
 
     const handleItemFieldChange = (index, field, value) => {
-        onDirty?.();
+        markBomDirty();
         setBomItems(prev => {
             const next = prev.map((item, i) => (i === index ? { ...item, [field]: value } : item));
             try {
@@ -226,8 +344,155 @@ export default function MaterialIntegrationTab({
         });
     };
 
+    // Loaded ticks: one per BOM line, so the person loading the truck can mark
+    // each item as it goes on. Ticked OUTSIDE edit mode: each tick is saved at
+    // once (bom_items.loaded) and written to the activity log. Edit mode is for
+    // the BOM details only; a BOM save keeps the ticks.
+    const filledPanelSerials = panelSerials.map(serial => serial.trim()).filter(Boolean);
+    const panelLoadedCount = filledPanelSerials.filter(serial => panelLoadBySerial[serial]?.loaded === true).length;
+    const panelAllLoaded = filledPanelSerials.length > 0 && panelLoadedCount === filledPanelSerials.length;
+    const namedItems = bomItems.filter(item => item.product_name && item.product_name.trim() !== '');
+    const otherNamedItems = namedItems.filter(item => !isSolarPanelItem(item));
+    const isItemLoaded = item => isSolarPanelItem(item) ? panelLoadReady && panelAllLoaded : item.loaded === true;
+    const loadedCount = namedItems.filter(isItemLoaded).length;
+    const allLoaded = namedItems.length > 0 && loadedCount === namedItems.length;
+    const TICK_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const canTick = isEditable && loadingMode && editingSection !== 'bom_items' && !loadingBom && !refreshingBom && !bomLoadFailedRef.current
+        && namedItems.length > 0 && namedItems.every(item => TICK_ID_RE.test(String(item.id || '')));
+    const canTogglePanels = isEditable && loadingMode && fullRecordLoaded !== false && panelLoadReady && !panelLoadError && !panelTickBusy
+        && !loadingBom && !refreshingBom && !bomLoadFailedRef.current && !loadingModeBusy && !saving;
+    const [tickBusy, setTickBusy] = useState(false);
+    const todayLocal = () => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    };
+    const saveLoadedDate = async (date) => {
+        if (!bom?.id) {
+            showAlert('Save the Bill of Materials before recording the loading date.', { title: 'Date not saved', type: 'error' });
+            return false;
+        }
+        try {
+            const { data, error } = await supabase.from('bom').update({ material_loaded_date: date }).eq('id', bom.id).select('id');
+            if (error || !data?.length) throw error || new Error('The loading date could not be saved.');
+        } catch (error) {
+            showAlert(error?.message || 'The loading date could not be saved.', { title: 'Date not saved', type: 'error' });
+            return false;
+        }
+        setMaterialLoadedDate(date);
+        setBom(prev => ({ ...prev, material_loaded_date: date }));
+        return true;
+    };
+    const lastSavedSerialsRef = useRef(null);
+    const persistPanelSerials = async () => {
+        if (!customer?.id || fullRecordLoaded === false) throw new Error('Wait for the customer record to finish loading.');
+        const serials = panelSerials.map(value => value.trim()).filter(Boolean);
+        if (new Set(serials).size !== serials.length) throw new Error('Remove duplicate panel serial numbers before saving.');
+        const { data: savedCustomer, error } = await supabase.from('admin')
+            .select('panel_serial_no').eq('id', customer.id).single();
+        if (error) throw error;
+        const stored = parsePanelSerials(savedCustomer?.panel_serial_no).map(value => value.trim()).filter(Boolean);
+        if (stored.join('\n') === serials.join('\n')) return serials;
+        const original = lastSavedSerialsRef.current
+            ?? parsePanelSerials(customer.panel_serial_no).map(value => value.trim()).filter(Boolean);
+        if (stored.join('\n') !== original.join('\n')) {
+            throw new Error('The panel serial list changed in another session. Reopen this customer before saving.');
+        }
+        if (!onUpdate || await onUpdate(customer.id, { panel_serial_no: serials.join('\n') }) === false) {
+            throw new Error('The panel serial numbers were not saved.');
+        }
+        lastSavedSerialsRef.current = serials;
+        return serials;
+    };
+    const togglePanelLoaded = async serialValue => {
+        const serial = String(serialValue || '').trim();
+        if (!serial || !canTogglePanels || !customer?.id) return;
+        setPanelTickBusy(true);
+        try {
+            const savedSerials = await persistPanelSerials();
+            if (!savedSerials.includes(serial)) throw new Error('Enter the serial number before marking it loaded.');
+
+            const nextLoaded = panelLoadBySerial[serial]?.loaded !== true;
+            const { data: rows, error } = await supabase.from('panel_loading')
+                .upsert({ customer_id: customer.id, serial_no: serial, loaded: nextLoaded }, { onConflict: 'customer_id,serial_no' })
+                .select('serial_no,loaded,loaded_at');
+            if (error || rows?.length !== 1) throw error || new Error('The panel loading status was not saved.');
+            const nextStatuses = { ...panelLoadBySerial, [serial]: rows[0] };
+            setPanelLoadBySerial(nextStatuses);
+
+            const panelItem = bomItems.find(isSolarPanelItem);
+            const everyPanelLoaded = savedSerials.length > 0 && savedSerials.every(value => nextStatuses[value]?.loaded === true);
+            if (panelItem?.id && panelItem.loaded !== everyPanelLoaded) {
+                const { data: updated, error: itemError } = await supabase.from('bom_items')
+                    .update({ loaded: everyPanelLoaded }).eq('id', panelItem.id).select('id');
+                if (itemError || !updated?.length) {
+                    showAlert(itemError?.message || 'Panel status saved, but the BOM summary could not be updated.', { title: 'BOM summary not saved', type: 'warning' });
+                } else {
+                    setBomItems(prev => prev.map(item => isSolarPanelItem(item) ? { ...item, loaded: everyPanelLoaded } : item));
+                }
+            }
+            if (nextLoaded) loadingMarkedRef.current = true;
+            if (logActivity && user?.id) {
+                void logActivity(user.id, 'update', `${customer.customer_name || 'Customer'}: Panel ${serial} ${nextLoaded ? 'marked loaded' : 'unmarked'}`, 'Material Integration - panel serial loading', customer.id);
+            }
+        } catch (error) {
+            showAlert(error?.message || 'The panel loading status was not saved.', { title: 'Panel not saved', type: 'error' });
+        } finally {
+            setPanelTickBusy(false);
+        }
+    };
+    const saveLoaded = async (targets, value) => {
+        if (!canTick || tickBusy || targets.length === 0) return;
+        const ids = targets.map(item => item.id);
+        const before = bomItems;
+        setTickBusy(true);
+        setBomItems(prev => prev.map(item => (ids.includes(item.id) ? { ...item, loaded: value } : item)));
+        try {
+            const { data, error } = await supabase.from('bom_items').update({ loaded: value }).in('id', ids).select('id');
+            if (error || (data || []).length !== ids.length) throw error || new Error('The BOM may have changed. Reopen the customer and try again.');
+        } catch (error) {
+            setBomItems(before);
+            setTickBusy(false);
+            showAlert(error?.message || 'The tick was not saved.', { title: 'Tick not saved', type: 'error' });
+            return;
+        }
+        if (value) loadingMarkedRef.current = true;
+        setTickBusy(false);
+        const targetCust = customer || editData;
+        if (logActivity && user?.id && targetCust?.id) {
+            const what = targets.length === 1
+                ? `BOM item "${targets[0].product_name}" ${value ? 'marked loaded' : 'unmarked (not loaded)'}`
+                : `${value ? 'Marked all' : 'Unmarked all'} ${targets.length} BOM items ${value ? 'loaded' : '(not loaded)'}`;
+            void logActivity(user.id, 'update', `${targetCust.customer_name || 'Customer'}: ${what}`, 'Material Integration - loaded ticks', targetCust.id);
+        }
+    };
+    const setAllLoaded = value => saveLoaded(otherNamedItems.filter(item => (item.loaded === true) !== value), value);
+    const LoadedProgress = ({ editable }) => (
+        <div className={`mb-2 flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2 ${allLoaded ? 'border-emerald-200 bg-emerald-50' : 'border-stone-200 bg-stone-50'}`}>
+            <PackageCheck size={16} className={allLoaded ? 'text-emerald-600' : 'text-stone-400'} />
+            <div className="min-w-[160px] flex-1">
+                <div className="flex items-center justify-between text-[11px] font-bold">
+                    <span className={allLoaded ? 'text-emerald-700' : 'text-stone-700'}>{allLoaded ? 'All items loaded' : 'Loading progress'}</span>
+                    <span className="text-stone-500">{loadedCount} of {namedItems.length} loaded</span>
+                </div>
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
+                    <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${namedItems.length ? (loadedCount / namedItems.length) * 100 : 0}%` }} />
+                </div>
+            </div>
+            {editable && otherNamedItems.length > 0 && (
+                <button type="button" disabled={tickBusy} onClick={() => setAllLoaded(!otherNamedItems.every(item => item.loaded === true))}
+                    className="rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[10px] font-bold text-stone-700 hover:border-emerald-300 hover:text-emerald-700">
+                    {otherNamedItems.every(item => item.loaded === true) ? 'Clear other items' : 'Mark other items loaded'}
+                </button>
+            )}
+        </div>
+    );
+
     // Save BOM and Milestones together
-    const saveBOM = async () => {
+    const saveBOM = async (loadedDateOverride = null) => {
+        // The parent Save button also runs on this tab. Rewriting the BOM on
+        // every unrelated customer edit created repeated errors and destroyed
+        // useful evidence about which part of the save actually failed.
+        if (!bomDirtyRef.current && !loadedDateOverride) return true;
         const state = latestStateRef.current;
         const targetCust = state.customer || customer;
         if (!targetCust?.id) return true;
@@ -244,194 +509,58 @@ export default function MaterialIntegrationTab({
             );
         }
 
-        setActionSaving(true);
-        let hadWriteError = false;
+        const editVersionAtSave = bomEditVersionRef.current;
 
         try {
             const currentType = state.activeType || activeType;
             const prepBy = state.paperPreparedBy || null;
             const prepDate = state.paperPreparedDate || null;
             const loadBy = state.materialLoadedBy || null;
-            const loadDate = state.materialLoadedDate || null;
-            // A localStorage fallback stores a fabricated id ("bom-<uuid>"), which
-            // is not a real row. Using it made .update().eq('id', ...) match ZERO
-            // rows - no error, no rows changed - so the milestones silently never
-            // saved, and the fake id kept coming back from localStorage.
+            const loadDate = loadedDateOverride || state.materialLoadedDate || null;
             const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             const rawBomId = state.bom?.id;
-            let currentBomId = UUID_RE.test(String(rawBomId || '')) ? rawBomId : null;
-            if (rawBomId && !currentBomId) {
-                console.warn('Ignoring non-UUID bom id from local cache:', rawBomId);
-            }
+            const currentBomId = UUID_RE.test(String(rawBomId || '')) ? rawBomId : null;
             const items = state.bomItems || [];
-
-            // 1. Check if a bom record exists for this customer if we don't have an ID
-            if (!currentBomId) {
-                // The error was not captured here. A failed read left `existing`
-                // undefined, so the code below INSERTED a second bom row for the
-                // same customer - and once two rows share an admin_id the BOM can
-                // never be read back, which is how Material Integration data
-                // "disappeared". Never insert because a read failed.
-                const { data: existingRows, error: existingErr } = await supabase
-                    .from('bom')
-                    .select('id')
-                    .eq('admin_id', targetCust.id)
-                    .order('created_at', { ascending: true });
-
-                if (existingErr) throw existingErr;
-                if (existingRows && existingRows.length > 0) {
-                    currentBomId = existingRows[0].id;
-                }
+            const validItems = items.filter(item => item.product_name && item.product_name.trim() !== '');
+            const expectedItemIds = items.map(item => item.id).filter(id => UUID_RE.test(String(id || '')));
+            const { data: saved, error: saveError } = await supabase.rpc('save_bom_atomic', {
+                p_admin_id: targetCust.id,
+                p_bom: {
+                    bom_type: currentType,
+                    paper_prepared_by: prepBy,
+                    paper_prepared_date: prepDate,
+                    material_loaded_by: loadBy,
+                    material_loaded_date: loadDate
+                },
+                p_items: validItems.map(item => ({
+                    product_name: item.product_name,
+                    quantity: item.quantity !== undefined && item.quantity !== null ? String(item.quantity) : '',
+                    integration_by: item.integration_by || null,
+                    note: item.note || null,
+                    loaded: isSolarPanelItem(item) ? panelAllLoaded : item.loaded === true
+                })),
+                p_expected_bom_id: currentBomId,
+                p_expected_item_ids: expectedItemIds
+            });
+            if (saveError) throw saveError;
+            if (!saved?.success || !saved.bom_id || saved.item_ids?.length !== validItems.length) {
+                throw new Error('The database did not confirm the BOM and all its lines.');
             }
-
-            // 2. Update or Insert the parent bom record
-            if (currentBomId) {
-                const { data: updatedRows, error: updateErr } = await supabase
-                    .from('bom')
-                    .update({
-                        bom_type: currentType,
-                        paper_prepared_by: prepBy,
-                        paper_prepared_date: prepDate,
-                        material_loaded_by: loadBy,
-                        material_loaded_date: loadDate
-                    })
-                    .eq('id', currentBomId)
-                    .select('id');
-
-                if (updateErr) {
-                    console.error('Supabase bom update error:', updateErr);
-                    hadWriteError = true;
-                } else if (updatedRows && updatedRows.length > 0) {
-                    // Keep local `bom` current - it was only ever set on load or
-                    // insert, so after an update it held stale milestone values.
-                    setBom(prev => ({
-                        ...(prev || {}),
-                        id: currentBomId,
-                        bom_type: currentType,
-                        paper_prepared_by: prepBy,
-                        paper_prepared_date: prepDate,
-                        material_loaded_by: loadBy,
-                        material_loaded_date: loadDate,
-                    }));
-                } else if (!updatedRows || updatedRows.length === 0) {
-                    // Matched nothing: the id we held does not exist. Fall back to
-                    // creating a row rather than reporting a save that never happened.
-                    console.warn('bom update matched no rows for id', currentBomId, '- creating a new row instead.');
-                    currentBomId = null;
-                }
-
-            }
-
-            // Not an `else`: the update above can null currentBomId when it
-            // matched nothing, and that must create the row in THIS save rather
-            // than silently doing nothing until the next one.
-            if (!currentBomId) {
-                const { data: created, error: createErr } = await supabase
-                    .from('bom')
-                    .insert({
-                        admin_id: targetCust.id,
-                        bom_type: currentType,
-                        paper_prepared_by: prepBy,
-                        paper_prepared_date: prepDate,
-                        material_loaded_by: loadBy,
-                        material_loaded_date: loadDate
-                    })
-                    .select()
-                    .single();
-
-                if (created?.id) {
-                    currentBomId = created.id;
-                    setBom(created);
-                } else if (createErr) {
-                    console.warn('Supabase bom create error:', createErr);
-                    hadWriteError = true;
-                }
-            }
-
-            // 3. Persist bom_items rows.
-            //
-            // This is a delete-then-insert with no transaction. Previously, if
-            // the DELETE succeeded and the INSERT then failed for ANY reason
-            // (a bad value, RLS, a dropped connection), the old rows were
-            // already gone and the new ones never arrived - the BOM lines were
-            // destroyed. The save reported "not saved", which was true, but the
-            // data had already been deleted.
-            //
-            // Now: snapshot first, abort if the delete fails, and restore the
-            // snapshot if the insert fails, so a failed save leaves the BOM
-            // exactly as it was.
-            if (currentBomId) {
-                const { data: previousItems, error: snapshotErr } = await supabase
-                    .from('bom_items')
-                    .select('*')
-                    .eq('bom_id', currentBomId);
-
-                if (snapshotErr) {
-                    console.error('Could not snapshot bom_items; refusing to overwrite:', snapshotErr);
-                    throw new Error('Could not read the existing BOM lines, so they were not overwritten. Please retry.');
-                }
-
-                // The guard below only ever checked delErr - but an RLS-refused
-                // DELETE removes nothing and returns error: null, so it fell
-                // straight through to the insert and the BOM accumulated BOTH
-                // the old and the new rows on every save. That duplication is
-                // what made Material Integration data appear to change on its
-                // own. `previousItems` is the rows we just read, so it tells us
-                // exactly how many the delete had to remove.
-                const expectedDeletes = Array.isArray(previousItems) ? previousItems.length : 0;
-                const { data: deletedRows, error: delErr } = await supabase
-                    .from('bom_items')
-                    .delete()
-                    .eq('bom_id', currentBomId)
-                    .select('id');
-
-                if (delErr) {
-                    console.error('bom_items delete error:', delErr);
-                    throw new Error('The existing BOM lines could not be replaced. Nothing was changed.');
-                }
-                if ((deletedRows?.length || 0) !== expectedDeletes) {
-                    console.error('bom_items delete removed', deletedRows?.length, 'of', expectedDeletes);
-                    throw new Error(
-                        'The existing BOM lines could not be replaced, so the new ones were not added - '
-                        + 'this avoids leaving the BOM with duplicate rows. Nothing was changed.'
-                    );
-                }
-
-                const validItems = items.filter(item => item.product_name && item.product_name.trim() !== '');
-
-                if (validItems.length > 0) {
-                    const rowsToInsert = validItems.map((item) => ({
-                        bom_id: currentBomId,
-                        product_name: item.product_name,
-                        quantity: item.quantity !== undefined && item.quantity !== null ? String(item.quantity) : '',
-                        integration_by: item.integration_by || null,
-                        note: item.note || null
-                    }));
-
-                    const { error: insertErr } = await supabase
-                        .from('bom_items')
-                        .insert(rowsToInsert);
-
-                    if (insertErr) {
-                        console.error('bom_items insert error, restoring previous lines:', insertErr);
-                        hadWriteError = true;
-                        // Put back exactly what was there before.
-                        if (previousItems && previousItems.length > 0) {
-                            const { error: restoreErr } = await supabase
-                                .from('bom_items')
-                                .insert(previousItems);
-                            if (restoreErr) {
-                                console.error('CRITICAL: could not restore bom_items after a failed save:', restoreErr);
-                                throw new Error(
-                                    'The BOM could not be saved and the previous lines could not be restored. '
-                                    + 'Do not close this window - copy your BOM before reloading.'
-                                );
-                            }
-                        }
-                        throw new Error('The BOM lines were not saved. Your previous BOM has been restored.');
-                    }
-                }
-            }
+            setBom(prev => ({
+                ...(prev || {}), id: saved.bom_id, admin_id: targetCust.id,
+                bom_type: currentType, paper_prepared_by: prepBy,
+                paper_prepared_date: prepDate, material_loaded_by: loadBy,
+                material_loaded_date: loadDate
+            }));
+            if (loadedDateOverride) setMaterialLoadedDate(loadedDateOverride);
+            let savedIndex = 0;
+            const savedItems = items.map(item =>
+                item.product_name && item.product_name.trim() !== ''
+                    ? { ...item, id: saved.item_ids[savedIndex++] }
+                    : item
+            );
+            if (bomEditVersionRef.current === editVersionAtSave) setBomItems(savedItems);
+            const savedBomId = saved.bom_id;
 
             // 4. Save to localStorage backup
             try {
@@ -439,7 +568,7 @@ export default function MaterialIntegrationTab({
                     bom: {
                         // null, never a fabricated id - a fake id here is what made
                         // later saves target a row that does not exist.
-                        id: currentBomId || null,
+                        id: savedBomId,
                         admin_id: targetCust.id,
                         bom_type: currentType,
                         paper_prepared_by: prepBy,
@@ -447,7 +576,7 @@ export default function MaterialIntegrationTab({
                         material_loaded_by: loadBy,
                         material_loaded_date: loadDate
                     },
-                    items: items
+                    items: savedItems
                 };
                 localStorage.setItem(`watersun_bom_${targetCust.id}`, JSON.stringify(localBomData));
             } catch (e) {
@@ -463,14 +592,12 @@ export default function MaterialIntegrationTab({
                     targetCust.id
                 );
             }
-
-            return !hadWriteError;
+            if (bomEditVersionRef.current === editVersionAtSave) bomDirtyRef.current = false;
+            return true;
 
         } catch (err) {
             console.error('saveBOM exception:', err);
-            return false;
-        } finally {
-            setActionSaving(false);
+            throw err;
         }
     };
 
@@ -490,6 +617,47 @@ export default function MaterialIntegrationTab({
 
     const isEditingMilestones = editingSection === 'procurement_milestones';
     const isEditingBom = editingSection === 'bom_items';
+    const toggleLoadingMode = async () => {
+        if (!isEditable || loadingModeBusy || panelTickBusy || tickBusy || saving) return;
+        if (!loadingMode) {
+            if (editingSection) {
+                showAlert('Save or close the current detail edit before starting Loading.', { title: 'Finish the current edit', type: 'warning' });
+                return;
+            }
+            setLoadingModeBusy(true);
+            try {
+                await persistPanelSerials();
+                loadingMarkedRef.current = false;
+                setShowBulkPaste(false);
+                setLoadingMode(true);
+            } catch (error) {
+                showAlert(error?.message || 'The panel serial numbers could not be saved, so Loading was not started.', { title: 'Loading not started', type: 'error' });
+            } finally {
+                setLoadingModeBusy(false);
+            }
+            return;
+        }
+        setLoadingModeBusy(true);
+        try {
+            await persistPanelSerials();
+            const hasLoadedItems = Object.values(panelLoadBySerial).some(row => row.loaded)
+                || bomItems.some(item => !isSolarPanelItem(item) && item.loaded === true);
+            const loadingDate = loadingMarkedRef.current && hasLoadedItems ? todayLocal() : null;
+            if (loadingDate && TICK_ID_RE.test(String(bom?.id || ''))) {
+                if (!await saveLoadedDate(loadingDate)) throw new Error('The loading date was not saved.');
+            }
+            if (bomDirtyRef.current || (loadingDate && !TICK_ID_RE.test(String(bom?.id || '')))) {
+                await saveBOM(loadingDate);
+            }
+            loadingMarkedRef.current = false;
+            setLoadingMode(false);
+            setShowBulkPaste(false);
+        } catch (error) {
+            showAlert(error?.message || 'Loading changes were not saved. Keep Loading on and try again.', { title: 'Loading not finished', type: 'error' });
+        } finally {
+            setLoadingModeBusy(false);
+        }
+    };
 
     return (
         <div className="space-y-3.5 animate-in fade-in duration-300">
@@ -499,7 +667,7 @@ export default function MaterialIntegrationTab({
                     <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">Material Integration & BOM</h4>
                     <p className="text-[11px] text-stone-500 font-medium">BOM configuration, loading milestones and equipment checklist.</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <span className="bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider">
                         {activeType} BOM
                     </span>
@@ -507,6 +675,23 @@ export default function MaterialIntegrationTab({
                         <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider">
                             Saved
                         </span>
+                    )}
+                    {!loadingMode && materialLoadedDate && (
+                        <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">
+                            Loading date: {materialLoadedDate.split('-').reverse().join('/')}
+                        </span>
+                    )}
+                    {isEditable && (
+                        <button type="button" role="switch" aria-checked={loadingMode} aria-label="Loading mode"
+                            disabled={loadingModeBusy || panelTickBusy || tickBusy || saving}
+                            onClick={toggleLoadingMode}
+                            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-2.5 text-xs font-bold text-stone-800 hover:border-amber-300 disabled:opacity-60">
+                            <span>Loading</span>
+                            <span className={`inline-flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${loadingMode ? 'bg-emerald-600' : 'bg-stone-300'}`}>
+                                <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${loadingMode ? 'translate-x-5' : ''}`} />
+                            </span>
+                            <span className="min-w-7 text-left">{loadingModeBusy ? 'Saving' : loadingMode ? 'On' : 'Off'}</span>
+                        </button>
                     )}
                     <button
                         type="button"
@@ -619,7 +804,7 @@ export default function MaterialIntegrationTab({
                     title="Inverter & Equipment Details" 
                     id="inverter_equip_details" 
                     icon={Zap} 
-                    isEditable={isEditable} 
+                    isEditable={isEditable && !loadingMode}
                     editingSection={editingSection} 
                     setEditingSection={setEditingSection} 
                 />
@@ -658,13 +843,21 @@ export default function MaterialIntegrationTab({
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-stone-100 text-stone-600 border border-stone-200">
                                     {filledCount} {filledCount === 1 ? 'Panel' : 'Panels'}
                                 </span>
+                                {panelLoadReady && filledCount > 0 && (
+                                    <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                                        {panelLoadedCount}/{filledCount} loaded
+                                    </span>
+                                )}
                             </h4>
+                            {isEditable && fullRecordLoaded === false && (
+                                <p className="text-[10px] font-semibold text-stone-400 mt-0.5">Loading saved serials…</p>
+                            )}
                         </div>
                     </div>
 
                     {/* Action buttons on top right */}
                     <div className="flex items-center gap-1.5">
-                        {isEditable && (
+                        {canEditPanels && (
                             <>
                                 <button
                                     type="button"
@@ -724,9 +917,22 @@ export default function MaterialIntegrationTab({
                         )}
                     </div>
                 </div>
+                {panelLoadError && (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                        {panelLoadError === 'missing'
+                            ? 'Panel loading has not been set up yet. The serials are still available, but they cannot be ticked yet.'
+                            : 'Connection lost while loading panel status. The serials are still available; reconnect and try again.'}
+                        {panelLoadError === 'connection' && (
+                            <button type="button" onClick={() => setPanelRetryKey(value => value + 1)}
+                                className="ml-2 rounded-md bg-white px-2 py-1 font-bold text-amber-900 hover:bg-amber-100">
+                                Retry
+                            </button>
+                        )}
+                    </p>
+                )}
 
                 {/* Bulk Paste Box */}
-                {isEditable && showBulkPaste && (
+                {canEditPanels && showBulkPaste && (
                     <div className="p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2 animate-in fade-in duration-200">
                         <div className="flex items-center justify-between">
                             <label className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
@@ -761,7 +967,7 @@ export default function MaterialIntegrationTab({
                 )}
 
                 {/* Content Section: Simple, clean 1, 2, 3 indexing */}
-                {isEditable ? (
+                {canEditPanels ? (
                     <div className="space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-[460px] overflow-y-auto pr-1">
                             {panelSerials.map((serial, idx) => (
@@ -772,13 +978,18 @@ export default function MaterialIntegrationTab({
                                     <span className="w-6 text-center text-xs font-bold text-stone-600 bg-stone-200/60 rounded-md py-1 mr-1.5 flex-shrink-0">
                                         {idx + 1}
                                     </span>
-                                    <input
-                                        type="text"
-                                        value={serial}
-                                        onChange={(e) => handlePanelSerialChange(idx, e.target.value)}
-                                        className="flex-1 bg-transparent text-xs font-mono font-semibold text-stone-800 focus:outline-none placeholder:text-stone-300 min-w-0"
-                                        placeholder={`Serial ${idx + 1}`}
-                                    />
+                                    <div className="min-w-0 flex-1">
+                                        <input
+                                            type="text"
+                                            value={serial}
+                                            onChange={(e) => handlePanelSerialChange(idx, e.target.value)}
+                                            className="w-full bg-transparent text-xs font-mono font-semibold text-stone-800 focus:outline-none placeholder:text-stone-300"
+                                            placeholder={`Serial ${idx + 1}`}
+                                        />
+                                        {panelLoadBySerial[serial.trim()]?.loaded && (
+                                            <p className="text-[9px] font-semibold text-emerald-700">{panelLoadBySerial[serial.trim()].loaded_at ? `Loaded ${panelLoadedDate(panelLoadBySerial[serial.trim()].loaded_at)}` : 'Loaded earlier'}</p>
+                                        )}
+                                    </div>
                                     {serial && (
                                         <button
                                             type="button"
@@ -825,25 +1036,33 @@ export default function MaterialIntegrationTab({
                                 {panelSerials.filter(Boolean).map((serial, idx) => (
                                     <div 
                                         key={idx} 
-                                        onClick={() => copySingleSerial(serial, idx)}
-                                        className="group flex items-center justify-between bg-stone-50 hover:bg-amber-50/60 border border-stone-200/70 hover:border-amber-300/80 rounded-xl px-2.5 py-1.5 transition cursor-pointer"
-                                        title="Click to copy serial"
+                                        className="group flex min-h-12 items-center justify-between bg-stone-50 border border-stone-200/70 rounded-xl px-2.5 py-1 transition"
                                     >
                                         <div className="flex items-center gap-2 min-w-0">
                                             <span className="text-xs font-bold text-stone-500 group-hover:text-amber-700 bg-stone-200/50 group-hover:bg-amber-100/60 w-6 text-center py-0.5 rounded">
                                                 {idx + 1}
                                             </span>
-                                            <span className="text-xs font-mono font-bold text-stone-700 group-hover:text-stone-900 truncate">
-                                                {serial}
+                                            <span className="min-w-0">
+                                                <span className="block truncate text-xs font-mono font-bold text-stone-700">{serial}</span>
+                                                {panelLoadBySerial[serial.trim()]?.loaded && (
+                                                    <span className="block text-[9px] font-semibold text-emerald-700">{panelLoadBySerial[serial.trim()].loaded_at ? `Loaded ${panelLoadedDate(panelLoadBySerial[serial.trim()].loaded_at)}` : 'Loaded earlier'}</span>
+                                                )}
                                             </span>
                                         </div>
-                                        <div className="text-stone-300 group-hover:text-amber-600 transition flex-shrink-0 ml-1">
-                                            {copiedIdx === idx ? (
-                                                <Check size={12} className="text-emerald-600" />
-                                            ) : (
-                                                <Copy size={11} className="opacity-0 group-hover:opacity-100 transition" />
-                                            )}
-                                        </div>
+                                        {loadingMode ? (
+                                            <TickBox label={`Panel ${serial.trim()} loaded`} checked={panelLoadBySerial[serial.trim()]?.loaded === true}
+                                                disabled={!canTogglePanels} onToggle={() => togglePanelLoaded(serial)} />
+                                        ) : (
+                                            <div className="flex items-center gap-1">
+                                                {panelLoadReady && panelLoadBySerial[serial.trim()]?.loaded && (
+                                                    <Check size={14} strokeWidth={3} className="text-emerald-600" aria-label="Loaded" />
+                                                )}
+                                                <button type="button" onClick={() => copySingleSerial(serial, idx)}
+                                                    aria-label={`Copy serial ${serial}`} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-stone-500 hover:bg-amber-50 hover:text-amber-700">
+                                                    {copiedIdx === idx ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -858,7 +1077,7 @@ export default function MaterialIntegrationTab({
                     title="Procurement & Loading Milestones" 
                     id="procurement_milestones" 
                     icon={Clock} 
-                    isEditable={isEditable} 
+                    isEditable={isEditable && !loadingMode}
                     editingSection={editingSection} 
                     setEditingSection={setEditingSection} 
                 />
@@ -869,7 +1088,7 @@ export default function MaterialIntegrationTab({
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Paper Prepared By <span className="text-red-500">*</span></label>
                             <select
                                 value={paperPreparedBy}
-                                onChange={(e) => { setPaperPreparedBy(e.target.value); onDirty?.(); }}
+                                onChange={(e) => { setPaperPreparedBy(e.target.value); markBomDirty(); }}
                                 disabled={!isEditable}
                                 className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50 cursor-pointer disabled:cursor-not-allowed"
                             >
@@ -895,7 +1114,7 @@ export default function MaterialIntegrationTab({
                             <input
                                 type="date"
                                 value={paperPreparedDate}
-                                onChange={(e) => { setPaperPreparedDate(e.target.value); onDirty?.(); }}
+                                onChange={(e) => { setPaperPreparedDate(e.target.value); markBomDirty(); }}
                                 disabled={!isEditable}
                                 className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
                             />
@@ -904,7 +1123,7 @@ export default function MaterialIntegrationTab({
                             <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Material Loaded By <span className="text-red-500">*</span></label>
                             <select
                                 value={materialLoadedBy}
-                                onChange={(e) => { setMaterialLoadedBy(e.target.value); onDirty?.(); }}
+                                onChange={(e) => { setMaterialLoadedBy(e.target.value); markBomDirty(); }}
                                 disabled={!isEditable}
                                 className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50 cursor-pointer disabled:cursor-not-allowed"
                             >
@@ -930,7 +1149,7 @@ export default function MaterialIntegrationTab({
                             <input
                                 type="date"
                                 value={materialLoadedDate}
-                                onChange={(e) => { setMaterialLoadedDate(e.target.value); onDirty?.(); }}
+                                onChange={(e) => { setMaterialLoadedDate(e.target.value); markBomDirty(); }}
                                 disabled={!isEditable}
                                 className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-amber-400 font-semibold disabled:bg-stone-100/50"
                             />
@@ -964,11 +1183,12 @@ export default function MaterialIntegrationTab({
                     title={`Bill of Materials (${activeType})`} 
                     id="bom_items" 
                     icon={ClipboardList} 
-                    isEditable={isEditable} 
+                    isEditable={isEditable && !loadingMode}
                     editingSection={editingSection} 
                     setEditingSection={setEditingSection} 
                 />
 
+                {!loadingBom && !isEditingBom && <LoadedProgress editable={canTick} />}
                 {isEditingBom ? (
                     <div className="overflow-x-auto border border-stone-200 rounded-xl bg-white shadow-xs">
                         <table className="min-w-full divide-y divide-stone-200 text-xs">
@@ -1065,6 +1285,7 @@ export default function MaterialIntegrationTab({
                         <table className="min-w-full divide-y divide-stone-200 text-xs">
                             <thead className="bg-stone-50 text-stone-500 uppercase tracking-wider font-bold text-[9px]">
                                 <tr>
+                                    {loadingMode && <th className="px-3 py-2 text-center w-16">Loaded</th>}
                                     <th className="px-3 py-2 text-left w-12">#</th>
                                     <th className="px-3 py-2 text-left">Product Name</th>
                                     <th className="px-3 py-2 text-left w-24">Qty</th>
@@ -1074,17 +1295,40 @@ export default function MaterialIntegrationTab({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-stone-150 bg-white text-stone-700">
+                                {loadingBom && bomItems.length === 0 && [0, 1, 2, 3].map(row => (
+                                    <tr key={`loading-${row}`}>
+                                        <td colSpan={loadingMode ? 7 : 6} className="px-3 py-2.5">
+                                            <span className="block h-3 w-full animate-pulse rounded bg-stone-100" />
+                                        </td>
+                                    </tr>
+                                ))}
                                 {bomItems.map((item, idx) => (
                                     <tr
                                         key={item.id || `${item.product_name}-${idx}`}
-                                        className="hover:bg-stone-50/50"
+                                        className={isItemLoaded(item) ? 'bg-emerald-50/50' : 'hover:bg-stone-50/50'}
                                     >
+                                        {loadingMode && (
+                                        <td className="px-3 py-1 text-center">
+                                            {isSolarPanelItem(item) ? (
+                                                <span className="inline-flex min-w-11 justify-center rounded-md bg-stone-100 px-1 py-1 text-[10px] font-bold text-stone-700"
+                                                    title="Tick each panel serial number above">
+                                                    {panelLoadReady ? `${panelLoadedCount}/${filledPanelSerials.length}` : '—'}
+                                                </span>
+                                            ) : item.product_name ? (
+                                                <TickBox label={`${item.product_name} loaded`} checked={item.loaded === true}
+                                                    disabled={!canTick || tickBusy} onToggle={() => saveLoaded([item], !item.loaded)} />
+                                            ) : null}
+                                        </td>
+                                        )}
                                         <td className="px-3 py-2 text-stone-400 font-bold">
                                             {idx + 1}
                                         </td>
 
                                         <td className="px-3 py-2 font-semibold text-stone-800">
-                                            {item.product_name || '–'}
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {!loadingMode && isItemLoaded(item) && <Check size={13} strokeWidth={3} className="shrink-0 text-emerald-600" aria-label="Loaded" />}
+                                                {item.product_name || '–'}
+                                            </span>
                                         </td>
 
                                         <td className="px-3 py-2 text-stone-700 font-semibold">
@@ -1142,4 +1386,3 @@ export default function MaterialIntegrationTab({
         </div>
     );
 }
-

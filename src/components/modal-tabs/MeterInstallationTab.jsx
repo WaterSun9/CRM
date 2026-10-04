@@ -73,7 +73,10 @@ export default function MeterInstallationTab({
                                         setEditData(prev => ({
                                             ...prev,
                                             meter_installation: tag.id,
-                                            installation_date: tag.id === 'Yes' ? (prev.installation_date || todayStr) : ''
+                                            // The meter date shares the installation_date column (a separate
+                                            // meter column is planned). Choosing "No" must not wipe the real
+                                            // installation date, which payouts and stage checks rely on.
+                                            installation_date: tag.id === 'Yes' ? (prev.installation_date || todayStr) : prev.installation_date
                                         }));
                                     }}
                                     className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-2 w-full cursor-pointer ${

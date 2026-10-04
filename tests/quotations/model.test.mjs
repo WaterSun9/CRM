@@ -15,7 +15,7 @@ test('quotation capacity uses the exact shared Leads calculation',() => {
     assert.equal(calculateSystemCapacityKwp('',6),null);
 });
 test('clean form contains no sample prospect or sample prices',() => { const form = newForm(user); assert.equal(form.customer_name,'');assert.equal(form.options[0].baseValue,''); assert.ok(validate(form).length >= 6); });
-test('deferred quotation-to-lead mapping remains ready for later activation',() => {
+test('quotation-to-lead mapping prefills the review form',() => {
     const form = complete();
     const lead = toLead(form);
     assert.equal(lead.customer_name,'Test customer');
@@ -28,6 +28,10 @@ test('complete form validates and lists all invalid steps',() => {
     assert.deepEqual(validate(complete()),[]);
     const form = complete(); form.customer_name='';form.capacity_kw=0;form.solar_panel_qty=1.2;form.options[1].discount=-1;
     const errors = validate(form); assert.ok(errors.some(e => e.startsWith('Customer:')));assert.ok(errors.some(e => e.startsWith('System:')));assert.ok(errors.some(e => e.startsWith('Pricing:')));
+});
+test('salesperson phone is optional and never blocks a quotation',() => {
+    const blank = complete(); blank.owner_phone_snapshot=''; assert.deepEqual(validate(blank),[]);
+    const legacy = complete(); legacy.owner_phone_snapshot='Office extension 12'; assert.deepEqual(validate(legacy),[]);
 });
 test('reject missing options, NaN, excess discount/subsidy and invalid dates',() => {
     for (const mutate of [f => f.options.pop(),f => f.options[0].baseValue=NaN,f => f.options[0].discount=999999,f => f.options[0].subsidy=999999,f => f.valid_until='2000-01-01']) { const f=complete();mutate(f);assert.ok(validate(f).length); }

@@ -1,10 +1,5 @@
 import { z } from 'zod';
 
-const emptyToUndefined = (schema) => z.preprocess((val) => {
-    if (typeof val === 'string' && val.trim() === '') return undefined;
-    return val;
-}, schema);
-
 const cleanPhone = (val) => {
     if (!val) return val;
     let s = String(val).replace(/[^0-9]/g, '');

@@ -1,6 +1,30 @@
 
 
-/* Official Indian Quotation & Proposal Typography: Times New Roman */
+@font-face {
+  font-family: 'Quotation DejaVu Serif Condensed';
+  src: url('../assets/fonts/DejaVuSerifCondensed.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Quotation DejaVu Serif Condensed';
+  src: url('../assets/fonts/DejaVuSerifCondensed-Bold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 700 900;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Quotation DejaVu Sans';
+  src: url('../assets/fonts/DejaVuSans.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
+/* Shared quotation typography. Page-specific rules below follow the supplied PDF. */
 .quotation-paper .a4-page,
 .quotation-doc,
 .font-roman,
@@ -13,7 +37,7 @@
 .quotation-paper .a4-page h3,
 .quotation-paper .a4-page span,
 .quotation-paper .a4-page div {
-  font-family: "Times New Roman", Tinos, Times, "Liberation Serif", "Nimbus Roman", Georgia, serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 .quotation-paper .a4-page {
@@ -55,32 +79,460 @@
 .quotation-paper .a4-page .text-2xl { font-size: 26.4px !important; }
 .quotation-paper .a4-page .text-3xl { font-size: 33px !important; }
 
+/* Contact rows use one predictable flex layout in preview and html2canvas. */
+.quotation-paper .q-document-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 8px;
+}
+
+.quotation-paper .q-document-logo {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.quotation-paper .q-company-details {
+  display: flex;
+  flex: 0 1 360px;
+  min-width: 0;
+  width: min(360px, 100%);
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  text-align: right;
+}
+
+.quotation-paper .q-company-id,
+.quotation-paper .q-company-email {
+  max-width: 100%;
+  line-height: 1.15;
+}
+
+.quotation-paper .q-contact-line {
+  display: block;
+  min-width: 0;
+}
+
+.quotation-paper .q-contact-content {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.15;
+}
+
+.quotation-paper .q-contact-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 1.15em;
+  height: 1.15em;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.quotation-paper .q-contact-icon svg {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.quotation-paper .q-contact-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.quotation-paper .q-company-email {
+  align-self: flex-end;
+  white-space: normal;
+  text-align: right;
+}
+
+.quotation-paper .q-company-email .q-contact-content {
+  justify-content: flex-end;
+}
+
+.quotation-paper .q-company-email .q-contact-value {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+  text-align: right;
+}
+
+.quotation-paper .q-customer-info,
+.quotation-paper .q-customer-phone,
+.quotation-paper .q-customer-email {
+  max-width: 100%;
+}
+
+.quotation-paper .q-customer-contact-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.quotation-paper .q-customer-phone,
+.quotation-paper .q-customer-email {
+  align-self: flex-start;
+}
+
+.quotation-paper .q-customer-phone .q-contact-value {
+  white-space: nowrap;
+}
+
+.quotation-paper .q-customer-email .q-contact-value {
+  overflow-wrap: anywhere;
+}
+
+/* Keep table rules clear of glyphs in both the preview and html2canvas PDF.
+   The 10% type enlargement above needs a matching line box and cell inset;
+   otherwise wrapped rows can place their text directly on a collapsed rule. */
+.quotation-paper .quotation-financial-table th,
+.quotation-paper .quotation-financial-table td {
+  line-height: 1.3;
+  vertical-align: middle;
+}
+
+.quotation-paper .quotation-financial-table thead th {
+  padding-top: 4px;
+  padding-bottom: 8px;
+}
+
+.quotation-paper .quotation-financial-summary-row td {
+  padding-top: 2px;
+  padding-bottom: 7px;
+}
+
+.quotation-paper .quotation-detail-table th,
+.quotation-paper .quotation-detail-table td {
+  line-height: 1.28;
+  vertical-align: middle;
+  padding-top: 1.5px;
+  padding-bottom: 6.5px;
+}
+
+.quotation-paper .quotation-detail-table thead th {
+  padding-top: 2px;
+  padding-bottom: 7px;
+}
+
+.quotation-paper .quotation-bom-table th,
+.quotation-paper .quotation-bom-table td {
+  line-height: 1.24;
+  padding-top: 1px;
+  padding-bottom: 5.5px;
+}
+
+.quotation-paper .quotation-section-label {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  padding: 0 8px 2px;
+  background: #fff;
+  line-height: 1.25;
+}
+
+.quotation-paper .quotation-other-charges-title {
+  padding-top: 2px;
+  padding-bottom: 7px;
+  line-height: 1.25;
+}
+
+/* Keep the printed quotation grid as light as the supplied sample. */
+.quotation-paper .a4-page table,
+.quotation-paper .a4-page th,
+.quotation-paper .a4-page td,
+.quotation-paper .quotation-other-charges,
+.quotation-paper .quotation-other-charges-title,
+.quotation-paper .quotation-other-charges .border-r {
+  border-width: 0.6px;
+  border-color: #555;
+}
+
+/* The supplied quotation uses a compact serif document grid on page 3.
+   Explicit colgroups in the component keep the first column narrow despite
+   section headers spanning the whole table. */
+.quotation-paper .quotation-page-3 .quotation-detail-table,
+.quotation-paper .quotation-page-3 .quotation-detail-table *,
+.quotation-paper .quotation-page-3 .quotation-other-charges,
+.quotation-paper .quotation-page-3 .quotation-other-charges * {
+  /* Same face as pages 1-2 and the client's reference PDFs (DejaVu Serif
+     Condensed). Georgia drew "old-style" digits that drop below the line. */
+  font-family: 'Quotation DejaVu Serif Condensed', Georgia, serif !important;
+  font-size: 10px !important;
+  letter-spacing: 0;
+  color: #111 !important;
+}
+
+.quotation-paper .quotation-page-3 .quotation-detail-table th,
+.quotation-paper .quotation-page-3 .quotation-detail-table td {
+  line-height: 1.2;
+  padding: 0 4px 9px;
+  vertical-align: top;
+}
+
+.quotation-paper .quotation-page-3 .quotation-detail-table td {
+  font-weight: 400 !important;
+}
+
+.quotation-paper .quotation-page-3 .quotation-bom-table th:first-child,
+.quotation-paper .quotation-page-3 .quotation-bom-table td:first-child {
+  padding-left: 1px;
+  padding-right: 1px;
+  white-space: nowrap !important;
+}
+
+.quotation-paper .quotation-page-3 .quotation-detail-table th,
+.quotation-paper .quotation-page-3 .quotation-bank-table tbody tr:first-child td,
+.quotation-paper .quotation-page-3 .quotation-other-charges-title {
+  font-weight: 700 !important;
+}
+
+.quotation-paper .quotation-page-3 .quotation-section-label {
+  padding: 0;
+  line-height: 1.12;
+  background: transparent;
+}
+
+.quotation-paper .quotation-page-3 .quotation-detail-table,
+.quotation-paper .quotation-page-3 .quotation-detail-table th,
+.quotation-paper .quotation-page-3 .quotation-detail-table td,
+.quotation-paper .quotation-page-3 .quotation-other-charges,
+.quotation-paper .quotation-page-3 .quotation-other-charges-title,
+.quotation-paper .quotation-page-3 .quotation-other-charges .border-r {
+  border: 0 !important;
+}
+
+.quotation-paper .quotation-page-3 .quotation-grid-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+  fill: none;
+  stroke: #111;
+  stroke-width: 0.6px;
+}
+
+/* The adjacent page-three sections share one rule at each join. */
+.quotation-paper .quotation-page-3 .quotation-warranty-table,
+.quotation-paper .quotation-page-3 .quotation-warranty-table thead th,
+.quotation-paper .quotation-page-3 .quotation-other-charges,
+.quotation-paper .quotation-page-3 .quotation-other-charges-title,
+.quotation-paper .quotation-page-3 .quotation-bank-table,
+.quotation-paper .quotation-page-3 .quotation-bank-table thead th {
+  border-top-width: 0;
+}
+
+.quotation-paper .quotation-reference-header {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Reserves the header picture's height (210mm x 214/1242) minus the page's
+   own top padding, so the content starts just below the rule. */
+.quotation-paper .quotation-reference-header-spacer {
+  height: calc(210mm * 214 / 1242 - 12mm + 4px);
+}
+.quotation-paper .quotation-page-3 .quotation-reference-header-spacer {
+  height: calc(210mm * 214 / 1242 - 11mm + 4px);
+}
+
+.quotation-paper .quotation-reference-footer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.quotation-paper .quotation-page-3 .quotation-other-charges-title {
+  padding: 0 0 8px;
+}
+
+.quotation-paper .quotation-page-3 .quotation-other-charges > div:nth-child(2) > div {
+  padding: 0 5px 9px;
+  line-height: 1.2;
+}
+
+/* The reference quotation uses DejaVu Serif Condensed for its body and table text.
+   Keep the logo-side company details and the page-two proposal heading sans serif. */
+.quotation-paper .quotation-page-1 *,
+.quotation-paper .quotation-page-2 * {
+  font-family: 'Quotation DejaVu Serif Condensed', Georgia, serif !important;
+  letter-spacing: 0 !important;
+}
+
+.quotation-paper .quotation-page-1 .q-document-header *,
+.quotation-paper .quotation-page-2 .q-document-header * {
+  font-family: Arial, Helvetica, sans-serif !important;
+}
+
+/* The client's reference sets the page-two proposal heading in DejaVu Sans. */
+.quotation-paper .quotation-page-2 .quotation-proposal-title * {
+  font-family: 'Quotation DejaVu Sans', Arial, sans-serif !important;
+}
+
+/* The reference keeps GST, CIN, and email at one size on the first page. */
+.quotation-paper .quotation-page-1 .q-company-details,
+.quotation-paper .quotation-page-1 .q-company-details * {
+  font-size: 14px !important;
+}
+
+.quotation-paper .quotation-page-1 .quotation-customer-meta,
+.quotation-paper .quotation-page-1 .quotation-customer-meta *,
+.quotation-paper .quotation-page-1 .quotation-subject,
+.quotation-paper .quotation-page-1 .quotation-subject *,
+.quotation-paper .quotation-page-1 .quotation-empanelment {
+  font-size: 14px !important;
+  line-height: 1.35;
+}
+
+.quotation-paper .quotation-page-1 .quotation-intro,
+.quotation-paper .quotation-page-1 .quotation-intro * {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  line-height: 1.55;
+}
+
+.quotation-paper .quotation-page-1 .quotation-signoff,
+.quotation-paper .quotation-page-1 .quotation-signoff * {
+  font-size: 14px !important;
+  line-height: 1.35;
+}
+
+.quotation-paper .quotation-page-1 .quotation-surya-banner {
+  width: min(600px, 100%);
+  height: 164px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.quotation-paper .quotation-page-1 .quotation-surya-banner img {
+  display: block;
+  width: 100%;
+  height: auto;
+  transform: translateY(-34px);
+}
+
+.quotation-paper .quotation-page-1 .quotation-customer-meta .q-customer-info > span,
+.quotation-paper .quotation-page-1 .quotation-customer-meta .font-bold,
+.quotation-paper .quotation-page-1 .quotation-subject > span:first-child {
+  font-weight: 700 !important;
+}
+
+.quotation-paper .quotation-page-1 .quotation-customer-meta .q-customer-info p {
+  font-weight: 400 !important;
+}
+
+.quotation-paper .quotation-page-1 .quotation-empanelment {
+  margin-bottom: 22px;
+}
+
+.quotation-paper .quotation-page-2 .quotation-proposal-title h2 {
+  color: #111 !important;
+  font-size: 23px !important;
+  font-weight: 400 !important;
+}
+
+.quotation-paper .quotation-page-2 .quotation-proposal-title > div {
+  font-size: 19.5px !important;
+  font-weight: 400 !important;
+}
+
+.quotation-paper .quotation-page-2 .quotation-proposal-title p {
+  color: #111 !important;
+  font-size: 15.5px !important;
+  font-weight: 400 !important;
+}
+
+.quotation-paper .quotation-page-2 .quotation-equipment-table,
+.quotation-paper .quotation-page-2 .quotation-equipment-table th,
+.quotation-paper .quotation-page-2 .quotation-equipment-table td {
+  font-size: 14px !important;
+  line-height: 1.25;
+}
+
+.quotation-paper .quotation-page-2 .quotation-financial-table,
+.quotation-paper .quotation-page-2 .quotation-financial-table th,
+.quotation-paper .quotation-page-2 .quotation-financial-table td,
+.quotation-paper .quotation-page-2 .quotation-financial-table span {
+  font-size: 14px !important;
+  line-height: 1.25;
+  font-variant-numeric: normal;
+}
+
+.quotation-paper .quotation-page-2 .quotation-financial-table .quotation-financial-main-row td:nth-child(2) {
+  font-size: 12.6px !important;
+}
+
+.quotation-paper .quotation-page-2 .quotation-financial-table tbody td {
+  font-weight: 400 !important;
+}
+
+.quotation-paper .quotation-page-2 .quotation-financial-table tbody tr:last-child td {
+  font-weight: 700 !important;
+}
+
+.quotation-paper .quotation-page-2 .quotation-financial-table th:first-child,
+.quotation-paper .quotation-page-2 .quotation-financial-table td:first-child:not([colspan]) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  white-space: nowrap;
+}
+
+.quotation-paper .quotation-page-2 .quotation-proposal-notes,
+.quotation-paper .quotation-page-2 .quotation-proposal-notes * {
+  font-size: 14px !important;
+  line-height: 1.4;
+}
+
 
 /* CRM controls are scoped so existing portals and printed agreements retain their styles. */
 .q-module { position:fixed; inset:0; z-index:50; background:#f6f7f9; color:#18283c; overflow:auto; overflow-x:hidden; font-family:inherit; }
+.q-module.q-module-embedded { position:relative; inset:auto; z-index:auto; min-height:calc(100dvh - 7rem); overflow:visible; border:0; border-radius:0; background:transparent; }
+.q-module-embedded .q-content { max-width:none; padding:0 0 100px; }
 .q-module button { min-height:44px; padding:10px 14px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; gap:7px; font-size:13px; font-weight:700; border:1px solid #dbe1e8; background:white; cursor:pointer; }
 .q-module button:hover { background:#edf2f7; }
 .q-module button:disabled { opacity:.5; cursor:default; }
 .q-module button:focus-visible,.q-module input:focus-visible,.q-module textarea:focus-visible,.q-module select:focus-visible { outline:3px solid #e8af34; outline-offset:2px; }
-.q-module .q-primary { background:#123b69; color:white; border-color:#123b69; }
-.q-module .q-primary:hover { background:#0a2a50; }
+.q-module .q-primary { background:#1c1917; color:white; border-color:#1c1917; }
+.q-module .q-primary:hover { background:#292524; }
 .q-header { position:sticky; top:0; z-index:5; background:#ffffffed; backdrop-filter:blur(12px); border-bottom:1px solid #e0e5eb; padding:12px max(16px,calc((100vw - 1080px)/2)); display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .q-header h1 { font-size:18px; font-weight:800; }
 .q-header p { font-size:11px; color:#657386; }
 .q-header>div { min-width:0; }
 .q-header h1,.q-header p { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .q-content { max-width:1080px; margin:auto; padding:24px 16px 100px; }
-.q-hero { border-radius:24px; background:linear-gradient(110deg,#102b49,#20598a); padding:28px; color:white; margin-bottom:24px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:20px; }
-.q-hero h2 { font-size:28px; font-weight:800; letter-spacing:-.8px; }
-.q-hero p { color:#c6d9ea; margin-top:6px; max-width:540px; font-size:14px; }
-.q-hero button { background:#f9c555; border-color:#f9c555; color:#1c3045; }
+.q-list-head { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:0 0 18px; }
+.q-list-heading { display:flex; align-items:center; gap:10px; min-width:0; }
+.q-list-heading h2 { color:#292524; font-size:18px; font-weight:800; letter-spacing:-.25px; }
+.q-list-heading p { color:#a8a29e; font-size:12px; font-weight:600; }
+.q-module .q-list-back { width:42px; min-width:42px; padding:0; border-color:#e7e5e4; color:#57534e; }
+.q-module .q-create { flex:0 0 auto; background:#1c1917; border-color:#1c1917; color:white; box-shadow:0 4px 12px #1c19171a; }
+.q-module .q-create:hover { background:#292524; }
+.q-subnav { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 16px; padding-bottom:14px; border-bottom:1px solid #e7e5e4; }
+.q-subnav span { color:#78716c; font-size:12px; font-weight:700; text-transform:capitalize; }
 .q-toolbar { display:flex; flex-wrap:wrap; gap:12px; margin:18px 0; }
 .q-search { flex:1; min-width:180px; padding:12px 16px; border:1px solid #dae1e9; border-radius:12px; background:white; font-size:16px; }
 .q-filters { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0 20px; }
-.q-filters button[aria-pressed=true] { background:#123b69; color:white; border-color:#123b69; }
+.q-filters button[aria-pressed=true] { background:#1c1917; color:white; border-color:#1c1917; }
 .q-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
-.q-card,.q-panel { padding:22px; border-radius:20px; background:white; border:1px solid #e0e5eb; box-shadow:0 3px 15px #20375204; min-width:0; }
+.q-card,.q-panel { padding:22px; border-radius:16px; background:white; border:1px solid #e7e5e4; box-shadow:0 1px 3px #1c19170a; min-width:0; }
 .q-card-heading { display:flex; justify-content:space-between; gap:10px; align-items:center; font-size:12px; color:#68788b; }
+.q-filters .q-count { margin-left:4px; opacity:.65; font-weight:700; }
 .q-status { padding:5px 10px; border-radius:99px; font-size:11px; font-weight:800; text-transform:capitalize; background:#edf0f5; color:#53647b; }
 .q-status-issued { background:#e4f0ff; color:#235695; }.q-status-converted { background:#e1f4e9; color:#246746; }.q-status-lost { background:#fde9e8; color:#9a3834; }
 .q-card h3 { font-size:18px; font-weight:800; margin:14px 0 6px; overflow-wrap:anywhere; }
@@ -121,21 +573,16 @@
 .quotation-paper .a4-page { width:210mm; height:297mm; min-height:297mm; max-height:297mm; margin:0 0 20px; overflow:hidden; flex-shrink:0; }
 .quotation-paper .a4-page>div:last-child { flex-shrink:0; }
 .quotation-paper table { table-layout:fixed; }.quotation-paper th,.quotation-paper td { overflow-wrap:anywhere; white-space:normal !important; }
-.quotation-paper .a4-page .whitespace-nowrap { white-space:normal; }
 .q-dialog { position:fixed; inset:0; z-index:65; background:#10283c70; display:grid; place-items:center; padding:16px; }.q-dialog .q-panel { width:100%; max-width:520px; max-height:90dvh; overflow:auto; }
 
 /* Agent and dealer portals are intentionally phone-width even on a desktop.
    Keep Quotation Maker inside the same compact shell instead of switching to
    the broad two-column admin layout. */
-.q-module-partner .q-header,
 .q-module-partner .q-content { width:100%; max-width:28rem; margin-inline:auto; }
-.q-module-partner .q-header { padding-inline:14px; box-shadow:0 1px 0 #e0e5eb,0 8px 28px #20375208; }
-.q-module-partner .q-content { padding-top:16px; }
+.q-module-partner.q-module-embedded { min-height:100dvh; padding:16px; background:#fcfbfa; }
+.q-module-partner .q-content { padding:0 0 max(92px,calc(76px + env(safe-area-inset-bottom))); }
 .q-module-partner .q-cards,
 .q-module-partner .q-grid { grid-template-columns:1fr; }
-.q-module-partner .q-hero { flex-direction:column; align-items:stretch; padding:22px; }
-.q-module-partner .q-hero h2 { font-size:24px; line-height:1.15; }
-.q-module-partner .q-hero button { width:100%; }
 .q-module-partner .q-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
 .q-module-partner .q-search { min-width:0; width:100%; }
 .q-module-partner .q-filters { flex-wrap:nowrap; gap:4px; }
@@ -149,13 +596,14 @@
 .q-module-partner .q-preview-toolbar .q-primary { grid-column:span 2; }
 @media(max-width:600px) {
   .q-content { padding:16px 16px max(92px,calc(76px + env(safe-area-inset-bottom))); }
+  .q-module-embedded .q-content { padding:0 0 max(92px,calc(76px + env(safe-area-inset-bottom))); }
   .q-header { padding:10px 14px; padding-top:max(10px,env(safe-area-inset-top)); }
   .q-header h1 { font-size:16px; }
   .q-header>svg { flex:0 0 auto; }
   .q-cards,.q-grid { grid-template-columns:1fr; }
-  .q-hero { padding:22px; border-radius:22px; }
-  .q-hero h2 { font-size:24px; line-height:1.15; }
-  .q-hero button { width:100%; }
+  .q-list-head { align-items:flex-start; margin-bottom:14px; }
+  .q-list-heading h2 { font-size:16px; }
+  .q-module .q-create { min-height:42px; padding-inline:12px; }
   .q-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
   .q-search { min-width:0; width:100%; }
   .q-toolbar button { padding-inline:12px; }
@@ -188,7 +636,11 @@
 @media(max-width:340px) {
   .q-content { padding-inline:12px; }
   .q-header { padding-inline:10px; }
-  .q-hero,.q-card,.q-panel { padding:16px; }
+  .q-card,.q-panel { padding:16px; }
+  .q-list-head { gap:8px; }
+  .q-list-heading { gap:7px; }
+  .q-list-heading p { display:none; }
+  .q-module .q-create { padding-inline:9px; font-size:12px; }
   .q-filters button { font-size:10px; padding-inline:3px; }
   .q-editor-actions { margin-inline:-12px; padding-inline:12px; }
   .q-editor-actions button { font-size:11px; padding-inline:6px; }

@@ -490,10 +490,12 @@ function DocRemarkRow({ doc, onUpdateRemark, isEditing }) {
 // rule instead of re-implementing (or skipping) it.
 export const RETURNED_DOCUMENT_PREFIX = '[RETURNED]';
 export const isReturnedDocument = (doc) => String(doc?.remark || '').trim().toUpperCase().startsWith(RETURNED_DOCUMENT_PREFIX);
+export const REPLACED_DOCUMENT_PREFIX = '[REPLACED]';
+export const isReplacedDocument = (doc) => String(doc?.remark || '').trim().toUpperCase().startsWith(REPLACED_DOCUMENT_PREFIX);
 
 export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onDownload, onUpdateRemark, note, canDelete = false, canReplace = canDelete, allowReturnedReplace = !canDelete }) {
-    const { showConfirm } = useGlobalPopup();
-    const fieldDocs = documents.filter(d => d.doc_type === field);
+    const { showConfirm, showAlert } = useGlobalPopup();
+    const fieldDocs = documents.filter(d => d.doc_type === field && !isReplacedDocument(d));
     const fileInputRef = React.useRef(null);
     const [replacingDocId, setReplacingDocId] = React.useState(null);
 
@@ -513,24 +515,32 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
         const wrappedEvent = { target: { files: [file], value: '' } };
         inputEl.value = '';
 
-        // If replacing a specific document, or if field already has a document, delete old one first
         const replacingDoc = fieldDocs.find(d => d.id === replacingDocId);
         const replacementAllowed = canReplace || (allowReturnedReplace && isReturnedDocument(replacingDoc));
-        if (replacementAllowed && replacingDocId && onDelete) {
-            const oldDoc = fieldDocs.find(d => d.id === replacingDocId);
-            if (oldDoc) await onDelete(oldDoc);
-        } else if (canReplace && fieldDocs.length > 0 && onDelete) {
-            for (const oldDoc of fieldDocs) {
-                await onDelete(oldDoc);
+        if (replacingDocId && !replacementAllowed) {
+            setReplacingDocId(null);
+            return;
+        }
+        // The admin uploader handles its own replacement after a successful upload.
+        // Agents cannot delete document rows; archive the returned copy by remark
+        // only after the replacement has been stored successfully.
+        try {
+            const uploaded = await onUpload?.(wrappedEvent, field, replacingDocId);
+            if (uploaded === false || !uploaded) return;
+            if (replacingDoc && !canReplace) {
+                const oldRemark = String(replacingDoc.remark || '').replace(/^\[RETURNED\]\s*/i, '').trim();
+                const archived = await onUpdateRemark?.(replacingDoc.id, `${REPLACED_DOCUMENT_PREFIX}${oldRemark ? ` ${oldRemark}` : ''}`);
+                if (archived !== true) {
+                    if (archived !== false) showAlert('The new file was uploaded, but the returned copy could not be marked as replaced.', { title: 'Replacement incomplete', type: 'warning' });
+                    return;
+                }
             }
+            onChange?.(field, true);
+        } catch (error) {
+            showAlert(error?.message || 'The replacement could not be saved.', { title: 'Upload failed', type: 'error' });
+        } finally {
+            setReplacingDocId(null);
         }
-
-        if (onUpload) await onUpload(wrappedEvent, field, replacingDocId);
-        // Automatically check when a file is uploaded
-        if (onChange) {
-            onChange(field, true);
-        }
-        setReplacingDocId(null);
     };
 
     const handleDeleteClick = async (doc) => {
@@ -544,28 +554,6 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
         const remaining = fieldDocs.filter(d => d.id !== doc.id);
         if (remaining.length === 0 && onChange) {
             onChange(field, false);
-        }
-    };
-
-    const handleDirectDownload = async (doc) => {
-        if (onDownload) {
-            onDownload(doc);
-            return;
-        }
-        try {
-            const { getDownloadUrl } = await import('../../utils');
-            const url = await getDownloadUrl(doc.storage_path, doc.file_name);
-            if (url) {
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = doc.file_name;
-                a.target = '_blank';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            }
-        } catch (err) {
-            console.error('Download error:', err);
         }
     };
 

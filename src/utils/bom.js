@@ -61,6 +61,7 @@ const mergeAgainstTemplate = (savedItems, template) => {
             uom: tItem.uom || getUomForProduct(tItem.product_name, template),
             integration_by: saved?.integration_by || '',
             note: saved?.note || '',
+            loaded: saved?.loaded === true,
         };
     });
 
@@ -72,6 +73,7 @@ const mergeAgainstTemplate = (savedItems, template) => {
         uom: item.uom || getUomForProduct(item.product_name, template),
         integration_by: item.integration_by || '',
         note: item.note || '',
+        loaded: item.loaded === true,
     }));
 
     return [...mergedStandardItems, ...mergedCustomItems];
@@ -110,26 +112,24 @@ export const loadBomForCustomer = async (customer, activeType) => {
             // an admin_id. A duplicate row therefore made the BOM permanently
             // unreadable, and the swallowed error fell through to a blank
             // template. Take the earliest row instead, and say so.
+            // One request for the BOM and its items (was two in a row, which
+            // made the table appear seconds late on slow mobile connections).
             const { data: rows, error } = await supabase
                 .from('bom')
-                .select('*')
+                .select('*, bom_items(*)')
                 .eq('admin_id', customer.id)
-                .order('created_at', { ascending: true });
+                .order('created_at', { ascending: true })
+                .order('created_at', { referencedTable: 'bom_items', ascending: true });
 
             if (error) {
                 loadError = error;
             } else if (rows && rows.length > 0) {
                 if (rows.length > 1) {
-                    console.warn(`Customer ${customer.id} has ${rows.length} bom rows; using the earliest. Run scripts/fix_duplicate_bom_rows.sql.`);
+                    console.warn(`Customer ${customer.id} has ${rows.length} bom rows; using the earliest. Merge the duplicate bom rows for this customer.`);
                 }
-                bomData = rows[0];
-                const { data: items, error: itemsError } = await supabase
-                    .from('bom_items')
-                    .select('*')
-                    .eq('bom_id', bomData.id)
-                    .order('created_at', { ascending: true });
-                if (itemsError) loadError = itemsError;
-                itemData = items;
+                const { bom_items: items, ...firstBom } = rows[0];
+                bomData = firstBom;
+                itemData = items || [];
             }
         } catch (netErr) {
             loadError = netErr;

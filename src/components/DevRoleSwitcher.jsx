@@ -50,7 +50,8 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                 role: profile.role,
                 name: profile.name,
                 channel_partner: profile.channel_partner,
-                isDevRole: true
+                isDevRole: true,
+                previewOnly: true,
             });
 
             setSearchEmail('');
@@ -63,14 +64,19 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
     };
 
     const handleQuickPreview = (role) => {
+        // Preview identities are placeholders, but database UUID filters still
+        // need a syntactically valid value when a portal loads its own data.
+        const roleNumber = APP_ROLES.findIndex(entry => entry.id === role.id) + 1;
+        const previewId = `00000000-0000-4000-8000-${String(roleNumber).padStart(12, '0')}`;
         onSwitchUser({
-            id: `dev-preview-${role.user_type}`,
+            id: previewId,
             email: `preview-${role.user_type}@watersun.dev`,
             userType: role.user_type,
             role: role.role,
             name: `${role.label} (Preview)`,
             channel_partner: role.user_type === "channel_partner_office" || role.user_type === "office2" || role.user_type === "agent2" || role.user_type === "agent" ? "Demo Partner" : "",
             isDevRole: true,
+            previewOnly: true,
         });
 
         onToggle(false);
@@ -95,10 +101,10 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                                 </div>
                                 <div>
                                     <h3 className="text-sm font-black text-stone-900 uppercase tracking-wide">
-                                        Universal Impersonation
+                                        Role Preview
                                     </h3>
                                     <p className="text-[11px] text-stone-500 font-medium">
-                                        Log in as any user to test their real access view
+                                        Preview a portal layout using your current login
                                     </p>
                                 </div>
                             </div>
@@ -118,13 +124,13 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                                 </div>
                                 <div>
                                     <h4 className="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5">
-                                        Connected to Real Supabase Backend
+                                        Role preview on the real backend
                                         <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase font-mono bg-emerald-200 text-emerald-900">
-                                            Live
+                                            Preview
                                         </span>
                                     </h4>
                                     <p className="text-[11px] text-emerald-800/80 mt-0.5 font-medium">
-                                        Impersonation acts exactly as a real login, skipping the password requirement.
+                                        This changes the screen only. Chat Preview uses local test messages. Other database writes still use your signed-in account and may be rejected.
                                     </p>
                                 </div>
                             </div>
@@ -136,7 +142,7 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                             <form onSubmit={handleImpersonate} className="space-y-4">
                                 <div>
                                     <label className="block text-xs font-bold text-stone-700 mb-1.5">
-                                        Impersonate Email Address
+                                        Preview account by email
                                     </label>
                                     <div className="relative">
                                         <Search className="absolute left-3.5 top-3 w-4 h-4 text-stone-400" />
@@ -151,7 +157,7 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                                         />
                                     </div>
                                     <p className="text-[10px] text-stone-500 mt-2 font-medium">
-                                        Enter the email of an account you created in User Management. You will instantly access their portal without a password.
+                                        View this account’s portal layout. To save changes as that user, sign in with their account.
                                     </p>
                                 </div>
 
@@ -167,9 +173,9 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                                     disabled={loading || !searchEmail.trim()}
                                     className="w-full bg-stone-900 hover:bg-stone-800 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 text-sm"
                                 >
-                                    {loading ? 'Authenticating...' : (
+                                    {loading ? 'Loading preview...' : (
                                         <>
-                                            <LogIn size={16} /> Force Login (Skip Password)
+                                            <LogIn size={16} /> Preview account
                                         </>
                                     )}
                                 </button>
@@ -209,7 +215,7 @@ export default function DevRoleSwitcher({ currentUser, onSwitchUser, isOpen, onT
                                     ))}
                                 </div>
                                 <p className="text-[10px] text-stone-500 font-medium">
-                                    Preview any role instantly with synthetic data without querying Supabase.
+                                    Preview the layout only. This does not sign in as the selected role.
                                 </p>
                             </div>
                         </div>

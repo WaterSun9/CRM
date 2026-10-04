@@ -3,6 +3,9 @@ import { QuotationData, AssetImages } from '../../types';
 import { DocumentHeader } from '../DocumentHeader';
 import { DocumentFooter } from '../DocumentFooter';
 
+// The client's reference quotation sets these two remarks in italics.
+const ITALIC_REMARKS = new Set(['Customer Scope', 'Included for 5 Years']);
+
 interface Page3Props {
   data: QuotationData;
   onOpenAssetSlot?: (slot: keyof AssetImages) => void;
@@ -12,7 +15,7 @@ export const Page3: React.FC<Page3Props> = ({ data, onOpenAssetSlot }) => {
   const { company, page3, footer, assets } = data;
 
   return (
-    <div className="a4-page bg-white shadow-xl print:shadow-none border border-gray-200 print:border-none mx-auto w-[210mm] min-h-[297mm] max-h-[297mm] p-[8mm_12mm] flex flex-col justify-between text-gray-900 text-xs relative box-border overflow-hidden">
+    <div className="a4-page quotation-page-3 bg-white shadow-xl print:shadow-none border border-gray-200 print:border-none mx-auto w-[210mm] min-h-[297mm] max-h-[297mm] p-[11mm_7mm] flex flex-col justify-between text-gray-900 text-xs relative box-border overflow-hidden">
       {/* Top Header & Tables */}
       <div className="w-full">
         <DocumentHeader
@@ -22,12 +25,13 @@ export const Page3: React.FC<Page3Props> = ({ data, onOpenAssetSlot }) => {
         />
 
         {/* Section 1: Terms & Conditions Table */}
-        <div className="w-full mt-2 mb-2">
-          <table className="w-full border-collapse border border-black text-[9px] leading-tight">
+        <div className="w-full mt-3 mb-0">
+          <table className="quotation-detail-table quotation-terms-table w-full border-collapse border border-black text-[9px] leading-tight">
+            <colgroup><col style={{ width: '5%' }} /><col style={{ width: '60%' }} /><col style={{ width: '35%' }} /></colgroup>
             <thead>
               <tr className="bg-white">
                 <th colSpan={3} className="border border-black py-0.5 text-center font-bold text-[10.5px] text-[#0c3882]">
-                  Terms &amp; Conditions
+                  <span className="quotation-section-label">Terms &amp; Conditions</span>
                 </th>
               </tr>
               <tr className="bg-white font-bold text-gray-900">
@@ -41,7 +45,7 @@ export const Page3: React.FC<Page3Props> = ({ data, onOpenAssetSlot }) => {
                 <tr key={item.sr}>
                   <td className="border border-black px-1 py-[1.5px] text-center">{item.sr}</td>
                   <td className="border border-black px-2 py-[1.5px] text-gray-900">{item.parameter}</td>
-                  <td className="border border-black px-2 py-[1.5px] text-gray-900">{item.remarks}</td>
+                  <td className={`border border-black px-2 py-[1.5px] text-gray-900 ${ITALIC_REMARKS.has(item.remarks) ? 'italic' : ''}`}>{item.remarks}</td>
                 </tr>
               ))}
             </tbody>
@@ -49,12 +53,13 @@ export const Page3: React.FC<Page3Props> = ({ data, onOpenAssetSlot }) => {
         </div>
 
         {/* Section 2: Warranty Table */}
-        <div className="w-full mb-2">
-          <table className="w-full border-collapse border border-black text-[9px] leading-tight">
+        <div className="w-full mb-7">
+          <table className="quotation-detail-table quotation-warranty-table w-full border-collapse border border-black text-[9px] leading-tight">
+            <colgroup><col style={{ width: '5%' }} /><col style={{ width: '60%' }} /><col style={{ width: '35%' }} /></colgroup>
             <thead>
               <tr className="bg-white">
                 <th colSpan={3} className="border border-black py-0.5 text-center font-bold text-[10.5px] text-[#0c3882]">
-                  Warranty
+                  <span className="quotation-section-label">Warranty</span>
                 </th>
               </tr>
             </thead>
@@ -73,12 +78,13 @@ export const Page3: React.FC<Page3Props> = ({ data, onOpenAssetSlot }) => {
         </div>
 
         {/* Section 3: BOM Table */}
-        <div className="w-full mb-2">
-          <table className="w-full border-collapse border border-black text-[8.5px] leading-tight">
+        <div className="w-full mb-0">
+          <table className="quotation-detail-table quotation-bom-table w-full border-collapse border border-black text-[8.5px] leading-tight">
+            <colgroup><col style={{ width: '3%' }} /><col style={{ width: '22%' }} /><col style={{ width: '12%' }} /><col style={{ width: '18%' }} /><col style={{ width: '21%' }} /><col style={{ width: '24%' }} /></colgroup>
             <thead>
               <tr className="bg-white">
                 <th colSpan={6} className="border border-black py-0.5 text-center font-bold text-[10.5px] text-[#0c3882]">
-                  BOM
+                  <span className="quotation-section-label">BOM</span>
                 </th>
               </tr>
               <tr className="bg-white font-bold text-gray-900">
@@ -106,10 +112,10 @@ export const Page3: React.FC<Page3Props> = ({ data, onOpenAssetSlot }) => {
         </div>
 
         {/* Section 4: Estimated Other Charges */}
-        <div className="w-full mb-2">
-          <div className="border border-black">
-            <div className="bg-white text-center font-bold text-[10px] py-0.5 border-b border-black text-[#0c3882]">
-              Estimated Other Charges
+        <div className="w-full mb-0">
+          <div className="quotation-other-charges border border-black">
+            <div className="quotation-other-charges-title bg-white text-center font-bold text-[10px] border-b border-black text-[#0c3882]">
+              <span className="quotation-section-label">Estimated Other Charges</span>
             </div>
             <div className="flex items-center text-[8.5px] leading-snug">
               <div className="w-[24%] border-r border-black p-1.5 font-bold text-center text-gray-900 flex items-center justify-center self-stretch">
@@ -124,11 +130,12 @@ export const Page3: React.FC<Page3Props> = ({ data, onOpenAssetSlot }) => {
 
         {/* Section 5: Company Bank Details */}
         <div className="w-full mb-1">
-          <table className="w-full border-collapse border border-black text-[9px] leading-tight">
+          <table className="quotation-detail-table quotation-bank-table w-full border-collapse border border-black text-[9px] leading-tight">
+            <colgroup><col style={{ width: '22%' }} /><col style={{ width: '78%' }} /></colgroup>
             <thead>
               <tr className="bg-white">
                 <th colSpan={2} className="border border-black py-0.5 text-center font-bold text-[10.5px] text-[#0c3882]">
-                  Company Bank Details
+                  <span className="quotation-section-label">Company Bank Details</span>
                 </th>
               </tr>
             </thead>

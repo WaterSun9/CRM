@@ -652,14 +652,22 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
     const fetchCompletedRecords = useCallback(async () => {
         setLoadingRecords(true);
         try {
-            const { data, error } = await supabase
-                .from("admin")
-                .select("id, customer_name, consumer_no, villages, discom_submission")
-                .eq("discom_submission->>sent_to_stamp_maker", "true")
-                .eq("discom_submission->>stamp_sent", "true")
-                .eq("discom_submission->>assigned_stamp_maker", (user?.name || '').trim())
-                .is("deleted_at", null);
-            if (error) throw error;
+            // Paged: this is the payout basis, and one request stops at 1,000 rows.
+            const data = [];
+            for (let from = 0; ; from += 1000) {
+                const page = await supabase
+                    .from("admin")
+                    .select("id, customer_name, consumer_no, villages, discom_submission")
+                    .eq("discom_submission->>sent_to_stamp_maker", "true")
+                    .eq("discom_submission->>stamp_sent", "true")
+                    .eq("discom_submission->>assigned_stamp_maker", (user?.name || '').trim())
+                    .is("deleted_at", null)
+                    .order("id", { ascending: true })
+                    .range(from, from + 999);
+                if (page.error) throw page.error;
+                data.push(...(page.data || []));
+                if (!page.data || page.data.length < 1000) break;
+            }
             const myName = String(user?.name || '').trim().toLowerCase();
             const rows = (data || [])
                 .filter(r => {

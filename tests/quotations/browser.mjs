@@ -1,4 +1,4 @@
-import { mkdir,writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || '/Users/mahvishsadafv2/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs');
 const output='output/quotation-qa';await mkdir(output,{recursive:true});
@@ -10,9 +10,27 @@ try {
     const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto('http://127.0.0.1:5174/quotation-preview.html');
     await page.getByRole('heading',{name:'Test Customer A'}).waitFor();
-    assert.equal(await page.getByRole('button',{name:'Add to Leads',exact:true}).first().isDisabled(),true);
+    assert.equal(await page.locator('.q-header').count(),0);
+    assert.equal(await page.locator('.q-hero').count(),0);
+    assert.equal(await page.getByRole('button',{name:'Create Quotation',exact:true}).first().isVisible(),true);
+    assert.equal(await page.getByRole('button',{name:'Add to Leads',exact:true}).first().isDisabled(),false);
+    await page.getByRole('button',{name:'Add to Leads',exact:true}).first().click();
+    await page.getByRole('heading',{name:'Add New Lead'}).waitFor();
+    assert.equal(await page.getByRole('heading',{name:'Add New Lead'}).evaluate(heading => heading.closest('.q-module') === null),true);
+    assert.equal(await page.getByPlaceholder('Enter full name').inputValue(),'Test Customer A');
+    await page.getByRole('button',{name:'Close lead form'}).click();
     assert.ok(await page.evaluate(()=>document.querySelector('.q-module').scrollWidth<=innerWidth));
+    assert.ok(await page.locator('.q-module.q-module-embedded').count());
     await page.screenshot({path:`${output}/mobile-list.png`,fullPage:true});
+    const downloadEvent=page.waitForEvent('download');
+    await page.getByRole('button',{name:'Download',exact:true}).first().click();
+    const downloaded=await downloadEvent;
+    await downloaded.saveAs(`${output}/quotation.pdf`);
+    await page.getByText('Download complete',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'Understood',exact:true}).click();
+    await page.getByRole('button',{name:'Issued',exact:true}).click();
+    await page.locator('.q-status-issued',{hasText:'issued'}).waitFor();
+    await page.getByRole('button',{name:'All',exact:true}).click();
     await page.getByRole('button',{name:'Create Quotation',exact:true}).first().click();
     assert.equal(await page.getByLabel('Salesperson name (automatic)',{exact:true}).inputValue(),'Test Agent');
     assert.equal(await page.getByLabel('Salesperson name (automatic)',{exact:true}).isEditable(),false);
@@ -43,15 +61,24 @@ try {
     page.on('dialog',dialog=>dialog.accept());
     await page.goto('http://127.0.0.1:5174/quotation-preview.html#/quotations/22222222-2222-4222-8222-222222222222/preview');
     await page.locator('.a4-page').first().waitFor();
+    const financialRows = await page.locator('.quotation-financial-table tbody tr').allTextContents();
+    const discountRow = financialRows.findIndex(value => value.includes('Discount'));
+    assert.equal(financialRows[discountRow + 1].includes('GEB / GEDA Charge'), true);
+    assert.equal(await page.locator('.quotation-page-3 .quotation-bom-table colgroup col').count(), 6);
+    assert.equal(await page.locator('.quotation-page-3 .quotation-grid-overlay').count(), 5);
+    assert.ok(await page.locator('.quotation-page-3 .quotation-bom-table').evaluate(table =>
+        table.querySelector('tbody tr td').getBoundingClientRect().width / table.getBoundingClientRect().width < 0.06));
     await page.screenshot({path:`${output}/mobile-preview.png`,fullPage:true});
-    // Generate exactly the same application PDF used by Download, from the stored fixture snapshot.
-    const pdf=await page.evaluate(async()=>{const f=window.quotationFixture;const row=await f.repo.get(f.row.id);const file=await f.generateQuotationPdf(row);return Array.from(new Uint8Array(await file.arrayBuffer()));});
-    await writeFile(`${output}/quotation.pdf`,Buffer.from(pdf));
     await page.setViewportSize({width:1280,height:1000});
     await page.goto('http://127.0.0.1:5174/quotation-preview.html#/quotations/22222222-2222-4222-8222-222222222222/preview');
     await page.locator('.a4-page').first().waitFor();
     await page.screenshot({path:`${output}/desktop-preview.png`,fullPage:true});
     await page.setViewportSize({width:1440,height:900});
+    await page.goto('http://127.0.0.1:5174/quotation-preview.html?role=admin#/quotations');
+    await page.getByRole('heading',{name:'Test Customer A'}).waitFor();
+    assert.equal(await page.locator('.q-header').count(),0);
+    assert.equal(await page.locator('.q-hero').count(),0);
+    await page.screenshot({path:`${output}/admin-desktop-list.png`,fullPage:true});
     await page.goto('http://127.0.0.1:5174/quotation-preview.html?role=agent2#/quotations');
     await page.getByRole('heading',{name:'Test Customer A'}).waitFor();
     assert.ok(await page.evaluate(()=>document.querySelector('.q-content').getBoundingClientRect().width<=448));
@@ -60,7 +87,7 @@ try {
     await page.setViewportSize({width:320,height:700});
     await page.goto('http://127.0.0.1:5174/quotation-preview.html?role=agent2#/quotations');
     await page.getByRole('heading',{name:'Test Customer A'}).waitFor();
-    assert.equal(await page.getByRole('button',{name:'Add to Leads',exact:true}).first().isDisabled(),true);
+    assert.equal(await page.getByRole('button',{name:'Add to Leads',exact:true}).first().isDisabled(),false);
     assert.ok(await page.evaluate(()=>document.querySelector('.q-module').scrollWidth<=innerWidth));
     await page.getByRole('button',{name:'Create Quotation',exact:true}).first().click();
     await page.getByLabel('Customer name',{exact:true}).waitFor();
@@ -68,5 +95,5 @@ try {
     await page.screenshot({path:`${output}/dealer-320-editor.png`,fullPage:true});
     for(const role of ['vendor','stamp']){await page.goto(`http://127.0.0.1:5174/quotation-preview.html?role=${role}#/quotations`);await page.getByText('Quotation Maker is unavailable for your role.',{exact:false}).waitFor();}
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({result:'pass',checks:['mobile list','automatic read-only salesperson name','disabled Add to Leads action','mobile stepper','draft reopen','offline recovery','panel/inverter field separation','three-page PDF','desktop preview','dealer access at 320px','mobile overflow guards','vendor and stamp UI guards'],draftRoute:route,output},null,2));
+    console.log(JSON.stringify({result:'pass',checks:['embedded quotation view without duplicate header or marketing hero','download changes draft to issued','mobile list','automatic read-only salesperson name','Add to Leads opens prefilled lead form','mobile stepper','draft reopen','offline recovery','panel/inverter field separation','three-page PDF','desktop preview','admin desktop list','dealer access at 320px','mobile overflow guards','vendor and stamp UI guards'],draftRoute:route,output},null,2));
 } finally {await browser.close();}

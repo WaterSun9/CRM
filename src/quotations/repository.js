@@ -1,11 +1,13 @@
-import { payload, fromRow, validate } from './model.js';
+import { payload, fromRow, validate, revisionInfo } from './model.js';
 
-export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at';
+export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by';
+export const STATUSES = ['draft','issued','converted','lost'];
 export const PAGE_SIZE = 20;
 // PostgreSQL jsonb reorders object keys; compare canonical values, not wire key order.
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k,canonical(value[k])])) : value;
 const same = (a,b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 const fail = error => { if (error) throw error; };
+export const locked = () => new Error('This quotation has already been downloaded and sent, so it is locked. Use Revise to make a new version.');
 export const conflict = () => new Error('This quotation changed in another session. Reopen it to review the latest version. Your local recovery copy is retained.');
 const event = (type, user, extra = {}) => ({ type, actor_id: user.id, at: new Date().toISOString(), ...extra });
 const activityData = (row, entry) => ({ ...row.quotation_data, activity: [...(row.quotation_data?.activity || []), entry] });
@@ -41,7 +43,52 @@ export function createQuotationRepository(client) {
             if (term) query = query.or(`customer_name.ilike.%${term}%,phone_number.ilike.%${term}%`);
             const { data,error } = await query.range(page * PAGE_SIZE,(page + 1) * PAGE_SIZE - 1); fail(error); return data;
         },
+        // Count per status for the sidebar badge and the filter buttons.
+        async counts() {
+            const entries = await Promise.all(STATUSES.map(async status => {
+                // Replaced (revised) versions are not counted - only the newest one is live.
+                const { count, error } = await client.from('quotations').select('id',{count:'exact',head:true}).eq('status',status).is('quotation_data->superseded_by',null);
+                fail(error); return [status, count || 0];
+            }));
+            const counts = Object.fromEntries(entries);
+            counts.all = STATUSES.reduce((sum, status) => sum + counts[status], 0);
+            counts.open = counts.draft + counts.issued;
+            return counts;
+        },
+        // A quotation can say "converted" only while its lead still exists. If the
+        // lead was deleted (or moved to Trash), unlink it so the quotation shows
+        // as issued again and can be added to leads once more.
+        async verifyConversion(row) {
+            if (!row?.converted_lead_id) return row;
+            const { data, error } = await client.from('admin').select('id').eq('id',row.converted_lead_id).is('deleted_at',null).maybeSingle();
+            fail(error);
+            if (data) return row;
+            const fresh = await get(row.id);
+            if (!fresh.converted_lead_id) return fresh;
+            const quotationData = activityData(fresh,{ type:'conversion_cleared', at:new Date().toISOString(), lead_id:fresh.converted_lead_id });
+            // The old lead row still exists in Trash with this id, so the next
+            // conversion must use a new one.
+            quotationData.next_lead_id = crypto.randomUUID();
+            return update(fresh,{ status:fresh.issued_at ? 'issued' : 'draft', converted_lead_id:null, converted_at:null, quotation_data:quotationData });
+        },
+        // Issued quotations are locked. Revise copies it into a new draft
+        // (Quote-<no>-R1, -R2 ...) and marks the original as replaced.
+        async revise(row, user) {
+            const fresh = await get(row.id);
+            if (fresh.quotation_data?.superseded_by) throw new Error('This quotation was already revised. Open the newest version.');
+            if (fresh.converted_lead_id || fresh.status === 'converted') throw new Error('A converted quotation cannot be revised.');
+            const info = revisionInfo(fresh);
+            const id = crypto.randomUUID();
+            const body = payload(fromRow(fresh,user),fresh.quotation_data?.template);
+            body.quotation_data.revision = { base_no: info.baseNo, n: info.n + 1, of_id: fresh.id };
+            body.quotation_data.activity = [event('created',user,{ revision_of: fresh.id })];
+            const { data, error } = await client.from('quotations').insert({ ...body, id, owner_id:user.id }).select('*').single();
+            fail(error);
+            await update(fresh,{ quotation_data:{ ...activityData(fresh,event('revised',user,{ new_id:id })), superseded_by:{ id, label:`Quote-${info.baseNo}-R${info.n + 1}` } } });
+            return data;
+        },
         async save(id, previous, form, template, user) {
+            if (previous && (previous.issued_at || previous.converted_lead_id || previous.quotation_data?.superseded_by)) throw locked();
             const body = payload(form,template);
             body.quotation_data = { ...previous?.quotation_data, ...body.quotation_data };
             if (!previous) {
@@ -103,7 +150,7 @@ export function createQuotationRepository(client) {
         // A stable lead UUID makes retries idempotent, including two devices converting together.
         async insertConversionLead(row, insertData, user) {
             const fresh = await get(row.id);
-            let leadId = fresh.converted_lead_id || fresh.id;
+            let leadId = fresh.converted_lead_id || fresh.quotation_data?.next_lead_id || fresh.id;
             let lead;
             if (!fresh.converted_lead_id) {
                 const result = await client.from('admin').insert({ ...insertData,id:leadId }).select('*').single();

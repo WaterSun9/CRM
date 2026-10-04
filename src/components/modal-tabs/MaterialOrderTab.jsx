@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { ShoppingBag, Zap, Ruler, IndianRupee, Layers, CheckCircle2, ShieldAlert, AlertCircle, User, Edit3, X } from 'lucide-react';
 import { SectionHeader, EditableDetailItem } from './shared';
-import { parseIndianNumber } from '../../utils';
 
 export default function MaterialOrderTab({
     customer,
@@ -33,7 +32,7 @@ export default function MaterialOrderTab({
     const canEdit = (isAgent || isChannelPartnerOffice || isAdmin) && isEditable;
 
     const [validationError, setValidationError] = useState('');
-    const [savedSuccess, setSavedSuccess] = useState(false);
+    const [savedSuccess] = useState(false);
 
     const roofShedOptions = ['Roof', 'Shed'];
 
@@ -44,28 +43,6 @@ export default function MaterialOrderTab({
         } else {
             setEditData(prev => ({ ...prev, [field]: val }));
         }
-    };
-
-    const frontLegVal = editData.structure_front_leg_height || '';
-    const rearLegVal = editData.structure_rear_leg_height || '';
-
-    const isAllMandatoryFilled = Boolean(
-        editData.roof_shed &&
-        editData.dc_cable && Number(parseIndianNumber(editData.dc_cable)) > 0 &&
-        editData.ac_cable && Number(parseIndianNumber(editData.ac_cable)) > 0 &&
-        frontLegVal.toString().trim() &&
-        rearLegVal.toString().trim() &&
-        editData.invoice_value && Number(parseIndianNumber(editData.invoice_value)) > 0
-    );
-
-    const validateFields = () => {
-        if (!editData.roof_shed) return 'Roof / Shed is mandatory.';
-        if (!editData.dc_cable || Number(parseIndianNumber(editData.dc_cable)) <= 0) return 'DC Cable length (meters) is mandatory.';
-        if (!editData.ac_cable || Number(parseIndianNumber(editData.ac_cable)) <= 0) return 'AC Cable length (meters) is mandatory.';
-        if (!frontLegVal.toString().trim()) return 'Structure Front Leg Height (ft) is mandatory.';
-        if (!rearLegVal.toString().trim()) return 'Structure Rear Leg Height (ft) is mandatory.';
-        if (!editData.invoice_value || Number(parseIndianNumber(editData.invoice_value)) <= 0) return 'Invoice Value (₹) is mandatory.';
-        return null;
     };
 
 

@@ -110,7 +110,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                 .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
                 .neq('stage', STAGE_IDS.COMPLETED)
-                .order('created_at', { ascending: false })
+                .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 
             if (targetPartner) {

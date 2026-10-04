@@ -7,7 +7,6 @@ import { supabase } from '../supabase';
  * @param {string} params.customerId
  * @param {Object} params.customer
  * @param {string} params.vendorName
- * @param {string} params.vendorEmail
  * @returns {Promise<{success: true, method: 'edge_function', recipient: string, message: string}>}
  */
 export async function sendVendorLeadNotification({
@@ -46,6 +45,9 @@ export async function sendVendorLeadNotification({
     // Material Delivery email must be sent by the server-side Edge Function.
     try {
         const { data, error } = await supabase.functions.invoke('send-lead-to-vendor', {
+            // vendor_name / vendor_email kept for the edge function version
+            // that is live now; the updated function ignores them and looks
+            // the vendor up itself. Safe with either version.
             body: {
                 customer_id: customerId,
                 vendor_name: targetVendor,

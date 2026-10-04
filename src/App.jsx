@@ -18,13 +18,14 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { supabase } from './supabase';
-import { Sun } from 'lucide-react';
+import { Sun, MessageCircle, Wrench, X } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import SetPasswordPage from './components/SetPassword';
 import UpdateChecker from './components/UpdateChecker';
 import OfflineBanner from './components/OfflineBanner';
 import { lazy } from 'react';
+import { DIRECT_MESSAGES_ENABLED, ROLE_PREVIEW_CHAT_ENABLED, TECHNICIAN_FEATURE_ENABLED } from './constants';
 
 function lazyWithRetry(componentImport) {
     return lazy(async () => {
@@ -48,6 +49,8 @@ function lazyWithRetry(componentImport) {
 const AgentPortal = lazyWithRetry(() => import('./components/AgentPortal'));
 const VendorPortal = lazyWithRetry(() => import('./components/VendorPortal'));
 const StampPortal = lazyWithRetry(() => import('./components/StampPortal'));
+const TeamChat = lazyWithRetry(() => import('./components/TeamChat'));
+const ServiceIssuesView = lazyWithRetry(() => import('./components/ServiceIssuesView'));
 const DevRoleSwitcher = import.meta.env.DEV
     ? lazyWithRetry(() => import('./components/DevRoleSwitcher'))
     : null;
@@ -66,6 +69,9 @@ export default function App() {
     const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
     const [devSwitcherOpen, setDevSwitcherOpen] = useState(false);
     const [authError, setAuthError] = useState('');
+    const [showTeamChat, setShowTeamChat] = useState(false);
+    const [showServiceIssues, setShowServiceIssues] = useState(false);
+    const [issueCustomer, setIssueCustomer] = useState(null);
 
     useEffect(() => {
         // ── Detect auth errors or recovery link from URL hash ──
@@ -197,7 +203,7 @@ export default function App() {
     // Watch this user's own profile row, periodically verify token validity with
     // Supabase auth server, and re-check on tab focus to eliminate ghost sessions.
     useEffect(() => {
-        if (!user?.id) return undefined;
+        if (!user?.id || user.previewOnly) return undefined;
 
         const endSession = async (reason) => {
             console.warn('Session ended:', reason);
@@ -276,7 +282,7 @@ export default function App() {
             clearInterval(heartbeatInterval);
             supabase.removeChannel(channel);
         };
-    }, [user?.id]);
+    }, [user?.id, user?.previewOnly]);
 
     if (loading) return <ScreenLoader />;
 
@@ -287,9 +293,14 @@ export default function App() {
     const isAgent = user && (user.userType === 'agent' || user.userType === 'agent2');
     const isVendor = user && (user.userType === 'vendor');
     const isStamp = user && (user.userType === 'stamp');
+    const isTechnician = user && user.userType === 'technician';
+    const canRaiseServiceIssue = TECHNICIAN_FEATURE_ENABLED && user && ['admin', 'sales', 'channel_partner_office', 'channel_partner_office_manager', 'office2', 'agent', 'agent2'].includes(user.userType);
 
     const handleLogout = async () => {
         setAuthError('');
+        setShowTeamChat(false);
+        setShowServiceIssues(false);
+        setIssueCustomer(null);
         await supabase.auth.signOut();
         if (typeof window !== 'undefined') {
             Object.keys(localStorage).forEach(key => {
@@ -311,22 +322,52 @@ export default function App() {
                 {!user ? (
                     <LoginScreen onLogin={(userData) => { setAuthError(''); setUser(userData); }} initialError={authError} />
                 ) : isAgent ? (
-                    <AgentPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
+                    <AgentPortal user={user} onLogout={handleLogout} onRaiseServiceIssue={canRaiseServiceIssue ? customer => { setIssueCustomer(customer); setShowServiceIssues(true); setShowTeamChat(false); } : undefined} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isVendor ? (
                     <VendorPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isStamp ? (
                     <StampPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
+                ) : isTechnician && TECHNICIAN_FEATURE_ENABLED ? (
+                    <div className="min-h-screen bg-[#FCFBFA]"><header className="flex items-center justify-between border-b bg-white p-4"><strong>Technician Portal</strong><button type="button" onClick={handleLogout} className="rounded-lg border px-3 py-2 text-xs font-bold">Logout</button></header><ServiceIssuesView user={user} /></div>
+                ) : isTechnician ? (
+                    <div className="min-h-screen bg-[#FCFBFA] flex flex-col items-center justify-center gap-4 p-6"><p className="text-sm text-stone-600">This portal is temporarily unavailable.</p><button type="button" onClick={handleLogout} className="rounded-lg border px-4 py-2 text-xs font-bold">Logout</button></div>
                 ) : (
-                    <Dashboard user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
+                    <Dashboard user={user} onLogout={handleLogout} onRaiseServiceIssue={canRaiseServiceIssue ? customer => { setIssueCustomer(customer); setShowServiceIssues(true); setShowTeamChat(false); } : undefined} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 )}
             </Suspense>
+
+            {canRaiseServiceIssue && <>
+                <button type="button" onClick={() => { setIssueCustomer(null); setShowServiceIssues(true); setShowTeamChat(false); }} aria-label="Open field service issues"
+                    className="fixed bottom-4 left-4 z-40 flex items-center gap-2 rounded-full bg-amber-500 px-4 py-3 text-stone-950 shadow-xl sm:bottom-6 sm:left-6">
+                    <Wrench size={18} /><span className="text-xs font-bold">Service issues</span>
+                </button>
+                {showServiceIssues && <div role="dialog" aria-label={issueCustomer ? 'Raise a service issue' : 'Field Service Management'} aria-modal="true" className={issueCustomer ? 'fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3 sm:p-6' : 'fixed inset-0 z-[60] overflow-y-auto bg-[#FCFBFA]'}>
+                    <div className={issueCustomer ? 'w-full max-w-3xl max-h-[92dvh] overflow-y-auto rounded-2xl bg-white p-3 shadow-2xl sm:p-5' : ''}>
+                        <div className="sticky top-0 z-10 flex justify-end border-b bg-white p-2"><button type="button" onClick={() => { setShowServiceIssues(false); setIssueCustomer(null); }} aria-label="Close service issues" className="rounded-lg border p-2"><X size={20} /></button></div>
+                        <Suspense fallback={<ScreenLoader />}><ServiceIssuesView key={issueCustomer?.id || 'all-issues'} user={user} initialCustomer={issueCustomer} formOnly={Boolean(issueCustomer)} /></Suspense>
+                    </div>
+                </div>}
+            </>}
+
+            {user?.isDevRole && !ROLE_PREVIEW_CHAT_ENABLED && <div role="status" className="fixed bottom-4 right-4 z-40 max-w-72 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-950 shadow-lg sm:bottom-6 sm:right-6">
+                Chat is hidden in Role Preview. Sign in as that account to test its messages and permissions.
+            </div>}
+            {user && (!user.isDevRole || (import.meta.env.DEV && ROLE_PREVIEW_CHAT_ENABLED)) && (!isTechnician || TECHNICIAN_FEATURE_ENABLED) && <>
+                {showTeamChat && <div className={`fixed inset-0 z-50 overflow-hidden bg-white shadow-2xl sm:inset-x-auto sm:inset-y-auto sm:bottom-20 sm:right-6 ${['admin', 'sales'].includes(user.userType) || DIRECT_MESSAGES_ENABLED ? 'sm:h-[min(80dvh,720px)] sm:w-[min(760px,calc(100vw-3rem))]' : 'sm:h-[min(70dvh,560px)] sm:w-[380px]'} sm:rounded-2xl`}>
+                    <Suspense fallback={<ScreenLoader />}><TeamChat user={user} previewMode={Boolean(import.meta.env.DEV && user.isDevRole)} onClose={() => setShowTeamChat(false)} /></Suspense>
+                </div>}
+                <button type="button" onClick={() => setShowTeamChat(open => !open)} aria-label={showTeamChat ? 'Close chat' : 'Open chat'} aria-expanded={showTeamChat}
+                    className="fixed bottom-4 right-4 z-40 flex h-11 w-11 items-center justify-center gap-2 rounded-full bg-stone-900 text-white shadow-xl hover:bg-stone-800 sm:bottom-6 sm:right-6 sm:h-auto sm:w-auto sm:px-4 sm:py-3">
+                    {showTeamChat ? <X size={18} /> : <MessageCircle size={18} />}<span className="hidden text-xs font-bold sm:inline">{showTeamChat ? 'Close chat' : 'Chat'}</span>
+                </button>
+            </>}
 
             {/* Secret Backdoor Switcher (Ctrl + Shift + S) */}
             {import.meta.env.DEV && (
                 <Suspense fallback={null}>
                     <DevRoleSwitcher
                         currentUser={user}
-                        onSwitchUser={setUser}
+                        onSwitchUser={previewUser => { setShowTeamChat(false); setUser(previewUser); }}
                         isOpen={devSwitcherOpen}
                         onToggle={setDevSwitcherOpen}
                     />

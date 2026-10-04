@@ -46,6 +46,66 @@ export async function logActivity(
     }
 }
 
+// ─── Field-level change log ──────────────────────────────────────────────────
+// Several save paths used to write to `admin` with no log entry at all, or with
+// a label and no values ("Updated Jansamarth Application No"). These helpers
+// record exactly which fields changed, from what, to what.
+//
+// Call logFieldChanges ONLY after the database has confirmed the write, and
+// pass `before` from the last record actually read from the database, so the
+// log reflects what was stored rather than what was on screen.
+const FIELD_LOG_IGNORED_KEYS = new Set(['id', 'created_at', 'updated_at', 'crn']);
+
+const formatLoggedValue = (value) => {
+    if (value === null || value === undefined || value === '') return 'Empty';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value === 'object') return '(updated)';
+    return String(value);
+};
+
+export function describeFieldChanges(before = {}, patch = {}) {
+    const lines = [];
+    Object.keys(patch || {}).forEach(key => {
+        if (FIELD_LOG_IGNORED_KEYS.has(key)) return;
+        const oldValue = before?.[key];
+        const newValue = patch[key];
+        const isObject = (oldValue && typeof oldValue === 'object') || (newValue && typeof newValue === 'object');
+        const unchanged = isObject
+            ? JSON.stringify(oldValue ?? null) === JSON.stringify(newValue ?? null)
+            : String(oldValue ?? '').trim() === String(newValue ?? '').trim();
+        if (unchanged) return;
+        lines.push(`${key.replace(/_/g, ' ').toUpperCase()}: ${formatLoggedValue(oldValue)} → ${formatLoggedValue(newValue)}`);
+    });
+    return lines;
+}
+
+// Reads the CURRENT database values of just the given fields, to use as the
+// "before" side of logFieldChanges. Returns null if the read fails, so callers
+// can fall back to their local copy rather than block the save.
+export async function readAdminFields(id, keys = []) {
+    const columns = (keys || []).filter(key => ADMIN_COLUMNS.has(key) && !FIELD_LOG_IGNORED_KEYS.has(key));
+    if (!id || columns.length === 0) return null;
+    try {
+        const { data, error } = await supabase.from('admin').select(columns.join(',')).eq('id', id).maybeSingle();
+        if (error) return null;
+        return data || null;
+    } catch {
+        return null;
+    }
+}
+
+export async function logFieldChanges(userId, customerId, customerName, before, patch, source = '') {
+    const lines = describeFieldChanges(before, patch);
+    if (!userId || !customerId || lines.length === 0) return;
+    await logActivity(
+        userId,
+        'update',
+        `${customerName || 'Customer'}: ${lines.join(' | ')}`,
+        source ? `Saved from: ${source}` : '',
+        customerId
+    );
+}
+
 // ─── Metadata Hook ────────────────────────────────────────────────────────────
 // Fetches the 'metadata' table once and returns a grouped object like:
 // { company_branch: ['Delhi', 'Mumbai'], poc: ['Alice', 'Bob'], ... }
@@ -125,6 +185,7 @@ export function normalizeAdminValues(updates) {
     // TYPED (a controlled input that erased it would make +91 impossible to
     // enter), but it must never reach the column: the CHECK constraint
     // admin_phone_number_format requires at least one digit after the +.
+    if (clean.phone_number !== undefined) clean.phone_number = normalizePhoneForSave(clean.phone_number);
     ['phone_number', 'driver_phone_number'].forEach(field => {
         if (clean[field] === undefined) return;
         const v = String(clean[field] ?? '').trim();
@@ -133,6 +194,18 @@ export function normalizeAdminValues(updates) {
 
     return clean;
 }
+
+// For saving phone_number (a text column). Keeps a leading "+", drops spaces,
+// dashes and other non-digits, never shortens the number (the column check
+// allows up to 15 digits). '' or a lone '+' becomes NULL.
+export function normalizePhoneForSave(value) {
+    if (value === null || value === undefined) return null;
+    const raw = String(value).trim();
+    const digits = raw.replace(/\D/g, '').slice(0, 15);
+    if (!digits) return null;
+    return raw.startsWith('+') ? `+${digits}` : digits;
+}
+
 
 // The one safe way to write to `admin`.
 //
@@ -528,7 +601,7 @@ export function exportAllToCSV(customers) {
     const csvContent = '\uFEFF' + [headers.map(escapeCSV).join(','), ...rows].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    downloadFileWithSaveAs(url, `watersun_crm_export_${currentDateStr}.csv`).finally(() => {
+    return downloadFileWithSaveAs(url, `watersun_crm_export_${currentDateStr}.csv`).finally(() => {
         setTimeout(() => URL.revokeObjectURL(url), 2000);
     });
 }
@@ -708,7 +781,7 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
             .from('customer-documents')
             .upload(filePath, processedFile, {
                 cacheControl: '3600',
-                upsert: true,
+                upsert: false,
                 contentType: processedFile.type || 'application/octet-stream'
             });
 
@@ -743,7 +816,7 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
             .single();
 
         // Fallback retry without uploaded_by if schema constraint error occurs
-        if (error && validUserId) {
+        if (error && validUserId && /uploaded_by/i.test(`${error.message || ''} ${error.details || ''}`)) {
             console.warn('Retrying document insert without uploaded_by:', error);
             delete insertPayload.uploaded_by;
             const retryRes = await supabase
@@ -757,6 +830,12 @@ export const uploadDocument = async (file, customerId, docType = null, passedUse
 
         if (error) {
             console.error('Failed to record document in DB:', error);
+            try {
+                const { error: cleanupError } = await supabase.storage.from('customer-documents').remove([filePath]);
+                if (cleanupError) console.warn('Uploaded file could not be removed after its document record failed:', cleanupError);
+            } catch (cleanupError) {
+                console.warn('Uploaded file cleanup failed:', cleanupError);
+            }
             throw new Error(error.message || 'Database insert failed');
         }
         return data;
@@ -826,10 +905,10 @@ export const getDownloadUrl = async (storagePath, fileName) => {
     return data?.signedUrl || null;
 };
 
-const announceCompletedDownload = (file, fileName) => {
+const announceCompletedDownload = (file, fileName, options = {}) => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(new CustomEvent('watersun:download-complete', {
-        detail: { file: file || null, fileName: file?.name || fileName || 'document' }
+        detail: { file: file || null, fileName: file?.name || fileName || 'document', ...options }
     }));
 };
 
@@ -837,7 +916,7 @@ const announceCompletedDownload = (file, fileName) => {
  * Downloads a file, prompting the user with the native OS "Save As" location dialog
  * when supported (Chrome, Edge, Opera, Desktop), with standard fallback.
  */
-export const downloadFileWithSaveAs = async (url, fileName) => {
+export const downloadFileWithSaveAs = async (url, fileName, options = {}) => {
     if (!url) return;
 
     if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
@@ -860,7 +939,7 @@ export const downloadFileWithSaveAs = async (url, fileName) => {
             await writableStream.close();
             announceCompletedDownload(new File([blob], fileName || 'document', {
                 type: blob.type || 'application/octet-stream'
-            }), fileName);
+            }), fileName, options);
             return;
         } catch (err) {
             if (err.name === 'AbortError') {
@@ -899,7 +978,7 @@ export const downloadFileWithSaveAs = async (url, fileName) => {
     a.click();
     document.body.removeChild(a);
     if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    announceCompletedDownload(downloadedFile, fileName);
+    announceCompletedDownload(downloadedFile, fileName, options);
 };
 
 const safeDownloadName = (value, fallback = 'file') => {

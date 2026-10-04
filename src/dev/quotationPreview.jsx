@@ -23,5 +23,5 @@ if (import.meta.env.DEV) {
     window.addEventListener('beforeunload',()=>sessionStorage.setItem('q-fixture',JSON.stringify(client.state.tables)));
     window.quotationFixture={client,row,user,repo:quotationRepository,generateQuotationPdf};
     if(!location.hash) location.hash='/quotations';
-    createRoot(document.getElementById('root')).render(<GlobalPopupProvider><QuotationModule user={user} meta={{}} onViewLead={selected=>window.alert(`View Lead: ${selected.customer_name}`)} onCreateLead={async(data,files,quote)=>quotationRepository.insertConversionLead(quote,data,user)} /></GlobalPopupProvider>);
+    createRoot(document.getElementById('root')).render(<GlobalPopupProvider><QuotationModule embedded user={user} meta={{}} onViewLead={selected=>window.alert(`View Lead: ${selected.customer_name}`)} onCreateLead={async(data,files,quote)=>quotationRepository.insertConversionLead(quote,data,user)} /></GlobalPopupProvider>);
 } else { document.getElementById('root').textContent='This test fixture is available only in development.'; }

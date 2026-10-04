@@ -116,7 +116,7 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
                 .select(`${CUSTOMER_CARD_COLUMNS}, installation_date, material_delivery_date`)
                 .is('deleted_at', null)
                 .neq('stage', STAGE_IDS.COMPLETED)
-                .order('created_at', { ascending: false })
+                .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 
             if (targetPartner) {

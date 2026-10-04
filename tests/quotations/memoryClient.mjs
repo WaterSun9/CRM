@@ -6,7 +6,7 @@ export function memoryClient(seed = {}) {
     return {state,from(table) {
         const filters=[];let action='select',body,from=0,to=100000,single=false,maybe=false,sort=[];
         const q={
-            select(){return q;},eq(k,v){filters.push(r=>r[k]===v);return q;},is(k,v){filters.push(r=>v===null ? r[k]==null : r[k]===v);return q;},
+            select(){return q;},eq(k,v){filters.push(r=>r[k]===v);return q;},is(k,v){filters.push(r=>v===null ? r[k]==null : r[k]===v);return q;},in(k,vals){filters.push(r=>vals.includes(r[k]));return q;},
             order(k,{ascending=true}={}){sort.push([k,ascending]);return q;},range(a,b){from=a;to=b;return q;},
             or(filter){const clauses=filter.split(',').map(c=>c.split('.'));filters.push(r=>clauses.some(([k,op,...tail])=>op==='eq'?String(r[k])===tail.join('.'):String(r[k]||'').toLowerCase().includes(tail.join('.').replaceAll('%','').toLowerCase())));return q;},
             insert(value){action='insert';body=structuredClone(value);return q;},update(value){action='update';body=structuredClone(value);return q;},
