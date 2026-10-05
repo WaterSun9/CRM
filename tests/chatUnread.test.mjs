@@ -31,3 +31,12 @@ test('__since hides history from before tracking started', () => {
     const rows = [msg(1, OFFICE_A, CPO, '2026-10-01T10:00:00Z'), msg(2, OFFICE_A, CPO, '2026-10-06T10:00:00Z')];
     assert.equal(countUnread(rows, { me: CPO, isOffice: false, typeOf, marks: { __since: '2026-10-05T00:00:00Z' } }), 1);
 });
+
+test('personal (private) messages form their own chat and count as unread', async () => {
+    const { threadKeyFor } = await import('../src/utils/chatThreads.js');
+    const p = msg(9, ME, CPO, '2026-10-05T11:00:00Z', { is_private: true });
+    assert.equal(threadKeyFor(p, ME, true, typeOf), `priv:${CPO}`);
+    assert.equal(threadKeyFor(p, CPO, false, typeOf), `priv:${ME}`);
+    assert.equal(countUnread([p], { me: CPO, isOffice: false, typeOf, marks: {} }), 1);
+    assert.equal(countUnread([p], { me: CPO, isOffice: false, typeOf, marks: { [`priv:${ME}`]: '2026-10-05T12:00:00Z' } }), 0);
+});

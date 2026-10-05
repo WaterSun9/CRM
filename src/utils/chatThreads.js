@@ -12,7 +12,18 @@ export const roleKey = role => `role:${role}`;
 export const pairKey = (a, b) => `pair:${[a, b].sort().join(':')}`;   // office: a chat between two other people
 export const isBroadcastKey = key => key === PUBLIC_KEY || key?.startsWith('role:');
 export const isPairKey = key => key?.startsWith('pair:');
-export const CHAT_COLUMNS = 'id,sender_id,recipient_id,cc_id,audience,target_role,topic,body,created_at';
+// Personal chat between an Admin and one other person (is_private messages): only those two read it.
+export const privKey = other => `priv:${other}`;
+export const isPrivKey = key => key?.startsWith('priv:');
+export const CHAT_COLUMNS = 'id,sender_id,recipient_id,cc_id,audience,target_role,topic,body,created_at,is_private';
+// Column lists to fall back to while a migration has not run yet
+// (is_private: 20261005160000, cc_id: 20261004140000).
+export const CHAT_COLUMN_FALLBACKS = [
+    CHAT_COLUMNS,
+    CHAT_COLUMNS.replace(',is_private', ''),
+    CHAT_COLUMNS.replace(',is_private', '').replace(',cc_id', ''),
+];
+export const isMissingChatColumn = error => /is_private|cc_id/.test(error?.message || '');
 
 // Non-office users without direct messages see one "Office team" chat with an
 // Announcements tab, so every broadcast goes into one announcements chat.
@@ -25,6 +36,7 @@ export const isSingleView = isOffice => !isOffice && !DIRECT_MESSAGES_ENABLED;
 // Everyone else: anything to or from Admin/Office is the "Office team" chat;
 // direct chats with their own branch people are per person.
 export const threadKeyFor = (message, me, isOffice, typeOf) => {
+    if (message.is_private) return privKey(message.sender_id === me ? message.recipient_id : message.sender_id);
     if (message.audience === 'public') return PUBLIC_KEY;
     if (message.audience === 'role') return roleKey(message.target_role);
     const { sender_id: from, recipient_id: to, cc_id: cc } = message;

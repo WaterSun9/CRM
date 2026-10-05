@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabase';
 import {
-    CHAT_COLUMNS, CHAT_NEW_EVENT, CHAT_READ_EVENT, OFFICE_ROLES, countUnread, loadReadMarks
+    CHAT_COLUMN_FALLBACKS, CHAT_NEW_EVENT, CHAT_READ_EVENT, OFFICE_ROLES, countUnread, isMissingChatColumn, loadReadMarks
 } from '../utils/chatThreads';
 
 // Number of unread chat messages for the badge on the chat button.
@@ -27,14 +27,13 @@ export default function useChatUnread(user, { enabled = true } = {}) {
         const marks = loadReadMarks(userId);
         const lookback = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
         const since = marks.__since && marks.__since > lookback ? marks.__since : lookback;
-        let { data, error } = await supabase.from('crm_chat_messages').select(CHAT_COLUMNS)
-            .gt('created_at', since).neq('sender_id', userId)
-            .order('created_at', { ascending: false }).limit(MAX_ROWS);
-        // Before migration 20261004140000 there is no cc_id column.
-        if (error && /cc_id/.test(error.message || '')) {
-            ({ data, error } = await supabase.from('crm_chat_messages').select(CHAT_COLUMNS.replace(',cc_id', ''))
+        let data = null;
+        let error = null;
+        for (const columns of CHAT_COLUMN_FALLBACKS) {
+            ({ data, error } = await supabase.from('crm_chat_messages').select(columns)
                 .gt('created_at', since).neq('sender_id', userId)
                 .order('created_at', { ascending: false }).limit(MAX_ROWS));
+            if (!error || !isMissingChatColumn(error)) break;   // retry only while a column is missing
         }
         if (error) return;                                  // keep the last count
         const rows = data || [];

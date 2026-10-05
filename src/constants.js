@@ -402,6 +402,14 @@ export const OPERATIONAL_CHECKLIST_FIELDS = [
 //
 // KEEP THIS IN SYNC. If you add a column to `admin`, add it here too, or
 // writes to it are dropped (a console warning is logged when that happens).
+// Residential / Commercial (migration 20261005150000). Blank = Residential.
+export const PROPERTY_TYPES = ['Residential', 'Commercial'];
+// Loan leads, and commercial leads even when paid in cash, need the full
+// document set (Aadhaar front/back, PAN, Index-2, house photo).
+export const needsFullLeadDocs = (paymentType, propertyType) =>
+    String(paymentType || '').trim().toLowerCase() !== 'cash'
+    || String(propertyType || '').trim().toLowerCase() === 'commercial';
+
 export const ADMIN_COLUMNS = new Set([
     'ac_cable',
     'adhaar_card_back',
@@ -472,6 +480,7 @@ export const ADMIN_COLUMNS = new Set([
     'panel',
     'panel_serial_no',
     'payment_type',
+    'property_type',
     'plant_commissioning_report',
     'phone_number',
     'pincode',

@@ -3,6 +3,7 @@ import { User, ClipboardList, Edit3, X } from 'lucide-react';
 import { SectionHeader, EditableDetailItem, CheckboxRemarkItem } from './shared';
 import { useGlobalPopup } from '../GlobalPopup';
 import { calculateSystemCapacityKwp } from '../../utils/capacity';
+import { PROPERTY_TYPES, needsFullLeadDocs } from '../../constants';
 
 export default function LeadsTab({
     editData,
@@ -173,12 +174,24 @@ export default function LeadsTab({
                         ) : (
                             <p className="text-xs font-bold text-stone-700">{editData.payment_type || "Not Specified"}</p>
                         )}
+                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1 mt-3">Property Type</label>
+                        {isEditable ? (
+                            <select
+                                    value={editData.property_type || 'Residential'}
+                                    onChange={(e) => handleChange('property_type', e.target.value)}
+                                    className="w-full md:w-1/3 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700"
+                                >
+                                    {PROPERTY_TYPES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                        ) : (
+                            <p className="text-xs font-bold text-stone-700">{editData.property_type || 'Residential'}</p>
+                        )}
                     </div>
 
                     {/* Checklist items only visible if payment_type is selected */}
                     {editData.payment_type ? (
                         <div className="flex flex-col gap-2">
-                            {editData.payment_type?.trim().toLowerCase() !== 'cash' && (
+                            {needsFullLeadDocs(editData.payment_type, editData.property_type) && (
                                 <>
                                     <CheckboxRemarkItem label="Aadhar Card Front" field="adhaar_card_front" value={editData.adhaar_card_front} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                                     <CheckboxRemarkItem label="Aadhar Card Back" field="adhaar_card_back" value={editData.adhaar_card_back} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />

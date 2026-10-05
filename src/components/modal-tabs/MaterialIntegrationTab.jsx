@@ -35,6 +35,24 @@ const parsePanelSerials = (raw) => {
 const isSolarPanelItem = item => String(item?.product_name || '').trim().toLowerCase() === 'solar panel';
 const panelLoadedDate = value => value ? new Date(value).toLocaleDateString('en-IN') : '';
 let panelLoadingTableMissing = false;
+const LOADING_LOG = 'Material Integration - loading';
+// Latest loading run for the line under the progress bar: who started it and,
+// once done, who finished it. Rows come newest first; messages look like
+// "<customer>: Loading started by NAME" / "...: Loading finished (3 of 5 loaded) by NAME".
+const parseLoadingEntry = row => {
+    const match = String(row.message || '').match(/Loading (started|finished)(?: \(([^)]*)\))? by (.+)$/);
+    return match ? { id: row.id, created_at: row.created_at, kind: match[1], extra: match[2] || '', name: match[3] } : null;
+};
+const latestLoadingRun = rows => {
+    const entries = rows.map(parseLoadingEntry).filter(Boolean);
+    const started = entries.find(entry => entry.kind === 'started');
+    const finished = entries.find(entry => entry.kind === 'finished');
+    const run = [];
+    if (started) run.push({ ...started, label: 'Started', extra: '' });
+    if (finished && (!started || finished.created_at >= started.created_at)) run.push({ ...finished, label: 'Finished' });
+    return run;
+};
+const loadingWhen = value => new Date(value).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 // customer id + BOM type -> last BOM read, for instant display on reopen.
 const bomCache = new Map();
 
@@ -104,6 +122,8 @@ export default function MaterialIntegrationTab({
     const [panelLoadError, setPanelLoadError] = useState(null);
     const [panelRetryKey, setPanelRetryKey] = useState(0);
     const [panelTickBusy, setPanelTickBusy] = useState(false);
+    const [loadingLog, setLoadingLog] = useState([]);       // latest loading run: started / finished (who / when)
+    const [loadingLogKey, setLoadingLogKey] = useState(0);
     const [showBulkPaste, setShowBulkPaste] = useState(false);
     const [bulkText, setBulkText] = useState('');
     const [copiedIdx, setCopiedIdx] = useState(null);
@@ -160,6 +180,16 @@ export default function MaterialIntegrationTab({
         window.addEventListener('online', loadPanelStatus);
         return () => { active = false; window.removeEventListener('online', loadPanelStatus); };
     }, [customer?.id, panelRetryKey]);
+
+    useEffect(() => {
+        if (!customer?.id) return undefined;
+        let active = true;
+        supabase.from('activity_log').select('id,message,created_at')
+            .eq('customer_id', customer.id).eq('new_value', LOADING_LOG)
+            .order('created_at', { ascending: false }).limit(20)
+            .then(({ data }) => { if (active) setLoadingLog(latestLoadingRun(data || [])); });
+        return () => { active = false; };
+    }, [customer?.id, loadingLogKey]);
 
     // Until the full record has loaded, the panel list may be built from a
     // partial copy (it showed "0 panels" for a customer with 7 saved). Editing
@@ -431,7 +461,8 @@ export default function MaterialIntegrationTab({
             }
             if (nextLoaded) loadingMarkedRef.current = true;
             if (logActivity && user?.id) {
-                void logActivity(user.id, 'update', `${customer.customer_name || 'Customer'}: Panel ${serial} ${nextLoaded ? 'marked loaded' : 'unmarked'}`, 'Material Integration - panel serial loading', customer.id);
+                void logActivity(user.id, 'update', `${customer.customer_name || 'Customer'}: Panel ${serial} ${nextLoaded ? 'marked loaded' : 'unmarked'} by ${user.name || 'someone'}`, 'Material Integration - panel serial loading', customer.id)
+                    .then(() => setLoadingLogKey(key => key + 1));
             }
         } catch (error) {
             showAlert(error?.message || 'The panel loading status was not saved.', { title: 'Panel not saved', type: 'error' });
@@ -461,7 +492,8 @@ export default function MaterialIntegrationTab({
             const what = targets.length === 1
                 ? `BOM item "${targets[0].product_name}" ${value ? 'marked loaded' : 'unmarked (not loaded)'}`
                 : `${value ? 'Marked all' : 'Unmarked all'} ${targets.length} BOM items ${value ? 'loaded' : '(not loaded)'}`;
-            void logActivity(user.id, 'update', `${targetCust.customer_name || 'Customer'}: ${what}`, 'Material Integration - loaded ticks', targetCust.id);
+            void logActivity(user.id, 'update', `${targetCust.customer_name || 'Customer'}: ${what} by ${user.name || 'someone'}`, 'Material Integration - loaded ticks', targetCust.id)
+                .then(() => setLoadingLogKey(key => key + 1));
         }
     };
     const setAllLoaded = value => saveLoaded(otherNamedItems.filter(item => (item.loaded === true) !== value), value);
@@ -476,6 +508,15 @@ export default function MaterialIntegrationTab({
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
                     <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${namedItems.length ? (loadedCount / namedItems.length) * 100 : 0}%` }} />
                 </div>
+                {loadingLog.length > 0 && (
+                    <ul className="mt-1.5 space-y-0.5 text-[10px] text-stone-600">
+                        {loadingLog.map(entry => (
+                            <li key={entry.id}>
+                                <span className="font-semibold text-stone-800">{entry.label}:</span> {entry.name} · {loadingWhen(entry.created_at)}{entry.extra ? ` (${entry.extra})` : ''}
+                            </li>
+                        ))}
+                    </ul>
+                )}
             </div>
             {editable && otherNamedItems.length > 0 && (
                 <button type="button" disabled={tickBusy} onClick={() => setAllLoaded(!otherNamedItems.every(item => item.loaded === true))}
@@ -616,6 +657,14 @@ export default function MaterialIntegrationTab({
 
     const isEditingMilestones = editingSection === 'procurement_milestones';
     const isEditingBom = editingSection === 'bom_items';
+    // Who loaded, and when: Loading on/off and every tick are written to the
+    // activity log with the person's name; who started and finished the
+    // latest run shows under the loading progress bar.
+    const logLoading = (what) => {
+        if (!logActivity || !user?.id || !customer?.id) return;
+        void Promise.resolve(logActivity(user.id, 'update', `${customer.customer_name || 'Customer'}: Loading ${what} by ${user.name || 'someone'}`, LOADING_LOG, customer.id))
+            .then(() => setLoadingLogKey(key => key + 1));
+    };
     const toggleLoadingMode = async () => {
         if (!isEditable || loadingModeBusy || panelTickBusy || tickBusy || saving) return;
         if (!loadingMode) {
@@ -629,6 +678,7 @@ export default function MaterialIntegrationTab({
                 loadingMarkedRef.current = false;
                 setShowBulkPaste(false);
                 setLoadingMode(true);
+                logLoading('started');
             } catch (error) {
                 showAlert(error?.message || 'The panel serial numbers could not be saved, so Loading was not started.', { title: 'Loading not started', type: 'error' });
             } finally {
@@ -651,6 +701,7 @@ export default function MaterialIntegrationTab({
             loadingMarkedRef.current = false;
             setLoadingMode(false);
             setShowBulkPaste(false);
+            logLoading(`finished (${loadedCount} of ${namedItems.length} loaded)`);
         } catch (error) {
             showAlert(error?.message || 'Loading changes were not saved. Keep Loading on and try again.', { title: 'Loading not finished', type: 'error' });
         } finally {

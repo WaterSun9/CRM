@@ -3,8 +3,8 @@ import { ArrowLeft, Megaphone, Plus, Search, SendHorizontal, Users, X } from 'lu
 import { supabase } from '../supabase';
 import { APP_ROLES, DIRECT_MESSAGES_ENABLED, TECHNICIAN_FEATURE_ENABLED } from '../constants';
 import {
-    ANNOUNCE_KEY, BRANCH_ROLES, CHAT_COLUMNS, OFFICE_KEY, OFFICE_ROLES, PUBLIC_KEY,
-    CHAT_NEW_EVENT, isBroadcastKey, isPairKey, loadReadMarks, roleKey, saveReadMarks, seenUpTo, threadKeyFor
+    ANNOUNCE_KEY, BRANCH_ROLES, CHAT_COLUMN_FALLBACKS, OFFICE_KEY, OFFICE_ROLES, PUBLIC_KEY,
+    CHAT_NEW_EVENT, isBroadcastKey, isMissingChatColumn, isPairKey, isPrivKey, privKey, loadReadMarks, roleKey, saveReadMarks, seenUpTo, threadKeyFor
 } from '../utils/chatThreads';
 
 // WhatsApp-style team chat. The database decides who may read and send
@@ -49,7 +49,8 @@ const readPreviewMessages = () => {
     } catch { return []; }
 };
 const canReadPreviewMessage = (message, user) =>
-    OFFICE_ROLES.has(user.userType)
+    (message.is_private ? (message.sender_id === user.id || message.recipient_id === user.id) : false)
+    || (!message.is_private && OFFICE_ROLES.has(user.userType))
     || message.sender_id === user.id || message.recipient_id === user.id || message.cc_id === user.id
     || message.audience === 'public'
     || (message.audience === 'role' && (message.target_role === user.userType
@@ -97,12 +98,15 @@ function Avatar({ id, name, broadcast, size = 'h-10 w-10' }) {
     </span>;
 }
 
+const PERSONAL_CHAT_ROLES = new Set(['channel_partner_office', 'office2', 'vendor', 'agent', 'agent2', 'sales']);
+
 export default function TeamChat({ user, onClose, previewMode = false }) {
     const isOffice = OFFICE_ROLES.has(user?.userType);
     const canBroadcast = isOffice;
     // Outside the office, with personal chats off, there is only one chat to
     // write in: show it full-width with an Announcements tab, no chat list.
-    const singleView = !isOffice && !DIRECT_MESSAGES_ENABLED;
+    const foldsAnnouncements = !isOffice && !DIRECT_MESSAGES_ENABLED;
+    const isAdmin = user?.userType === 'admin';
     const [topic, setTopic] = useState('general');
     const [drafts, setDrafts] = useState({});
     const [messages, setMessages] = useState([]);
@@ -151,9 +155,12 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
                 if (latestAt.current) query = query.gte('created_at', latestAt.current);
                 return query.order('created_at', { ascending: true }).order('id').range(offset, offset + PAGE - 1);
             };
-            let { data, error: readError } = await page(CHAT_COLUMNS);
-            // Before migration 20261004140000 there is no cc_id column.
-            if (readError && /cc_id/.test(readError.message || '')) ({ data, error: readError } = await page(CHAT_COLUMNS.replace(',cc_id', '')));
+            let data = null;
+            let readError = null;
+            for (const columns of CHAT_COLUMN_FALLBACKS) {
+                ({ data, error: readError } = await page(columns));
+                if (!readError || !isMissingChatColumn(readError)) break;   // a migration has not run yet
+            }
             if (readError) { setError(readError.message); return; }
             fresh.push(...(data || []));
             if (!data || data.length < PAGE) break;
@@ -200,6 +207,7 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
         if (key === ANNOUNCE_KEY) return 'Announcements';
         if (key.startsWith('role:')) return groupLabel(key.slice(5));
         if (isPairKey(key)) return key.slice(5).split(':').map(id => names[id] || 'Someone').join(' ↔ ');
+        if (isPrivKey(key)) return `${names[key.slice(5)] || 'Someone'} (personal)`;
         return names[key] || `User ${key.slice(0, 8)}`;
     }, [names]);
 
@@ -207,13 +215,18 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
         const map = new Map();
         for (const message of messages) {
             const raw = threadKeyFor(message, user.id, isOffice, typeOf);
-            const key = singleView && isBroadcastKey(raw) ? ANNOUNCE_KEY : raw;
+            const key = foldsAnnouncements && isBroadcastKey(raw) ? ANNOUNCE_KEY : raw;
             if (!key || key === user.id) continue;
             if (!map.has(key)) map.set(key, []);
             map.get(key).push(message);
         }
         return map;
-    }, [messages, user.id, isOffice, typeOf, singleView]);
+    }, [messages, user.id, isOffice, typeOf, foldsAnnouncements]);
+    // Outside the office the chat is one full-width "Office team" view - unless
+    // an admin has started a personal chat, then it becomes a list
+    // (Office team, Announcements, one personal chat per admin).
+    const hasPersonal = useMemo(() => messages.some(m => m.is_private), [messages]);
+    const singleView = foldsAnnouncements && !hasPersonal;
 
     const unreadIn = useCallback(key => {
         const seen = seenUpTo(readMarks, key);
@@ -224,11 +237,12 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
     const threads = useMemo(() => {
         const keys = new Set(byThread.keys());
         if (!isOffice) keys.add(OFFICE_KEY);
+        if (foldsAnnouncements && hasPersonal) keys.add(ANNOUNCE_KEY);
         return [...keys].map(key => {
             const rows = byThread.get(key) || [];
             return { key, last: rows[rows.length - 1] || null };
         }).sort((a, b) => (b.last?.created_at || '').localeCompare(a.last?.created_at || ''));
-    }, [byThread, isOffice]);
+    }, [byThread, isOffice, foldsAnnouncements, hasPersonal]);
 
     const term = search.trim().toLowerCase();
     const shownThreads = threads.filter(({ key }) => !term || threadName(key).toLowerCase().includes(term));
@@ -238,6 +252,7 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
     const canWrite = !selected ? false
         : isBroadcastKey(selected) ? canBroadcast
         : isPairKey(selected) ? isOffice
+        : isPrivKey(selected) ? true
         : selected === OFFICE_KEY ? true
         : isOffice || (DIRECT_MESSAGES_ENABLED && Boolean(selectedPerson?.can_message));
 
@@ -277,6 +292,8 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
         else if (isPairKey(selected)) {
             const [first, second] = selected.slice(5).split(':');
             row = { ...row, recipient_id: first, cc_id: second };   // both people in the chat see the reply
+        } else if (isPrivKey(selected)) {
+            row = { ...row, recipient_id: selected.slice(5), is_private: true };   // only the two of you
         } else if (selected !== OFFICE_KEY) row = { ...row, recipient_id: selected };
         setSending(true);
         let sendError;
@@ -302,6 +319,7 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
         if (key === OFFICE_KEY) return 'Group chat with the office · any office staff can reply';
         if (key === ANNOUNCE_KEY) return 'From the office';
         if (isPairKey(key)) return 'Chat between two people · your reply goes to both';
+        if (isPrivKey(key)) return 'Personal chat · only the two of you can see it';
         const role = roleLabel(typeOf(key));
         if (isOffice && !OFFICE_ROLES.has(typeOf(key))) return `${role ? `${role} · ` : ''}office team chat · all office staff see it`;
         return isOffice && !DIRECT_MESSAGES_ENABLED ? `${role || 'Office'} · private` : `Direct message${role ? ` · ${role}` : ''}${isOffice ? '' : ' · the office can read and reply'}`;
@@ -312,6 +330,11 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
     // itself (the office is reached through the "Office team" chat).
     const pickerPeople = (DIRECT_MESSAGES_ENABLED ? (people || []) : [])
         .filter(person => isOffice || (person.can_message && !OFFICE_ROLES.has(person.user_type)))
+        .filter(person => !pickerTerm || `${person.name} ${person.email || ''}`.toLowerCase().includes(pickerTerm));
+    // Admin: start a personal chat with a CPO / CPO staff, vendor, CP or Office staff
+    // (the same list as chat_private_allowed in the database).
+    const pickerPersonal = !isAdmin ? [] : (people || [])
+        .filter(person => PERSONAL_CHAT_ROLES.has(person.user_type))
         .filter(person => !pickerTerm || `${person.name} ${person.email || ''}`.toLowerCase().includes(pickerTerm));
     const pickerGroups = !canBroadcast ? [] : [[PUBLIC_KEY, 'Everyone (announcement)'], ...GROUPS.map(([id, label]) => [roleKey(id), label])]
         .filter(([, label]) => !pickerTerm || label.toLowerCase().includes(pickerTerm));
@@ -354,6 +377,8 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto">
                     {picking ? <>
+                        {pickerPersonal.length > 0 && <p className="px-4 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wide text-emerald-700">Personal chat · only you and them</p>}
+                        {pickerPersonal.map(person => listRow(privKey(person.id), person.name, [roleLabel(person.user_type), 'personal'].filter(Boolean).join(' · '), '', 0, false))}
                         {pickerGroups.length > 0 && <p className="px-4 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wide text-emerald-700">Announcements</p>}
                         {pickerGroups.map(([key, label]) => listRow(key, label, key === PUBLIC_KEY ? 'Everyone signed in' : 'Everyone in this group', '', 0, true))}
                         {pickerPeople.length > 0 && <p className="px-4 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wide text-emerald-700">People</p>}
@@ -364,10 +389,10 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
                         {shownThreads.map(({ key, last }) => listRow(
                             key,
                             threadName(key),
-                            last ? `${last.sender_id === user.id ? 'You: ' : (showSenderPrefix(key) || (isOffice && last.sender_id !== key)) ? `${names[last.sender_id] || 'Staff'}: ` : ''}${last.body}` : 'Send a message to the office team',
+                            last ? `${last.sender_id === user.id ? 'You: ' : (showSenderPrefix(key) || (isOffice && last.sender_id !== key)) ? `${names[last.sender_id] || 'Staff'}: ` : ''}${last.body}` : key === ANNOUNCE_KEY ? 'No announcements yet' : 'Send a message to the office team',
                             last ? listTime(last.created_at) : '',
                             unreadIn(key),
-                            isBroadcastKey(key) || isPairKey(key),
+                            isBroadcastKey(key) || isPairKey(key) || key === ANNOUNCE_KEY,
                         ))}
                     </>}
                 </div>

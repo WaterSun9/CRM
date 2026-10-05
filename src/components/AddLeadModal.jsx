@@ -8,6 +8,7 @@ import {
     Upload, FileText, Image as ImageIcon, Loader2, Banknote, AlertTriangle, Calendar
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
+import { PROPERTY_TYPES, needsFullLeadDocs } from '../constants';
 import { FilePreviewModal } from './modal-tabs/shared';
 import CropPhotoModal from './CropPhotoModal';
 import { fetchAgent2SubAgents, sanitizePhoneNumber, downloadFileWithSaveAs } from '../utils';
@@ -808,6 +809,22 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 })()}
                             </div>
 
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
+                                    Property Type <span className="text-red-500 font-bold">*</span>
+                                </label>
+                                <select
+                                    value={formData.property_type || 'Residential'}
+                                    onChange={(e) => handleChange('property_type', e.target.value)}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 font-semibold text-stone-800 transition-all"
+                                >
+                                    {PROPERTY_TYPES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                                {String(formData.property_type || '').toLowerCase() === 'commercial' && String(formData.payment_type || '').trim().toLowerCase() === 'cash' && (
+                                    <p className="text-[10px] font-semibold text-amber-700">Commercial: the full document set is needed even for cash.</p>
+                                )}
+                            </div>
+
                             {String(formData.payment_type || '').trim().toLowerCase() === 'loan' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
                                     <div className="space-y-1">
@@ -836,7 +853,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             {/* Checklist items only visible if payment_type is selected */}
                             {formData.payment_type ? (
                                 <div className="space-y-1 divide-y divide-stone-100">
-                                    {formData.payment_type?.trim().toLowerCase() !== 'cash' && (
+                                    {needsFullLeadDocs(formData.payment_type, formData.property_type) && (
                                         <>
                                             <AddLeadChecklistItem
                                                 label="Aadhar Card Front"

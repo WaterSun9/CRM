@@ -11,12 +11,12 @@ import {
 } from 'lucide-react';
 import { logActivity, logFieldChanges, readAdminFields, toIndianCommas, formatInputValue, parseIndianNumber, normalizePhoneForSave, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
-import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS, QUOTATION_FEATURE_ENABLED } from '../constants';
+import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS, QUOTATION_FEATURE_ENABLED, needsFullLeadDocs } from '../constants';
 import AddLeadModal from './AddLeadModal';
 import QuotationModule, { openQuotations } from '../quotations/QuotationModule';
 import { quotationRepository } from '../quotations/client';
 import { canUseQuotations } from '../quotations/model';
-import { FilePreviewModal, CheckboxRemarkItem } from './modal-tabs/shared';
+import { FilePreviewModal, CheckboxRemarkItem, isReplacedDocument, isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
 import BrandMark from './BrandMark';
@@ -39,6 +39,9 @@ import AgentStageDetails from './AgentStageDetails';
 import BomPrintModal from './BomPrintModal';
 import { loadBomForCustomer, getBomTypeForCustomer } from '../utils/bom';
 import { findUnsavedFields, fieldLabel } from '../utils/saveCheck';
+
+// Documents asked for when the lead is created.
+const LEAD_DOC_TYPES = new Set(['adhaar_card_front', 'adhaar_card_back', 'pan_card', 'index_2', 'house_geo_tag_photo', 'light_bill', 'bank_details', 'extra_docs']);
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [];
@@ -596,11 +599,18 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
     };
 
     const handleUploadDocForCustomer = async (e, docType) => {
+        // A lead document that was never uploaded (or was sent back) can be
+        // added at any stage. It used to be refused once the lead moved past
+        // Registration, so a lead submitted without, say, the PAN card could
+        // never get it - only replacing existing ones is limited by stage.
+        const currentOfType = custDocs.filter(doc => doc.doc_type === docType && !isReplacedDocument(doc));
+        const addingMissingLeadDoc = LEAD_DOC_TYPES.has(docType)
+            && (currentOfType.length === 0 || currentOfType.some(isReturnedDocument));
         // Enforce document edit permissions
-        if (![STAGE_IDS.LEADS, STAGE_IDS.REGISTRATION].includes(activeCustomerStage) && 
+        if (!addingMissingLeadDoc && ![STAGE_IDS.LEADS, STAGE_IDS.REGISTRATION].includes(activeCustomerStage) && 
             !([STAGE_IDS.METER_INSTALLATION].includes(activeCustomerStage) && docType.includes('meter')) &&
             !([STAGE_IDS.DISCOM_SUBMISSION, STAGE_IDS.DISCOM_INSPECTION].includes(activeCustomerStage) && (docType.includes('signature') || docType.includes('stamp') || docType.includes('dcr')))) {
-            alertAgent({ title: 'Permission Denied', message: 'You can only upload lead documents during the Leads and Registration stages.', type: 'error' });
+            alertAgent({ title: 'Permission Denied', message: LEAD_DOC_TYPES.has(docType) ? 'This document is already uploaded. Ask the office to send it back if it needs replacing.' : 'You can only upload lead documents during the Leads and Registration stages.', type: 'error' });
             if (fileInputRef.current) fileInputRef.current.value = '';
             return false;
         }
@@ -1653,6 +1663,10 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                                     {selectedCust.payment_type || '–'}
                                                 </span>
                                             </div>
+                                            <div className="flex items-center justify-between py-2">
+                                                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wide">Property Type</span>
+                                                <span className="font-semibold text-stone-900">{selectedCust.property_type || 'Residential'}</span>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1663,7 +1677,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                             <Paperclip size={11} className="text-amber-500" /> Attached Documents & Uploads
                                         </h5>
                                         <div className="flex flex-col gap-2">
-                                            {(selectedCust?.payment_type || editData?.payment_type || '')?.trim().toLowerCase() !== 'cash' && (
+                                            {needsFullLeadDocs(selectedCust?.payment_type || editData?.payment_type, selectedCust?.property_type || editData?.property_type) && (
                                                 <>
                                                     <CheckboxRemarkItem
                                                         label="Aadhar Card Front"
