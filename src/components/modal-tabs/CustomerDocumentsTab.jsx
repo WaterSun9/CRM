@@ -1,5 +1,7 @@
 import { FolderOpen, Plus, Search, FileText, Eye, Trash2, Image as ImageIcon, Download, Loader2, Crop } from "lucide-react";
-import { DocGalleryRemarkRow, isReplacedDocument } from "./shared";
+import { useState } from "react";
+import { DocGalleryRemarkRow, isCroppableImage, isReplacedDocument } from "./shared";
+import CropPhotoModal from "../CropPhotoModal";
 import { formatDateToDDMMYYYY } from "../../utils";
 import { APP_ROLES } from "../../constants";
 import { useGlobalPopup } from "../GlobalPopup";
@@ -28,6 +30,7 @@ export default function CustomerDocumentsTab({
     downloadingAllDocuments,
     canDownloadAllDocuments = false
 }) {
+    const [reviewFile, setReviewFile] = useState(null);   // photo picked, waiting for crop / upload
     const { showConfirm } = useGlobalPopup();
 
     const confirmDocumentDelete = async (doc) => {
@@ -90,7 +93,12 @@ export default function CustomerDocumentsTab({
                             <input
                                 type="file"
                                 accept="image/png,image/jpeg,image/jpg,application/pdf,.png,.jpg,.jpeg,.pdf"
-                                onChange={handleFileUpload}
+                                onChange={event => {
+                                    // Photos are shown first (crop / rotate / cancel); PDFs upload straight away.
+                                    const picked = event.target.files?.[0];
+                                    if (picked && isCroppableImage(picked)) { event.target.value = ''; setReviewFile(picked); return; }
+                                    handleFileUpload(event);
+                                }}
                                 disabled={uploading}
                                 className="hidden"
                             />
@@ -199,6 +207,14 @@ export default function CustomerDocumentsTab({
                     </div>
                 )}
             </section>
+            {reviewFile && (
+                <CropPhotoModal
+                    review
+                    file={reviewFile}
+                    onClose={() => setReviewFile(null)}
+                    onSave={file => handleFileUpload({ target: { files: [file], value: '' } })}
+                />
+            )}
         </div>
     );
 }

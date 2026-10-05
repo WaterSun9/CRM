@@ -17,7 +17,9 @@ const FULL = { x: 0, y: 0, w: 1, h: 1 };
 
 // doc: a stored document (downloaded first). file: a photo picked on this
 // device and not uploaded yet (Add Lead) - used directly.
-export default function CropPhotoModal({ doc, file, onSave, onClose }) {
+// review: shown right after a photo is picked, before it is uploaded. The
+// button reads "Upload" and also works with no crop (the photo goes as picked).
+export default function CropPhotoModal({ doc, file, onSave, onClose, review = false, useLabel = 'Upload' }) {
     const frameRef = useRef(null);
     const imageRef = useRef(null);
     const dragRef = useRef(null);
@@ -127,6 +129,13 @@ export default function CropPhotoModal({ doc, file, onSave, onClose }) {
         setSaving(true);
         setError('');
         try {
+            if (review && file && rect.w > 0.99 && rect.h > 0.99 && !rotated) {
+                // Nothing changed: upload the original, not a re-compressed copy.
+                const saved = await onSave(file);
+                if (saved) onClose();
+                else setError('The photo was not uploaded. Please try again.');
+                return;
+            }
             const sx = Math.round(image.naturalWidth * rect.x);
             const sy = Math.round(image.naturalHeight * rect.y);
             const sw = Math.max(1, Math.round(image.naturalWidth * rect.w));
@@ -154,10 +163,10 @@ export default function CropPhotoModal({ doc, file, onSave, onClose }) {
         <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-3 sm:p-4" role="dialog" aria-modal="true" aria-label="Crop photo">
             <div className="bg-white rounded-2xl p-4 sm:p-5 w-full max-w-3xl max-h-[92vh] overflow-y-auto space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                    <h2 className="font-bold text-stone-900">Crop photo</h2>
+                    <h2 className="font-bold text-stone-900">{review ? 'Check photo' : 'Crop photo'}</h2>
                     <button type="button" onClick={onClose} aria-label="Close crop editor" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100"><X size={18} /></button>
                 </div>
-                <p className="text-xs text-stone-500">Drag on the photo to choose the area to keep. Drag inside the box to move it. Saving replaces this photo.</p>
+                <p className="text-xs text-stone-500">Drag on the photo to choose the area to keep. Drag inside the box to move it. {review ? `${useLabel} keeps it as shown; Cancel leaves it out.` : 'Saving replaces this photo.'}</p>
                 {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
                 <div className="flex justify-center rounded-xl bg-stone-100 p-2">
                     {loading && <p className="py-16 text-sm text-stone-500">Loading photo…</p>}
@@ -188,7 +197,7 @@ export default function CropPhotoModal({ doc, file, onSave, onClose }) {
                     </div>
                     <div className="flex gap-2">
                         <button type="button" onClick={onClose} className="min-h-11 rounded-lg border px-4 text-sm">Cancel</button>
-                        <button type="button" disabled={!src || saving || (isFull && !rotated)} onClick={save} className="min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-bold text-stone-900 disabled:opacity-50">{saving ? 'Saving…' : 'Save crop'}</button>
+                        <button type="button" disabled={!src || saving || (!review && isFull && !rotated)} onClick={save} className="min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-bold text-stone-900 disabled:opacity-50">{saving ? (review ? 'Uploading…' : 'Saving…') : review ? (isFull && !rotated ? useLabel : `Crop & ${useLabel.toLowerCase()}`) : 'Save crop'}</button>
                     </div>
                 </div>
             </div>

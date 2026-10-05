@@ -3,6 +3,7 @@ import { Trash2, Plus, Edit3, X, Paperclip, Eye, Upload, FileText, Image as Imag
 import { formatINR, toIndianCommas, parseIndianNumber, formatInputValue } from '../../utils';
 import { supabase } from '../../supabase';
 import { useGlobalPopup } from '../GlobalPopup';
+import CropPhotoModal from '../CropPhotoModal';
 
 // ─── Vendor name list (process-wide cache) ────────────────────────────────────
 // InstallationStatusTab and MaterialDeliveryTab each fetched this on mount with
@@ -497,6 +498,7 @@ function DocRemarkRow({ doc, onUpdateRemark, isEditing }) {
 // Recall marker. Admin/Office stamp a document with this to send it back; only
 // then may the uploader replace it. Exported so every portal enforces the same
 // rule instead of re-implementing (or skipping) it.
+export const isCroppableImage = file => /^image\/(jpeg|png|webp)$/i.test(file?.type || '');
 export const RETURNED_DOCUMENT_PREFIX = '[RETURNED]';
 export const isReturnedDocument = (doc) => String(doc?.remark || '').trim().toUpperCase().startsWith(RETURNED_DOCUMENT_PREFIX);
 export const REPLACED_DOCUMENT_PREFIX = '[REPLACED]';
@@ -516,13 +518,15 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
         fileInputRef.current?.click();
     };
 
+    // A picked photo is shown first (crop / rotate / cancel) instead of being
+    // uploaded straight away. Other files (PDFs) upload as before.
+    const [reviewFile, setReviewFile] = React.useState(null);
+
     const handleFileSelected = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         // Save file ref and reset input immediately so re-renders don't re-trigger
-        const inputEl = e.target;
-        const wrappedEvent = { target: { files: [file], value: '' } };
-        inputEl.value = '';
+        e.target.value = '';
 
         const replacingDoc = fieldDocs.find(d => d.id === replacingDocId);
         const replacementAllowed = canReplace || (allowReturnedReplace && isReturnedDocument(replacingDoc));
@@ -530,23 +534,36 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
             setReplacingDocId(null);
             return;
         }
+        if (isCroppableImage(file)) {
+            setReviewFile(file);
+            return;
+        }
+        await uploadPicked(file);
+    };
+
+    // Returns true when the file was stored.
+    const uploadPicked = async (file) => {
+        const wrappedEvent = { target: { files: [file], value: '' } };
+        const replacingDoc = fieldDocs.find(d => d.id === replacingDocId);
         // The admin uploader handles its own replacement after a successful upload.
         // Agents cannot delete document rows; archive the returned copy by remark
         // only after the replacement has been stored successfully.
         try {
             const uploaded = await onUpload?.(wrappedEvent, field, replacingDocId);
-            if (uploaded === false || !uploaded) return;
+            if (uploaded === false || !uploaded) return false;
             if (replacingDoc && !canReplace) {
                 const oldRemark = String(replacingDoc.remark || '').replace(/^\[RETURNED\]\s*/i, '').trim();
                 const archived = await onUpdateRemark?.(replacingDoc.id, `${REPLACED_DOCUMENT_PREFIX}${oldRemark ? ` ${oldRemark}` : ''}`);
                 if (archived !== true) {
                     if (archived !== false) showAlert('The new file was uploaded, but the returned copy could not be marked as replaced.', { title: 'Replacement incomplete', type: 'warning' });
-                    return;
+                    return true;
                 }
             }
             onChange?.(field, true);
+            return true;
         } catch (error) {
             showAlert(error?.message || 'The replacement could not be saved.', { title: 'Upload failed', type: 'error' });
+            return false;
         } finally {
             setReplacingDocId(null);
         }
@@ -661,6 +678,14 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
                     </button>
                 )}
             </div>
+            {reviewFile && (
+                <CropPhotoModal
+                    review
+                    file={reviewFile}
+                    onClose={() => { setReviewFile(null); setReplacingDocId(null); }}
+                    onSave={uploadPicked}
+                />
+            )}
         </div>
     );
 }

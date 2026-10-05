@@ -325,9 +325,14 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         handleChange('system_capacity_kwp', String(kwp));
     };
 
-    const handleFileAttach = (docType, file) => {
+    const attachPicked = (docType, file) => {
         setIsFormDirty(true);
         setPendingFiles(prev => ({ ...prev, [docType]: file }));
+    };
+    // A picked photo is shown first (crop / rotate / cancel); PDFs attach directly.
+    const handleFileAttach = (docType, file) => {
+        if (/^image\/(jpeg|png|webp)$/i.test(file?.type || '')) { setCropping({ docType, file, review: true }); return; }
+        attachPicked(docType, file);
     };
 
     const handleFileRemove = (docType) => {
@@ -972,9 +977,11 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             {/* Not uploaded yet: the cropped photo simply replaces the picked one. */}
             {cropping && (
                 <CropPhotoModal
+                    review={Boolean(cropping.review)}
+                    useLabel="Use photo"
                     file={cropping.file}
                     onClose={() => setCropping(null)}
-                    onSave={async cropped => { handleFileAttach(cropping.docType, cropped); return true; }}
+                    onSave={async cropped => { attachPicked(cropping.docType, cropped); return true; }}
                 />
             )}
         </div>
