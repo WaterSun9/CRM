@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Megaphone, Plus, Search, SendHorizontal, Users, X } from 'lucide-react';
 import { supabase } from '../supabase';
 import { APP_ROLES, DIRECT_MESSAGES_ENABLED, TECHNICIAN_FEATURE_ENABLED } from '../constants';
+import {
+    ANNOUNCE_KEY, BRANCH_ROLES, CHAT_COLUMNS, OFFICE_KEY, OFFICE_ROLES, PUBLIC_KEY,
+    CHAT_NEW_EVENT, isBroadcastKey, isPairKey, loadReadMarks, roleKey, saveReadMarks, seenUpTo, threadKeyFor
+} from '../utils/chatThreads';
 
 // WhatsApp-style team chat. The database decides who may read and send
 // (crm_chat_* policies + chat_recipient_allowed / chat_directory, migration
@@ -13,8 +17,6 @@ import { APP_ROLES, DIRECT_MESSAGES_ENABLED, TECHNICIAN_FEATURE_ENABLED } from '
 //     land there too), announcements meant for them, and direct chats with the
 //     people the database lets them message (CPO: own staff and dealers;
 //     dealer: own CPO). Anyone may reply to a person who messaged them.
-const OFFICE_ROLES = new Set(['admin', 'sales']);
-const BRANCH_ROLES = new Set(['channel_partner_office', 'office2', 'agent2']);
 const TOPICS = [['general', 'General'], ['installation', 'Installation'], ['material_delivery', 'Material delivery']];
 // target_role values. 'channel_partner_office' also reaches CPO staff (office2).
 const GROUPS = [
@@ -28,15 +30,7 @@ const GROUPS = [
 ];
 const groupLabel = role => GROUPS.find(([id]) => id === role)?.[1] || role;
 const roleLabel = type => APP_ROLES.find(role => role.user_type === type)?.label || '';
-const PUBLIC_KEY = 'public';
-const OFFICE_KEY = 'office';          // non-office users: their one chat with the office team
-const ANNOUNCE_KEY = 'announcements'; // single-chat view: all announcements in one tab
-const roleKey = role => `role:${role}`;
-const pairKey = (a, b) => `pair:${[a, b].sort().join(':')}`;   // admin: a chat between two other people
-const isBroadcastKey = key => key === PUBLIC_KEY || key?.startsWith('role:');
-const isPairKey = key => key?.startsWith('pair:');
 const PAGE = 500;
-const CHAT_COLUMNS = 'id,sender_id,recipient_id,cc_id,audience,target_role,topic,body,created_at';
 const POLL_MS = 15000;
 
 // ── Role Preview (local dev only): messages live in this browser tab ─────────
@@ -70,44 +64,6 @@ const previewDirectory = user => PREVIEW_PEOPLE.filter(person => person.id !== u
         || (mine === 'agent2' && ['channel_partner_office', 'office2'].includes(theirs));
     return { ...person, can_message: canMessage };
 }).filter(person => OFFICE_ROLES.has(user.userType) || person.can_message);
-
-// ── Read markers (per person, per browser; only drives the unread dots) ──────
-const readKey = userId => `watersun-chat-read-v1:${userId}`;
-const loadReadMarks = userId => {
-    try { return JSON.parse(window.localStorage.getItem(readKey(userId)) || '{}') || {}; } catch { return {}; }
-};
-const saveReadMarks = (userId, marks) => {
-    try { window.localStorage.setItem(readKey(userId), JSON.stringify(marks)); } catch { /* storage blocked: dots just reset */ }
-};
-
-// Which chat a message belongs to, from the point of view of user `me`.
-// Admin / Office: one chat per outside person, holding what they sent to the
-// office and every office reply to them. Admin also sees chats between two
-// other people (e.g. a CPO and their dealer) as read-only "A ↔ B" chats.
-// Everyone else: anything to or from Admin/Office is the "Office team" chat;
-// direct chats with their own branch people are per person.
-const threadKeyFor = (message, me, isOffice, typeOf) => {
-    if (message.audience === 'public') return PUBLIC_KEY;
-    if (message.audience === 'role') return roleKey(message.target_role);
-    const { sender_id: from, recipient_id: to, cc_id: cc } = message;
-    if (cc) {                                                   // office reply inside a two-person chat
-        if (isOffice) return pairKey(to, cc);
-        return DIRECT_MESSAGES_ENABLED ? (to === me ? cc : to) : OFFICE_KEY;
-    }
-    if (isOffice) {
-        if (!to) return from;                                   // office inbox
-        if (from === me) return to;
-        if (to === me) return from;
-        const fromOffice = OFFICE_ROLES.has(typeOf(from));
-        const toOffice = OFFICE_ROLES.has(typeOf(to));
-        if (fromOffice && !toOffice) return to;                 // a colleague's reply to someone
-        if (toOffice && !fromOffice) return from;
-        return pairKey(from, to);                               // two other people
-    }
-    if (!to) return OFFICE_KEY;                                 // my own message to the office
-    const other = from === me ? to : from;
-    return DIRECT_MESSAGES_ENABLED && BRANCH_ROLES.has(typeOf(other)) ? other : OFFICE_KEY;
-};
 
 const AVATAR_COLORS = ['bg-emerald-600', 'bg-sky-600', 'bg-violet-600', 'bg-rose-600', 'bg-amber-600', 'bg-teal-600', 'bg-indigo-600', 'bg-orange-600'];
 const NAME_COLORS = ['text-emerald-700', 'text-sky-700', 'text-violet-700', 'text-rose-700', 'text-amber-700', 'text-teal-700', 'text-indigo-700', 'text-orange-700'];
@@ -217,7 +173,9 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
         load();
         if (previewMode) return undefined;
         const timer = setInterval(load, POLL_MS);
-        return () => clearInterval(timer);
+        // Realtime: the chat button's listener announces new messages.
+        window.addEventListener(CHAT_NEW_EVENT, load);
+        return () => { clearInterval(timer); window.removeEventListener(CHAT_NEW_EVENT, load); };
     }, [load, previewMode]);
 
     // Who I can message, and the names/roles of people I've talked with.
@@ -258,7 +216,7 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
     }, [messages, user.id, isOffice, typeOf, singleView]);
 
     const unreadIn = useCallback(key => {
-        const seen = readMarks[key] || '';
+        const seen = seenUpTo(readMarks, key);
         return (byThread.get(key) || []).filter(m => m.sender_id !== user.id && m.created_at > seen).length;
     }, [byThread, readMarks, user.id]);
 

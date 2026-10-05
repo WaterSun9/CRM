@@ -50,6 +50,7 @@ const AgentPortal = lazyWithRetry(() => import('./components/AgentPortal'));
 const VendorPortal = lazyWithRetry(() => import('./components/VendorPortal'));
 const StampPortal = lazyWithRetry(() => import('./components/StampPortal'));
 const TeamChat = lazyWithRetry(() => import('./components/TeamChat'));
+import useChatUnread from './hooks/useChatUnread';
 const ServiceIssuesView = lazyWithRetry(() => import('./components/ServiceIssuesView'));
 const DevRoleSwitcher = import.meta.env.DEV
     ? lazyWithRetry(() => import('./components/DevRoleSwitcher'))
@@ -284,6 +285,16 @@ export default function App() {
         };
     }, [user?.id, user?.previewOnly]);
 
+    // Unread chat messages, shown as a number on the chat button. Off in Role
+    // Preview (that session is the admin's) and for hidden technician accounts.
+    const chatUnread = useChatUnread(user, {
+        enabled: Boolean(user && !user.isDevRole && (user.userType !== 'technician' || TECHNICIAN_FEATURE_ENABLED))
+    });
+    useEffect(() => {
+        const base = document.title.replace(/^\(\d+\+?\)\s*/, '');
+        document.title = chatUnread > 0 ? `(${chatUnread > 99 ? '99+' : chatUnread}) ${base}` : base;
+    }, [chatUnread]);
+
     if (loading) return <ScreenLoader />;
 
     if (isPasswordRecovery) {
@@ -356,9 +367,11 @@ export default function App() {
                 {showTeamChat && <div className={`fixed inset-0 z-50 overflow-hidden bg-white shadow-2xl sm:inset-x-auto sm:inset-y-auto sm:bottom-20 sm:right-6 ${['admin', 'sales'].includes(user.userType) || DIRECT_MESSAGES_ENABLED ? 'sm:h-[min(80dvh,720px)] sm:w-[min(760px,calc(100vw-3rem))]' : 'sm:h-[min(70dvh,560px)] sm:w-[380px]'} sm:rounded-2xl`}>
                     <Suspense fallback={<ScreenLoader />}><TeamChat user={user} previewMode={Boolean(import.meta.env.DEV && user.isDevRole)} onClose={() => setShowTeamChat(false)} /></Suspense>
                 </div>}
-                <button type="button" onClick={() => setShowTeamChat(open => !open)} aria-label={showTeamChat ? 'Close chat' : 'Open chat'} aria-expanded={showTeamChat}
+                <button type="button" onClick={() => setShowTeamChat(open => !open)}
+                    aria-label={showTeamChat ? 'Close chat' : chatUnread > 0 ? `Open chat, ${chatUnread} unread` : 'Open chat'} aria-expanded={showTeamChat}
                     className="fixed bottom-4 right-4 z-40 flex h-11 w-11 items-center justify-center gap-2 rounded-full bg-stone-900 text-white shadow-xl hover:bg-stone-800 sm:bottom-6 sm:right-6 sm:h-auto sm:w-auto sm:px-4 sm:py-3">
                     {showTeamChat ? <X size={18} /> : <MessageCircle size={18} />}<span className="hidden text-xs font-bold sm:inline">{showTeamChat ? 'Close chat' : 'Chat'}</span>
+                    {chatUnread > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-bold leading-none text-white ring-2 ring-white">{chatUnread > 99 ? '99+' : chatUnread}</span>}
                 </button>
             </>}
 
