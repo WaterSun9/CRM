@@ -15,7 +15,9 @@ const MIN = 0.03;
 const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
 const FULL = { x: 0, y: 0, w: 1, h: 1 };
 
-export default function CropPhotoModal({ doc, onSave, onClose }) {
+// doc: a stored document (downloaded first). file: a photo picked on this
+// device and not uploaded yet (Add Lead) - used directly.
+export default function CropPhotoModal({ doc, file, onSave, onClose }) {
     const frameRef = useRef(null);
     const imageRef = useRef(null);
     const dragRef = useRef(null);
@@ -37,6 +39,7 @@ export default function CropPhotoModal({ doc, onSave, onClose }) {
         let live = true;
         (async () => {
             try {
+                if (file) { if (live) showBlob(file); return; }
                 const url = await getViewUrl(doc.storage_path);
                 if (!url) throw new Error('The photo could not be opened.');
                 const response = await fetch(url, { cache: 'no-store' });
@@ -53,7 +56,7 @@ export default function CropPhotoModal({ doc, onSave, onClose }) {
             live = false;
             if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
         };
-    }, [doc.storage_path]);
+    }, [doc?.storage_path, file]);
 
     const pointAt = (event) => {
         const box = frameRef.current.getBoundingClientRect();
@@ -134,7 +137,7 @@ export default function CropPhotoModal({ doc, onSave, onClose }) {
             canvas.getContext('2d').drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
             if (!blob) throw new Error('Could not create the cropped photo.');
-            const name = (doc.file_name || 'photo').replace(/\.[^.]+$/, '') + '-crop.jpg';
+            const name = (doc?.file_name || file?.name || 'photo').replace(/\.[^.]+$/, '') + '-crop.jpg';
             const saved = await onSave(new File([blob], name, { type: 'image/jpeg' }));
             if (saved) onClose();
             else setError('The cropped photo was not saved. The original is unchanged.');

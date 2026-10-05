@@ -21,6 +21,7 @@ export default function CustomerDocumentsTab({
     getDocTypeLabel,
     handlePreviewDoc,
     handleCropDoc,
+    canCrop,
     handleDeleteDoc,
     handleUpdateDocRemark,
     handleDownloadAllDocuments,
@@ -166,7 +167,7 @@ export default function CustomerDocumentsTab({
                                                 <Eye size={13} className="text-stone-500" />
                                                 <span>View</span>
                                             </button>
-                                            {isImage && canDelete && isEditable && /^(image\/jpeg|image\/png|image\/webp)$/i.test(doc.file_type || '') && <button type="button" onClick={() => handleCropDoc(doc)} className="px-2.5 py-1.5 text-xs font-bold bg-white border border-stone-200 rounded-xl flex items-center gap-1" title="Crop and replace photo"><Crop size={13} /> Crop</button>}
+                                            {isImage && (canCrop ?? canDelete) && isEditable && /^(image\/jpeg|image\/png|image\/webp)$/i.test(doc.file_type || '') && <button type="button" onClick={() => handleCropDoc(doc)} className="px-2.5 py-1.5 text-xs font-bold bg-white border border-stone-200 rounded-xl flex items-center gap-1" title="Crop and replace photo"><Crop size={13} /> Crop</button>}
                                             {canDelete && !isReplacedDocument(doc) && (
                                                 <button
                                                     type="button"

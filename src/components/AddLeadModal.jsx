@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { FilePreviewModal } from './modal-tabs/shared';
+import CropPhotoModal from './CropPhotoModal';
 import { fetchAgent2SubAgents, sanitizePhoneNumber, downloadFileWithSaveAs } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 import { calculateSystemCapacityKwp } from '../utils/capacity';
@@ -183,7 +184,7 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
                     <div className="flex items-center gap-1 ml-1 flex-shrink-0">
                         <button
                             type="button"
-                            onClick={() => onPreview(pendingFile)}
+                            onClick={() => onPreview(pendingFile, field)}
                             className="text-[9px] font-bold text-amber-700 hover:text-amber-900 px-1.5 py-0.5 rounded hover:bg-amber-100 transition-colors flex items-center gap-0.5 cursor-pointer"
                             title="View preview & download"
                         >
@@ -216,7 +217,8 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
     const { showAlert, showConfirm } = useGlobalPopup();
     const [formData, setFormData] = useState({ ...DEFAULT_LEAD_FORM });
     const [pendingFiles, setPendingFiles] = useState({}); // { [doc_type]: File }
-    const [previewDoc, setPreviewDoc] = useState(null); // { doc, url }
+    const [previewDoc, setPreviewDoc] = useState(null); // { doc, url, docType, file }
+    const [cropping, setCropping] = useState(null);      // { docType, file }
     const [saving, setSaving] = useState(false);
     const [validationErrors, setValidationErrors] = useState([]);
     const [isFormDirty, setIsFormDirty] = useState(false);
@@ -337,14 +339,16 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         });
     };
 
-    const handlePreviewFile = (file) => {
+    const handlePreviewFile = (file, docType) => {
         const url = URL.createObjectURL(file);
         setPreviewDoc({
             doc: {
                 file_name: file.name,
                 file_type: file.type,
             },
-            url
+            url,
+            docType,
+            file
         });
     };
 
@@ -962,6 +966,15 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                     fileUrl={previewDoc.url}
                     onClose={handleClosePreview}
                     onDownload={() => downloadFileWithSaveAs(previewDoc.url, previewDoc.doc.file_name)}
+                    onCrop={previewDoc.docType ? () => { setCropping({ docType: previewDoc.docType, file: previewDoc.file }); handleClosePreview(); } : undefined}
+                />
+            )}
+            {/* Not uploaded yet: the cropped photo simply replaces the picked one. */}
+            {cropping && (
+                <CropPhotoModal
+                    file={cropping.file}
+                    onClose={() => setCropping(null)}
+                    onSave={async cropped => { handleFileAttach(cropping.docType, cropped); return true; }}
                 />
             )}
         </div>

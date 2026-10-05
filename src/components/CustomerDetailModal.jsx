@@ -441,6 +441,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const isChannelPartnerOfficeOrManager = isChannelPartnerOffice || isChannelPartnerManager;
     const isOffice = (user?.userType === 'sales' || user?.role?.toLowerCase().includes('office')) && !isChannelPartnerOfficeOrManager;
     const canDeleteDocs = isAdmin || isOffice;
+    // Cropping replaces the photo (upload new, remove old). The database lets
+    // CPO and office2 remove documents of their own customers, so they can crop too.
+    const canCropDocs = canDeleteDocs || isChannelPartnerOfficeOrManager;
 
     const isDiscomOrMeterStage = editData.stage === STAGE_IDS.DISCOM_SUBMISSION || editData.stage === STAGE_IDS.METER_INSTALLATION;
 
@@ -2177,6 +2180,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             documents={documents}
                             isEditable={isEditable}
                             canDelete={canDeleteDocs}
+                            canCrop={canCropDocs}
                             docSearchQuery={docSearchQuery}
                             setDocSearchQuery={setDocSearchQuery}
                             uploading={uploading}
@@ -2412,7 +2416,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     onClose={() => setFilePreview({ doc: null, url: null })}
                     onDownload={() => handleDownloadDoc(filePreview.doc)}
                     onUpdateRemark={handleUpdateDocRemark}
-                    onCrop={canDeleteDocs && isEditable ? () => { setCroppingDoc(filePreview.doc); setFilePreview({ doc: null, url: null }); } : undefined}
+                    onCrop={canCropDocs && isEditable ? () => { setCroppingDoc(filePreview.doc); setFilePreview({ doc: null, url: null }); } : undefined}
                 />
             )}
 
