@@ -1,1 +1,0 @@
-import{R as e}from"./constants-DG5X3kGP.js";var t=e(`ChevronDown`,[[`path`,{d:`m6 9 6 6 6-6`,key:`qrunsl`}]]);export{t};
