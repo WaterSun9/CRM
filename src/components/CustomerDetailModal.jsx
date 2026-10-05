@@ -930,15 +930,19 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const handleSaveStageRemark = async (stageId) => {
         const targetStage = stageId || editData.stage;
         const currentRemark = getStageRemarkFromData(editData.stages_remarks, targetStage);
-        const originalRemark = getStageRemarkFromData(customer.stages_remarks, targetStage);
+        // The stored record, not the list copy the window was opened with: after
+        // a stage move in this window the list copy still has the old stage and
+        // remarks, and rebuilding from it overwrote the remark the move saved.
+        const storedRemarks = savedDataRef.current?.stages_remarks ?? customer.stages_remarks;
+        const originalRemark = getStageRemarkFromData(storedRemarks, targetStage);
 
         if (currentRemark !== originalRemark) {
             let prevObj = {};
-            if (typeof customer.stages_remarks === 'object' && customer.stages_remarks) {
-                prevObj = customer.stages_remarks;
-            } else if (typeof customer.stages_remarks === 'string') {
+            if (typeof storedRemarks === 'object' && storedRemarks) {
+                prevObj = storedRemarks;
+            } else if (typeof storedRemarks === 'string') {
                 try {
-                    const parsed = JSON.parse(customer.stages_remarks);
+                    const parsed = JSON.parse(storedRemarks);
                     if (typeof parsed === 'object' && parsed) prevObj = parsed;
                 } catch { /* not valid JSON, fall through to default */ }
             }
@@ -1437,7 +1441,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     // (see its getHoldState), so Resume would dump a project lost at Subsidy
     // Status all the way back to Leads.
     const handleMoveToLostProject = async () => {
-        const originStage = customer?.stage;
+        const originStage = savedDataRef.current?.stage || customer?.stage;
         if (!originStage) return;
 
         const originLabel = PRIMARY_STAGES.find(st => st.id === originStage)?.label || originStage;
@@ -2127,7 +2131,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     ) : (
                                         (() => {
                                             const curRemark = getStageRemarkFromData(editData.stages_remarks, editData.stage);
-                                            const origRemark = getStageRemarkFromData(customer.stages_remarks, customer.stage);
+                                            const origRemark = getStageRemarkFromData(savedDataRef.current?.stages_remarks ?? customer.stages_remarks, editData.stage);
                                             const isRemarkDirty = (curRemark || '').trim() !== (origRemark || '').trim();
 
                                             return (
@@ -2270,7 +2274,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         {/* Restored: removed in rd48, leaving hasNextStage / nextStageId /
                             nextStageLabel / handleAdvanceStage all in place but unreachable,
                             so no role could advance a customer from the modal. */}
-                        {hasNextStage && activeTab === customer.stage && (
+                        {/* Compare with the stored stage. `customer` is the list copy the window
+                            was opened with; after "Save & Move" it still had the old stage, so the
+                            button vanished on the new stage's tab and appeared on the old one
+                            (Loan tab offering "Move to Material Integration"). */}
+                        {hasNextStage && activeTab === (savedDataRef.current?.stage || customer.stage) && (
                             <button
                                 onClick={() => {
                                     if (nextStageId === STAGE_IDS.COMPLETED) {
