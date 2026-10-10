@@ -36,6 +36,8 @@ export const INITIAL_QUOTATION = {
     inverterOption: '',
     inverterBrand: '',
     gebGedaCharge: 'Including',
+    gebCharge: 'Included',
+    gedaCharge: 'Included',
     projectType: 'Residential',
 
     projectSize: '',

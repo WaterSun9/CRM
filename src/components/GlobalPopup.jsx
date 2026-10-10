@@ -27,13 +27,24 @@ export function GlobalPopupProvider({ children }) {
         const handleDownloadComplete = (event) => {
             setPopup({
                 mode: 'download-complete',
-                title: 'Download complete',
-                message: `${event.detail?.fileName || 'Your file'} has been downloaded to this device.`,
+                title: event.detail?.saved === false ? 'Download started' : 'Download complete',
+                message: event.detail?.saved === false
+                    ? `${event.detail?.fileName || 'Your file'} is ready. Check your browser downloads for the saved file.`
+                    : `${event.detail?.fileName || 'Your file'} has been downloaded to this device.`,
                 type: 'success',
             });
         };
+        const handleDownloadFailed = (event) => setPopup({
+            mode: 'alert', title: 'Download failed', type: 'error',
+            message: event.detail?.message || 'Please check your connection and retry.',
+            onResolve: () => setPopup(null),
+        });
         window.addEventListener('watersun:download-complete', handleDownloadComplete);
-        return () => window.removeEventListener('watersun:download-complete', handleDownloadComplete);
+        window.addEventListener('watersun:download-failed', handleDownloadFailed);
+        return () => {
+            window.removeEventListener('watersun:download-complete', handleDownloadComplete);
+            window.removeEventListener('watersun:download-failed', handleDownloadFailed);
+        };
     }, []);
 
     const showAlert = useCallback((message, opts = {}) => {

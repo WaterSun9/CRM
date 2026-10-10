@@ -85,9 +85,11 @@ export const META_CATEGORIES = ['payment_type', 'module_brand', 'payment_method_
 // Field service is scheduled for October week 2 with WhatsApp integration.
 export const TECHNICIAN_FEATURE_ENABLED = false;
 
-// Quotation Maker is hidden (button, sidebar count, #/quotations screen) until
-// its open issues are fixed. Saved quotations stay in the database untouched.
-export const QUOTATION_FEATURE_ENABLED = false;
+// Quotation Maker: on for admin and sales (sidebar > Quotation Maker, opens
+// inside the dashboard). Switched on 10 Oct 2026.
+export const QUOTATION_FEATURE_ENABLED = true;
+// CP / dealer portal: Quotation Maker stays hidden until switched on here.
+export const QUOTATION_PARTNER_ENABLED = false;
 
 // Personal (one-to-one) chats: CPO <-> their staff/dealers, and starting a chat
 // with one person. Off for now: chat is the "Office team" group chat plus

@@ -69,6 +69,25 @@ Removed as dead code on 4 Oct. Decide whether any should become real rules (each
 - It makes a one-time login link through an edge function. Every use is logged, and it's admin only.
 - **Quicker option:** test accounts for each role (TEST Vendor, TEST Dealer...) with dummy customers.
 
+### 9a. Chat notifications (asked 5 Oct)
+Today: a red unread count on the chat button and in the browser tab title, updated live, but only while the CRM is open.
+
+| Option | What people get | Effort | Cost | Catch |
+|---|---|---|---|---|
+| **A. Chime** | A short sound when a new message arrives while the CRM is open in any tab | Small (hours) | Free | Nothing if the CRM is closed. Browsers only play sound after the person has clicked on the page once. Needs a mute toggle. |
+| **B. Browser push** | A phone/desktop notification even when the CRM tab is closed | Medium (1-2 days) | Free | Each person taps "Allow" once. Android and desktop Chrome/Edge work. **iPhone only if the CRM is added to the Home Screen** (iOS 16.4+). Needs a service worker, keys and an edge function that sends on each new message. |
+| **C. Email** | An email for chats left unread | Medium (1 day) | Free on Brevo up to ~300 emails/day | Per-message emails get ignored or marked spam. Better: one email only if a message is still unread after ~10-15 minutes, or a daily summary. Needs a scheduled edge function and an email per user. |
+| D. WhatsApp | A WhatsApp message | Larger | Paid per message, Meta approval | Same provider question as the technician/OTP work; not worth it for internal chat. |
+
+- **Suggested:** A now (cheap, solves "didn't notice"), then B for people who keep the CRM closed. C only as a "you have unread messages" reminder, never per message.
+- **Ask the client:** who must be reached when the CRM is closed (admin only, or vendors/CPs too), and whether staff use iPhones.
+
+### 9b. Phone OTP - parked 5 Oct
+- Edge function `phone-otp` and table `phone_otp_requests` are live but unused (no screen calls them). Tested end to end with Message Central: send and verify work.
+- **Parked because:** Message Central's real minimum is a Rs 2,999 + GST pack that expires in 30 days; the SMS text ("valid for 10 mins") can't be changed and real validity is 60 s (max 300 s after top-up).
+- **Next:** pick a provider with non-expiring credit (2Factor.in looked best: ~Rs 0.165/OTP, lifetime credit; check smallest pack and whether OTP works without DLT). Only the provider calls in the function change.
+- Also decide what OTP is for (technician login vs on-site confirmation) before building the screen.
+
 ## Fix soon (technical, low risk)
 
 | # | Item | Effect today |

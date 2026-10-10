@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Save, Trash2 } from 'lucide-react';
-import { calculate, fromRow, money, newForm, STEPS } from './model';
+import { calculate, chargeLabel, extraCharges, fromRow, money, newForm, STEPS } from './model';
 import { brandedTemplate } from './branding';
 import { quotationRepository as repo } from './client';
 import { readRecovery, removeRecovery, writeRecovery } from './recovery';
@@ -101,6 +101,8 @@ export default function QuotationForm({ id,initialRow,user,onDirty,onSaved,onPre
             inverter_option: 'Option 1',
             inverter_brand: 'Solaryan',
             geb_geda_charge: 'Including',
+            geb_charge: '',
+            geda_charge: '',
             options: [
                 { brandName: 'Waaree Solar', baseValue: '189000', discount: '5000', subsidy: '78000' },
                 { brandName: 'Tata Power Solar', baseValue: '198000', discount: '5000', subsidy: '78000' },
@@ -114,7 +116,7 @@ export default function QuotationForm({ id,initialRow,user,onDirty,onSaved,onPre
         markDirty();
         writeRecovery(user.id, id, { form: next, template: templateRef.current, base_updated_at: rowRef.current?.updated_at || null });
     };
-    const totals = calculate(form.options);
+    const totals = calculate(form.options, extraCharges(form));
     const autoCalcCapacity = () => {
         const kwp = calculateSystemCapacityKwp(form.panel_wattage, form.solar_panel_qty);
         if (kwp == null) {
@@ -171,7 +173,9 @@ export default function QuotationForm({ id,initialRow,user,onDirty,onSaved,onPre
                 <Field label="No of Modules" type="number" value={form.solar_panel_qty} onChange={v => update('solar_panel_qty',v)} />
                 <Field label="System Capacity (kWp)"><span className="q-auto-field"><input aria-label="System Capacity (kWp)" type="number" min="0" step="any" inputMode="decimal" value={form.capacity_kw ?? ''} onChange={e => update('capacity_kw',e.target.value)} /><button type="button" onClick={autoCalcCapacity} title="Calculate from Module Wp x No of Modules">Auto</button></span></Field>
                 <Field label="Inverter brand / make" value={form.inverter_brand} maxLength={100} onChange={v => update('inverter_brand',v)} />
-                <Field label="GEB / GEDA charge"><select value={form.geb_geda_charge} onChange={e => update('geb_geda_charge',e.target.value)}><option>Including</option><option>Excluding</option></select></Field>
+                <Field label="GEB charge (₹)"><input aria-label="GEB charge" type="number" min="0" step="any" inputMode="decimal" placeholder="Included" value={form.geb_charge ?? ''} onChange={e => update('geb_charge',e.target.value)} /></Field>
+                <Field label="GEDA charge (₹)"><input aria-label="GEDA charge" type="number" min="0" step="any" inputMode="decimal" placeholder="Included" value={form.geda_charge ?? ''} onChange={e => update('geda_charge',e.target.value)} /></Field>
+                <p className="q-muted">GEB and GEDA: leave blank to show "Included". An amount is added to each option's net payable.</p>
                 <p className="q-muted">Module Wp × No of Modules ÷ 1000 = {form.capacity_kw || '—'} kWp</p>
             </div>}
             {step === 2 && <div className="q-price-options">{form.options.map((option,i) => <section className="q-option" key={i}><h3>Panel option {i + 1}</h3>
@@ -183,7 +187,7 @@ export default function QuotationForm({ id,initialRow,user,onDirty,onSaved,onPre
                 <h3>Standard notes</h3><ul className="q-standard-notes">{template.page2.notes.map(note => <li key={note}>{note}</li>)}</ul>
                 <h3>Additional notes</h3>{form.custom_notes.map((note,i) => <div key={i} className="q-note"><Field label={`Note ${i + 1}`} type="textarea" maxLength={250} value={note} onChange={v => update('custom_notes',form.custom_notes.map((n,index) => index === i ? v : n))} /><button aria-label={`Remove note ${i + 1}`} onClick={() => update('custom_notes',form.custom_notes.filter((_,index) => index !== i))}><Trash2 size={18} /></button></div>)}
                 {form.custom_notes.length < 5 && <button onClick={() => update('custom_notes',[...form.custom_notes,''])}><Plus size={16} /> Add note</button>}
-                <h3 className="q-summary-title">Review quotation</h3><dl className="q-summary">{customerFields.map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{form[key] || '—'}</dd></div>)}{[['capacity_kw','System capacity (kWp)'],['project_type','Project type'],['solar_panel_make','Panel make'],['solar_panel_qty','No of Modules'],['panel_wattage','Module Wp'],['inverter_brand','Inverter brand / make'],['geb_geda_charge','GEB / GEDA']].map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{form[key] || '—'}</dd></div>)}</dl>
+                <h3 className="q-summary-title">Review quotation</h3><dl className="q-summary">{customerFields.map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{form[key] || '—'}</dd></div>)}{[['capacity_kw','System capacity (kWp)'],['project_type','Project type'],['solar_panel_make','Panel make'],['solar_panel_qty','No of Modules'],['panel_wattage','Module Wp'],['inverter_brand','Inverter brand / make']].map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{form[key] || '—'}</dd></div>)}{[['geb_charge','GEB charge'],['geda_charge','GEDA charge']].map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{typeof chargeLabel(form[key]) === 'number' ? money(chargeLabel(form[key])) : 'Included'}</dd></div>)}</dl>
                 {totals.map((option,i) => <div className="q-option" key={i}><strong>{option.brandName}</strong><p>Base {money(option.baseValue)} · Discount {money(option.discount)} · Subsidy {money(option.subsidy)}</p><p>Net payable <strong>{money(option.netPayableAmount)}</strong> · After subsidy <strong>{money(option.netPriceAfterSubsidy)}</strong></p></div>)}
                 <details><summary>Company, terms, warranty, BOM and bank details</summary><div className="q-template-summary"><h3>{template.company.name} {template.company.tagline}</h3><p>GST: {template.company.gstNo} · CIN: {template.company.cinNo}</p><p>{template.company.email}</p>{[['Terms and conditions',template.page3.termsAndConditions],['Warranties',template.page3.warranties]].map(([title,items]) => <section key={title}><h3>{title}</h3><dl className="q-summary">{items.map(item => <div key={item.sr}><dt>{item.parameter}</dt><dd>{item.remarks}</dd></div>)}</dl></section>)}<h3>Bill of materials</h3>{template.page3.bomItems.map(item => <p key={item.sr}><strong>{item.description}</strong> — {item.qty} {item.unit}, {item.size}, {item.make}</p>)}<h3>Other charges</h3><p>{template.page3.otherChargesText}</p><h3>Bank details</h3><p>{template.page3.bankDetails.accountName}</p><p>{template.page3.bankDetails.bankName} · {template.page3.bankDetails.branchName}</p><p>Account: {template.page3.bankDetails.accountNumber} · IFSC: {template.page3.bankDetails.ifscCode}</p><h3>Offices</h3><p>{template.footer.corporateOffice}</p><p>{template.footer.branchOffice}</p></div></details>
             </>}

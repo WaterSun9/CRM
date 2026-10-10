@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { 
     Truck, Plus, Search, Filter, Calendar, User, Phone, MapPin, 
     Zap, Layers, Printer, Edit3, Trash2, CheckCircle2, AlertCircle, 
-    ChevronDown, ChevronUp, Package, X, Check, ArrowRight, FileText, Clock, ExternalLink
+    ChevronDown, ChevronUp, Package, X, Check, ArrowRight, FileText, Clock, ExternalLink, FileSpreadsheet
 } from 'lucide-react';
 import { supabase } from '../supabase';
 import { PRIMARY_STAGES, DELIVERY_PICKER_COLUMNS } from '../constants';
@@ -13,6 +13,7 @@ import { getBomTypeForCustomer, loadBomForCustomer } from '../utils/bom';
 import { buildTruckLoad } from '../utils/truckLoad';
 import TruckLoadingSheet from './TruckLoadingSheet';
 import { getEligibleBatchProjects } from '../utils/deliveryBatchSelection';
+import { DELIVERY_EXPORT_COLUMNS, buildDeliveryExportWorkbook } from '../utils/deliveryExport';
 
 const localDateKey = (date = new Date()) =>
     `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -520,6 +521,38 @@ export default function DeliveryBatchesView({
         });
     }, [batches, searchQuery, statusFilter, appliedMonthFilter]);
 
+    // Excel export of the trips on screen (same month, status and search filters).
+    const [exporting, setExporting] = useState(false);
+    const handleExportExcel = async () => {
+        if (exporting) return;
+        if (filteredBatches.length === 0) { showAlert('No trips to export for these filters.'); return; }
+        setExporting(true);
+        try {
+            const ids = [...new Set(filteredBatches.flatMap(batch => batch.project_ids || []))];
+            const customersById = new Map();
+            for (let start = 0; start < ids.length; start += 100) {
+                const { data, error } = await supabase.from('admin').select(DELIVERY_EXPORT_COLUMNS)
+                    .in('id', ids.slice(start, start + 100)).is('deleted_at', null);
+                if (error) throw error;
+                (data || []).forEach(row => customersById.set(String(row.id), row));
+            }
+            const bytes = buildDeliveryExportWorkbook(filteredBatches, customersById);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `delivery-trips-${appliedMonthFilter || 'all'}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (error) {
+            console.error('Delivery export failed:', error);
+            showAlert(`Export failed: ${error.message || error}`, { type: 'error' });
+        } finally {
+            setExporting(false);
+        }
+    };
+
     // Top Aggregate Metrics
     const metrics = useMemo(() => {
         const totalBatches = batches.length;
@@ -675,6 +708,19 @@ export default function DeliveryBatchesView({
                             </button>
                         )}
                     </div>
+
+                    <div className="h-6 w-px bg-stone-200 hidden sm:block"></div>
+
+                    <button
+                        type="button"
+                        onClick={handleExportExcel}
+                        disabled={exporting}
+                        title={appliedMonthFilter ? `Export ${appliedMonthFilter} trips to Excel` : 'Export all trips shown to Excel (pick a Dispatch Month for one month)'}
+                        className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition"
+                    >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        {exporting ? 'Exporting…' : 'Export Excel'}
+                    </button>
 
                     <div className="h-6 w-px bg-stone-200 hidden sm:block"></div>
 

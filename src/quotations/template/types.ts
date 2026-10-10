@@ -50,6 +50,8 @@ export interface QuotationData {
     inverterOption: string; // "Option 1", "Option 2", "Option 3", "Option 4", or "Custom"
     inverterBrand: string; // "Solaryan"
     gebGedaCharge: 'Including' | 'Excluding'; // user prompt: "feda, inclusive or exclusive"
+    gebCharge?: number | string; // amount, or 'Included'
+    gedaCharge?: number | string; // amount, or 'Included'
     projectType: 'Residential' | 'Commercial'; // user prompt: "residential or commericail"
 
     // Project Size column in Table 2

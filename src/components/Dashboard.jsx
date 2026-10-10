@@ -15,6 +15,7 @@ import { PRIMARY_STAGES, STAGE_IDS, CUSTOMER_CARD_COLUMNS, ADMIN_NUMERIC_COLUMNS
 import DashboardView from './DashboardView';
 import CustomerCard from './CustomerCard';
 import { newestCustomerFirst } from '../utils/customerActivity';
+import { fuzzyPatterns, mergeSearchResults } from '../utils/fuzzySearch';
 
 // Secondary views and modals with auto-retry on new deployments
 const SubsidyView = lazyWithRetry(() => import('./SubsidyView'));
@@ -95,6 +96,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
     // Remember current view across page reloads
     const [currentView, setCurrentView] = useState(() => {
         if (typeof window !== 'undefined') {
+            if (QUOTATION_FEATURE_ENABLED && window.location.hash.startsWith('#/quotations')) return 'quotations';
             const saved = window.sessionStorage.getItem('watersun_current_view');
             if (saved && saved !== 'quotations' && saved !== 'team_chat') return saved;
         }
@@ -138,9 +140,30 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
         const load = () => quotationRepository.counts().then(c => { if (active) setQuotationOpenCount(c.open); }).catch(() => {});
         load();
         const onHash = () => { if (!window.location.hash.startsWith('#/quotations')) load(); };
+        // The Quotation Maker reports fresh counts after every list load.
+        const onCounts = event => { if (active && event.detail) setQuotationOpenCount(event.detail.open); };
         window.addEventListener('hashchange', onHash);
-        return () => { active = false; window.removeEventListener('hashchange', onHash); };
+        window.addEventListener('quotations-changed', onCounts);
+        return () => { active = false; window.removeEventListener('hashchange', onHash); window.removeEventListener('quotations-changed', onCounts); };
     }, [user]);
+
+    // Quotations open inside the dashboard (sidebar view), driven by the
+    // #/quotations address the Quotation Maker uses for its own pages.
+    useEffect(() => {
+        if (!QUOTATION_FEATURE_ENABLED) return undefined;
+        const onHash = () => {
+            if (window.location.hash.startsWith('#/quotations')) setCurrentView('quotations');
+            // Left the Quotation Maker (e.g. "View lead" already switched view): only
+            // fall back to the dashboard when nothing else was chosen.
+            else setCurrentView(v => (v === 'quotations' ? 'dashboard' : v));
+        };
+        window.addEventListener('hashchange', onHash);
+        return () => window.removeEventListener('hashchange', onHash);
+    }, []);
+    useEffect(() => {
+        if (currentView === 'quotations' && !window.location.hash.startsWith('#/quotations')) openQuotations();
+        if (currentView !== 'quotations' && window.location.hash.startsWith('#/quotations')) window.location.hash = '';
+    }, [currentView]);
 
     // Synchronize navigation state to sessionStorage
     useEffect(() => {
@@ -572,40 +595,53 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             return; 
         }
 
+        let cancelled = false;
         const fetchSearch = async () => {
-            let query = supabase
-                .from('admin')
-                .select('id, customer_name, phone_number, consumer_no, stage')
-                // Was missing, unlike every other view. Trashed records were
-                // returned by global search and opened FULLY EDITABLE, since
-                // isFrozen keys off stage only, never deleted_at.
-                .is('deleted_at', null)
-                
-;
-                
+            // Same scope as before for both searches: never trashed records,
+            // and only the CP / dealer the user is filtered to.
+            const scoped = (limit) => {
+                let query = supabase
+                    .from('admin')
+                    .select('id, customer_name, phone_number, consumer_no, stage')
+                    // Was missing, unlike every other view. Trashed records were
+                    // returned by global search and opened FULLY EDITABLE, since
+                    // isFrozen keys off stage only, never deleted_at.
+                    .is('deleted_at', null)
+                    .limit(limit);
+                if (isChannelPartnerOffice) {
+                    query = query.ilike('channel_partner', `%${partnerName}%`);
+                } else if (channelPartnerFilter) {
+                    query = query.ilike('channel_partner', `%${channelPartnerFilter.trim()}%`);
+                }
+                if (dealerFilter) query = query.ilike('sub_channel_partner', dealerFilter);
+                return query;
+            };
+
             let orString = `customer_name.ilike.%${q}%`;
             if (!isNaN(q) && q.length > 0) {
                 // If the user types a number, search it exactly in the numeric columns
                 orString += `,phone_number.eq.${q},consumer_no.eq.${q}`;
             }
-            query = query.or(orString);
-                query = query.limit(8);
-                
-            if (isChannelPartnerOffice) {
-                query = query.ilike('channel_partner', `%${partnerName}%`);
-            } else if (channelPartnerFilter) {
-                query = query.ilike('channel_partner', `%${channelPartnerFilter.trim()}%`);
-            }
-            if (dealerFilter) query = query.ilike('sub_channel_partner', dealerFilter);
-
-            const { data, error } = await query;
+            const { data, error } = await scoped(8).or(orString);
             if (error) console.error("Search error:", error);
-            setGlobalResults(data || []);
-            setShowGlobalDrop((data || []).length > 0);
+            let results = data || [];
+
+            // Spelling-tolerant pass for names ("sandeep" / "ksandip" -> SANDIP),
+            // only when the exact search did not already fill the list.
+            const patterns = isNaN(q) ? fuzzyPatterns(q) : [];
+            if (patterns.length && results.length < 8) {
+                const loose = patterns.reduce((query, pattern) => query.filter('customer_name', 'imatch', pattern), scoped(100));
+                const { data: looseData, error: looseError } = await loose;
+                if (looseError) console.error("Fuzzy search error:", looseError);
+                results = mergeSearchResults(q, results, looseData || [], 8);
+            }
+            if (cancelled) return;
+            setGlobalResults(results);
+            setShowGlobalDrop(results.length > 0);
         };
 
         const timer = setTimeout(fetchSearch, 300); // 300ms debounce
-        return () => clearTimeout(timer);
+        return () => { cancelled = true; clearTimeout(timer); };
     }, [globalSearch, channelPartnerFilter, dealerFilter, isChannelPartnerOffice, partnerName]);
 
     const handleGlobalSelect = (customer) => {
@@ -1217,6 +1253,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
 
     const headerTitle =
         currentView === 'dashboard' ? 'Business Dashboard'
+            : currentView === 'quotations' ? 'Quotations'
             : currentView === 'delivery_batches' ? 'Material Delivery Batches'
             : currentView === 'availability' ? 'Vendor Calendar'
             : currentView === 'subsidy' ? 'Subsidy Tag Tracking'
@@ -1251,7 +1288,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     )}
                     <NavBtn view="subsidy" icon={Tag} label="Subsidy Tags" count={subsidyTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     <NavBtn view="loan_tags" icon={IndianRupee} label="Loan Tags" count={loanTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
-                    {QUOTATION_FEATURE_ENABLED && ['admin', 'sales'].includes(user.userType) && <button onClick={() => { setSidebarOpen(false); openQuotations(); }} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-100"><Tag className="w-4 h-4" /><span className="flex-1 text-left">Quotation Maker</span>{quotationOpenCount > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-bold bg-stone-100 text-stone-500" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}</button>}
+                    {QUOTATION_FEATURE_ENABLED && ['admin', 'sales'].includes(user.userType) && <button onClick={() => { setSidebarOpen(false); setCurrentView('quotations'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold mb-0.5 transition-colors cursor-pointer ${currentView === 'quotations' ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}><Tag className="w-4 h-4 flex-shrink-0" /><span className="flex-1 text-left truncate">Quotation Maker</span>{quotationOpenCount > 0 && <span className={`text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-bold ${currentView === 'quotations' ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-500'}`} title="Open quotations (draft + issued)">{quotationOpenCount}</span>}</button>}
                     <NavBtn view="installation_tags" icon={Wrench} label="Installation Tags" count={installationTagCount} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
 
 
@@ -1453,6 +1490,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                 <div className="flex-1 p-4 lg:p-6">
                     <Suspense fallback={<ViewLoader />}>
                     {currentView === 'dashboard' && <DashboardView metrics={metrics} loading={loading} />}
+                    {currentView === 'quotations' && QUOTATION_FEATURE_ENABLED && canUseQuotations(user) && <QuotationModule embedded user={user} meta={meta} channelPartners={uniqueChannelPartners} onCreateLead={handleAddLead} onViewLead={handleGlobalSelect} onClose={() => setCurrentView('dashboard')} />}
                     {currentView === 'delivery_batches' && canSeeDeliveryBatches && (
                         <DeliveryBatchesView 
                             currentUser={user} 
@@ -1552,7 +1590,6 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                 />
                 </Suspense>
             )}
-            {QUOTATION_FEATURE_ENABLED && <QuotationModule user={user} meta={meta} channelPartners={uniqueChannelPartners} onCreateLead={handleAddLead} onViewLead={handleGlobalSelect} />}
             {showAddLead && <Suspense fallback={<ViewLoader />}><AddLeadModal isOpen={showAddLead} onClose={() => setShowAddLead(false)} onSave={handleAddLead} meta={meta} channel_partners={uniqueChannelPartners} user={user} /></Suspense>}
         </div>
     );

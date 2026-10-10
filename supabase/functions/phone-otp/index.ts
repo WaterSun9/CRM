@@ -17,7 +17,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const MC_BASE = 'https://cpaas.messagecentral.com'
 const MAX_SENDS_PER_HOUR = 5
-const ALLOWED_ORIGINS = ['https://watersun.deeprootsystems.in', 'https://watersun9.github.io']
+const ALLOWED_ORIGINS = ['https://crm.watersunsolar.com', 'https://watersun.deeprootsystems.in', 'https://watersun9.github.io']
 
 function corsHeaders(req: Request) {
   const origin = req.headers.get('Origin') || ''

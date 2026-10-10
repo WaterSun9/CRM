@@ -22,7 +22,7 @@ export function createQuotationRepository(client) {
     };
     return {
         get, update,
-        async list({ search = '', status = 'all', page = 0 }) {
+        async list({ search = '', status = 'all', page = 0, size = PAGE_SIZE }) {
             let query = client.from('quotations').select(LIST_COLUMNS,{count:'exact'}).order('created_at',{ascending:false}).order('id',{ascending:false});
             if (status !== 'all') query = query.eq('status',status);
             // Never interpolate PostgREST filter punctuation or wildcards supplied by users.
@@ -32,8 +32,14 @@ export function createQuotationRepository(client) {
                 const numberFilter = /^\d{1,15}$/.test(number) ? `,quotation_no.eq.${number}` : '';
                 query = query.or(`customer_name.ilike.%${term}%,customer_phone.ilike.%${term}%${numberFilter}`);
             }
-            const { data,error,count } = await query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+            const { data,error,count } = await query.range(page * size, (page + 1) * size - 1);
             fail(error); return { rows:data, count };
+        },
+        // Every quotation matching the search (up to 1000), so the status tabs and
+        // their counts are worked out in the browser and switch instantly.
+        async listAll({ search = '' } = {}) {
+            const { rows } = await this.list({ search, status:'all', page:0, size:1000 });
+            return rows;
         },
         // Deferred lead integration: these helpers have no active UI entry point while
         // LEAD_INTEGRATION_ENABLED is false in QuotationModule.

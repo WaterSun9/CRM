@@ -239,20 +239,37 @@ export const Page2: React.FC<Page2Props> = ({
                 ))}
               </tr>
 
-              {/* The inclusion choice applies to each option, after its discount. */}
+              {/* GEB and GEDA apply to each option, after its discount: "Included" or an amount added to Net Payable. */}
               <tr className="quotation-financial-summary-row">
                 <td colSpan={3} className="border border-black px-2.5 py-1 text-right font-medium text-gray-900 text-[10.5px]">
-                  GEB / GEDA Charge
+                  GEB Charge
                 </td>
                 {brands.map((brand, idx) => (
-                  <td key={idx} className="border border-black px-1.5 py-1 text-right font-semibold text-gray-900 text-[10.5px]">
+                  <td key={idx} className="border border-black px-1.5 py-1 text-right font-semibold text-gray-900 whitespace-nowrap text-[10.5px]">
                     <HighlightWrapper
-                      isChanged={isFieldChanged('page2.gebGedaCharge')}
+                      isChanged={isFieldChanged('page2.gebCharge')}
                       active={highlightChanges}
-                      fieldLabel="GEB / GEDA Charge"
-                      onClick={() => onEditField?.('page2.gebGedaCharge')}
+                      fieldLabel="GEB Charge"
+                      onClick={() => onEditField?.('page2.gebCharge')}
                     >
-                      <span>{page2.gebGedaCharge}</span>
+                      <span>{typeof page2.gebCharge === 'number' ? formatINR(page2.gebCharge) : (page2.gebCharge || 'Included')}</span>
+                    </HighlightWrapper>
+                  </td>
+                ))}
+              </tr>
+              <tr className="quotation-financial-summary-row">
+                <td colSpan={3} className="border border-black px-2.5 py-1 text-right font-medium text-gray-900 text-[10.5px]">
+                  GEDA Charge
+                </td>
+                {brands.map((brand, idx) => (
+                  <td key={idx} className="border border-black px-1.5 py-1 text-right font-semibold text-gray-900 whitespace-nowrap text-[10.5px]">
+                    <HighlightWrapper
+                      isChanged={isFieldChanged('page2.gedaCharge')}
+                      active={highlightChanges}
+                      fieldLabel="GEDA Charge"
+                      onClick={() => onEditField?.('page2.gedaCharge')}
+                    >
+                      <span>{typeof page2.gedaCharge === 'number' ? formatINR(page2.gedaCharge) : (page2.gedaCharge || 'Included')}</span>
                     </HighlightWrapper>
                   </td>
                 ))}

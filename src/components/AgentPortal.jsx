@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { logActivity, logFieldChanges, readAdminFields, toIndianCommas, formatInputValue, parseIndianNumber, normalizePhoneForSave, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
-import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS, QUOTATION_FEATURE_ENABLED, needsFullLeadDocs } from '../constants';
+import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS, QUOTATION_PARTNER_ENABLED, needsFullLeadDocs } from '../constants';
 import AddLeadModal from './AddLeadModal';
 import QuotationModule, { openQuotations } from '../quotations/QuotationModule';
 import { quotationRepository } from '../quotations/client';
@@ -112,7 +112,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
     // the Quotation Maker is closed, so new/converted ones show straight away.
     const [quotationOpenCount, setQuotationOpenCount] = useState(0);
     useEffect(() => {
-        if (!QUOTATION_FEATURE_ENABLED || !canUseQuotations(user)) return undefined;
+        if (!QUOTATION_PARTNER_ENABLED || !canUseQuotations(user)) return undefined;
         let active = true;
         const load = () => quotationRepository.counts().then(c => { if (active) setQuotationOpenCount(c.open); }).catch(() => {});
         load();
@@ -1001,7 +1001,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                         </div>
                     </section>
 
-                    {QUOTATION_FEATURE_ENABLED && <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span>{quotationOpenCount > 0 && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}<ChevronRight size={18} /></button>}
+                    {QUOTATION_PARTNER_ENABLED && <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span>{quotationOpenCount > 0 && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}<ChevronRight size={18} /></button>}
 
                     <section className="rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm">
                         <div className="mb-3">
@@ -1344,7 +1344,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
             </div></div>
             )}
 
-            {QUOTATION_FEATURE_ENABLED && <QuotationModule user={user} meta={meta} onCreateLead={handleSubmitLead} onViewLead={lead => handleSelectCustomerForStage(lead, lead.stage || STAGE_IDS.LEADS)} />}
+            {QUOTATION_PARTNER_ENABLED && <QuotationModule user={user} meta={meta} onCreateLead={handleSubmitLead} onViewLead={lead => handleSelectCustomerForStage(lead, lead.stage || STAGE_IDS.LEADS)} />}
 
             {/* Unified Add Lead Modal */}
             {showAddLead && (

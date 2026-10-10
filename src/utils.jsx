@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase';
+import { fetchDocumentBlob, saveDocumentDownload, validateDocumentBlob } from './utils/documentDownload';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, LOAN_TAGS, ADMIN_COLUMNS, ADMIN_NUMERIC_COLUMNS } from './constants';
 
 // ─── Activity Logging ─────────────────────────────────────────────────────────
@@ -748,6 +749,7 @@ export async function compressImage(file, { maxWidth = 1920, maxHeight = 1920, q
 
 export const uploadDocument = async (file, customerId, docType = null, passedUserId = null) => {
     try {
+        await validateDocumentBlob(file, file?.name);
         if (!customerId || String(customerId).startsWith('demo-')) {
             return {
                 id: 'demo-doc-' + Date.now(),
@@ -917,68 +919,17 @@ const announceCompletedDownload = (file, fileName, options = {}) => {
  * when supported (Chrome, Edge, Opera, Desktop), with standard fallback.
  */
 export const downloadFileWithSaveAs = async (url, fileName, options = {}) => {
-    if (!url) return;
-
-    if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
-        try {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error('Network response was not ok');
-            const blob = await response.blob();
-
-            const ext = (fileName || '').split('.').pop()?.toLowerCase();
-            const fileHandle = await window.showSaveFilePicker({
-                suggestedName: fileName || 'document',
-                types: ext ? [{
-                    description: `${ext.toUpperCase()} File`,
-                    accept: { [blob.type || 'application/octet-stream']: [`.${ext}`] }
-                }] : undefined
-            });
-
-            const writableStream = await fileHandle.createWritable();
-            await writableStream.write(blob);
-            await writableStream.close();
-            announceCompletedDownload(new File([blob], fileName || 'document', {
-                type: blob.type || 'application/octet-stream'
-            }), fileName, options);
-            return;
-        } catch (err) {
-            if (err.name === 'AbortError') {
-                // User cancelled the Save dialog
-                return;
-            }
-            console.warn('showSaveFilePicker fallback to anchor download:', err);
-        }
-    }
-
-    // Standard browser download. Fetching the file first also lets mobile
-    // browsers pass the real file to the native share sheet after download.
-    let downloadUrl = url;
-    let downloadedFile = null;
-    let objectUrl = null;
     try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Network response was not ok');
-        const blob = await response.blob();
-        downloadedFile = new File([blob], fileName || 'document', {
-            type: blob.type || 'application/octet-stream'
-        });
-        objectUrl = URL.createObjectURL(blob);
-        downloadUrl = objectUrl;
+        return await saveDocumentDownload(url, fileName || 'document', options);
     } catch (error) {
-        // Cross-origin URLs can still be downloaded even when JavaScript is not
-        // allowed to read their bytes; sharing is simply unavailable in that case.
-        console.warn('File could not be prepared for native sharing:', error);
+        console.error('Document download failed:', error);
+        window.dispatchEvent(new CustomEvent('watersun:download-failed', {
+            detail: { message: error?.name === 'AbortError'
+                ? 'The download timed out. Please check your connection and retry.'
+                : error?.message || 'The file could not be saved. Please retry.' }
+        }));
+        return { failed: true };
     }
-
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = fileName || 'download';
-    a.target = '_blank';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    announceCompletedDownload(downloadedFile, fileName, options);
 };
 
 const safeDownloadName = (value, fallback = 'file') => {
@@ -1097,9 +1048,7 @@ export const downloadDocumentsAsPdf = async (documents, customerName) => {
                     ? await getDownloadUrl(doc.storage_path, doc.file_name)
                     : signedUrlByPath.get(doc.storage_path);
                 if (!url) throw new Error('No download URL returned');
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                return { doc, blob: await response.blob(), error: null };
+                return { doc, blob: await fetchDocumentBlob(url, doc.file_name), error: null };
             } catch (error) {
                 return { doc, blob: null, error };
             }

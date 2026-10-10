@@ -13,12 +13,9 @@ try {
     assert.equal(await page.locator('.q-header').count(),0);
     assert.equal(await page.locator('.q-hero').count(),0);
     assert.equal(await page.getByRole('button',{name:'Create Quotation',exact:true}).first().isVisible(),true);
-    assert.equal(await page.getByRole('button',{name:'Add to Leads',exact:true}).first().isDisabled(),false);
-    await page.getByRole('button',{name:'Add to Leads',exact:true}).first().click();
-    await page.getByRole('heading',{name:'Add New Lead'}).waitFor();
-    assert.equal(await page.getByRole('heading',{name:'Add New Lead'}).evaluate(heading => heading.closest('.q-module') === null),true);
-    assert.equal(await page.getByPlaceholder('Enter full name').inputValue(),'Test Customer A');
-    await page.getByRole('button',{name:'Close lead form'}).click();
+    // A draft has no Won/Lost until it is downloaded (issued).
+    assert.equal(await page.getByRole('button',{name:'Won',exact:true}).count(),0);
+    assert.equal(await page.getByText('Download it to issue it.',{exact:false}).first().isVisible(),true);
     assert.ok(await page.evaluate(()=>document.querySelector('.q-module').scrollWidth<=innerWidth));
     assert.ok(await page.locator('.q-module.q-module-embedded').count());
     await page.screenshot({path:`${output}/mobile-list.png`,fullPage:true});
@@ -28,9 +25,17 @@ try {
     await downloaded.saveAs(`${output}/quotation.pdf`);
     await page.getByText('Download complete',{exact:true}).waitFor();
     await page.getByRole('button',{name:'Understood',exact:true}).click();
-    await page.getByRole('button',{name:'Issued',exact:true}).click();
+    await page.getByText('issued',{exact:true}).first().waitFor();
+    assert.equal(await page.getByRole('button',{name:'Lost',exact:true}).first().isDisabled(),false);
+    assert.equal(await page.getByRole('button',{name:'Won',exact:true}).first().isDisabled(),false);
+    await page.getByRole('button',{name:'Won',exact:true}).first().click();
+    await page.getByRole('heading',{name:'Add New Lead'}).waitFor();
+    assert.equal(await page.getByRole('heading',{name:'Add New Lead'}).evaluate(heading => heading.closest('.q-module') === null),true);
+    assert.equal(await page.getByPlaceholder('Enter full name').inputValue(),'Test Customer A');
+    await page.getByRole('button',{name:'Close lead form'}).click();
+    await page.getByRole('button',{name:/^Issued( \d+)?$/}).click();
     await page.locator('.q-status-issued',{hasText:'issued'}).waitFor();
-    await page.getByRole('button',{name:'All',exact:true}).click();
+    await page.getByRole('button',{name:/^All( \d+)?$/}).click();
     await page.getByRole('button',{name:'Create Quotation',exact:true}).first().click();
     assert.equal(await page.getByLabel('Salesperson name (automatic)',{exact:true}).inputValue(),'Test Agent');
     assert.equal(await page.getByLabel('Salesperson name (automatic)',{exact:true}).isEditable(),false);
@@ -63,7 +68,8 @@ try {
     await page.locator('.a4-page').first().waitFor();
     const financialRows = await page.locator('.quotation-financial-table tbody tr').allTextContents();
     const discountRow = financialRows.findIndex(value => value.includes('Discount'));
-    assert.equal(financialRows[discountRow + 1].includes('GEB / GEDA Charge'), true);
+    assert.equal(financialRows[discountRow + 1].includes('GEB Charge'), true);
+    assert.equal(financialRows[discountRow + 2].includes('GEDA Charge'), true);
     assert.equal(await page.locator('.quotation-page-3 .quotation-bom-table colgroup col').count(), 6);
     assert.equal(await page.locator('.quotation-page-3 .quotation-grid-overlay').count(), 5);
     assert.ok(await page.locator('.quotation-page-3 .quotation-bom-table').evaluate(table =>
@@ -87,7 +93,7 @@ try {
     await page.setViewportSize({width:320,height:700});
     await page.goto('http://127.0.0.1:5174/quotation-preview.html?role=agent2#/quotations');
     await page.getByRole('heading',{name:'Test Customer A'}).waitFor();
-    assert.equal(await page.getByRole('button',{name:'Add to Leads',exact:true}).first().isDisabled(),false);
+    assert.equal(await page.getByText('Download it to issue it.',{exact:false}).first().isVisible(),true);
     assert.ok(await page.evaluate(()=>document.querySelector('.q-module').scrollWidth<=innerWidth));
     await page.getByRole('button',{name:'Create Quotation',exact:true}).first().click();
     await page.getByLabel('Customer name',{exact:true}).waitFor();

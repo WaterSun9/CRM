@@ -8,7 +8,7 @@ const htmlEscapes: Record<string, string> = {
 const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => htmlEscapes[char])
 
 // Same reason as add_user: the custom domain needs to be an allowed origin.
-const ALLOWED_ORIGINS = ['https://watersun.deeprootsystems.in', 'https://watersun9.github.io']
+const ALLOWED_ORIGINS = ['https://crm.watersunsolar.com', 'https://watersun.deeprootsystems.in', 'https://watersun9.github.io']
 
 function isAllowedOrigin(origin: string) {
   if (ALLOWED_ORIGINS.includes(origin)) return true

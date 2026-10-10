@@ -12,7 +12,7 @@ export const leadMapping = {
     customer_name: 'customer_name', customer_phone: 'phone_number', customer_email: 'email_address',
     full_address: 'full_address', village: 'villages', taluka: 'sub_divisions', district: 'district',
     pincode: 'pincode', capacity_kw: 'system_capacity_kwp', solar_panel_make: 'module_brand',
-    solar_panel_qty: 'no_of_modules', panel_wattage: 'module_wp',
+    solar_panel_qty: 'no_of_modules', panel_wattage: 'module_wp', project_type: 'property_type',
 };
 export function newForm(user = {}) {
     const today = new Date();
@@ -22,6 +22,9 @@ export function newForm(user = {}) {
         quotation_date: date(today), valid_until: date(until), owner_name_snapshot: user.name || '', owner_phone_snapshot: user.phone || '',
         capacity_kw: '', project_type: 'Residential', solar_panel_make: '', solar_panel_qty: '', panel_wattage: '',
         inverter_option: '', inverter_brand: '', geb_geda_charge: 'Including', source_lead_id: null,
+        // GEB and GEDA are separate lines. Blank = "Included"; an amount is added
+        // to each option's net payable. Stored in quotation_data only.
+        geb_charge: '', geda_charge: '',
         options: INITIAL_QUOTATION.page2.brandOptions.map(b => ({ brandName: b.brandName, baseValue: '', discount: 0, subsidy: 0 })),
         custom_notes: [],
     };
@@ -29,10 +32,14 @@ export function newForm(user = {}) {
 export function toLead(form) {
     return Object.fromEntries(Object.entries(leadMapping).map(([field, target]) => [target, form[field] ?? '']));
 }
-export function calculate(options) {
+// Blank (or 0) means the charge is included in the price.
+export const chargeAmount = value => (String(value ?? '').trim() === '' ? 0 : round(value));
+export const chargeLabel = value => (chargeAmount(value) > 0 ? chargeAmount(value) : 'Included');
+export const extraCharges = form => round(chargeAmount(form?.geb_charge) + chargeAmount(form?.geda_charge));
+export function calculate(options, charges = 0) {
     return options.map(option => {
         const baseValue = round(option.baseValue), discount = round(option.discount), subsidy = round(option.subsidy);
-        const netPayableAmount = round(baseValue - discount);
+        const netPayableAmount = round(baseValue - discount + round(charges));
         return { brandName: option.brandName, baseValue, discount, subsidy, netPayableAmount, netPriceAfterSubsidy: round(netPayableAmount - subsidy) };
     });
 }
@@ -52,7 +59,10 @@ export function validate(form) {
     if (!(Number(form.panel_wattage) > 0) || !Number.isFinite(Number(form.panel_wattage))) errors.push('System: Module Wp must be greater than zero');
     [['solar_panel_make','Panel make'],['inverter_brand','Inverter brand / make']].forEach(([key,title]) => required(key,title,1));
     if (!['Residential','Commercial'].includes(form.project_type)) errors.push('System: Select a project type');
-    if (!['Including','Excluding'].includes(form.geb_geda_charge)) errors.push('System: Select GEB/GEDA charges');
+    [['geb_charge','GEB charge'],['geda_charge','GEDA charge']].forEach(([key,title]) => {
+        const v = form[key];
+        if (String(v ?? '').trim() !== '' && !(Number.isFinite(Number(v)) && Number(v) >= 0)) errors.push(`System: ${title} must be blank (Included) or an amount`);
+    });
     if (form.options?.length !== 3) errors.push('Pricing: Exactly three options are required');
     (form.options || []).forEach((option, i) => {
         const prefix = `Pricing: Option ${i + 1}`;
@@ -72,10 +82,11 @@ export function fromRow(row, user) {
     return { ...newForm(user), ...Object.fromEntries(Object.keys(newForm(user)).filter(k => row[k] != null).map(k => [k,row[k]])), ...row.quotation_data?.form };
 }
 export function payload(form, template) {
-    const columns = Object.keys(newForm()).filter(k => !['options','custom_notes'].includes(k));
+    const columns = Object.keys(newForm()).filter(k => !['options','custom_notes','geb_charge','geda_charge'].includes(k));
     const values = Object.fromEntries(columns.map(k => [k, form[k] === '' ? null : form[k]]));
+    values.geb_geda_charge = extraCharges(form) > 0 ? 'Excluding' : 'Including';
     ['capacity_kw','solar_panel_qty','panel_wattage'].forEach(k => { values[k] = Number(form[k]) > 0 ? Number(form[k]) : null; });
-    const options = calculate(form.options);
+    const options = calculate(form.options, extraCharges(form));
     const prices = options.filter(b => b.baseValue > 0 && b.netPayableAmount >= 0 && Number.isFinite(b.netPayableAmount)).map(b => b.netPayableAmount);
     return { ...values, starting_price: prices.length ? Math.min(...prices) : null, schema_version: 1,
         quotation_data: { schema_version: 1, template_version: 1, template: clone(template), form: { ...clone(form), options } } };
@@ -90,7 +101,10 @@ export function documentFor(row) {
         email: form.customer_email || '', validUntil: form.valid_until || '' };
     data.page2 = { ...data.page2, solarPanelMake: form.solar_panel_make || '', solarPanelQty: form.solar_panel_qty || '',
         inverterOption: form.inverter_option || '', inverterBrand: form.inverter_brand || '', gebGedaCharge: form.geb_geda_charge || 'Including',
-        projectType: form.project_type || 'Residential', projectSize: form.capacity_kw ? `${form.capacity_kw} kWp` : '', brandOptions: calculate(form.options || []),
+        // Quotations saved before the split show their old single choice.
+        gebCharge: extraCharges(form) === 0 && form.geb_geda_charge === 'Excluding' ? 'Excluding' : chargeLabel(form.geb_charge),
+        gedaCharge: extraCharges(form) === 0 && form.geb_geda_charge === 'Excluding' ? 'Excluding' : chargeLabel(form.geda_charge),
+        projectType: form.project_type || 'Residential', projectSize: form.capacity_kw ? `${form.capacity_kw} kWp` : '', brandOptions: calculate(form.options || [], extraCharges(form)),
         notes: [...data.page2.notes, ...(form.custom_notes || []).filter(n => n && n.trim())] };
     if (form.valid_until) data.page3.termsAndConditions = data.page3.termsAndConditions.map(t => t.sr === 10 ? { ...t, remarks: `Valid until ${form.valid_until.split('-').reverse().join('-')}` } : t);
     return data;
