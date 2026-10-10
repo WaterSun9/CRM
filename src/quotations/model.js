@@ -1,6 +1,6 @@
 import { INITIAL_QUOTATION } from './template/data/initialData.js';
 
-export const QUOTATION_ROLES = ['agent', 'agent2', 'admin', 'sales'];
+export const QUOTATION_ROLES = ['agent', 'agent2', 'channel_partner_office', 'admin', 'sales'];
 export const STEPS = ['Customer', 'System', 'Pricing', 'Notes & review'];
 export const canUseQuotations = user => QUOTATION_ROLES.includes(user?.userType);
 export const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0);
@@ -31,6 +31,17 @@ export function newForm(user = {}) {
 }
 export function toLead(form) {
     return Object.fromEntries(Object.entries(leadMapping).map(([field, target]) => [target, form[field] ?? '']));
+}
+// The three priced options a customer can choose when the quote is won (1-based number).
+export function chosenOptions(form) {
+    return calculate(form?.options || [], extraCharges(form))
+        .map((option, index) => ({ ...option, number: index + 1 }))
+        .filter(option => option.baseValue > 0);
+}
+// CRM brand names are short capitals (TATA, WAAREE, ADANI); match the option's brand to one.
+export function leadBrand(brandName, known = []) {
+    const first = String(brandName || '').trim().split(/\s+/)[0].toUpperCase();
+    return known.find(name => String(name).toUpperCase() === first) || first || '';
 }
 // Blank (or 0) means the charge is included in the price.
 export const chargeAmount = value => (String(value ?? '').trim() === '' ? 0 : round(value));

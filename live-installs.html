@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WaterSun Live Installations</title>
+<style>
+  :root { --bg:#ffffff; --text:#1c1917; --muted:#78716c; --accent:#d97706; --line:#e7e5e4; }
+  :root[data-theme="dark"] { --bg:#1c1917; --text:#fafaf9; --muted:#a8a29e; --accent:#fbbf24; --line:#44403c; }
+  :root[data-bg="transparent"] { --bg:transparent; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; }
+  body { background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+         display:flex; align-items:center; justify-content:center; padding:16px; }
+  .card { width:100%; max-width:560px; text-align:center; }
+  .live { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; letter-spacing:.12em;
+          text-transform:uppercase; color:var(--muted); }
+  .dot { width:8px; height:8px; border-radius:50%; background:#16a34a; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.35 } }
+  .stats { display:flex; justify-content:center; gap:clamp(16px,6vw,48px); margin:12px 0 8px; flex-wrap:wrap; }
+  .num { font-size:clamp(36px,11vw,64px); font-weight:800; line-height:1; font-variant-numeric:tabular-nums; }
+  .num.accent { color:var(--accent); }
+  .label { margin-top:6px; font-size:13px; font-weight:600; color:var(--muted); }
+  .foot { font-size:11px; color:var(--muted); border-top:1px solid var(--line); padding-top:8px; margin-top:8px; }
+  .error .num { opacity:.4; }
+</style>
+</head>
+<body>
+<div class="card" id="card" aria-live="polite">
+  <div class="live"><span class="dot"></span> Live · WaterSun Solar</div>
+  <div class="stats">
+    <div><div class="num accent" id="installs">…</div><div class="label">Solar installations done</div></div>
+    <div><div class="num" id="kwp">…</div><div class="label">kWp installed</div></div>
+  </div>
+  <div class="foot" id="updated">Loading…</div>
+</div>
+<script type="module" src="/src/live/liveInstalls.js"></script>
+</body>
+</html>

@@ -89,7 +89,7 @@ export const TECHNICIAN_FEATURE_ENABLED = false;
 // inside the dashboard). Switched on 10 Oct 2026.
 export const QUOTATION_FEATURE_ENABLED = true;
 // CP / dealer portal: Quotation Maker stays hidden until switched on here.
-export const QUOTATION_PARTNER_ENABLED = false;
+export const QUOTATION_PARTNER_ENABLED = true;
 
 // Personal (one-to-one) chats: CPO <-> their staff/dealers, and starting a chat
 // with one person. Off for now: chat is the "Office team" group chat plus

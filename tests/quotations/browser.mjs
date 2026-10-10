@@ -29,6 +29,10 @@ try {
     assert.equal(await page.getByRole('button',{name:'Lost',exact:true}).first().isDisabled(),false);
     assert.equal(await page.getByRole('button',{name:'Won',exact:true}).first().isDisabled(),false);
     await page.getByRole('button',{name:'Won',exact:true}).first().click();
+    await page.getByRole('heading',{name:'Which option did the customer choose?'}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Continue to Add Lead'}).isDisabled(),true);
+    await page.locator('.q-choice').nth(1).click();
+    await page.getByRole('button',{name:'Continue to Add Lead'}).click();
     await page.getByRole('heading',{name:'Add New Lead'}).waitFor();
     assert.equal(await page.getByRole('heading',{name:'Add New Lead'}).evaluate(heading => heading.closest('.q-module') === null),true);
     assert.equal(await page.getByPlaceholder('Enter full name').inputValue(),'Test Customer A');

@@ -28,4 +28,11 @@ export default defineConfig({
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
   },
+  // live-installs.html is a small public page (embeddable live counter) built
+  // alongside the CRM.
+  build: {
+    rollupOptions: {
+      input: { main: 'index.html', live: 'live-installs.html' },
+    },
+  },
 })

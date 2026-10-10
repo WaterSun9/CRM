@@ -1,6 +1,6 @@
 import { payload, fromRow, validate, revisionInfo } from './model.js';
 
-export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by';
+export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by,selected_option,chosen_brands:quotation_data->form->options';
 export const STATUSES = ['draft','issued','converted','lost'];
 export const PAGE_SIZE = 20;
 // PostgreSQL jsonb reorders object keys; compare canonical values, not wire key order.

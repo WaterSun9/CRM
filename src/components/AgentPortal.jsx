@@ -117,8 +117,11 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
         const load = () => quotationRepository.counts().then(c => { if (active) setQuotationOpenCount(c.open); }).catch(() => {});
         load();
         const onHash = () => { if (!window.location.hash.startsWith('#/quotations')) load(); };
+        // The Quotation Maker reports fresh counts after every list load.
+        const onCounts = event => { if (active && event.detail) setQuotationOpenCount(event.detail.open); };
         window.addEventListener('hashchange', onHash);
-        return () => { active = false; window.removeEventListener('hashchange', onHash); };
+        window.addEventListener('quotations-changed', onCounts);
+        return () => { active = false; window.removeEventListener('hashchange', onHash); window.removeEventListener('quotations-changed', onCounts); };
     }, [user]);
 
     const handleChange = (field, val) => {
