@@ -9,3 +9,6 @@ dist/
 
 # Database backups - real customer data, never commit
 backups/
+
+# Audit spreadsheets - real customer names and phones, never commit
+docs/*.xlsx

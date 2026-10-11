@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchDocumentBlob, saveDocumentDownload, validateDocumentBlob } from '../src/utils/documentDownload.js';
+import { fetchDocumentBlob, saveDocumentDownload, savePickerOptions, validateDocumentBlob } from '../src/utils/documentDownload.js';
 
 const jpeg = () => new Blob(['image bytes'], {type:'image/jpeg'});
 let decoded = true;
@@ -71,4 +71,17 @@ test('browser fallback uses validated bytes and reports started, not saved', asy
     globalThis.setTimeout=(fn,ms)=>{const timer=originalTimer(fn,ms);timer.unref();return timer;};
     try {await saveDocumentDownload('url','bill.jpg');} finally {globalThis.setTimeout=originalTimer;}
     assert.equal(clicked,true);assert.equal(removed,true);assert.equal(events[0].detail.saved,false);
+});
+test('Save As keeps the original format of images and PDFs', () => {
+    assert.deepEqual(savePickerOptions('Bill.JPG').types[0].accept, {'image/jpeg':['.jpg','.jpeg']});
+    assert.deepEqual(savePickerOptions('photo.png').types[0].accept, {'image/png':['.png']});
+    assert.deepEqual(savePickerOptions('aadhar.pdf').types[0].accept, {'application/pdf':['.pdf']});
+    assert.equal(savePickerOptions('photo.png').excludeAcceptAllOption, true);
+    assert.deepEqual(savePickerOptions('notes'), {suggestedName:'notes'});
+});
+test('picker is given the file type', async () => {
+    setup(); let opts;
+    window.showSaveFilePicker=async o => {opts=o; return {createWritable:async () => ({write:async()=>{},close:async()=>{}})};};
+    await saveDocumentDownload('url','site.jpeg');
+    assert.equal(opts.suggestedName,'site.jpeg'); assert.deepEqual(Object.keys(opts.types[0].accept),['image/jpeg']);
 });

@@ -42,13 +42,32 @@ export async function fetchDocumentBlob(url, fileName) {
     return validateDocumentBlob(blob, fileName);
 }
 
+// File types for the Save As dialog. Without them the dialog is not tied to the
+// document's own format, so a photo could be saved under another type.
+const SAVE_TYPES = {
+    pdf: { description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } },
+    jpg: { description: 'JPEG image', accept: { 'image/jpeg': ['.jpg', '.jpeg'] } },
+    jpeg: { description: 'JPEG image', accept: { 'image/jpeg': ['.jpeg', '.jpg'] } },
+    png: { description: 'PNG image', accept: { 'image/png': ['.png'] } },
+    webp: { description: 'WebP image', accept: { 'image/webp': ['.webp'] } },
+    csv: { description: 'CSV file', accept: { 'text/csv': ['.csv'] } },
+};
+
+export function savePickerOptions(fileName) {
+    const ext = String(fileName || '').split('.').pop()?.toLowerCase();
+    const type = SAVE_TYPES[ext];
+    return type
+        ? { suggestedName: fileName, types: [type], excludeAcceptAllOption: true }
+        : { suggestedName: fileName };
+}
+
 export async function saveDocumentDownload(url, fileName = 'document', options = {}) {
     if (!url) throw new Error('No download link is available. Please reopen the document and retry.');
     // Open the picker during the click gesture, before waiting for the network.
     let handle;
     if (typeof window.showSaveFilePicker === 'function') {
         try {
-            handle = await window.showSaveFilePicker({ suggestedName: fileName });
+            handle = await window.showSaveFilePicker(savePickerOptions(fileName));
         } catch (error) {
             if (error.name === 'AbortError') return { cancelled: true };
             if (!['SecurityError', 'NotAllowedError', 'NotSupportedError', 'TypeError'].includes(error.name)) throw error;
@@ -70,6 +89,10 @@ export async function saveDocumentDownload(url, fileName = 'document', options =
         const anchor = document.createElement('a');
         anchor.href = objectUrl;
         anchor.download = fileName;
+        // As before the rework: browsers that ignore `download` (iPhone) open
+        // the original file in a new tab instead of replacing the CRM page.
+        anchor.target = '_blank';
+        anchor.rel = 'noopener';
         document.body.appendChild(anchor);
         try { anchor.click(); } finally {
             anchor.remove();
