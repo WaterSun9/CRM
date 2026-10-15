@@ -1,18 +1,72 @@
+import { useState } from 'react';
 import { groupNotesByCustomer, planTruckSheetPages } from '../utils/truckLoad';
 
 const quantities = value => value === undefined ? '' : Number(value.toFixed(3));
 
-export default function TruckLoadingSheet({ sheet, onPrint, onClose }) {
-    const { batch, projects, rows, missing, uncertain } = sheet;
+// One customer's quantity for one material. Saved to that customer's BOM line
+// when the box loses focus (or Enter is pressed), so the customer card shows
+// the same number.
+function QuantityCell({ value, disabled, title, onSave }) {
+    const [draft, setDraft] = useState(value);
+    const [shown, setShown] = useState(value);
+    if (shown !== value) { setShown(value); setDraft(value); }
+    const commit = () => {
+        const next = draft.trim();
+        if (next === value) return;
+        onSave(next).then(ok => { if (!ok) setDraft(value); });
+    };
+    return <input
+        aria-label={title}
+        title={title}
+        value={draft}
+        disabled={disabled}
+        inputMode="decimal"
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setDraft(value); } }}
+        className="w-full min-w-0 rounded border border-amber-300 bg-amber-50/40 px-1 py-0.5 text-center tabular-nums outline-none focus:border-amber-500 focus:bg-white disabled:border-stone-200 disabled:bg-stone-50"
+    />;
+}
+
+export default function TruckLoadingSheet({ sheet, onPrint, onClose, canEdit = false, onSaveQuantity }) {
+    const { batch, projects, rows, missing, uncertain, bomIdByCustomer = {} } = sheet;
     const pages = planTruckSheetPages(rows, uncertain, projects.length);
+    const [editing, setEditing] = useState(false);
+    const [busyCell, setBusyCell] = useState('');
+    const saveCell = async (row, project, line, value) => {
+        const cellKey = `${row.name}|${row.uom}|${project.id}`;
+        setBusyCell(cellKey);
+        try { return await onSaveQuantity({ row, project, line, value, bomId: bomIdByCustomer[project.id] }); }
+        finally { setBusyCell(''); }
+    };
+    const renderCell = (row, project) => {
+        const shown = quantities(row.quantitiesByCustomer[project.id]);
+        if (!editing) return shown;
+        const lines = row.lines?.[project.id] || [];
+        const bomId = bomIdByCustomer[project.id];
+        if (!bomId || lines.length > 1) {
+            return <span title={!bomId ? 'This customer has no saved BOM. Open the customer card to create it.' : 'This material is listed more than once in this customer\'s BOM. Edit it from the customer card.'} className="text-stone-400">{shown === '' ? '—' : shown}</span>;
+        }
+        const line = lines[0] || null;
+        const cellKey = `${row.name}|${row.uom}|${project.id}`;
+        return <QuantityCell
+            value={line ? line.quantity : ''}
+            disabled={!!busyCell}
+            title={`${row.name} for ${project.customer_name || project.id}`}
+            onSave={value => saveCell(row, project, line, value)}
+            key={cellKey}
+        />;
+    };
 
     return (
         <div className="truck-sheet-print print-container fixed inset-0 z-[70] overflow-auto bg-stone-900/70 p-4 backdrop-blur-sm">
             <div className="mx-auto w-fit max-w-full">
                 <div className="no-print mb-4 flex min-w-[min(1122px,100%)] flex-wrap items-center justify-between gap-3 rounded-xl bg-white px-5 py-3 text-stone-900 shadow-lg">
                     <h2 className="text-base font-bold">Truck loading sheet · {batch.batch_no}</h2>
-                    <div className="flex gap-2">
-                        <button type="button" onClick={onPrint} className="rounded-lg bg-amber-500 px-4 py-2 font-bold">Print truck sheet</button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {editing && <span className="text-xs text-stone-500">{busyCell ? 'Saving…' : 'Changes save to each customer\'s BOM as you go.'}</span>}
+                        {canEdit && onSaveQuantity && <button type="button" disabled={!!busyCell} onClick={() => setEditing(value => !value)} className={`rounded-lg border px-4 py-2 font-bold ${editing ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : ''}`}>{editing ? 'Done editing' : 'Edit quantities'}</button>}
+                        <button type="button" disabled={editing} title={editing ? 'Finish editing before printing' : undefined} onClick={onPrint} className="rounded-lg bg-amber-500 px-4 py-2 font-bold disabled:opacity-50">Print truck sheet</button>
                         <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2">Close</button>
                     </div>
                 </div>
@@ -59,7 +113,7 @@ export default function TruckLoadingSheet({ sheet, onPrint, onClose }) {
                                                 <th scope="row" className="border px-1.5 py-0.5 text-left font-semibold break-words">{row.name}</th>
                                                 <td className="border bg-amber-50 px-1.5 py-0.5 text-center font-bold tabular-nums">{quantities(row.total)}</td>
                                                 <td className="border px-1.5 py-0.5 text-center">{row.uom}</td>
-                                                {projects.map(project => <td key={project.id} className="border px-1.5 py-0.5 text-center tabular-nums">{quantities(row.quantitiesByCustomer[project.id])}</td>)}
+                                                {projects.map(project => <td key={project.id} className="border px-1.5 py-0.5 text-center tabular-nums">{renderCell(row, project)}</td>)}
                                             </tr>)}</tbody>
                                         </table>
                                         {rows.length === 0 && <p className="p-3 text-stone-500">No numbered BOM quantities found for this batch.</p>}

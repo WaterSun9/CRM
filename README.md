@@ -54,11 +54,11 @@ The role is `profiles.user_type`. Access is enforced by RLS in the database, not
 | `agent2` | Dealer | `sub_channel_partner` = their name AND `channel_partner` = their registered branch | Rows where `sub_channel_partner` = their name | Own quotations, red flags, raise service issues |
 | `vendor` | Vendor | Jobs where `admin.vendor` = their name (not deleted) | Those jobs | Geo photos, own unavailable dates, payments view |
 | `stamp` | Stamp maker | Records sent to stamp maker and assigned to their name | Those records | "My record" summary |
-| `technician` | Technician | None | No | Open service queue (summary only), claim/give up jobs |
+| `technician` | Technician | None | No | Open complaint queue (summary only), claim/give up jobs, close with the customer's WhatsApp code |
 
 Notes:
 
-- `technician` is in the app and the service policies, but the live check constraint `profiles_user_type_check` does not allow it yet, so technician accounts cannot be created. It also still allows a legacy `dealer` value. See BACKLOG P1.
+- `technician` accounts need `supabase/migrations/20261012190000_service_jobs_v2.sql` (adds the role to `profiles_user_type_check`; it still allows a legacy `dealer` value). See docs/TECHNICIAN_PLAN.md.
 - Red flags: admin, sales, CPO, office2, CPO manager, agent, agent2 can set or clear them on customers they can see. Vendors cannot.
 - Chat: staff (admin, sales, CPO, office2) see all messages and can write to everyone, a group (role) or one person. Others write to the office and see their own thread plus messages addressed to them.
 
@@ -100,7 +100,10 @@ Tag views run alongside the stages: Loan tags, Subsidy tags, Installation tags. 
 - Quotation Maker: 3-page PDF, locked after download, "Revise" makes Quote-<no>-R1, R2; "Add to Leads"; PDF named by customer full name.
 - Red flags on customers (table `customer_payment_review_flags`).
 - Team chat with audiences: everyone, a group, one person.
-- Service issues: raise from a completed customer, technician claims and gives up, staff enter visits; private bucket `service-issues`.
+- Complaints (service issues): raised from a completed customer card (one open per customer, warranty tagged); technician claims, closes with the customer's WhatsApp code (`service-otp`), or office closes without code with a reason; staff enter visit km/amount; private bucket `service-issues`. Warranty Expired page in the sidebar.
+- Technician trips and km: technician taps **Start trip** (phone location or typed pincode) and **Reached site**; the office visit form pre-fills the km and can change it with a note. `TRIP_DISTANCE_MODE` in `src/constants.js`: `'simple'` (default) = straight line x 1.3 x 2 + 5 km grace (`src/utils/tripKm.js`); `'pro'` = Google road km via `trip-distance`, falling back to the estimate (setup: [docs/GOOGLE_ROUTES_SETUP.md](docs/GOOGLE_ROUTES_SETUP.md)). Office can save the customer's exact location (Google Maps link) on a complaint.
+- Vendor WhatsApp: when a customer is sent to a vendor, the vendor also gets a WhatsApp with the lead (`send-lead-to-vendor`), if the vendor has a number (Operations > Vendors Allotment). Off until WhatsApp is live (`WA_ENABLED`, [docs/WHATSAPP_DEV_SETUP.md](docs/WHATSAPP_DEV_SETUP.md)); the email works as before.
+- Quotation on WhatsApp: a "WhatsApp" button in Quotation Maker sends the PDF (`whatsapp-send-quotation`). Hidden until WhatsApp is live: set `WHATSAPP_QUOTATION_ENABLED` in `src/quotations/whatsapp.js` to `true` after `WA_ENABLED=true`.
 - Audit: `activity_log` (app-written) and `admin_history` (database trigger, admin-only).
 - Agreement generator (PM Surya Ghar), CSV export (admin), "new version" banner.
 

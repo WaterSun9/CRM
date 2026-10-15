@@ -650,3 +650,12 @@
 .q-module .q-choice { display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; padding:12px 14px; min-height:0; }
 .q-module .q-choice-on { border:2px solid #1c1917; background:#f5f5f4; }
 .q-choice-name { font-size:14px; font-weight:800; }
+
+/* WhatsApp send: green so it is told apart from Share at a glance. */
+.q-module .q-wa { background:#e8f7ee; color:#17663a; border-color:#b6e2c6; }
+.q-module .q-wa:hover { background:#d6f0e0; }
+/* In the two-column phone layout a WhatsApp button left alone on its row takes the full row. */
+.q-actions .q-wa:nth-child(odd):last-child { grid-column:1 / -1; }
+.q-wa-status,.q-card p.q-wa-status { font-size:12px; color:#246746; margin:10px 0 0; overflow-wrap:anywhere; }
+.q-preview-toolbar + .q-wa-status { margin:-6px 0 12px; }
+.q-wa-status.q-wa-failed,.q-card p.q-wa-failed { color:#9a3834; }

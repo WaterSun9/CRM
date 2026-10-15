@@ -6,10 +6,8 @@ Every database item below is a migration file the owner runs (see [OPERATIONS.md
 
 ## October week 2 - planned together
 
-- Technician and field service rollout: keep its controls hidden until the week 2 release. The owner will run `supabase/migrations/20261004120000_allow_technician_role.sql` when ready. Before enabling the UI, verify the role constraint, create a real technician account, and test issue creation, attachment access, claim/give-up, and staff visit entry.
-- WhatsApp integration: define the messages, recipient consent, sending provider, delivery logging, and failure handling; test with a small group before enabling it for all customers.
-
-The database migration and the WhatsApp integration are not part of the current UI change.
+- Technician and field service rollout: built 12 Oct and switched on in code. `20261004120000_allow_technician_role.sql` is no longer needed. SQL, deploy order and tests: [TECHNICIAN_PLAN.md](TECHNICIAN_PLAN.md#deploy-in-this-order).
+- WhatsApp integration: built 12 Oct (Meta Cloud API direct, delivery log, webhook, off until `WA_ENABLED=true`). Setup: [WHATSAPP_DEV_SETUP.md](WHATSAPP_DEV_SETUP.md). Message texts for the owner: [WHATSAPP_TEMPLATES_FOR_APPROVAL.md](WHATSAPP_TEMPLATES_FOR_APPROVAL.md). Test with the test number before real customers.
 
 ## Role smoke check, 3 October
 

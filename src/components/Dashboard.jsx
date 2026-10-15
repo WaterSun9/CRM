@@ -21,6 +21,7 @@ import { fuzzyPatterns, mergeSearchResults } from '../utils/fuzzySearch';
 const SubsidyView = lazyWithRetry(() => import('./SubsidyView'));
 const LoanView = lazyWithRetry(() => import('./LoanView'));
 const InstallationView = lazyWithRetry(() => import('./InstallationView'));
+const WarrantyExpiredView = lazyWithRetry(() => import('./WarrantyExpiredView'));
 const CustomerDetailModal = lazyWithRetry(() => import('./CustomerDetailModal'));
 const AddLeadModal = lazyWithRetry(() => import('./AddLeadModal'));
 const ActivityLogView = lazyWithRetry(() => import('./ActivityLogView'));
@@ -58,7 +59,7 @@ const getMonthBounds = (monthValue, timestamp = false) => {
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays
+    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldAlert
 } from 'lucide-react';
 
 // ── NavBtn ────────────────────────────────────────────────────────────────────
@@ -1259,6 +1260,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             : currentView === 'subsidy' ? 'Subsidy Tag Tracking'
                 : currentView === 'loan_tags' ? 'Loan Tag Tracking'
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
+                : currentView === 'warranty_expired' ? 'Warranty Expired'
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
                     : currentView === 'installation_payments' ? 'Installation Payments'
                     : currentView === 'activity' ? 'Activity Log'
@@ -1299,6 +1301,8 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {PRIMARY_STAGES.map(s => (
                         <NavBtn key={s.id} view="stages" stage={s.id} icon={s.icon} label={s.label} count={stageCounts[s.id] || 0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     ))}
+                    {/* Completed customers past their 5-year warranty (and those with no date). Every role. */}
+                    <NavBtn view="warranty_expired" icon={ShieldAlert} label="Warranty Expired" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
 
                     {/* Office system tools */}
                     {['admin', 'sales'].includes(user.userType) && (
@@ -1502,6 +1506,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
+                    {currentView === 'warranty_expired' && <WarrantyExpiredView onSelectCustomer={setSelectedCustomer} onRaiseServiceIssue={onRaiseServiceIssue} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
 
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView currentUser={user} />}
                     {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} />}

@@ -53,6 +53,7 @@ import CustomerDocumentsTab from './modal-tabs/CustomerDocumentsTab';
 import { FilePreviewModal, DocGalleryRemarkRow, getStageRemarkFromData } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
+import WarrantyBadge from './WarrantyBadge';
 import ConflictResolutionModal from './ConflictResolutionModal';
 import { normalizeInstallationStatus } from '../utils';
 import { findUnsavedFields, fieldLabel, valuesMatch, mergeServerRecord } from '../utils/saveCheck';
@@ -660,14 +661,47 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         note: 'bg-indigo-100 text-indigo-700',
     };
 
+    // History is paged: LOG_PAGE_SIZE at a time, with "Load more" in the
+    // History tab. A refresh (fetchLogs) re-reads as many entries as are
+    // already shown, so saving an edit doesn't collapse an expanded list.
+    const LOG_PAGE_SIZE = 25;
+    const logCountRef = useRef(LOG_PAGE_SIZE);
+    const [logsHasMore, setLogsHasMore] = useState(false);
+    const [logsLoadingMore, setLogsLoadingMore] = useState(false);
+    const logsQuery = useCallback(() => supabase.from('activity_log').select('*, profiles(name)')
+        // Match on the customer's id. The old name match also pulled in other
+        // customers ("Ram" matched "Ramesh") and broke on names with commas.
+        .or(`customer_id.eq.${customer.id},new_value.eq.${customer.id}`)
+        .order('created_at', { ascending: false }), [customer.id]);
+
     const fetchLogs = useCallback(async () => {
-        const { data } = await supabase.from('activity_log').select('*, profiles(name)')
-            // Match on the customer's id. The old name match also pulled in other
-            // customers ("Ram" matched "Ramesh") and broke on names with commas.
-            .or(`customer_id.eq.${customer.id},new_value.eq.${customer.id}`)
-            .order('created_at', { ascending: false }).limit(25);
-        if (data) setActivityLogs(data);
-    }, [customer.id]);
+        const count = Math.max(logCountRef.current, LOG_PAGE_SIZE);
+        const { data } = await logsQuery().range(0, count - 1);
+        if (data) {
+            setActivityLogs(data);
+            setLogsHasMore(data.length === count);
+        }
+    }, [logsQuery]);
+
+    const loadMoreLogs = useCallback(async () => {
+        setLogsLoadingMore(true);
+        try {
+            const from = logCountRef.current;
+            const { data } = await logsQuery().range(from, from + LOG_PAGE_SIZE - 1);
+            if (data) {
+                logCountRef.current = from + LOG_PAGE_SIZE;
+                setActivityLogs(prev => {
+                    const seen = new Set(prev.map(l => l.id));
+                    return [...prev, ...data.filter(l => !seen.has(l.id))];
+                });
+                setLogsHasMore(data.length === LOG_PAGE_SIZE);
+            }
+        } finally {
+            setLogsLoadingMore(false);
+        }
+    }, [logsQuery]);
+
+    useEffect(() => { logCountRef.current = LOG_PAGE_SIZE; }, [customer.id]);
 
     const urlCacheRef = useRef({});
 
@@ -2016,7 +2050,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 {/* Header */}
                 <div className="bg-stone-900 px-6 py-5 flex justify-between items-center flex-shrink-0">
                     <div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                             <h2 className="text-xl font-bold text-white">{customer.customer_name}</h2>
                             <RedFlagBadge customerId={customer.id} user={user} size={17} />
                             {isCompleted && (
@@ -2024,6 +2058,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     {isFrozen ? <><Lock size={9} /> Frozen</> : <><Unlock size={9} /> Unlocked</>}
                                 </span>
                             )}
+                            {/* Waits for the full record (a search result has no dates) and uses saved dates, not unsaved typing. */}
+                            {isCompleted && fullRecordLoaded && <WarrantyBadge customer={savedDataRef.current} tone="dark" />}
                         </div>
                         <p className="text-[11px] text-stone-400 font-medium mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-1">
                             <span className="inline-flex items-center gap-1.5"><Calendar size={11} className="flex-shrink-0" />Lead Created: {customer.created_at ? `${formatCustomerTimestamp(customer.created_at)} IST` : '—'}</span>
@@ -2032,8 +2068,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     </div>
                     <div className="flex items-center gap-2">
                         {isCompleted && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(savedDataRef.current)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-500/15 px-2.5 py-1.5 text-[10px] font-bold text-amber-300 hover:bg-amber-500/25">
-                            <Flag size={13} /> Raise issue
+                            aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
+                            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-500/15 px-3 text-[11px] font-bold text-amber-300 hover:bg-amber-500/25">
+                            <Flag size={13} /> Raise complaint
                         </button>}
                         <RedFlagToggle customer={customer} user={user} tone="dark" />
                         {/* Admin unlock/lock toggle for completed cards */}
@@ -2212,6 +2249,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             setFollowUpText={setFollowUpText}
                             handleAddNote={handleAddNote}
                             activityLogs={activityLogs}
+                            logsHasMore={logsHasMore}
+                            logsLoadingMore={logsLoadingMore}
+                            onLoadMoreLogs={loadMoreLogs}
                         />
                     )}
 

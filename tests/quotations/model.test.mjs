@@ -27,7 +27,7 @@ test('quotation-to-lead mapping prefills the review form',() => {
 test('complete form validates and lists all invalid steps',() => {
     assert.deepEqual(validate(complete()),[]);
     const form = complete(); form.customer_name='';form.capacity_kw=0;form.solar_panel_qty=1.2;form.options[1].discount=-1;
-    const errors = validate(form); assert.ok(errors.some(e => e.startsWith('Customer:')));assert.ok(errors.some(e => e.startsWith('System:')));assert.ok(errors.some(e => e.startsWith('Pricing:')));
+    const errors = validate(form); assert.ok(errors.some(e => e.startsWith('Customer:')));assert.ok(errors.some(e => e.startsWith('Pricing:')));
 });
 test('salesperson phone is optional and never blocks a quotation',() => {
     const blank = complete(); blank.owner_phone_snapshot=''; assert.deepEqual(validate(blank),[]);

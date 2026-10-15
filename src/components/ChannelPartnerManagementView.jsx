@@ -26,6 +26,19 @@ const dedupeChannelPartnerDirectory = (items) => {
     return [...byName.values()];
 };
 
+// Vendor WhatsApp number: 10 digits or empty, same rule as the database check
+// (vendors_phone_check). "+91 98765-43210" and "098765 43210" become 9876543210.
+const cleanVendorPhone = (value) => {
+    let digits = String(value ?? '').replace(/\D/g, '');
+    if (!digits) return { ok: true, phone: null };
+    if (digits.length === 13 && digits.startsWith('910')) digits = digits.slice(3);
+    if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+    if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+    return /^[6-9]\d{9}$/.test(digits) ? { ok: true, phone: digits } : { ok: false, phone: null };
+};
+
+const formatVendorPhone = (phone) => (/^\d{10}$/.test(String(phone || '')) ? `${phone.slice(0, 5)} ${phone.slice(5)}` : phone || '');
+
 export default function ChannelPartnerManagementView({ customers = [], currentUser }) {
     const { showAlert } = useGlobalPopup();
     const [partners, setPartners] = useState([]);
@@ -53,6 +66,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     const [userProfilesList, setUserProfilesList] = useState([]);
     const [editingVendorName, setEditingVendorName] = useState('');
     const [editingVendorEmail, setEditingVendorEmail] = useState('');
+    const [editingVendorPhone, setEditingVendorPhone] = useState('');
     const [performanceStats, setPerformanceStats] = useState([]);
 
     // Drivers directory - name, phone and vehicle are entered together and
@@ -464,7 +478,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
     // entries flagged "No Login in User Mgmt" were created in the first place.
 
     // Edit/Rename Vendor
-    const handleEditVendor = async (id, oldName, oldEmail) => {
+    const handleEditVendor = async (id, oldName, oldEmail, oldPhone) => {
         // The name is displayed read-only above, so oldName is the only name
         // this function can ever write. Kept explicit rather than reading the
         // editing state, so a future UI change cannot quietly re-enable renames.
@@ -474,18 +488,52 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
             showAlert('Vendor Email cannot be empty.');
             return;
         }
+        // The lead WhatsApp goes to this number, so a wrong one is refused here
+        // rather than saved and failing later.
+        const cleanedPhone = cleanVendorPhone(editingVendorPhone);
+        if (!cleanedPhone.ok) {
+            showAlert('Enter the vendor\'s 10-digit mobile number for WhatsApp (like 98765 43210), or leave it empty.');
+            return;
+        }
+        const phone = cleanedPhone.phone;
+        const emailChanged = email !== oldEmail;
+        const phoneChanged = phone !== (oldPhone || null);
 
-        if (email === oldEmail) {
+        if (!emailChanged && !phoneChanged) {
             setEditingId(null);
             return;
         }
 
         try {
+            // Only what changed is sent, so an email fix still saves on a
+            // database that does not have vendors.phone yet.
+            const changes = {};
+            if (emailChanged) changes.email = email;
+            if (phoneChanged) changes.phone = phone;
             const res = await runWrite(
-                supabase.from('vendors').update({ email }).eq('id', id).select('id'),
-                { action: 'vendor email change' }
+                supabase.from('vendors').update(changes).eq('id', id).select('id'),
+                { action: emailChanged ? 'vendor email change' : 'vendor WhatsApp number change' }
             );
-            if (!res.ok) throw res.error;
+            if (!res.ok) {
+                const err = res.error || {};
+                if (phoneChanged && /phone/i.test(String(err.message || '')) && ['PGRST204', '42703'].includes(err.code)) {
+                    throw new Error('WhatsApp numbers cannot be saved yet. Ask the developer to run the vendor phone database update.');
+                }
+                if (err.code === '23514' && /vendors_phone_check/.test(String(err.message || ''))) {
+                    throw new Error('Enter the vendor\'s 10-digit mobile number for WhatsApp, or leave it empty.');
+                }
+                throw res.error;
+            }
+
+            // Saved now, whatever happens to the login email below.
+            if (phoneChanged) {
+                setVendors(prev => prev.map(v => v.id === id ? { ...v, phone } : v));
+                await logActivity(currentUser.id, 'update', `Updated Vendor WhatsApp number: "${name}" (${phone ? formatVendorPhone(phone) : 'removed'})`);
+                if (!emailChanged) {
+                    setEditingId(null);
+                    return;
+                }
+            }
 
             // No rename branch here any more: the name field is read-only, so
             // admin.vendor can never fall out of step with the login name.
@@ -1342,6 +1390,10 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                         Vendors are added in <b className="text-stone-700">User Management</b>, so the login and the
                                         directory entry are created together. This list is for reviewing them and correcting an email.
                                     </p>
+                                    <p className="text-[11px] text-stone-500 font-medium mt-1">
+                                        Add the vendor's <b className="text-stone-700">WhatsApp number</b> with the pencil button. When a lead is sent,
+                                        the vendor gets the email and, once WhatsApp is switched on, a WhatsApp too.
+                                    </p>
                                 </div>
                             ) : (
                                 <div className="p-4 border-b border-stone-100 bg-stone-50/50 flex gap-2">
@@ -1398,7 +1450,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                             />
                                                         </div>
                                                     ) : isVendorCat ? (
-                                                        <div className="flex-1 flex gap-2 max-w-md">
+                                                        <div className="flex-1 flex flex-col sm:flex-row gap-2 max-w-lg">
                                                             {/* Read-only on purpose. The vendor's NAME is the join key:
                                                                 admin.vendor stores it, and vendor RLS matches it against the
                                                                 profile name. Renaming here moved every job to the new name
@@ -1416,6 +1468,16 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                                 onChange={e => setEditingVendorEmail(e.target.value)}
                                                                 className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium text-stone-700"
                                                                 placeholder="Email"
+                                                            />
+                                                            <input
+                                                                type="tel"
+                                                                inputMode="numeric"
+                                                                value={editingVendorPhone}
+                                                                onChange={e => setEditingVendorPhone(e.target.value.replace(/[^0-9+\-\s]/g, ''))}
+                                                                onKeyDown={e => e.key === 'Enter' && handleEditVendor(item.id, item.name, item.email, item.phone)}
+                                                                className="flex-1 sm:max-w-[140px] bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium text-stone-700"
+                                                                placeholder="WhatsApp no. (optional)"
+                                                                title="Vendor's 10-digit WhatsApp number. Leave empty if they do not use WhatsApp."
                                                             />
                                                         </div>
                                                     ) : (
@@ -1452,6 +1514,9 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                                 )}
                                                             </div>
                                                             <span className="text-[10px] text-stone-400 font-medium">{item.email}</span>
+                                                            <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1">
+                                                                <Phone size={9} /> {item.phone ? `WhatsApp ${formatVendorPhone(item.phone)}` : 'No WhatsApp number'}
+                                                            </span>
                                                         </div>
                                                     ) : (
                                                         <span className="text-xs font-bold text-stone-700 tracking-tight">{item.label}</span>
@@ -1461,7 +1526,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                 <div className="flex items-center gap-2">
                                                     {isEditing ? (
                                                         <button
-                                                            onClick={() => isDriverCat ? handleEditDriver(item.id) : isVendorCat ? handleEditVendor(item.id, item.name, item.email) : handleEditMetadata(item.id, item.label, editingLabel, activeManageCategory)}
+                                                            onClick={() => isDriverCat ? handleEditDriver(item.id) : isVendorCat ? handleEditVendor(item.id, item.name, item.email, item.phone) : handleEditMetadata(item.id, item.label, editingLabel, activeManageCategory)}
                                                             className="text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-1.5 rounded-lg transition"
                                                             title="Save changes"
                                                         >
@@ -1478,6 +1543,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                                 } else if (isVendorCat) {
                                                                     setEditingVendorName(item.name);
                                                                     setEditingVendorEmail(item.email);
+                                                                    setEditingVendorPhone(formatVendorPhone(item.phone));
                                                                 } else {
                                                                     setEditingLabel(item.label);
                                                                 }

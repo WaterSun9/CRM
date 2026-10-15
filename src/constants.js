@@ -82,8 +82,28 @@ export const LOAN_TAG_COLORS = {
 // Supabase metadata table categories (one per managed dropdown)
 export const META_CATEGORIES = ['payment_type', 'module_brand', 'payment_method_modes', 'subsidy_approval_status', 'registration_by'];
 
-// Field service is scheduled for October week 2 with WhatsApp integration.
-export const TECHNICIAN_FEATURE_ENABLED = false;
+// Field service (technicians, complaints, completion codes). Switched on
+// 12 Oct 2026. Run supabase/migrations/20261012190000_service_jobs_v2.sql
+// before deploying, or the technician role and complaint screens will fail.
+export const TECHNICIAN_FEATURE_ENABLED = true;
+
+// Km per technician visit is an ESTIMATE (src/utils/tripKm.js): straight-line
+// km from the start point to the customer x road factor, there and back, plus
+// a fixed grace. Office can still change the km with a reason.
+// The client may change round trip later (e.g. if technicians go site to site).
+export const TRIP_ROAD_FACTOR = 1.3;   // roads are longer than the straight line
+export const TRIP_ROUND_TRIP = true;   // true = x2 (go and come back)
+export const TRIP_GRACE_KM = 5;        // added once per visit, after the x2
+// Which km the office form pre-fills, chosen by the developer:
+//   'simple' = the estimate above (straight line x road factor), no Google.
+//   'pro'    = real road km from Google Routes through the edge function
+//              trip-distance, with the estimate as fall-back. Needs the
+//              GOOGLE_MAPS_API_KEY secret and 20261013120000_customer_sites.sql
+//              (steps: docs/GOOGLE_ROUTES_SETUP.md).
+// The client's live CRM stays 'simple' until the developer has tested 'pro'
+// and the client has its own Google key.
+export const TRIP_DISTANCE_MODE = 'simple'; // 'pro' = real road km from Google Routes (needs GOOGLE_MAPS_API_KEY secret)
+export const TRIP_TRAVEL_MODE = 'TWO_WHEELER'; // or 'DRIVE' (car); only used in 'pro'
 
 // Quotation Maker: on for admin and sales (sidebar > Quotation Maker, opens
 // inside the dashboard). Switched on 10 Oct 2026.
@@ -563,7 +583,9 @@ export const DEFAULT_PAGE_SIZE = 50;
 // Also covers the fields handleMoveStage validates before letting a lead leave
 // the Leads stage (villages, module_brand, sub_divisions) - narrowing the grid
 // query without these would make that check see undefined and falsely block.
-export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, email_address, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_brand, module_wp, no_of_modules, villages, full_address, pincode, sub_divisions, district, registration_date, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, stages_remarks, vendor, geo_tag_status';
+// The last three dates feed the warranty badge (src/utils/warranty.js). Do not
+// append them again in a view: a column listed twice can break the query.
+export const CUSTOMER_CARD_COLUMNS = 'id, customer_name, phone_number, email_address, consumer_no, folder_no, stage, channel_partner, sub_channel_partner, payment_type, loan_tag, subsidy_tag, installation_status, system_capacity_kwp, module_brand, module_wp, no_of_modules, villages, full_address, pincode, sub_divisions, district, registration_date, invoice_value, vendor_quote, created_at, updated_at, deleted_at, delivery_batch_id, delivery_status, stages_remarks, vendor, geo_tag_status, installation_date, material_delivery_date, completed_at';
 
 // Vendor list cards and stage counters do not need the full admin record. The
 // complete record is fetched only when a vendor opens one assignment.
