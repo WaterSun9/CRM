@@ -547,10 +547,10 @@
 .q-error { background:#ffebe8; color:#953b33; }.q-notice { background:#fff4d7; color:#66490c; }.q-notice button { margin:8px 8px 0 0; }
 .q-pagination { display:flex; justify-content:center; align-items:center; gap:14px; margin-top:24px; font-size:13px; }
 .q-editor { max-width:820px; margin:auto; }
-.q-stepper { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+.q-stepper { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:6px; }
 .q-stepper button { flex-direction:column; font-size:12px; padding:10px 3px; background:transparent; border:0; }
 .q-stepper span { display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; background:#e3e8ef; }
-.q-stepper [aria-current=step] { color:#123b69; }.q-stepper [aria-current=step] span { background:#123b69; color:white; }
+.q-stepper [aria-current=step] { color:#1c1917; }.q-stepper [aria-current=step] span { background:#1c1917; color:white; box-shadow:0 0 0 3px #fcd34d; }
 .q-stepper small { font-size:11px; }
 .q-save-state { text-align:right; font-size:12px; color:#697787; min-height:32px; padding-top:8px; }
 .q-eyebrow { font-size:10px; font-weight:800; letter-spacing:2px; color:#a78131; margin-bottom:6px; }
@@ -563,7 +563,7 @@
 .q-auto-field input { padding-right:72px; }
 .q-auto-field button { position:absolute; right:4px; top:4px; bottom:4px; min-height:0; padding:6px 12px; border-radius:8px; background:#e8af34; border-color:#e8af34; color:#18283c; text-transform:uppercase; font-size:10px; }
 .q-option { border:1px solid #dfe5ed; padding:18px; border-radius:16px; margin:14px 0; }.q-option dl { margin-top:14px; }.q-option dl div { display:flex; justify-content:space-between; padding:7px 0; font-size:13px; }.q-option dd { font-weight:800; color:#123b69; }.q-option p { font-size:13px; margin-top:8px; }
-.q-editor-actions { position:sticky; bottom:0; padding:12px 0 max(12px,env(safe-area-inset-bottom)); background:#f6f7f9f5; display:flex; gap:8px; justify-content:space-between; z-index:3; }
+.q-editor-actions { position:sticky; bottom:0; padding:12px 0 max(12px,env(safe-area-inset-bottom)); background:#fafaf9; border-top:1px solid #e7e5e4; box-shadow:0 -6px 16px -12px #1c191740; display:flex; gap:8px; justify-content:space-between; z-index:3; }
 .q-standard-notes { list-style:disc; padding-left:20px; margin:12px 0 24px; font-size:13px; line-height:1.8; }
 .q-note { display:flex; gap:8px; align-items:end; margin:12px 0; }.q-note .q-field { flex:1; }.q-note button { margin-bottom:2px; }
 .q-summary-title { margin-top:30px; }.q-summary div { display:grid; grid-template-columns:1fr 1fr; padding:9px 0; gap:20px; font-size:13px; border-bottom:1px solid #eef1f5; }.q-summary dt { color:#68788b; }.q-summary dd { overflow-wrap:anywhere; }
@@ -591,9 +591,6 @@
 .q-module-partner .q-card dl>div:last-child { text-align:right; }
 .q-module-partner .q-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 .q-module-partner .q-actions button { width:100%; min-width:0; white-space:normal; line-height:1.2; }
-.q-module-partner .q-preview-toolbar { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
-.q-module-partner .q-preview-toolbar button { width:100%; min-width:0; padding-inline:7px; white-space:normal; }
-.q-module-partner .q-preview-toolbar .q-primary { grid-column:span 2; }
 @media(max-width:600px) {
   .q-content { padding:16px 16px max(92px,calc(76px + env(safe-area-inset-bottom))); }
   .q-module-embedded .q-content { padding:0 0 max(92px,calc(76px + env(safe-area-inset-bottom))); }
@@ -622,9 +619,6 @@
   .q-option { padding:14px; }
   .q-summary div { grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); gap:12px; }
   .q-summary dd { text-align:right; }
-  .q-preview-toolbar { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
-  .q-preview-toolbar button { width:100%; min-width:0; padding-inline:7px; white-space:normal; }
-  .q-preview-toolbar .q-primary { grid-column:span 2; }
   .q-preview-scroll { padding:8px; }
   .q-editor-actions { margin-inline:-16px; padding:10px 16px max(10px,env(safe-area-inset-bottom)); }
   .q-editor-actions button { min-width:0; font-size:12px; padding:10px 8px; white-space:nowrap; }
@@ -656,3 +650,29 @@
 .q-module .q-wa:hover { background:#d6f0e0; }
 /* In the two-column phone layout a WhatsApp button left alone on its row takes the full row. */
 .q-actions .q-wa:nth-child(odd):last-child { grid-column:1 / -1; }
+
+/* Preview toolbar (16 Oct): view tools on one row, send actions on the next.
+   The zoom −/%/+ is one control instead of three loose grid cells. */
+.q-preview-toolbar { display:flex; flex-direction:column; gap:10px; }
+.q-preview-toolbar .q-tools,.q-preview-toolbar .q-send { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.q-zoom { display:inline-flex; align-items:center; border:1px solid #e7e5e4; border-radius:12px; background:#fff; overflow:hidden; }
+.q-zoom button { border:0; border-radius:0; min-width:40px; background:transparent; }
+.q-zoom span { min-width:48px; text-align:center; font-size:13px; font-weight:700; color:#57534e; }
+.q-module-partner .q-preview-toolbar .q-send { display:grid; }
+.q-module-partner .q-preview-toolbar .q-tools { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); }
+.q-module-partner .q-preview-toolbar .q-tools > * { grid-column:span 2; }
+.q-module-partner .q-preview-toolbar .q-tools > :nth-child(-n+2) { grid-column:span 3; }
+.q-module-partner .q-preview-toolbar .q-send { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.q-module-partner .q-preview-toolbar button { width:100%; min-width:0; padding-inline:6px; }
+.q-module-partner .q-zoom { width:100%; justify-content:space-between; }
+.q-module-partner .q-zoom button { width:auto; }
+@media(max-width:600px) {
+  .q-preview-toolbar .q-send { display:grid; }
+  .q-preview-toolbar .q-tools { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); }
+  .q-preview-toolbar .q-tools > * { grid-column:span 2; }
+  .q-preview-toolbar .q-tools > :nth-child(-n+2) { grid-column:span 3; }
+  .q-preview-toolbar .q-send { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .q-preview-toolbar button { width:100%; min-width:0; padding-inline:6px; }
+  .q-zoom { width:100%; justify-content:space-between; }
+  .q-zoom button { width:auto; }
+}

@@ -4,7 +4,7 @@ export const QUOTATION_ROLES = ['agent', 'agent2', 'channel_partner_office', 'ad
 // System details (panel, Wp, inverter, GEB/GEDA) are filled on the Pricing step.
 export const STEPS = ['Customer', 'Pricing', 'Notes & review'];
 export const canUseQuotations = user => QUOTATION_ROLES.includes(user?.userType);
-export const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0);
+export const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value) || 0);
 const clone = value => JSON.parse(JSON.stringify(value));
 const round = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 const date = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
