@@ -13,7 +13,10 @@ export default function HistoryTab({
     followUpText,
     setFollowUpText,
     handleAddNote,
-    activityLogs
+    activityLogs,
+    logsHasMore = false,
+    logsLoadingMore = false,
+    onLoadMoreLogs
 }) {
     return (
         <div className="space-y-8 animate-in fade-in duration-300">
@@ -78,6 +81,17 @@ export default function HistoryTab({
                         </div>
                     )) : <p className="text-[8px] text-stone-400 italic">No timeline entries found.</p>}
                 </div>
+                {activityLogs.length > 0 && (
+                    <div className="mt-4 flex flex-col items-center gap-2">
+                        <p className="text-[8px] text-stone-400 font-bold uppercase">Showing {activityLogs.length} entries{logsHasMore ? '' : ' · end of history'}</p>
+                        {logsHasMore && onLoadMoreLogs && (
+                            <button type="button" onClick={onLoadMoreLogs} disabled={logsLoadingMore}
+                                className="px-4 py-2 rounded-xl border border-stone-200 bg-white text-[10px] font-bold uppercase tracking-wider text-stone-600 hover:border-amber-300 hover:text-amber-700 disabled:opacity-50 transition-colors">
+                                {logsLoadingMore ? 'Loading…' : 'Load older history'}
+                            </button>
+                        )}
+                    </div>
+                )}
             </section>
         </div>
     );

@@ -1,7 +1,8 @@
 import { INITIAL_QUOTATION } from './template/data/initialData.js';
 
 export const QUOTATION_ROLES = ['agent', 'agent2', 'channel_partner_office', 'admin', 'sales'];
-export const STEPS = ['Customer', 'System', 'Pricing', 'Notes & review'];
+// System details (panel, Wp, inverter, GEB/GEDA) are filled on the Pricing step.
+export const STEPS = ['Customer', 'Pricing', 'Notes & review'];
 export const canUseQuotations = user => QUOTATION_ROLES.includes(user?.userType);
 export const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0);
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -65,14 +66,14 @@ export function validate(form) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(form.quotation_date) || !Number.isFinite(Date.parse(form.quotation_date))) errors.push('Customer: Enter a valid quotation date');
     if (form.valid_until && form.valid_until < form.quotation_date) errors.push('Customer: Valid-until date cannot precede quotation date');
     if (form.customer_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customer_email)) errors.push('Customer: Enter a valid email');
-    if (!(Number(form.capacity_kw) > 0)) errors.push('System: Capacity must be greater than zero');
-    if (!(Number(form.solar_panel_qty) > 0 && Number.isInteger(Number(form.solar_panel_qty)))) errors.push('System: Panel quantity must be a positive whole number');
-    if (!(Number(form.panel_wattage) > 0) || !Number.isFinite(Number(form.panel_wattage))) errors.push('System: Module Wp must be greater than zero');
+    if (!(Number(form.capacity_kw) > 0)) errors.push('Pricing: Capacity must be greater than zero');
+    if (!(Number(form.solar_panel_qty) > 0 && Number.isInteger(Number(form.solar_panel_qty)))) errors.push('Pricing: Panel quantity must be a positive whole number');
+    if (!(Number(form.panel_wattage) > 0) || !Number.isFinite(Number(form.panel_wattage))) errors.push('Pricing: Module Wp must be greater than zero');
     [['solar_panel_make','Panel make'],['inverter_brand','Inverter brand / make']].forEach(([key,title]) => required(key,title,1));
-    if (!['Residential','Commercial'].includes(form.project_type)) errors.push('System: Select a project type');
+    if (!['Residential','Commercial'].includes(form.project_type)) errors.push('Pricing: Select a project type');
     [['geb_charge','GEB charge'],['geda_charge','GEDA charge']].forEach(([key,title]) => {
         const v = form[key];
-        if (String(v ?? '').trim() !== '' && !(Number.isFinite(Number(v)) && Number(v) >= 0)) errors.push(`System: ${title} must be blank (Included) or an amount`);
+        if (String(v ?? '').trim() !== '' && !(Number.isFinite(Number(v)) && Number(v) >= 0)) errors.push(`Pricing: ${title} must be blank (Included) or an amount`);
     });
     if (form.options?.length !== 3) errors.push('Pricing: Exactly three options are required');
     (form.options || []).forEach((option, i) => {

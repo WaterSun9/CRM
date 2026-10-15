@@ -18,7 +18,15 @@ function Field({ label,value,onChange,type = 'text',maxLength,readOnly = false,c
         ? <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} maxLength={maxLength} rows={3} readOnly={readOnly} />
         : <input type={type} value={value ?? ''} onChange={e => onChange(e.target.value)} maxLength={maxLength} readOnly={readOnly} aria-readonly={readOnly || undefined} min={type === 'number' ? '0' : undefined} step={type === 'number' ? 'any' : undefined} inputMode={type === 'number' ? 'decimal' : undefined} />)}</label>;
 }
-export default function QuotationForm({ id,initialRow,user,onDirty,onSaved,onPreview }) {
+// Same lists as Add Lead (Settings metadata), with the lead form's Wp defaults.
+const DEFAULT_MODULE_WP = ['540','545','550','570','575','580','585','590','600','610','615','620'];
+function OptionSelect({ label,value,options,onChange,placeholder }) {
+    const list = [...new Set(options.map(String).filter(Boolean))];
+    const current = String(value ?? '');
+    if (current && !list.includes(current)) list.unshift(current);
+    return <Field label={label}><select value={current} onChange={e => onChange(e.target.value)}><option value="">{placeholder}</option>{list.map(option => <option key={option} value={option}>{option}</option>)}</select></Field>;
+}
+export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onSaved,onPreview }) {
     const { showAlert,showConfirm } = useGlobalPopup();
     const [form,setForm] = useState(() => initialRow ? fromRow(initialRow,user) : newForm(user));
     const [template,setTemplate] = useState(() => initialRow?.quotation_data?.template || brandedTemplate());
@@ -117,6 +125,18 @@ export default function QuotationForm({ id,initialRow,user,onDirty,onSaved,onPre
         writeRecovery(user.id, id, { form: next, template: templateRef.current, base_updated_at: rowRef.current?.updated_at || null });
     };
     const totals = calculate(form.options, extraCharges(form));
+    const panelMakes = meta?.module_brand || [];
+    const moduleWps = meta?.module_wp?.length ? meta.module_wp : DEFAULT_MODULE_WP;
+    const lastStep = STEPS.length - 1;
+    const saveDraft = async () => {
+        try {
+            await save();
+            showAlert('Your draft is saved. It is in the quotation list now.', { title: 'Draft saved', type: 'success' });
+        } catch (err) {
+            setError(err.message);
+            showAlert(err.message, { title: 'Draft not saved', type: 'warning' });
+        }
+    };
     const autoCalcCapacity = () => {
         const kwp = calculateSystemCapacityKwp(form.panel_wattage, form.solar_panel_qty);
         if (kwp == null) {
@@ -161,15 +181,15 @@ export default function QuotationForm({ id,initialRow,user,onDirty,onSaved,onPre
         {recovery && <div className="q-notice"><strong>A recovery copy is available on this device.</strong><p>Restore it to review your unsaved edits.</p><button onClick={restore}>Restore copy</button><button onClick={() => { removeRecovery(user.id,id); setRecovery(null); }}>Use server version</button></div>}
         <div className="q-panel">
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-                <p className="q-eyebrow" style={{margin:0}}>STEP {step + 1} OF 4</p>
+                <p className="q-eyebrow" style={{margin:0}}>STEP {step + 1} OF {STEPS.length}</p>
                 {import.meta.env.DEV && <button type="button" onClick={fillTestValues} style={{background:'#fef3c7',borderColor:'#f59e0b',color:'#92400e',fontSize:12,padding:'4px 10px',minHeight:32}}>⚡ Fill Test Values</button>}
             </div>
             <h2>{STEPS[step]}</h2>
             {step === 0 && <div className="q-grid">{customerFields.map(([key,label,type,maxLength,readOnly]) => <Field key={key} label={label} type={type} maxLength={maxLength} readOnly={readOnly} value={form[key]} onChange={value => update(key,value)} />)}</div>}
-            {step === 1 && <div className="q-grid">
+            {step === 1 && <><h3>System</h3><div className="q-grid">
                 <Field label="Project type"><select value={form.project_type} onChange={e => update('project_type',e.target.value)}><option>Residential</option><option>Commercial</option></select></Field>
-                <Field label="Solar-panel make" value={form.solar_panel_make} maxLength={100} onChange={v => update('solar_panel_make',v)} />
-                <Field label="Module Wp" type="number" value={form.panel_wattage} onChange={v => update('panel_wattage',v)} />
+                <OptionSelect label="Solar-panel make" placeholder="Select panel make…" value={form.solar_panel_make} options={panelMakes} onChange={v => update('solar_panel_make',v)} />
+                <OptionSelect label="Module Wp" placeholder="Select Module Wp…" value={form.panel_wattage} options={moduleWps} onChange={v => update('panel_wattage',v)} />
                 <Field label="No of Modules" type="number" value={form.solar_panel_qty} onChange={v => update('solar_panel_qty',v)} />
                 <Field label="System Capacity (kWp)"><span className="q-auto-field"><input aria-label="System Capacity (kWp)" type="number" min="0" step="any" inputMode="decimal" value={form.capacity_kw ?? ''} onChange={e => update('capacity_kw',e.target.value)} /><button type="button" onClick={autoCalcCapacity} title="Calculate from Module Wp x No of Modules">Auto</button></span></Field>
                 <Field label="Inverter brand / make" value={form.inverter_brand} maxLength={100} onChange={v => update('inverter_brand',v)} />
@@ -177,13 +197,14 @@ export default function QuotationForm({ id,initialRow,user,onDirty,onSaved,onPre
                 <Field label="GEDA charge (₹)"><input aria-label="GEDA charge" type="number" min="0" step="any" inputMode="decimal" placeholder="Included" value={form.geda_charge ?? ''} onChange={e => update('geda_charge',e.target.value)} /></Field>
                 <p className="q-muted">GEB and GEDA: leave blank to show "Included". An amount is added to each option's net payable.</p>
                 <p className="q-muted">Module Wp × No of Modules ÷ 1000 = {form.capacity_kw || '—'} kWp</p>
-            </div>}
-            {step === 2 && <div className="q-price-options">{form.options.map((option,i) => <section className="q-option" key={i}><h3>Panel option {i + 1}</h3>
-                <div className="q-grid">{[['brandName','Solar panel brand','text'],['baseValue','Base value (₹)','number'],['discount','Discount (₹)','number'],['subsidy','Subsidy (₹)','number']].map(([key,label,type]) => <Field key={key} label={label} type={type} maxLength={80} value={option[key]} onChange={value => update('options',form.options.map((o,index) => index === i ? {...o,[key]:value} : o))} />)}</div>
+            </div>
+            <h3 style={{marginTop:20}}>Price options</h3>
+            <div className="q-price-options">{form.options.map((option,i) => <section className="q-option" key={i}><h3>Panel option {i + 1}</h3>
+                <div className="q-grid"><OptionSelect label="Solar panel brand" placeholder="Select panel brand…" value={option.brandName} options={panelMakes} onChange={value => update('options',form.options.map((o,index) => index === i ? {...o,brandName:value} : o))} />{[['baseValue','Base value (₹)','number'],['discount','Discount (₹)','number'],['subsidy','Subsidy (₹)','number']].map(([key,label,type]) => <Field key={key} label={label} type={type} maxLength={80} value={option[key]} onChange={value => update('options',form.options.map((o,index) => index === i ? {...o,[key]:value} : o))} />)}</div>
                 <dl><div><dt>Net payable</dt><dd>{money(totals[i].netPayableAmount)}</dd></div><div><dt>After subsidy</dt><dd>{money(totals[i].netPriceAfterSubsidy)}</dd></div></dl>
                 {i === 0 && <div className="q-actions"><button onClick={() => update('options',form.options.map(o => ({...o,discount:option.discount})))}>Apply discount to all</button><button onClick={() => update('options',form.options.map(o => ({...o,subsidy:option.subsidy})))}>Apply subsidy to all</button></div>}
-            </section>)}</div>}
-            {step === 3 && <>
+            </section>)}</div></>}
+            {step === 2 && <>
                 <h3>Standard notes</h3><ul className="q-standard-notes">{template.page2.notes.map(note => <li key={note}>{note}</li>)}</ul>
                 <h3>Additional notes</h3>{form.custom_notes.map((note,i) => <div key={i} className="q-note"><Field label={`Note ${i + 1}`} type="textarea" maxLength={250} value={note} onChange={v => update('custom_notes',form.custom_notes.map((n,index) => index === i ? v : n))} /><button aria-label={`Remove note ${i + 1}`} onClick={() => update('custom_notes',form.custom_notes.filter((_,index) => index !== i))}><Trash2 size={18} /></button></div>)}
                 {form.custom_notes.length < 5 && <button onClick={() => update('custom_notes',[...form.custom_notes,''])}><Plus size={16} /> Add note</button>}
@@ -192,6 +213,6 @@ export default function QuotationForm({ id,initialRow,user,onDirty,onSaved,onPre
                 <details><summary>Company, terms, warranty, BOM and bank details</summary><div className="q-template-summary"><h3>{template.company.name} {template.company.tagline}</h3><p>GST: {template.company.gstNo} · CIN: {template.company.cinNo}</p><p>{template.company.email}</p>{[['Terms and conditions',template.page3.termsAndConditions],['Warranties',template.page3.warranties]].map(([title,items]) => <section key={title}><h3>{title}</h3><dl className="q-summary">{items.map(item => <div key={item.sr}><dt>{item.parameter}</dt><dd>{item.remarks}</dd></div>)}</dl></section>)}<h3>Bill of materials</h3>{template.page3.bomItems.map(item => <p key={item.sr}><strong>{item.description}</strong> — {item.qty} {item.unit}, {item.size}, {item.make}</p>)}<h3>Other charges</h3><p>{template.page3.otherChargesText}</p><h3>Bank details</h3><p>{template.page3.bankDetails.accountName}</p><p>{template.page3.bankDetails.bankName} · {template.page3.bankDetails.branchName}</p><p>Account: {template.page3.bankDetails.accountNumber} · IFSC: {template.page3.bankDetails.ifscCode}</p><h3>Offices</h3><p>{template.footer.corporateOffice}</p><p>{template.footer.branchOffice}</p></div></details>
             </>}
         </div>
-        <div className="q-editor-actions"><button disabled={step === 0 || busy} onClick={() => setStep(s => s - 1)}><ChevronLeft size={16} /> Back</button><button disabled={busy || !!recovery} onClick={async () => { try { await save(); } catch (err) { setError(err.message); } }}><Save size={16} /> Save draft</button>{step < 3 ? <button className="q-primary" onClick={() => setStep(s => s + 1)}>Next <ChevronRight size={16} /></button> : <button className="q-primary" disabled={busy || !!recovery} onClick={preview}>{busy ? 'Saving…' : 'Preview PDF'}</button>}</div>
+        <div className="q-editor-actions"><button disabled={step === 0 || busy} onClick={() => setStep(s => s - 1)}><ChevronLeft size={16} /> Back</button><button disabled={busy || !!recovery} onClick={saveDraft}><Save size={16} /> Save draft</button>{step < lastStep ? <button className="q-primary" onClick={() => setStep(s => s + 1)}>Next <ChevronRight size={16} /></button> : <button className="q-primary" disabled={busy || !!recovery} onClick={preview}>{busy ? 'Saving…' : 'Preview PDF'}</button>}</div>
     </div>;
 }

@@ -660,14 +660,47 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         note: 'bg-indigo-100 text-indigo-700',
     };
 
+    // History is paged: LOG_PAGE_SIZE at a time, with "Load more" in the
+    // History tab. A refresh (fetchLogs) re-reads as many entries as are
+    // already shown, so saving an edit doesn't collapse an expanded list.
+    const LOG_PAGE_SIZE = 25;
+    const logCountRef = useRef(LOG_PAGE_SIZE);
+    const [logsHasMore, setLogsHasMore] = useState(false);
+    const [logsLoadingMore, setLogsLoadingMore] = useState(false);
+    const logsQuery = useCallback(() => supabase.from('activity_log').select('*, profiles(name)')
+        // Match on the customer's id. The old name match also pulled in other
+        // customers ("Ram" matched "Ramesh") and broke on names with commas.
+        .or(`customer_id.eq.${customer.id},new_value.eq.${customer.id}`)
+        .order('created_at', { ascending: false }), [customer.id]);
+
     const fetchLogs = useCallback(async () => {
-        const { data } = await supabase.from('activity_log').select('*, profiles(name)')
-            // Match on the customer's id. The old name match also pulled in other
-            // customers ("Ram" matched "Ramesh") and broke on names with commas.
-            .or(`customer_id.eq.${customer.id},new_value.eq.${customer.id}`)
-            .order('created_at', { ascending: false }).limit(25);
-        if (data) setActivityLogs(data);
-    }, [customer.id]);
+        const count = Math.max(logCountRef.current, LOG_PAGE_SIZE);
+        const { data } = await logsQuery().range(0, count - 1);
+        if (data) {
+            setActivityLogs(data);
+            setLogsHasMore(data.length === count);
+        }
+    }, [logsQuery]);
+
+    const loadMoreLogs = useCallback(async () => {
+        setLogsLoadingMore(true);
+        try {
+            const from = logCountRef.current;
+            const { data } = await logsQuery().range(from, from + LOG_PAGE_SIZE - 1);
+            if (data) {
+                logCountRef.current = from + LOG_PAGE_SIZE;
+                setActivityLogs(prev => {
+                    const seen = new Set(prev.map(l => l.id));
+                    return [...prev, ...data.filter(l => !seen.has(l.id))];
+                });
+                setLogsHasMore(data.length === LOG_PAGE_SIZE);
+            }
+        } finally {
+            setLogsLoadingMore(false);
+        }
+    }, [logsQuery]);
+
+    useEffect(() => { logCountRef.current = LOG_PAGE_SIZE; }, [customer.id]);
 
     const urlCacheRef = useRef({});
 
@@ -2212,6 +2245,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             setFollowUpText={setFollowUpText}
                             handleAddNote={handleAddNote}
                             activityLogs={activityLogs}
+                            logsHasMore={logsHasMore}
+                            logsLoadingMore={logsLoadingMore}
+                            onLoadMoreLogs={loadMoreLogs}
                         />
                     )}
 

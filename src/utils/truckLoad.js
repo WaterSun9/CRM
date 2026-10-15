@@ -4,15 +4,25 @@ export function buildTruckLoad(projectBoms) {
     const rows = new Map();
     const missing = [];
     const uncertain = [];
+    // Every BOM line per row key and customer, blanks included, so the sheet
+    // can edit a cell and write it back to that customer's BOM line.
+    const lineIndex = new Map();
+    const bomIdByCustomer = {};
     for (const { customer, bom, items, loadError } of projectBoms) {
         if (loadError) { missing.push(`${customer.customer_name || customer.id} (BOM could not be read)`); continue; }
         if (!bom) { missing.push(`${customer.customer_name || customer.id} (no BOM)`); continue; }
+        bomIdByCustomer[customer.id] = bom.id || null;
         for (const item of items || []) {
             const name = String(item.product_name || '').trim();
+            if (!name) continue;
+            const lineKey = truckRowKey(name, item.uom);
+            if (!lineIndex.has(lineKey)) lineIndex.set(lineKey, {});
+            const perCustomer = lineIndex.get(lineKey);
+            (perCustomer[customer.id] ||= []).push({ id: item.id || null, product_name: name, quantity: String(item.quantity ?? '').trim() });
             const raw = String(item.quantity ?? '').trim();
-            if (!name || !raw) continue;
+            if (!raw) continue;
             const uom = String(item.uom || 'No.').trim();
-            const key = `${name.toLowerCase().replace(/\s+/g, ' ')}|${uom.toLowerCase()}`;
+            const key = lineKey;
             const summable = /^\d+(?:\.\d+)?(?:\s*\+\s*\d+(?:\.\d+)?)*$/.test(raw.replace(/,/g, ''));
             if (!summable) {
                 uncertain.push({ name, quantity: raw, uom, customer: customer.customer_name || customer.id });
@@ -25,7 +35,12 @@ export function buildTruckLoad(projectBoms) {
             row.quantitiesByCustomer[customer.id] = (row.quantitiesByCustomer[customer.id] || 0) + quantity;
         }
     }
-    return { rows: [...rows.values()], missing, uncertain };
+    for (const [key, row] of rows) row.lines = lineIndex.get(key) || {};
+    return { rows: [...rows.values()], missing, uncertain, bomIdByCustomer };
+}
+
+export function truckRowKey(name, uom) {
+    return `${String(name || '').trim().toLowerCase().replace(/\s+/g, ' ')}|${String(uom || 'No.').trim().toLowerCase()}`;
 }
 
 // Fill each landscape page in order. A separate checks page carries the

@@ -64,6 +64,39 @@ export default function DeliveryBatchesView({
     const [drivers, setDrivers] = useState([]);
     const [localStatusOverrides, setLocalStatusOverrides] = useState({});
     const [reorderingBatchId, setReorderingBatchId] = useState(null);
+    // Customers ticked "Partly delivered" (admin.delivery_partial). Read on its
+    // own so the picker still works before the partial-delivery migration runs.
+    const [partialIds, setPartialIds] = useState(() => new Set());
+    const [partialBusyId, setPartialBusyId] = useState(null);
+    const fetchPartialIds = async () => {
+        const { data, error } = await supabase.from('admin').select('id').eq('delivery_partial', true).is('deleted_at', null);
+        if (error) { console.warn('Partial deliveries not available (run the partial_delivery migration):', error.message); return; }
+        setPartialIds(new Set((data || []).map(row => String(row.id))));
+    };
+    const togglePartial = async (batch, proj) => {
+        const next = !partialIds.has(String(proj.id));
+        setPartialBusyId(proj.id);
+        try {
+            const result = await runWrite(
+                supabase.from('admin').update({ delivery_partial: next }).eq('id', proj.id).select('id'),
+                { action: 'partial delivery tick' }
+            );
+            if (!result.ok || !result.rows?.length) throw result.error || new Error('The customer was not updated.');
+            setPartialIds(prev => {
+                const updated = new Set(prev);
+                if (next) updated.add(String(proj.id)); else updated.delete(String(proj.id));
+                return updated;
+            });
+            void logActivity(currentUser?.id || 'admin', 'update',
+                `${proj.customer_name || 'Customer'}: ${next ? 'marked Partly delivered' : 'Partly delivered tick removed'} in delivery batch ${batch.batch_no || batch.id}${next ? ' - available for a new batch' : ''}`,
+                'Delivery batches', proj.id);
+        } catch (error) {
+            const missingColumn = /delivery_partial/.test(error?.message || '');
+            showAlert(missingColumn
+                ? 'Partial deliveries need a one-time database update. Run supabase/migrations/20261015120000_partial_delivery.sql in Supabase first.'
+                : 'Could not save the Partly delivered tick: ' + (error?.message || 'Unknown error'), { type: 'error' });
+        } finally { setPartialBusyId(null); }
+    };
 
     // Batch actions write driver, vehicle, date, vendor and delivery status onto
     // every customer in the batch. They used to log once per batch, with no
@@ -116,6 +149,7 @@ export default function DeliveryBatchesView({
     useEffect(() => {
         fetchAllCustomers();
         fetchDrivers();
+        fetchPartialIds();
     }, []);
 
     // Wrap onRefreshCustomers to also update local customers list
@@ -167,7 +201,7 @@ export default function DeliveryBatchesView({
     };
 
     const handleRefresh = async () => {
-        await Promise.all([fetchBatches(), fetchAllCustomers()]);
+        await Promise.all([fetchBatches(), fetchAllCustomers(), fetchPartialIds()]);
         setLocalStatusOverrides({});
         if (onRefreshCustomers) onRefreshCustomers();
     };
@@ -293,8 +327,8 @@ export default function DeliveryBatchesView({
         } finally { setReorderingBatchId(null); }
     };
 
-    const openTruckSheet = async (batch) => {
-        setLoadingTruckSheet(true);
+    const openTruckSheet = async (batch, { silent = false } = {}) => {
+        if (!silent) setLoadingTruckSheet(true);
         try {
             const projectIds = batch.project_ids || [];
             // The saved BOM lives in bom + bom_items. Read only the customer
@@ -316,7 +350,41 @@ export default function DeliveryBatchesView({
             setTruckSheet({ batch, projects, ...buildTruckLoad(projectBoms) });
         } catch (error) {
             showAlert('Could not prepare the truck sheet: ' + error.message, { type: 'error' });
-        } finally { setLoadingTruckSheet(false); }
+        } finally { if (!silent) setLoadingTruckSheet(false); }
+    };
+
+    // A quantity edited on the truck sheet is written to that customer's BOM
+    // line (bom_items), the same row the customer card's Material Integration
+    // tab reads, then the sheet is re-read so totals match the database.
+    const saveTruckQuantity = async ({ row, project, line, value, bomId }) => {
+        const quantity = String(value ?? '').trim();
+        if (quantity && !/^\d+(?:\.\d+)?(?:\s*\+\s*\d+(?:\.\d+)?)*$/.test(quantity.replace(/,/g, ''))) {
+            showAlert('Enter a number, for example 12 or 2.5.', { title: 'Quantity not saved', type: 'warning' });
+            return false;
+        }
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const before = line?.quantity || '';
+        try {
+            let result;
+            if (line?.id && UUID_RE.test(String(line.id))) {
+                result = await supabase.from('bom_items').update({ quantity }).eq('id', line.id).select('id');
+            } else if (bomId && UUID_RE.test(String(bomId))) {
+                if (!quantity) return true;
+                result = await supabase.from('bom_items').insert({ bom_id: bomId, product_name: line?.product_name || row.name, quantity }).select('id');
+            } else {
+                throw new Error('This customer has no saved BOM. Open the customer card and save the BOM first.');
+            }
+            if (result.error || !result.data?.length) throw result.error || new Error('The BOM line was not updated. Reopen the sheet and try again.');
+            try { localStorage.removeItem(`watersun_bom_${project.id}`); } catch { /* cache only */ }
+            void logActivity(currentUser?.id || 'admin', 'update',
+                `${project.customer_name || 'Customer'}: BOM "${row.name}" quantity ${before || '(blank)'} → ${quantity || '(blank)'} (truck load sheet, batch ${truckSheet?.batch?.batch_no || ''})`,
+                'Truck load sheet', project.id);
+            if (truckSheet?.batch) await openTruckSheet(truckSheet.batch, { silent: true });
+            return true;
+        } catch (error) {
+            showAlert(error?.message || 'The quantity was not saved.', { title: 'Quantity not saved', type: 'error' });
+            return false;
+        }
     };
 
     // Save Batch & Bulk Update Selected Projects in Supabase
@@ -500,8 +568,8 @@ export default function DeliveryBatchesView({
     };
 
     const eligibleProjects = useMemo(() => getEligibleBatchProjects(
-        customers, batchForm.selectedProjectIds, editingBatch, projectSearchQuery, projectStageFilter
-    ), [customers, batchForm.selectedProjectIds, editingBatch, projectSearchQuery, projectStageFilter]);
+        customers, batchForm.selectedProjectIds, editingBatch, projectSearchQuery, projectStageFilter, partialIds
+    ), [customers, batchForm.selectedProjectIds, editingBatch, projectSearchQuery, projectStageFilter, partialIds]);
     const missingSelectedProjectIds = useMemo(() => {
         const loadedIds = new Set(customers.map(customer => String(customer.id)));
         return batchForm.selectedProjectIds.filter(id => !loadedIds.has(String(id)));
@@ -1031,6 +1099,9 @@ export default function DeliveryBatchesView({
                                                              </span>
                                                          </td>
                                                          <td className="py-2.5">
+                                                             {proj.delivery_batch_id && proj.delivery_batch_id !== batch.batch_no ? (
+                                                                 <span className="inline-block rounded-md border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-800" title="Partly delivered on this batch; the rest is on a later batch.">Partly delivered · rest on {proj.delivery_batch_id}</span>
+                                                             ) : <>
                                                              <select
                                                                  value={(localStatusOverrides[proj.id] || proj.delivery_status || 'PENDING')}
                                                                  onChange={async (e) => {
@@ -1091,6 +1162,12 @@ export default function DeliveryBatchesView({
                                                                 <option value="IN_TRANSIT">In Transit</option>
                                                                 <option value="DELIVERED">Delivered</option>
                                                             </select>
+                                                            <label className="mt-1 flex cursor-pointer items-center gap-1 text-[10px] font-bold text-orange-800" title="Tick when only part of the material was delivered. The customer then shows up again when picking projects for a new batch.">
+                                                                <input type="checkbox" className="h-3.5 w-3.5 accent-orange-500" disabled={partialBusyId === proj.id}
+                                                                    checked={partialIds.has(String(proj.id))} onChange={() => togglePartial(batch, proj)} />
+                                                                Partly delivered
+                                                            </label>
+                                                            </>}
                                                         </td>
                                                         <td className="py-2.5 text-right">
                                                             <button
@@ -1314,6 +1391,9 @@ export default function DeliveryBatchesView({
                                                 <div className="min-w-0 flex-1">
                                                     <p className="text-xs font-bold text-stone-900 truncate">{proj.customer_name}</p>
                                                     <p className="text-[10px] text-stone-500 truncate">{proj.villages || 'No village'} · {proj.phone_number}</p>
+                                                    {partialIds.has(String(proj.id)) && proj.delivery_batch_id && proj.delivery_batch_id !== editingBatch?.batch_no && (
+                                                        <span className="mt-1 inline-block rounded-full bg-orange-100 px-2 py-0.5 text-[9px] font-bold text-orange-800">Partly delivered · {proj.delivery_batch_id}</span>
+                                                    )}
                                                     <div className="flex items-center justify-between text-[10px] mt-1 pt-1 border-t border-stone-100">
                                                         <span className="font-bold text-amber-800">{proj.system_capacity_kwp || '–'} kWp</span>
                                                         <span className="text-stone-400 font-semibold">{proj.stage}</span>
@@ -1506,7 +1586,7 @@ export default function DeliveryBatchesView({
             )}
 
             {truckSheet && createPortal(
-                <TruckLoadingSheet sheet={truckSheet} onPrint={handlePrintTruckSheet} onClose={() => setTruckSheet(null)} />,
+                <TruckLoadingSheet sheet={truckSheet} onPrint={handlePrintTruckSheet} onClose={() => setTruckSheet(null)} canEdit={currentUser?.userType !== 'vendor'} onSaveQuantity={saveTruckQuantity} />,
                 document.body
             )}
 
