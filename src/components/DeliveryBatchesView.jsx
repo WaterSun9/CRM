@@ -10,7 +10,7 @@ import { PRIMARY_STAGES, DELIVERY_PICKER_COLUMNS } from '../constants';
 import { toIndianCommas, logActivity, logFieldChanges, formatInputValue, parseIndianNumber, runWrite } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 import { getBomTypeForCustomer, loadBomForCustomer } from '../utils/bom';
-import { buildTruckLoad } from '../utils/truckLoad';
+import { buildTruckLoad, isSolarPanelName, parsePanelSerialList } from '../utils/truckLoad';
 import TruckLoadingSheet from './TruckLoadingSheet';
 import { getEligibleBatchProjects } from '../utils/deliveryBatchSelection';
 import { DELIVERY_EXPORT_COLUMNS, buildDeliveryExportWorkbook } from '../utils/deliveryExport';
@@ -334,7 +334,7 @@ export default function DeliveryBatchesView({
             // The saved BOM lives in bom + bom_items. Read only the customer
             // fields needed to label the stops and choose the BOM template.
             const { data: bomCustomers, error } = await supabase.from('admin')
-                .select('id, customer_name, roof_shed')
+                .select('id, customer_name, roof_shed, panel_serial_no')
                 .in('id', projectIds);
             if (error) throw error;
             const bomById = new Map((bomCustomers || []).map(customer => [customer.id, customer]));
@@ -347,44 +347,76 @@ export default function DeliveryBatchesView({
                 customer,
                 ...await loadBomForCustomer(customer, getBomTypeForCustomer(customer))
             })));
-            setTruckSheet({ batch, projects, ...buildTruckLoad(projectBoms) });
+            const panelSerialsByCustomer = Object.fromEntries(projects.map(project => [project.id, parsePanelSerialList(project.panel_serial_no)]));
+            setTruckSheet({ batch, projects, panelSerialsByCustomer, ...buildTruckLoad(projectBoms) });
         } catch (error) {
             showAlert('Could not prepare the truck sheet: ' + error.message, { type: 'error' });
         } finally { if (!silent) setLoadingTruckSheet(false); }
     };
 
-    // A quantity edited on the truck sheet is written to that customer's BOM
-    // line (bom_items), the same row the customer card's Material Integration
-    // tab reads, then the sheet is re-read so totals match the database.
-    const saveTruckQuantity = async ({ row, project, line, value, bomId }) => {
-        const quantity = String(value ?? '').trim();
-        if (quantity && !/^\d+(?:\.\d+)?(?:\s*\+\s*\d+(?:\.\d+)?)*$/.test(quantity.replace(/,/g, ''))) {
-            showAlert('Enter a number, for example 12 or 2.5.', { title: 'Quantity not saved', type: 'warning' });
-            return false;
-        }
-        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const before = line?.quantity || '';
+    // Truck sheet loading ticks. They write the same rows as the customer
+    // card's Loading switch - bom_items.loaded, and panel_loading for each
+    // panel serial - and log the same messages, so the card shows who loaded
+    // what and when.
+    const LOADING_LOG = 'Material Integration - loading';
+    const TICKS_LOG = 'Material Integration - loaded ticks';
+    const loaderName = currentUser?.name || 'someone';
+    const tickedOnSheetRef = useRef(new Set());
+    const saveTruckTicks = async ({ row, targets, value }) => {
         try {
-            let result;
-            if (line?.id && UUID_RE.test(String(line.id))) {
-                result = await supabase.from('bom_items').update({ quantity }).eq('id', line.id).select('id');
-            } else if (bomId && UUID_RE.test(String(bomId))) {
-                if (!quantity) return true;
-                result = await supabase.from('bom_items').insert({ bom_id: bomId, product_name: line?.product_name || row.name, quantity }).select('id');
-            } else {
-                throw new Error('This customer has no saved BOM. Open the customer card and save the BOM first.');
+            const panelRow = isSolarPanelName(row.name);
+            for (const { project } of targets) {
+                if (panelRow) {
+                    const serials = truckSheet?.panelSerialsByCustomer?.[project.id] || [];
+                    if (!serials.length) throw new Error(`Enter the panel serial numbers for ${project.customer_name || 'this customer'} in the customer card first.`);
+                    const { data, error } = await supabase.from('panel_loading')
+                        .upsert(serials.map(serial_no => ({ customer_id: project.id, serial_no, loaded: value })), { onConflict: 'customer_id,serial_no' })
+                        .select('serial_no');
+                    if (error || (data || []).length !== serials.length) throw error || new Error('The panel loading status was not saved.');
+                }
             }
-            if (result.error || !result.data?.length) throw result.error || new Error('The BOM line was not updated. Reopen the sheet and try again.');
-            try { localStorage.removeItem(`watersun_bom_${project.id}`); } catch { /* cache only */ }
-            void logActivity(currentUser?.id || 'admin', 'update',
-                `${project.customer_name || 'Customer'}: BOM "${row.name}" quantity ${before || '(blank)'} → ${quantity || '(blank)'} (truck load sheet, batch ${truckSheet?.batch?.batch_no || ''})`,
-                'Truck load sheet', project.id);
+            const ids = targets.flatMap(target => target.lines.map(line => line.id));
+            const { data, error } = await supabase.from('bom_items').update({ loaded: value }).in('id', ids).select('id');
+            if (error || (data || []).length !== ids.length) throw error || new Error('The BOM may have changed. Close and reopen the truck sheet, then try again.');
+            for (const { project } of targets) {
+                if (value) tickedOnSheetRef.current.add(project.id);
+                void logActivity(currentUser?.id || 'admin', 'update',
+                    `${project.customer_name || 'Customer'}: BOM item "${row.name}" ${value ? 'marked loaded' : 'unmarked (not loaded)'} by ${loaderName} (truck sheet, batch ${truckSheet?.batch?.batch_no || ''})`,
+                    TICKS_LOG, project.id);
+            }
             if (truckSheet?.batch) await openTruckSheet(truckSheet.batch, { silent: true });
-            return true;
         } catch (error) {
-            showAlert(error?.message || 'The quantity was not saved.', { title: 'Quantity not saved', type: 'error' });
-            return false;
+            showAlert(error?.message || 'The tick was not saved.', { title: 'Tick not saved', type: 'error' });
+            if (truckSheet?.batch) await openTruckSheet(truckSheet.batch, { silent: true });
         }
+    };
+    // Start / Finish loading on the truck sheet = the Loading switch on each
+    // customer card in the batch. Finishing stamps today's loading date on
+    // the BOM of every customer that had something ticked.
+    const setTruckLoadingMode = async (on) => {
+        const sheet = truckSheet;
+        if (!sheet) return false;
+        const withBom = sheet.projects.filter(project => sheet.bomIdByCustomer?.[project.id]);
+        if (on) {
+            tickedOnSheetRef.current = new Set();
+            withBom.forEach(project => void logActivity(currentUser?.id || 'admin', 'update',
+                `${project.customer_name || 'Customer'}: Loading started by ${loaderName}`, LOADING_LOG, project.id));
+            return true;
+        }
+        const today = localDateKey();
+        const failed = [];
+        for (const project of withBom) {
+            const progress = sheet.progressByCustomer?.[project.id] || { loaded: 0, total: 0 };
+            if (tickedOnSheetRef.current.has(project.id) && progress.loaded > 0) {
+                const { data, error } = await supabase.from('bom').update({ material_loaded_date: today }).eq('id', sheet.bomIdByCustomer[project.id]).select('id');
+                if (error || !data?.length) failed.push(project.customer_name || project.id);
+            }
+            void logActivity(currentUser?.id || 'admin', 'update',
+                `${project.customer_name || 'Customer'}: Loading finished (${progress.loaded} of ${progress.total} loaded) by ${loaderName}`, LOADING_LOG, project.id);
+        }
+        tickedOnSheetRef.current = new Set();
+        if (failed.length) showAlert(`Loading finished, but the loading date was not saved for: ${failed.join(', ')}.`, { title: 'Loading date not saved', type: 'warning' });
+        return true;
     };
 
     // Save Batch & Bulk Update Selected Projects in Supabase
@@ -1586,7 +1618,7 @@ export default function DeliveryBatchesView({
             )}
 
             {truckSheet && createPortal(
-                <TruckLoadingSheet sheet={truckSheet} onPrint={handlePrintTruckSheet} onClose={() => setTruckSheet(null)} canEdit={currentUser?.userType !== 'vendor'} onSaveQuantity={saveTruckQuantity} />,
+                <TruckLoadingSheet sheet={truckSheet} onPrint={handlePrintTruckSheet} onClose={() => setTruckSheet(null)} canTick={['admin', 'sales', 'channel_partner_office', 'office2'].includes(currentUser?.userType)} onTick={saveTruckTicks} onLoadingMode={setTruckLoadingMode} />,
                 document.body
             )}
 

@@ -8,17 +8,23 @@ export function buildTruckLoad(projectBoms) {
     // can edit a cell and write it back to that customer's BOM line.
     const lineIndex = new Map();
     const bomIdByCustomer = {};
+    // Loading progress per customer, counted like the customer card: every
+    // named BOM line, ticked or not.
+    const progressByCustomer = {};
     for (const { customer, bom, items, loadError } of projectBoms) {
         if (loadError) { missing.push(`${customer.customer_name || customer.id} (BOM could not be read)`); continue; }
         if (!bom) { missing.push(`${customer.customer_name || customer.id} (no BOM)`); continue; }
         bomIdByCustomer[customer.id] = bom.id || null;
+        const progress = progressByCustomer[customer.id] = { total: 0, loaded: 0 };
         for (const item of items || []) {
             const name = String(item.product_name || '').trim();
             if (!name) continue;
             const lineKey = truckRowKey(name, item.uom);
             if (!lineIndex.has(lineKey)) lineIndex.set(lineKey, {});
             const perCustomer = lineIndex.get(lineKey);
-            (perCustomer[customer.id] ||= []).push({ id: item.id || null, product_name: name, quantity: String(item.quantity ?? '').trim() });
+            (perCustomer[customer.id] ||= []).push({ id: item.id || null, product_name: name, quantity: String(item.quantity ?? '').trim(), loaded: item.loaded === true });
+            progress.total += 1;
+            if (item.loaded === true) progress.loaded += 1;
             const raw = String(item.quantity ?? '').trim();
             if (!raw) continue;
             const uom = String(item.uom || 'No.').trim();
@@ -36,7 +42,7 @@ export function buildTruckLoad(projectBoms) {
         }
     }
     for (const [key, row] of rows) row.lines = lineIndex.get(key) || {};
-    return { rows: [...rows.values()], missing, uncertain, bomIdByCustomer };
+    return { rows: [...rows.values()], missing, uncertain, bomIdByCustomer, progressByCustomer };
 }
 
 export function truckRowKey(name, uom) {
@@ -135,4 +141,19 @@ export function planTruckSheetPages(rows = [], uncertain = [], customerCount = 0
         pages.push({ kind: 'notes', rows: [], notes: checks });
     }
     return pages;
+}
+
+// Same rule as the customer card: the Solar Panel line is loaded serial by serial.
+export const isSolarPanelName = name => String(name || '').trim().toLowerCase() === 'solar panel';
+
+// admin.panel_serial_no is a JSON array, or text split by new lines / commas.
+export function parsePanelSerialList(raw) {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map(value => String(value || '').trim()).filter(Boolean);
+    const text = String(raw);
+    try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) return parsed.map(value => String(value || '').trim()).filter(Boolean);
+    } catch { /* plain text */ }
+    return text.split(/[\n,]+/).map(value => value.trim()).filter(Boolean);
 }

@@ -1,61 +1,64 @@
 import { useState } from 'react';
-import { groupNotesByCustomer, planTruckSheetPages } from '../utils/truckLoad';
+import { groupNotesByCustomer, isSolarPanelName, planTruckSheetPages } from '../utils/truckLoad';
 
 const quantities = value => value === undefined ? '' : Number(value.toFixed(3));
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// One customer's quantity for one material. Saved to that customer's BOM line
-// when the box loses focus (or Enter is pressed), so the customer card shows
-// the same number.
-function QuantityCell({ value, disabled, title, onSave }) {
-    const [draft, setDraft] = useState(value);
-    const [shown, setShown] = useState(value);
-    if (shown !== value) { setShown(value); setDraft(value); }
-    const commit = () => {
-        const next = draft.trim();
-        if (next === value) return;
-        onSave(next).then(ok => { if (!ok) setDraft(value); });
-    };
-    return <input
-        aria-label={title}
-        title={title}
-        value={draft}
-        disabled={disabled}
-        inputMode="decimal"
-        onChange={e => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setDraft(value); } }}
-        className="w-full min-w-0 rounded border border-amber-300 bg-amber-50/40 px-1 py-0.5 text-center tabular-nums outline-none focus:border-amber-500 focus:bg-white disabled:border-stone-200 disabled:bg-stone-50"
-    />;
+// Tick box: empty square, or green with a check mark. Same look as the
+// customer card's loading ticks.
+function Tick({ checked, disabled, title, onClick }) {
+    return <button type="button" role="checkbox" aria-checked={checked} aria-label={title} title={title} disabled={disabled} onClick={onClick}
+        className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[11px] font-black leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-stone-400 bg-white text-transparent hover:border-emerald-500'}`}>✓</button>;
 }
 
-export default function TruckLoadingSheet({ sheet, onPrint, onClose, canEdit = false, onSaveQuantity }) {
-    const { batch, projects, rows, missing, uncertain, bomIdByCustomer = {} } = sheet;
+// Loading ticks are written to the same BOM lines (and panel serials) the
+// customer card's Loading switch uses, so ticking here shows there too.
+export default function TruckLoadingSheet({ sheet, onPrint, onClose, canTick = false, onTick, onLoadingMode }) {
+    const { batch, projects, rows, missing, uncertain, progressByCustomer = {}, panelSerialsByCustomer = {} } = sheet;
     const pages = planTruckSheetPages(rows, uncertain, projects.length);
-    const [editing, setEditing] = useState(false);
-    const [busyCell, setBusyCell] = useState('');
-    const saveCell = async (row, project, line, value) => {
-        const cellKey = `${row.name}|${row.uom}|${project.id}`;
-        setBusyCell(cellKey);
-        try { return await onSaveQuantity({ row, project, line, value, bomId: bomIdByCustomer[project.id] }); }
-        finally { setBusyCell(''); }
+    const [loading, setLoading] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const act = async task => {
+        if (busy) return;
+        setBusy(true);
+        try { await task(); } finally { setBusy(false); }
     };
+    // What a cell can tick, or why it cannot.
+    const cellState = (row, project) => {
+        const lines = (row.lines?.[project.id] || []).filter(line => line.quantity);
+        if (!lines.length) return null;
+        const loaded = lines.every(line => line.loaded);
+        if (!lines.every(line => UUID_RE.test(String(line.id || '')))) return { lines, loaded, blocked: 'Save this customer\'s Bill of Materials in the customer card first.' };
+        if (isSolarPanelName(row.name) && !(panelSerialsByCustomer[project.id] || []).length) return { lines, loaded, blocked: 'Enter the panel serial numbers in the customer card first.' };
+        return { lines, loaded, blocked: '' };
+    };
+    const tickCells = (row, targets, value) => act(() => onTick({ row, targets, value }));
+    const toggleLoading = () => act(async () => {
+        const ok = await onLoadingMode(!loading);
+        if (ok !== false) setLoading(value => !value);
+    });
     const renderCell = (row, project) => {
         const shown = quantities(row.quantitiesByCustomer[project.id]);
-        if (!editing) return shown;
-        const lines = row.lines?.[project.id] || [];
-        const bomId = bomIdByCustomer[project.id];
-        if (!bomId || lines.length > 1) {
-            return <span title={!bomId ? 'This customer has no saved BOM. Open the customer card to create it.' : 'This material is listed more than once in this customer\'s BOM. Edit it from the customer card.'} className="text-stone-400">{shown === '' ? '—' : shown}</span>;
-        }
-        const line = lines[0] || null;
-        const cellKey = `${row.name}|${row.uom}|${project.id}`;
-        return <QuantityCell
-            value={line ? line.quantity : ''}
-            disabled={!!busyCell}
-            title={`${row.name} for ${project.customer_name || project.id}`}
-            onSave={value => saveCell(row, project, line, value)}
-            key={cellKey}
-        />;
+        const state = cellState(row, project);
+        if (!state) return shown;
+        if (!loading) return <span className="inline-flex items-center justify-center gap-1">{shown}{state.loaded && <span className="font-black text-emerald-700" aria-label="Loaded">✓</span>}</span>;
+        return <span className="inline-flex items-center justify-center gap-1.5">
+            <span>{shown}</span>
+            <Tick checked={state.loaded} disabled={busy || !!state.blocked}
+                title={state.blocked || `${row.name} for ${project.customer_name || project.id}: ${state.loaded ? 'loaded (tap to undo)' : 'tap when loaded'}`}
+                onClick={() => tickCells(row, [{ project, lines: state.lines }], !state.loaded)} />
+        </span>;
+    };
+    const renderTotal = row => {
+        const cells = projects.map(project => ({ project, state: cellState(row, project) })).filter(cell => cell.state);
+        const tickable = cells.filter(cell => !cell.state.blocked);
+        const allLoaded = cells.length > 0 && cells.every(cell => cell.state.loaded);
+        const total = quantities(row.total);
+        if (!loading || !tickable.length) return <span className="inline-flex items-center justify-center gap-1">{total}{!loading && allLoaded && <span className="text-emerald-700">✓</span>}</span>;
+        const value = !tickable.every(cell => cell.state.loaded);
+        return <span className="inline-flex items-center justify-center gap-1.5"><span>{total}</span>
+            <Tick checked={allLoaded} disabled={busy} title={`${row.name}: ${value ? 'mark loaded for every customer' : 'undo for every customer'}`}
+                onClick={() => tickCells(row, tickable.map(cell => ({ project: cell.project, lines: cell.state.lines })), value)} /></span>;
     };
 
     return (
@@ -64,10 +67,10 @@ export default function TruckLoadingSheet({ sheet, onPrint, onClose, canEdit = f
                 <div className="no-print mb-4 flex min-w-[min(1122px,100%)] flex-wrap items-center justify-between gap-3 rounded-xl bg-white px-5 py-3 text-stone-900 shadow-lg">
                     <h2 className="text-base font-bold">Truck loading sheet · {batch.batch_no}</h2>
                     <div className="flex flex-wrap items-center gap-2">
-                        {editing && <span className="text-xs text-stone-500">{busyCell ? 'Saving…' : 'Changes save to each customer\'s BOM as you go.'}</span>}
-                        {canEdit && onSaveQuantity && <button type="button" disabled={!!busyCell} onClick={() => setEditing(value => !value)} className={`rounded-lg border px-4 py-2 font-bold ${editing ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : ''}`}>{editing ? 'Done editing' : 'Edit quantities'}</button>}
-                        <button type="button" disabled={editing} title={editing ? 'Finish editing before printing' : undefined} onClick={onPrint} className="rounded-lg bg-amber-500 px-4 py-2 font-bold disabled:opacity-50">Print truck sheet</button>
-                        <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2">Close</button>
+                        {loading && <span className="text-xs text-stone-500">{busy ? 'Saving…' : 'Tick each item as it goes on the truck. Ticks show in each customer card.'}</span>}
+                        {canTick && onTick && onLoadingMode && <button type="button" disabled={busy} onClick={toggleLoading} className={`rounded-lg border px-4 py-2 font-bold disabled:opacity-50 ${loading ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-emerald-500 text-emerald-800'}`}>{loading ? 'Finish loading' : 'Start loading'}</button>}
+                        <button type="button" disabled={loading} title={loading ? 'Finish loading before printing' : undefined} onClick={onPrint} className="rounded-lg bg-amber-500 px-4 py-2 font-bold disabled:opacity-50">Print truck sheet</button>
+                        <button type="button" disabled={busy} onClick={() => loading ? act(async () => { if (await onLoadingMode(false) !== false) { setLoading(false); onClose(); } }) : onClose()} className="rounded-lg border px-4 py-2">{loading ? 'Finish & close' : 'Close'}</button>
                     </div>
                 </div>
                 <div className="truck-sheet-preview flex flex-col items-start gap-5 overflow-x-auto pb-5">
@@ -107,11 +110,11 @@ export default function TruckLoadingSheet({ sheet, onPrint, onClose, canEdit = f
                                                 <th scope="col" className="border px-1.5 py-1.5 text-left">Material</th>
                                                 <th scope="col" className="border bg-amber-50 px-1.5 py-1.5 text-center">Total to load</th>
                                                 <th scope="col" className="border px-1.5 py-1.5 text-center">Unit</th>
-                                                {projects.map((project, index) => <th scope="col" key={project.id} className="border px-1.5 py-1.5 text-center align-top" title={project.customer_name || project.id}><span className="block font-bold">Customer {index + 1}</span><span className="block break-words text-[9px] font-normal leading-tight overflow-hidden" style={{ display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>{project.customer_name || project.id}</span></th>)}
+                                                {projects.map((project, index) => <th scope="col" key={project.id} className="border px-1.5 py-1.5 text-center align-top" title={project.customer_name || project.id}><span className="block font-bold">Customer {index + 1}{progressByCustomer[project.id]?.total ? <span className={`ml-1 font-semibold ${progressByCustomer[project.id].loaded === progressByCustomer[project.id].total ? 'text-emerald-700' : 'text-stone-500'}`}>· {progressByCustomer[project.id].loaded}/{progressByCustomer[project.id].total}</span> : null}</span><span className="block break-words text-[9px] font-normal leading-tight overflow-hidden" style={{ display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>{project.customer_name || project.id}</span></th>)}
                                             </tr></thead>
                                             <tbody>{page.rows.map(row => <tr key={`${row.name}|${row.uom}`}>
                                                 <th scope="row" className="border px-1.5 py-0.5 text-left font-semibold break-words">{row.name}</th>
-                                                <td className="border bg-amber-50 px-1.5 py-0.5 text-center font-bold tabular-nums">{quantities(row.total)}</td>
+                                                <td className="border bg-amber-50 px-1.5 py-0.5 text-center font-bold tabular-nums">{renderTotal(row)}</td>
                                                 <td className="border px-1.5 py-0.5 text-center">{row.uom}</td>
                                                 {projects.map(project => <td key={project.id} className="border px-1.5 py-0.5 text-center tabular-nums">{renderCell(row, project)}</td>)}
                                             </tr>)}</tbody>
