@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Download, Eye, FileText, MessageCircle, Plus, Search, Share2 } from 'lucide-react';
+import { ArrowLeft, Download, Eye, FileText, Plus, Search, Share2 } from 'lucide-react';
 import { supabase } from '../supabase';
 import AddLeadModal from '../components/AddLeadModal';
 import { useGlobalPopup } from '../components/GlobalPopup';
-import { canUseQuotations,chosenOptions,fromRow,leadBrand,money,toLead,validate,quoteLabel } from './model';
+import { canUseQuotations,chosenOptions,fromRow,money,toLead,validate,quoteLabel } from './model';
 import { quotationRepository as repo } from './client';
 import { PAGE_SIZE } from './repository';
 import { recoveries } from './recovery';
 import QuotationForm from './QuotationForm';
 import DocumentPages from './DocumentPages';
 import { downloadQuotationFile, generateQuotationPdf, shareQuotationFile } from './pdf';
+import { canShareQuotationFile } from './fileShare';
 import './quotation.css';
 
 export const openQuotations = () => { window.location.hash = '/quotations'; };
@@ -36,6 +37,7 @@ const announceCounts = counts => { if (counts) window.dispatchEvent(new CustomEv
 // 2026-10-16 -> 16-10-2026, as printed on the quotation.
 const showDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value).split('-').reverse().join('-') : (value || '');
 const isLocked = item => !!(item?.issued_at || isConverted(item) || supersededOf(item));
+/* WhatsApp disabled at owner request. Original helpers preserved:
 // WhatsApp: share the PDF from the phone, or open the customer's chat by
 // number (wa.me) with the PDF saved to attach - no typing the number again.
 const canWhatsAppChat = item => item?.status !== 'lost' && !supersededOf(item);
@@ -47,7 +49,9 @@ const waDigits = phone => {
     return '';
 };
 
-function Preview({ row,onGenerate,onWhatsAppChat,onEdit,onRevise,busy }) {
+*/
+
+function Preview({ row,onGenerate,onEdit,onRevise,busy }) {
     const scrollRef = useRef(null);
     const [zoom,setZoom] = useState(() => Math.min(1, Math.max(0.25, (typeof window !== 'undefined' ? window.innerWidth - 64 : 794) / 794)));
     const [highlights,setHighlights] = useState(false);
@@ -80,7 +84,7 @@ function Preview({ row,onGenerate,onWhatsAppChat,onEdit,onRevise,busy }) {
         if (available > 0) setZoom(Math.min(1, Math.max(0.25, available / 794)));
     };
 
-    return <div style={full ? {position:'fixed',inset:0,zIndex:55,background:'#f6f7f9',padding:12,overflow:'auto'} : undefined}><div className="q-preview-toolbar"><div className="q-tools">{!isLocked(row) ? <button onClick={onEdit}>Edit values</button> : (canRevise(row) && <button disabled={busy} onClick={() => onRevise(row)}>Revise</button>)}<div className="q-zoom" role="group" aria-label="Zoom"><button onClick={() => changeZoom(z => Math.max(.25,z - .1))} aria-label="Zoom out">−</button><span aria-live="polite">{Math.round(zoom * 100)}%</span><button onClick={() => changeZoom(z => Math.min(1.5,z + .1))} aria-label="Zoom in">+</button></div><button onClick={fitToWidth}>Fit width</button><button aria-pressed={highlights} onClick={() => setHighlights(v => !v)}>Highlights: {highlights ? 'on' : 'off'}</button><button onClick={() => { manualZoom.current = false; setFull(v => !v); }}>{full ? 'Exit full screen' : 'Full screen'}</button></div><div className="q-send"><button className="q-primary" disabled={busy} onClick={() => onGenerate(row, 'download')}><Download size={16} /> {busy ? 'Generating…' : 'Download'}</button><button disabled={busy} onClick={() => onGenerate(row, 'share')}><Share2 size={16} /> Share</button>{onWhatsAppChat && canWhatsAppChat(row) && <button className="q-wa" disabled={busy} onClick={() => onWhatsAppChat(row)}><MessageCircle size={16} /> WhatsApp</button>}</div></div><div className="q-preview-scroll" ref={scrollRef}><div style={{width:794 * zoom,height:(1123 * 3 + 60) * zoom,margin:'0 auto'}}><div className="q-preview-surface" style={{width:794,transform:`scale(${zoom})`,transformOrigin:'top left'}}><DocumentPages row={row} highlights={highlights} /></div></div></div></div>;
+    return <div style={full ? {position:'fixed',inset:0,zIndex:55,background:'#f6f7f9',padding:12,overflow:'auto'} : undefined}><div className="q-preview-toolbar"><div className="q-tools">{!isLocked(row) ? <button onClick={onEdit}>Edit values</button> : (canRevise(row) && <button disabled={busy} onClick={() => onRevise(row)}>Revise</button>)}<div className="q-zoom" role="group" aria-label="Zoom"><button onClick={() => changeZoom(z => Math.max(.25,z - .1))} aria-label="Zoom out">−</button><span aria-live="polite">{Math.round(zoom * 100)}%</span><button onClick={() => changeZoom(z => Math.min(1.5,z + .1))} aria-label="Zoom in">+</button></div><button onClick={fitToWidth}>Fit width</button><button aria-pressed={highlights} onClick={() => setHighlights(v => !v)}>Highlights: {highlights ? 'on' : 'off'}</button><button onClick={() => { manualZoom.current = false; setFull(v => !v); }}>{full ? 'Exit full screen' : 'Full screen'}</button></div><div className="q-send"><button className="q-primary" disabled={busy} onClick={() => onGenerate(row, 'download')}><Download size={16} /> {busy ? 'Generating…' : 'Download'}</button><button disabled={busy} onClick={() => onGenerate(row, 'share')}><Share2 size={16} /> Share</button>{/* WhatsApp disabled: {onWhatsAppChat && canWhatsAppChat(row) && <button className="q-wa" disabled={busy} onClick={() => onWhatsAppChat(row)}><MessageCircle size={16} /> WhatsApp</button>} */}</div></div><div className="q-preview-scroll" ref={scrollRef}><div style={{width:794 * zoom,height:(1123 * 3 + 60) * zoom,margin:'0 auto'}}><div className="q-preview-surface" style={{width:794,transform:`scale(${zoom})`,transformOrigin:'top left'}}><DocumentPages row={row} highlights={highlights} /></div></div></div></div>;
 }
 export default function QuotationModule({ user,meta,channelPartners = [],onCreateLead,onViewLead,embedded = false,onClose }) {
     const { showAlert,showConfirm } = useGlobalPopup();
@@ -180,42 +184,24 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         catch (err) { setError(err.message || 'The action could not be completed. Please retry.'); }
         finally { busyRef.current = false; setBusy(false); }
     };
-    const generate = async (quotation, action = 'download') => run(async () => {
-        const stored = await repo.get(quotation.id);
-        const issues = validate(fromRow(stored));
-        if (issues.length) { await showAlert(issues.join('\n'),{title:'Complete these fields',type:'warning'}); return; }
-        const file = await generateQuotationPdf(stored);
-        if (action === 'share') {
-            const delivery = await shareQuotationFile(file);
-            // Native sharing is not an issue event. If sharing is unavailable and
-            // the browser falls back to a download, classify that actual download.
-            if (delivery === 'download-required') {
-                const updated = await repo.generated(stored,user);
-                setRow(updated);
-                downloadQuotationFile(file);
-                showAlert(`Downloaded ${file.name}`, { title: 'Download complete', type: 'success' });
-                setRefresh(n => n + 1);
-            }
-        } else {
-            // A quotation becomes Issued only when the user chooses Download.
-            // Persist first so a failed database update cannot leave an untracked PDF.
+    const generate = async (quotation, action = 'download') => {
+        if (action === 'share') { prepareShare(quotation); return; }
+        return run(async () => {
+            const stored = await repo.get(quotation.id);
+            const issues = validate(fromRow(stored));
+            if (issues.length) { await showAlert(issues.join('\n'),{title:'Complete these fields',type:'warning'}); return; }
+            const file = await generateQuotationPdf(stored);
             const updated = await repo.generated(stored,user);
             setRow(updated);
             downloadQuotationFile(file);
             showAlert(`Downloaded ${file.name}`, { title: 'Download complete', type: 'success' });
             setRefresh(n => n + 1);
-        }
-    });
+        });
+    };
     // WhatsApp popup: the PDF is made as soon as it opens, so every button
     // below is a fresh tap - phones only allow the share sheet from a tap.
-    const openWhatsAppChat = item => {
-        const name = item.customer_name || 'Sir/Madam';
-        const sales = [profile?.name, profile?.phone].filter(Boolean).join(', ');
-        setWaChat({
-            row:item, file:null, preparing:true, issued:false,
-            phone:String(item.customer_phone || '').replace(/\D/g,'').replace(/^91(?=[6-9]\d{9}$)/,''),
-            message:`Dear ${name},\n\nThank you for your interest in rooftop solar. Please find attached your solar quotation ${quoteLabel(item)} from Watersun Electrical Solutions Pvt Ltd.\n\nFeel free to reply here with any questions.${sales ? `\n\nRegards,\n${sales}` : ''}`,
-        });
+    const prepareShare = item => {
+        setWaChat({ row:item, file:null, preparing:true, issued:false });
         run(async () => {
             try {
                 const stored = await repo.get(item.id);
@@ -242,16 +228,26 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
             showAlert(`The PDF went out, but the CRM could not mark the quotation as issued: ${err.message}`,{title:'Not marked issued',type:'warning'});
         }
     };
-    const canShareFile = file => !!file && typeof navigator !== 'undefined' && !!navigator.canShare && navigator.canShare({ files:[file] });
-    // Phone share sheet: PDF + message; pick WhatsApp, then the customer.
+    const canShareFile = canShareQuotationFile;
+    // The file is already ready, so this tap retains browser user activation.
     const shareWhatsAppFile = async () => {
         const file = waChat?.file;
-        if (!canShareFile(file)) return;
+        if (!file || waChat.sharing) return;
+        setWaChat(c => c && { ...c, sharing:true });
+        const result = await shareQuotationFile(file);
+        setWaChat(c => c && c.file === file ? { ...c, sharing:false } : c);
+        if (result === 'shared') await issueFromWhatsApp();
+        else if (result === 'download-required') {
+            showAlert('This browser could not share the PDF file. Use Save PDF to save the document.', { title:'File sharing unavailable', type:'warning' });
+        }
+    };
+/* WhatsApp chat and message handlers disabled; preserved for future reuse.
+    const copyWhatsAppMessage = async () => {
         try {
-            await navigator.share({ files:[file], text:waChat.message || '', title:file.name });
-            await issueFromWhatsApp();
-        } catch (err) {
-            if (err?.name !== 'AbortError') showAlert('This phone could not open the share menu. Use "Open customer\'s chat" and attach the downloaded PDF.',{title:'Share not available',type:'warning'});
+            await navigator.clipboard.writeText(waChat?.message || '');
+            showAlert('Message copied. You can paste it after attaching the PDF.', { title:'Message copied', type:'success' });
+        } catch {
+            showAlert('Select and copy the message in the box above.', { title:'Copy message', type:'warning' });
         }
     };
     // Customer's chat by number (wa.me). Files cannot ride along on a link,
@@ -264,6 +260,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         window.open(`https://wa.me/${to}?text=${encodeURIComponent(waChat.message || '')}`,'_blank');
         void issueFromWhatsApp();
     };
+*/
     const start = () => {
         if (busyRef.current) return;
         navigate(`/quotations/new/${crypto.randomUUID()}`);
@@ -278,8 +275,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         startLead(current, null);
     });
     const startLead = (current, choice) => {
-        const lead = toLead(fromRow(current));
-        if (choice) lead.module_brand = leadBrand(choice.brandName, meta?.module_brand || []);
+        const lead = toLead(fromRow(current), choice, meta?.module_brand || []);
         setConversion(current); setLeadPrefill(lead); dirty.current = true;
     };
     const confirmChoice = () => run(async () => {
@@ -325,7 +321,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
                 {!!localCopies.length && <div className="q-notice"><strong>Draft recovery on this device</strong>{localCopies.map(copy => <div key={copy.id}><button onClick={() => navigate(`/quotations/new/${copy.id}`)}>Recover {copy.form?.customer_name || 'unnamed quotation'}</button></div>)}</div>}
                 <div className="q-toolbar"><input className="q-search" aria-label="Search quotations" placeholder="Search quote number, customer or phone" value={search} onChange={e => {setSearch(e.target.value);setPage(0);}} /><button aria-label="Refresh quotations" onClick={() => setRefresh(n => n + 1)}><Search size={17} /> Refresh</button></div>
                 <div className="q-filters">{statusLabels.map(s => <button key={s} aria-pressed={status === s} onClick={() => {setStatus(s);setPage(0);}}>{statusText(s)[0].toUpperCase() + statusText(s).slice(1)}{counts && counts[s] != null ? <span className="q-count"> {counts[s]}</span> : null}</button>)}</div>
-                {loading && !allRows.length ? <div className="q-empty" role="status">Loading quotations…</div> : !rows.length && !error ? <div className="q-empty"><h2>No quotations found</h2><p className="q-muted">Create your first quotation or try another search.</p><button onClick={start}>Create Quotation</button></div> : <div className="q-cards">{rows.map(item => <article className="q-card" key={item.id}><div className="q-card-heading"><span>{quoteLabel(item)} · {showDate(item.quotation_date)}</span><span className={`q-status q-status-${supersededOf(item) ? 'lost' : item.status}`}>{supersededOf(item) ? 'revised' : statusText(item.status)}</span></div>{supersededOf(item) && <p className="q-muted">Replaced by {supersededOf(item).label}</p>}<h3>{item.customer_name}</h3><p>{item.customer_phone}</p><p>Created by {item.owner_name_snapshot || '—'}</p>{item.selected_option && item.chosen_brands?.[item.selected_option - 1] && <p><strong>Chosen: {item.chosen_brands[item.selected_option - 1].brandName}</strong></p>}<dl><div><dt>System capacity</dt><dd>{item.capacity_kw ? `${item.capacity_kw} kWp` : '—'}</dd></div><div><dt>Starting price</dt><dd>{item.starting_price == null ? '—' : money(item.starting_price)}</dd></div></dl><div className="q-actions">{!isLocked(item) ? <button onClick={() => navigate(`/quotations/${item.id}/edit`)}>Edit</button> : (canRevise(item) && <button disabled={busy || !online} onClick={() => revise(item)}>Revise</button>)}<button onClick={() => navigate(`/quotations/${item.id}/preview`)}><Eye size={15} /> Preview</button>{item.status !== 'lost' && <><button disabled={busy || !online} onClick={() => generate(item, 'download')}><Download size={15} /> Download</button><button disabled={busy || !online} onClick={() => generate(item, 'share')}><Share2 size={15} /> Share</button>{canWhatsAppChat(item) && <button className="q-wa" disabled={busy || !online} onClick={() => openWhatsAppChat(item)}><MessageCircle size={15} /> WhatsApp</button>}</>}</div>{!supersededOf(item) && (isConverted(item)
+                {loading && !allRows.length ? <div className="q-empty" role="status">Loading quotations…</div> : !rows.length && !error ? <div className="q-empty"><h2>No quotations found</h2><p className="q-muted">Create your first quotation or try another search.</p><button onClick={start}>Create Quotation</button></div> : <div className="q-cards">{rows.map(item => <article className="q-card" key={item.id}><div className="q-card-heading"><span>{quoteLabel(item)} · {showDate(item.quotation_date)}</span><span className={`q-status q-status-${supersededOf(item) ? 'lost' : item.status}`}>{supersededOf(item) ? 'revised' : statusText(item.status)}</span></div>{supersededOf(item) && <p className="q-muted">Replaced by {supersededOf(item).label}</p>}<h3>{item.customer_name}</h3><p>{item.customer_phone}</p><p>Created by {item.owner_name_snapshot || '—'}</p>{item.selected_option && item.chosen_brands?.[item.selected_option - 1] && <p><strong>Chosen: {item.chosen_brands[item.selected_option - 1].brandName}</strong></p>}<dl><div><dt>System capacity</dt><dd>{item.capacity_kw ? `${item.capacity_kw} kWp` : '—'}</dd></div><div><dt>Starting price</dt><dd>{item.starting_price == null ? '—' : money(item.starting_price)}</dd></div></dl><div className="q-actions">{!isLocked(item) ? <button onClick={() => navigate(`/quotations/${item.id}/edit`)}>Edit</button> : (canRevise(item) && <button disabled={busy || !online} onClick={() => revise(item)}>Revise</button>)}<button onClick={() => navigate(`/quotations/${item.id}/preview`)}><Eye size={15} /> Preview</button>{item.status !== 'lost' && <><button disabled={busy || !online} onClick={() => generate(item, 'download')}><Download size={15} /> Download</button><button disabled={busy || !online} onClick={() => generate(item, 'share')}><Share2 size={15} /> Share</button>{/* WhatsApp disabled: {canWhatsAppChat(item) && <button className="q-wa" disabled={busy || !online} onClick={() => openWhatsAppChat(item)}><MessageCircle size={15} /> WhatsApp</button>} */}</>}</div>{!supersededOf(item) && (isConverted(item)
                     ? <div className="q-actions"><button disabled={busy || !online} onClick={() => convert(item)}>View lead</button></div>
                     : item.status === 'lost'
                         ? <div className="q-actions"><button disabled={busy || !online} onClick={() => run(async () => { const latest = await repo.get(item.id); patchRow(await repo.outcome(latest,'reopened',user)); setRefresh(n => n + 1); })}>Reopen</button></div>
@@ -336,17 +332,17 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
             </>}
             {validId && (loading || loadedRoute !== route) && !error && <div role="status" className="q-empty">Opening quotation…</div>}
             {validId && loadedRoute === route && mode === 'edit' && row && isLocked(row) && <div className="q-notice" role="status"><strong>{quoteLabel(row)} is locked.</strong> {isConverted(row) ? 'It has been added to leads.' : supersededOf(row) ? `It was replaced by ${supersededOf(row).label}.` : 'It was already downloaded and sent to the customer.'}<div className="q-actions">{canRevise(row) && <button disabled={busy} onClick={() => revise(row)}>Revise</button>}<button onClick={() => navigate(`/quotations/${row.id}/preview`)}>Preview</button></div></div>}
-            {validId && loadedRoute === route && ['new','edit'].includes(mode) && !(row && isLocked(row)) && <QuotationForm key={id} id={id} initialRow={row} user={profile} meta={meta} onDirty={setDirty} onSaved={saved} onPreview={savedRow => {dirty.current = false; navigate(`/quotations/${savedRow.id}/preview`);}} />}
-            {validId && loadedRoute === route && mode === 'preview' && row && <Preview row={row} busy={busy} onGenerate={generate} onWhatsAppChat={openWhatsAppChat} onRevise={revise} onEdit={() => navigate(`/quotations/${id}/edit`)} />}
+            {validId && loadedRoute === route && ['new','edit'].includes(mode) && !(row && isLocked(row)) && <QuotationForm key={id} id={id} initialRow={row} user={profile} meta={meta} onDirty={setDirty} onSaved={saved} onDraftSaved={() => { dirty.current = false; navigate('/quotations'); setRefresh(n => n + 1); }} onPreview={savedRow => {dirty.current = false; navigate(`/quotations/${savedRow.id}/preview`);}} />}
+            {validId && loadedRoute === route && mode === 'preview' && row && <Preview row={row} busy={busy} onGenerate={generate} onRevise={revise} onEdit={() => navigate(`/quotations/${id}/edit`)} />}
             {route !== '/quotations' && (!validId || !['new','edit','preview'].includes(mode)) && <div className="q-error">Quotation page not found.</div>}
         </main>
         {choosing && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-choose-title"><div className="q-panel"><h2 id="q-choose-title">Which option did the customer choose?</h2><div className="q-choices">{choosing.choices.map(choice => <button key={choice.number} type="button" aria-pressed={choosing.picked === choice.number} className={choosing.picked === choice.number ? 'q-choice q-choice-on' : 'q-choice'} onClick={() => setChoosing(c => ({ ...c, picked:choice.number }))}><span className="q-choice-name">Option {choice.number}: {choice.brandName}</span><span>Net payable {money(choice.netPayableAmount)}</span><span className="q-muted">After subsidy {money(choice.netPriceAfterSubsidy)}</span></button>)}</div><div className="q-actions"><button disabled={busy} onClick={() => setChoosing(null)}>Cancel</button><button className="q-primary" disabled={busy || !choosing.picked} onClick={confirmChoice}>Continue to Add Lead</button></div></div></div>}
-        {waChat && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-wa-title"><div className="q-panel"><h2 id="q-wa-title">Share on WhatsApp</h2><p className="q-muted">{quoteLabel(waChat.row)} · {waChat.row.customer_name}</p>
+        {waChat && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-wa-title"><div className="q-panel"><h2 id="q-wa-title">Share quotation PDF</h2><p className="q-muted">{quoteLabel(waChat.row)} · {waChat.row.customer_name}</p>
             <div className="q-notice" role="status" style={{marginTop:12}}>{waChat.preparing ? <strong>Preparing the PDF…</strong> : <><strong>PDF ready: {waChat.file?.name}</strong><div className="q-actions"><button type="button" onClick={() => downloadQuotationFile(waChat.file)}><Download size={15} /> Save PDF</button></div></>}</div>
-            <label className="q-field" style={{marginTop:12}}><span>Customer WhatsApp number</span><input type="tel" inputMode="tel" maxLength={14} value={waChat.phone} onChange={e => setWaChat(c => ({ ...c, phone:e.target.value }))} /></label>
-            <label className="q-field" style={{marginTop:12}}><span>Message</span><textarea rows={5} maxLength={1000} value={waChat.message} onChange={e => setWaChat(c => ({ ...c, message:e.target.value }))} /></label>
-            <p className="q-muted" style={{marginTop:8}}>{canShareFile(waChat.file) ? 'Share PDF sends the PDF itself: pick WhatsApp, then the customer. Open customer\'s chat goes straight to this number; the PDF is saved for you to attach.' : 'Opens WhatsApp on this number with the message. The PDF is saved to this device - attach it in the chat.'}</p>
-            <div className="q-actions"><button onClick={() => setWaChat(null)}>Close</button>{canShareFile(waChat.file) && <button className="q-primary q-wa" disabled={waChat.preparing} onClick={shareWhatsAppFile}><Share2 size={16} /> Share PDF</button>}<button className={canShareFile(waChat.file) ? 'q-wa' : 'q-primary q-wa'} disabled={waChat.preparing || !online} onClick={sendWhatsAppChat}><MessageCircle size={16} /> Open customer&apos;s chat</button></div></div></div>}
+            {/* WhatsApp phone, message and chat controls are disabled. Complete original JSX is preserved in docs/parked-quotation-whatsapp/QuotationModule.jsx.disabled. */}
+            <p className="q-muted" style={{marginTop:8}}>{waChat.preparing ? 'Preparing the PDF…' : canShareFile(waChat.file) ? 'Share the PDF using your device’s share menu.' : 'File sharing is unavailable in this browser. Use Save PDF.'}</p>
+            <div className="q-actions"><button disabled={waChat.sharing} onClick={() => setWaChat(null)}>Close</button>{canShareFile(waChat.file) && <button className="q-primary" disabled={waChat.preparing || waChat.sharing} onClick={shareWhatsAppFile}><Share2 size={16} /> {waChat.sharing ? 'Sharing…' : 'Share PDF'}</button>}</div></div></div>}
+
         {lost && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-lost-title"><div className="q-panel"><h2 id="q-lost-title">Mark quotation lost</h2><label className="q-field"><span>Reason (required)</span><select value={reason} onChange={e => setReason(e.target.value)}><option value="">Choose reason</option>{['Price','Competitor selected','Project postponed','Not interested','Other'].map(r => <option key={r}>{r}</option>)}</select></label><label className="q-field" style={{marginTop:16}}><span>Remark (optional)</span><textarea maxLength={1000} value={remark} onChange={e => setRemark(e.target.value)} /></label><div className="q-actions"><button disabled={busy} onClick={() => setLost(null)}>Cancel</button><button className="q-primary" disabled={busy || !reason} onClick={() => run(async () => { const latest = await repo.get(lost.id); patchRow(await repo.outcome(latest,'lost',user,reason,remark)); setLost(null); setRefresh(n => n + 1); })}>Mark Lost</button></div></div></div>}
         {conversion && createPortal(
             <AddLeadModal isOpen initialValues={leadPrefill} user={user} meta={meta} channel_partners={channelPartners} onClose={() => {setConversion(null);dirty.current = false;}} onSave={async (data,files) => { await onCreateLead(data,files,conversion); dirty.current = false; setConversion(null); setRefresh(n => n + 1); }} />,

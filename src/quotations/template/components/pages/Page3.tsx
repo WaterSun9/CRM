@@ -118,10 +118,11 @@ export const Page3: React.FC<Page3Props> = ({ data, onOpenAssetSlot }) => {
               <span className="quotation-section-label">Estimated Other Charges</span>
             </div>
             <div className="flex items-center text-[8.5px] leading-snug">
-              <div className="w-[24%] border-r border-black p-1.5 font-bold text-center text-gray-900 flex items-center justify-center self-stretch">
-                Account Number
+              {/* 22% matches the bank table's first column so the dividers line up. */}
+              <div className="w-[22%] border-r border-black p-1.5 font-bold text-center text-gray-900 flex items-center justify-center self-stretch">
+                Discom Registration
               </div>
-              <div className="w-[76%] p-1.5 text-gray-900 text-justify text-[8px] leading-tight">
+              <div className="w-[78%] p-1.5 text-gray-900 text-justify text-[8px] leading-tight">
                 {page3.otherChargesText}
               </div>
             </div>

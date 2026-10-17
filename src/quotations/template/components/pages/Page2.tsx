@@ -94,26 +94,30 @@ export const Page2: React.FC<Page2Props> = ({
         </div>
 
         {/* Table 1: Equipment & Project Details matching PDF structure */}
-        <div className="w-full my-3">
+        <div className="quotation-equipment-section w-full my-3">
           <table className="quotation-equipment-table w-full border-collapse border border-black text-[12px]">
             <thead>
               <tr className="bg-gray-50/70">
-                <th className="border border-black px-3 py-1.5 text-left font-bold w-[40%]">
+                <th className="border border-black px-3 py-1.5 text-left font-bold w-[40%]"><span className="quotation-equipment-cell">
                   Description
-                </th>
-                <th className="border border-black px-3 py-1.5 text-left font-bold w-[60%]">
+                </span></th>
+                <th className="border border-black px-3 py-1.5 text-left font-bold w-[60%]"><span className="quotation-equipment-cell">
                   Details
-                </th>
+                </span></th>
               </tr>
             </thead>
             <tbody>
-              {/* Solar panels are compared in the pricing table below. */}
+              {/* Brands remain in the comparison columns; these specifications are shared. */}
+              {page2.panelWattage && page2.solarPanelQty && <tr>
+                <td className="border border-black px-3 py-1.5 font-bold text-gray-900"><span className="quotation-equipment-cell">Solar modules</span></td>
+                <td className="border border-black px-3 py-1.5 text-gray-800 font-medium"><span className="quotation-equipment-cell">{page2.solarPanelQty} modules × {page2.panelWattage} Wp</span></td>
+              </tr>}
               {/* Row 1: Inverter (Merged Make & Quantity - line removed) */}
               <tr>
-                <td className="border border-black px-3 py-1.5 font-bold text-gray-900">
+                <td className="border border-black px-3 py-1.5 font-bold text-gray-900"><span className="quotation-equipment-cell">
                   Inverter
-                </td>
-                <td className="border border-black px-3 py-1.5 text-gray-800 font-medium">
+                </span></td>
+                <td className="border border-black px-3 py-1.5 text-gray-800 font-medium"><span className="quotation-equipment-cell">
                   <HighlightWrapper
                     isChanged={isFieldChanged('page2.inverterBrand') || isFieldChanged('page2.inverterOption')}
                     active={highlightChanges}
@@ -122,15 +126,15 @@ export const Page2: React.FC<Page2Props> = ({
                   >
                     <span>{page2.inverterBrand}</span>
                   </HighlightWrapper>
-                </td>
+                </span></td>
               </tr>
 
               {/* Project type remains in the equipment summary. */}
               <tr>
-                <td className="border border-black px-3 py-1.5 font-bold text-gray-900">
+                <td className="border border-black px-3 py-1.5 font-bold text-gray-900"><span className="quotation-equipment-cell">
                   Project
-                </td>
-                <td className="border border-black px-3 py-1.5 text-gray-800 font-medium">
+                </span></td>
+                <td className="border border-black px-3 py-1.5 text-gray-800 font-medium"><span className="quotation-equipment-cell">
                   <HighlightWrapper
                     isChanged={isFieldChanged('page2.projectType')}
                     active={highlightChanges}
@@ -139,7 +143,7 @@ export const Page2: React.FC<Page2Props> = ({
                   >
                     <span>{page2.projectType}</span>
                   </HighlightWrapper>
-                </td>
+                </span></td>
               </tr>
             </tbody>
           </table>

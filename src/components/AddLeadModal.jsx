@@ -481,6 +481,12 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             </ul>
                         </div>
                     )}
+                    {initialValues?.invoice_value != null && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-stone-700">
+                        <h3 className="mb-2 font-bold text-stone-900">Chosen quotation option</h3>
+                        <p>{formData.module_brand} · {formData.no_of_modules} modules × {formData.module_wp} Wp · {formData.inverter_make}</p>
+                        <p className="mt-1 font-semibold">Project amount: {new Intl.NumberFormat('en-IN', {style:'currency', currency:'INR', minimumFractionDigits:0, maximumFractionDigits:2}).format(Number(formData.invoice_value))}</p>
+                        <p className="mt-1 text-stone-500">Before subsidy. These details will be saved with the lead.</p>
+                    </section>}
                     {/* Section 1: Customer Info (Strictly Line-by-Line) */}
                     <section>
                         <div className="flex items-center gap-2 mb-3 pb-1.5 border-b border-stone-100">

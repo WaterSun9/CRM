@@ -47,6 +47,7 @@ export interface QuotationData {
   page2: {
     solarPanelMake: string; // "Waree 580"
     solarPanelQty: number | string; // "6"
+    panelWattage?: number | string;
     inverterOption: string; // "Option 1", "Option 2", "Option 3", "Option 4", or "Custom"
     inverterBrand: string; // "Solaryan"
     gebGedaCharge: 'Including' | 'Excluding'; // user prompt: "feda, inclusive or exclusive"

@@ -273,8 +273,8 @@
 .quotation-paper .quotation-page-3 .quotation-detail-table th,
 .quotation-paper .quotation-page-3 .quotation-detail-table td {
   line-height: 1.2;
-  padding: 0 4px 9px;
-  vertical-align: top;
+  padding: 4.5px 4px;
+  vertical-align: middle;
 }
 
 .quotation-paper .quotation-page-3 .quotation-detail-table td {
@@ -359,11 +359,11 @@
 }
 
 .quotation-paper .quotation-page-3 .quotation-other-charges-title {
-  padding: 0 0 8px;
+  padding: 4px 0;
 }
 
 .quotation-paper .quotation-page-3 .quotation-other-charges > div:nth-child(2) > div {
-  padding: 0 5px 9px;
+  padding: 4.5px 5px;
   line-height: 1.2;
 }
 
@@ -463,6 +463,17 @@
 .quotation-paper .quotation-page-2 .quotation-equipment-table td {
   font-size: 14px !important;
   line-height: 1.25;
+}
+
+/* Keep the equipment summary clear of its rules in preview and PDF. */
+.quotation-paper .quotation-page-2 .quotation-equipment-section {
+  margin-bottom: 12px;
+}
+.quotation-paper .quotation-page-2 .quotation-equipment-table th,
+.quotation-paper .quotation-page-2 .quotation-equipment-table td {
+  padding: 3px 12px;
+  line-height: 1.15;
+  vertical-align: middle;
 }
 
 .quotation-paper .quotation-page-2 .quotation-financial-table,
@@ -573,6 +584,8 @@
 .quotation-paper .a4-page { width:210mm; height:297mm; min-height:297mm; max-height:297mm; margin:0 0 20px; overflow:hidden; flex-shrink:0; }
 .quotation-paper .a4-page>div:last-child { flex-shrink:0; }
 .quotation-paper table { table-layout:fixed; }.quotation-paper th,.quotation-paper td { overflow-wrap:anywhere; white-space:normal !important; }
+/* Multi-line remarks (e.g. the two module performance clauses) keep their line breaks. */
+.quotation-paper td.whitespace-pre-line { white-space:pre-line !important; }
 .q-dialog { position:fixed; inset:0; z-index:65; background:#10283c70; display:grid; place-items:center; padding:16px; }.q-dialog .q-panel { width:100%; max-width:520px; max-height:90dvh; overflow:auto; }
 
 /* Agent and dealer portals are intentionally phone-width even on a desktop.
@@ -675,4 +688,34 @@
   .q-preview-toolbar button { width:100%; min-width:0; padding-inline:6px; }
   .q-zoom { width:100%; justify-content:space-between; }
   .q-zoom button { width:auto; }
+}
+
+/* html2canvas places this font's baseline lower than browser text. Compensate
+   the glyphs only, keeping the same compact grid and preview geometry. */
+.quotation-paper .quotation-equipment-cell { display: block; }
+.quotation-paper-export .quotation-equipment-cell {
+  position: relative;
+  top: -3px;
+}
+
+/* Centre browser text without changing any row heights. The PDF renderer
+   needs its original asymmetric insets to compensate for its font baseline. */
+.quotation-paper-export .quotation-page-2 .quotation-equipment-table th,
+.quotation-paper-export .quotation-page-2 .quotation-equipment-table td {
+  padding-top: 0;
+  padding-bottom: 6px;
+}
+.quotation-paper-export .quotation-page-3 .quotation-detail-table th,
+.quotation-paper-export .quotation-page-3 .quotation-detail-table td {
+  padding-top: 0;
+  padding-bottom: 9px;
+  vertical-align: top;
+}
+.quotation-paper-export .quotation-page-3 .quotation-other-charges-title {
+  padding-top: 0;
+  padding-bottom: 8px;
+}
+.quotation-paper-export .quotation-page-3 .quotation-other-charges > div:nth-child(2) > div {
+  padding-top: 0;
+  padding-bottom: 9px;
 }

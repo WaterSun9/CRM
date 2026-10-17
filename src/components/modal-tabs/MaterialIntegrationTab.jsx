@@ -382,9 +382,15 @@ export default function MaterialIntegrationTab({
     const panelAllLoaded = filledPanelSerials.length > 0 && panelLoadedCount === filledPanelSerials.length;
     const namedItems = bomItems.filter(item => item.product_name && item.product_name.trim() !== '');
     const otherNamedItems = namedItems.filter(item => !isSolarPanelItem(item));
-    const isItemLoaded = item => isSolarPanelItem(item) ? panelLoadReady && panelAllLoaded : item.loaded === true;
-    const loadedCount = namedItems.filter(isItemLoaded).length;
-    const allLoaded = namedItems.length > 0 && loadedCount === namedItems.length;
+    const isItemLoaded = item => isSolarPanelItem(item) && filledPanelSerials.length ? panelLoadReady && panelAllLoaded : item.loaded === true;
+    // Progress counts lines with a quantity, as the truck loading sheet does,
+    // so both show the same "x of y". Blank template lines are not loaded.
+    const progressItems = namedItems.filter(item => {
+        const raw = String(item.quantity ?? '').trim();
+        return raw !== '' && Number(raw) !== 0;
+    });
+    const loadedCount = progressItems.filter(isItemLoaded).length;
+    const allLoaded = progressItems.length > 0 && loadedCount === progressItems.length;
     const TICK_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const canTick = isEditable && loadingMode && editingSection !== 'bom_items' && !loadingBom && !refreshingBom && !bomLoadFailedRef.current
         && namedItems.length > 0 && namedItems.every(item => TICK_ID_RE.test(String(item.id || '')));
@@ -503,10 +509,10 @@ export default function MaterialIntegrationTab({
             <div className="min-w-[160px] flex-1">
                 <div className="flex items-center justify-between text-[11px] font-bold">
                     <span className={allLoaded ? 'text-emerald-700' : 'text-stone-700'}>{allLoaded ? 'All items loaded' : 'Loading progress'}</span>
-                    <span className="text-stone-500">{loadedCount} of {namedItems.length} loaded</span>
+                    <span className="text-stone-500">{loadedCount} of {progressItems.length} loaded</span>
                 </div>
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
-                    <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${namedItems.length ? (loadedCount / namedItems.length) * 100 : 0}%` }} />
+                    <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progressItems.length ? (loadedCount / progressItems.length) * 100 : 0}%` }} />
                 </div>
                 {loadingLog.length > 0 && (
                     <ul className="mt-1.5 space-y-0.5 text-[10px] text-stone-600">
@@ -577,7 +583,7 @@ export default function MaterialIntegrationTab({
                     quantity: item.quantity !== undefined && item.quantity !== null ? String(item.quantity) : '',
                     integration_by: item.integration_by || null,
                     note: item.note || null,
-                    loaded: isSolarPanelItem(item) ? panelAllLoaded : item.loaded === true
+                    loaded: isSolarPanelItem(item) && filledPanelSerials.length ? panelAllLoaded : item.loaded === true
                 })),
                 p_expected_bom_id: currentBomId,
                 p_expected_item_ids: expectedItemIds
@@ -701,7 +707,7 @@ export default function MaterialIntegrationTab({
             loadingMarkedRef.current = false;
             setLoadingMode(false);
             setShowBulkPaste(false);
-            logLoading(`finished (${loadedCount} of ${namedItems.length} loaded)`);
+            logLoading(`finished (${loadedCount} of ${progressItems.length} loaded)`);
         } catch (error) {
             showAlert(error?.message || 'Loading changes were not saved. Keep Loading on and try again.', { title: 'Loading not finished', type: 'error' });
         } finally {

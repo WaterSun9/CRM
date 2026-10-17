@@ -3,7 +3,11 @@
 -- their material can then go on a new batch: the customer shows up again in
 -- the batch picker, and joining the new batch clears the tick. The first
 -- batch keeps them in project_ids as history.
--- Apply in Supabase: SQL Editor > paste this file > Run (or supabase db push).
+-- The owner applies this file in the Supabase SQL Editor after a backup.
+-- One transaction: any failure rolls back the entire update.
+set lock_timeout = '8s';
+
+begin;
 
 alter table public.admin add column if not exists delivery_partial boolean not null default false;
 
@@ -287,3 +291,10 @@ begin
 end;
 $function$
 ;
+
+commit;
+
+-- Verification after commit:
+select column_name, data_type, column_default
+from information_schema.columns
+where table_schema = 'public' and table_name = 'admin' and column_name = 'delivery_partial';

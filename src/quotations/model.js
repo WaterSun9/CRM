@@ -8,12 +8,12 @@ export const money = value => new Intl.NumberFormat('en-IN', { style: 'currency'
 const clone = value => JSON.parse(JSON.stringify(value));
 const round = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 const date = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-// Deferred lead integration: retained for when Add to Leads is activated.
+// Customer fields shared by all quotation options.
 export const leadMapping = {
     customer_name: 'customer_name', customer_phone: 'phone_number', customer_email: 'email_address',
     full_address: 'full_address', village: 'villages', taluka: 'sub_divisions', district: 'district',
     pincode: 'pincode', capacity_kw: 'system_capacity_kwp', solar_panel_make: 'module_brand',
-    solar_panel_qty: 'no_of_modules', panel_wattage: 'module_wp', project_type: 'property_type',
+    solar_panel_qty: 'no_of_modules', panel_wattage: 'module_wp', project_type: 'property_type', inverter_brand: 'inverter_make',
 };
 export function newForm(user = {}) {
     const today = new Date();
@@ -30,8 +30,14 @@ export function newForm(user = {}) {
         custom_notes: [],
     };
 }
-export function toLead(form) {
-    return Object.fromEntries(Object.entries(leadMapping).map(([field, target]) => [target, form[field] ?? '']));
+export function toLead(form, choice = null, knownBrands = []) {
+    const lead = Object.fromEntries(Object.entries(leadMapping).map(([field, target]) => [target, form[field] ?? '']));
+    if (choice) {
+        lead.module_brand = leadBrand(choice.brandName, knownBrands);
+        // Net payable is the agreed project amount, before the customer subsidy.
+        lead.invoice_value = choice.netPayableAmount;
+    }
+    return lead;
 }
 // The three priced options a customer can choose when the quote is won (1-based number).
 export function chosenOptions(form) {
@@ -69,7 +75,7 @@ export function validate(form) {
     if (!(Number(form.capacity_kw) > 0)) errors.push('Pricing: Capacity must be greater than zero');
     if (!(Number(form.solar_panel_qty) > 0 && Number.isInteger(Number(form.solar_panel_qty)))) errors.push('Pricing: Panel quantity must be a positive whole number');
     if (!(Number(form.panel_wattage) > 0) || !Number.isFinite(Number(form.panel_wattage))) errors.push('Pricing: Module Wp must be greater than zero');
-    [['solar_panel_make','Panel make'],['inverter_brand','Inverter brand / make']].forEach(([key,title]) => required(key,title,1));
+    [['inverter_brand','Inverter brand / make']].forEach(([key,title]) => required(key,title,1));
     if (!['Residential','Commercial'].includes(form.project_type)) errors.push('Pricing: Select a project type');
     [['geb_charge','GEB charge'],['geda_charge','GEDA charge']].forEach(([key,title]) => {
         const v = form[key];
@@ -96,6 +102,8 @@ export function fromRow(row, user) {
 export function payload(form, template) {
     const columns = Object.keys(newForm()).filter(k => !['options','custom_notes','geb_charge','geda_charge'].includes(k));
     const values = Object.fromEntries(columns.map(k => [k, form[k] === '' ? null : form[k]]));
+    // Retain the legacy column for older clients without a second editable brand.
+    values.solar_panel_make = form.options?.[0]?.brandName || form.solar_panel_make || null;
     values.geb_geda_charge = extraCharges(form) > 0 ? 'Excluding' : 'Including';
     ['capacity_kw','solar_panel_qty','panel_wattage'].forEach(k => { values[k] = Number(form[k]) > 0 ? Number(form[k]) : null; });
     const options = calculate(form.options, extraCharges(form));
@@ -111,13 +119,21 @@ export function documentFor(row) {
         capacityKw: form.capacity_kw ? `${form.capacity_kw} kWp` : '', yoursTrulyName: form.owner_name_snapshot || '', yoursTrulyPhone: form.owner_phone_snapshot || '',
         address: [form.full_address, form.village, form.taluka, form.district, form.pincode].filter(Boolean).join(', '),
         email: form.customer_email || '', validUntil: form.valid_until || '' };
-    data.page2 = { ...data.page2, solarPanelMake: form.solar_panel_make || '', solarPanelQty: form.solar_panel_qty || '',
+    data.page2 = { ...data.page2, solarPanelMake: form.solar_panel_make || '', solarPanelQty: form.solar_panel_qty || '', panelWattage: form.panel_wattage || '',
         inverterOption: form.inverter_option || '', inverterBrand: form.inverter_brand || '', gebGedaCharge: form.geb_geda_charge || 'Including',
         // Quotations saved before the split show their old single choice.
         gebCharge: extraCharges(form) === 0 && form.geb_geda_charge === 'Excluding' ? 'Excluding' : chargeLabel(form.geb_charge),
         gedaCharge: extraCharges(form) === 0 && form.geb_geda_charge === 'Excluding' ? 'Excluding' : chargeLabel(form.geda_charge),
         projectType: form.project_type || 'Residential', projectSize: form.capacity_kw ? `${form.capacity_kw} kWp` : '', brandOptions: calculate(form.options || [], extraCharges(form)),
         notes: [...data.page2.notes, ...(form.custom_notes || []).filter(n => n && n.trim())] };
+    data.page3.bomItems = data.page3.bomItems.map(item => {
+        if (/^solar modules$/i.test(item.description)) return { ...item,
+            qty: String(form.solar_panel_qty || item.qty),
+            size: form.panel_wattage ? `${form.panel_wattage} Wp` : item.size,
+            make: 'See price options on page 2' };
+        if (/inverter/i.test(item.description) && form.inverter_brand) return { ...item, make: form.inverter_brand };
+        return item;
+    });
     if (form.valid_until) data.page3.termsAndConditions = data.page3.termsAndConditions.map(t => t.sr === 10 ? { ...t, remarks: `Valid until ${form.valid_until.split('-').reverse().join('-')}` } : t);
     return data;
 }

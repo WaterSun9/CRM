@@ -72,7 +72,9 @@ export function fitQuotationPages(root) {
     for (const page of pages) {
         const body = page.firstElementChild;
         const footer = page.lastElementChild;
+        const header = body.querySelector('.quotation-reference-header');
         body.style.transform = ''; body.style.height = ''; body.style.width = '100%'; body.style.flex = '0 0 auto';
+        if (header) { header.style.left = ''; header.style.top = ''; header.style.width = ''; header.style.maxWidth = ''; }
         const style = getComputedStyle(page);
         const available = page.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) - footer.offsetHeight - 4;
         const height = body.scrollHeight;
@@ -83,6 +85,16 @@ export function fitQuotationPages(root) {
             body.style.width = `${100 / scale}%`;
             body.style.transform = `scale(${scale})`;
             body.style.height = `${height * scale}px`;
+            // The transform makes the body the header picture's containing block, which
+            // shrank it and dropped it by the page padding onto the first table in the
+            // preview. Pin it back to the page's top edge at full width. The PDF already
+            // draws the original header JPEG at that spot, so its output is unchanged.
+            if (header) {
+                header.style.left = `${-parseFloat(style.paddingLeft) / scale}px`;
+                header.style.top = `${-parseFloat(style.paddingTop) / scale}px`;
+                header.style.width = `${page.clientWidth / scale}px`;
+                header.style.maxWidth = 'none';
+            }
         }
         const fittedHeight = body.offsetHeight;
         if (fittedHeight > available + 1) {

@@ -1,3 +1,4 @@
+import { saveTruckLoadingTicks, markBatchLoaded, describeSaveError, loadingShortfall, stampBomLoadedDates, truckLoadedLabel } from '../utils/truckLoadingSave';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
@@ -45,7 +46,7 @@ export default function DeliveryBatchesView({
     onRefreshCustomers,
     onOpenCustomerModal
 }) {
-    const { showAlert } = useGlobalPopup();
+    const { showAlert, showConfirm } = useGlobalPopup();
     const [cachedSnapshot] = useState(readCachedBatches);
     const [batches, setBatches] = useState(cachedSnapshot.rows);
     const [hasBatchSnapshot, setHasBatchSnapshot] = useState(cachedSnapshot.available);
@@ -327,32 +328,103 @@ export default function DeliveryBatchesView({
         } finally { setReorderingBatchId(null); }
     };
 
+    // Who may tick on the truck sheet: the roles that may change a BOM.
+    const canTickTruck = ['admin', 'sales', 'channel_partner_office', 'office2'].includes(currentUser?.userType);
+    // This sheet session: customers ticked loaded here (for the loading date
+    // and the close prompt), customers whose "Loading started" is logged, and
+    // the panel serials that were loaded before the sheet ticked the panel
+    // line, which undo leaves loaded.
+    const tickedOnSheetRef = useRef(new Set());
+    const startLoggedRef = useRef(new Set());
+    const panelsBeforeTickRef = useRef({});
+    const putBatch = row => setBatches(prev => {
+        const next = prev.map(batch => batch.id === row.id ? { ...batch, ...row } : batch);
+        cacheBatches(next);
+        return next;
+    });
+
+    // silent: re-read after a tick or on reconnect. A failed silent re-read
+    // keeps the sheet on screen, marked as possibly out of date.
     const openTruckSheet = async (batch, { silent = false } = {}) => {
-        if (!silent) setLoadingTruckSheet(true);
+        if (!silent) {
+            setLoadingTruckSheet(true);
+            tickedOnSheetRef.current = new Set();
+            startLoggedRef.current = new Set();
+            panelsBeforeTickRef.current = {};
+        }
         try {
             const projectIds = batch.project_ids || [];
             // The saved BOM lives in bom + bom_items. Read only the customer
             // fields needed to label the stops and choose the BOM template.
-            const { data: bomCustomers, error } = await supabase.from('admin')
-                .select('id, customer_name, roof_shed, panel_serial_no')
-                .in('id', projectIds);
+            // The batch row is read again for the "Truck loaded" stamp, which
+            // may have been set on another phone since the list loaded.
+            const [{ data: bomCustomers, error }, freshBatch] = await Promise.all([
+                supabase.from('admin').select('id, customer_name, roof_shed, panel_serial_no, delivery_batch_id').in('id', projectIds),
+                supabase.from('delivery_batches').select('*').eq('id', batch.id).maybeSingle()
+            ]);
             if (error) throw error;
+            const currentBatch = freshBatch.data ? { ...batch, ...freshBatch.data } : batch;
+            if (freshBatch.data && (freshBatch.data.loaded_at || null) !== (batch.loaded_at || null)) putBatch(freshBatch.data);
             const bomById = new Map((bomCustomers || []).map(customer => [customer.id, customer]));
             const listedById = new Map(customers.map(customer => [customer.id, customer]));
             const projects = projectIds.map(id => ({
                 ...(listedById.get(id) || { id }),
-                ...bomById.get(id)
+                ...bomById.get(id),
+                bom_data: null // Loading writes relational rows; never reload an old inline snapshot.
             }));
             const projectBoms = await Promise.all(projects.map(async customer => ({
                 customer,
                 ...await loadBomForCustomer(customer, getBomTypeForCustomer(customer))
             })));
             const panelSerialsByCustomer = Object.fromEntries(projects.map(project => [project.id, parsePanelSerialList(project.panel_serial_no)]));
-            setTruckSheet({ batch, projects, panelSerialsByCustomer, ...buildTruckLoad(projectBoms) });
+            const panelLoadedByCustomer = {};
+            const panelProgressByCustomer = {};
+            const serialCustomerIds = projects.filter(project => panelSerialsByCustomer[project.id].length).map(project => project.id);
+            if (serialCustomerIds.length) {
+                const { data: panelLoading, error: panelError } = await supabase.from('panel_loading').select('customer_id, serial_no, loaded').in('customer_id', serialCustomerIds);
+                if (panelError) throw panelError;
+                const loadedSerials = new Set((panelLoading || []).filter(panel => panel.loaded).map(panel => `${panel.customer_id}|${panel.serial_no}`));
+                for (const entry of projectBoms) {
+                    const serials = panelSerialsByCustomer[entry.customer.id];
+                    if (!serials.length) continue;
+                    const loaded = serials.filter(serial => loadedSerials.has(`${entry.customer.id}|${serial}`));
+                    panelLoadedByCustomer[entry.customer.id] = loaded;
+                    panelProgressByCustomer[entry.customer.id] = { loaded: loaded.length, total: serials.length };
+                    entry.items = entry.items.map(item => isSolarPanelName(item.product_name)
+                        ? { ...item, loaded: loaded.length === serials.length } : item);
+                }
+            }
+            // Partly delivered customers: say so on their stop, and name the
+            // other truck(s) they are on, since ticks carry across trucks.
+            const stopNotes = Object.fromEntries(projects.map(project => {
+                const id = String(project.id);
+                const current = project.delivery_batch_id;
+                const notes = [];
+                if (partialIds.has(id) && (!current || current === currentBatch.batch_no)) notes.push('Partly delivered');
+                if (current && current !== currentBatch.batch_no) notes.push(`Rest on ${current}`);
+                const others = batches.filter(other => other.id !== currentBatch.id && other.batch_no !== current
+                    && (other.project_ids || []).map(String).includes(id)).map(other => other.batch_no);
+                if (others.length) notes.push(`Also on ${others.join(', ')}`);
+                return [project.id, notes];
+            }));
+            const built = { batch: currentBatch, projects, panelSerialsByCustomer, panelLoadedByCustomer, panelProgressByCustomer, stopNotes, ...buildTruckLoad(projectBoms) };
+            // A re-read finishing after Close must not reopen the sheet.
+            setTruckSheet(prev => !silent || prev?.batch.id === batch.id ? built : prev);
         } catch (error) {
-            showAlert('Could not prepare the truck sheet: ' + error.message, { type: 'error' });
+            if (silent) setTruckSheet(prev => prev && prev.batch.id === batch.id ? { ...prev, stale: true } : prev);
+            else showAlert('Could not prepare the truck sheet: ' + describeSaveError(error), { type: 'error' });
         } finally { if (!silent) setLoadingTruckSheet(false); }
     };
+
+    // Back online: read the sheet again so it shows what is really saved.
+    useEffect(() => {
+        if (!truckSheet?.batch?.id) return undefined;
+        const batch = truckSheet.batch;
+        const refresh = () => { void openTruckSheet(batch, { silent: true }); };
+        window.addEventListener('online', refresh);
+        return () => window.removeEventListener('online', refresh);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [truckSheet?.batch?.id]);
 
     // Truck sheet loading ticks. They write the same rows as the customer
     // card's Loading switch - bom_items.loaded, and panel_loading for each
@@ -361,62 +433,91 @@ export default function DeliveryBatchesView({
     const LOADING_LOG = 'Material Integration - loading';
     const TICKS_LOG = 'Material Integration - loaded ticks';
     const loaderName = currentUser?.name || 'someone';
-    const tickedOnSheetRef = useRef(new Set());
     const saveTruckTicks = async ({ row, targets, value }) => {
+        const sheet = truckSheet;
+        if (!sheet) return;
+        const panelRow = isSolarPanelName(row.name);
+        const keepPanelsLoaded = {};
+        if (panelRow && value) {
+            for (const { project } of targets) panelsBeforeTickRef.current[project.id] = sheet.panelLoadedByCustomer?.[project.id] || [];
+        } else if (panelRow) {
+            // Panels loaded before this sheet's tick are unknown after a
+            // reopen: undo would clear them too, so ask first.
+            const unknown = targets.filter(({ project }) => !panelsBeforeTickRef.current[project.id] && sheet.panelProgressByCustomer?.[project.id]?.loaded);
+            if (unknown.length && !await showConfirm(
+                `Untick every panel serial for ${unknown.map(({ project }) => project.customer_name || 'this customer').join(', ')}?\n\nPanels ticked earlier, on the customer card or an earlier truck, are unticked too.`,
+                { title: 'Untick all panels?', confirmLabel: 'Untick all', cancelLabel: 'Keep ticked' })) return;
+            for (const { project } of targets) keepPanelsLoaded[project.id] = panelsBeforeTickRef.current[project.id] || [];
+        }
         try {
-            const panelRow = isSolarPanelName(row.name);
+            await saveTruckLoadingTicks(supabase, { row, targets, value, panelSerialsByCustomer: sheet.panelSerialsByCustomer, keepPanelsLoaded });
             for (const { project } of targets) {
-                if (panelRow) {
-                    const serials = truckSheet?.panelSerialsByCustomer?.[project.id] || [];
-                    if (!serials.length) throw new Error(`Enter the panel serial numbers for ${project.customer_name || 'this customer'} in the customer card first.`);
-                    const { data, error } = await supabase.from('panel_loading')
-                        .upsert(serials.map(serial_no => ({ customer_id: project.id, serial_no, loaded: value })), { onConflict: 'customer_id,serial_no' })
-                        .select('serial_no');
-                    if (error || (data || []).length !== serials.length) throw error || new Error('The panel loading status was not saved.');
-                }
-            }
-            const ids = targets.flatMap(target => target.lines.map(line => line.id));
-            const { data, error } = await supabase.from('bom_items').update({ loaded: value }).in('id', ids).select('id');
-            if (error || (data || []).length !== ids.length) throw error || new Error('The BOM may have changed. Close and reopen the truck sheet, then try again.');
-            for (const { project } of targets) {
+                if (panelRow && !value) delete panelsBeforeTickRef.current[project.id];
                 if (value) tickedOnSheetRef.current.add(project.id);
+                if (value && !startLoggedRef.current.has(project.id)) {
+                    startLoggedRef.current.add(project.id);
+                    void logActivity(currentUser?.id || 'admin', 'update', `${project.customer_name || 'Customer'}: Loading started by ${loaderName}`, LOADING_LOG, project.id);
+                }
                 void logActivity(currentUser?.id || 'admin', 'update',
-                    `${project.customer_name || 'Customer'}: BOM item "${row.name}" ${value ? 'marked loaded' : 'unmarked (not loaded)'} by ${loaderName} (truck sheet, batch ${truckSheet?.batch?.batch_no || ''})`,
+                    `${project.customer_name || 'Customer'}: BOM item "${row.name}" ${value ? 'marked loaded' : 'unmarked (not loaded)'} by ${loaderName} (truck sheet, batch ${sheet.batch.batch_no || ''})`,
                     TICKS_LOG, project.id);
             }
-            if (truckSheet?.batch) await openTruckSheet(truckSheet.batch, { silent: true });
         } catch (error) {
-            showAlert(error?.message || 'The tick was not saved.', { title: 'Tick not saved', type: 'error' });
-            if (truckSheet?.batch) await openTruckSheet(truckSheet.batch, { silent: true });
+            showAlert(describeSaveError(error, 'The tick was not saved.'), { title: 'Tick not saved', type: 'error' });
         }
+        await openTruckSheet(sheet.batch, { silent: true });
     };
-    // Start / Finish loading on the truck sheet = the Loading switch on each
-    // customer card in the batch. Finishing stamps today's loading date on
-    // the BOM of every customer that had something ticked.
-    const setTruckLoadingMode = async (on) => {
+
+    // "Truck loaded": stamps who and when on the batch (shown at the top of
+    // the sheet from then on), the loading date on each customer's BOM, and
+    // "Loading finished" in each customer's history.
+    // Returns 'done', 'cancelled' or 'failed'.
+    const markTruckLoaded = async ({ lead = '' } = {}) => {
         const sheet = truckSheet;
-        if (!sheet) return false;
-        const withBom = sheet.projects.filter(project => sheet.bomIdByCustomer?.[project.id]);
-        if (on) {
-            tickedOnSheetRef.current = new Set();
-            withBom.forEach(project => void logActivity(currentUser?.id || 'admin', 'update',
-                `${project.customer_name || 'Customer'}: Loading started by ${loaderName}`, LOADING_LOG, project.id));
-            return true;
+        if (!sheet || sheet.batch.loaded_at) return 'done';
+        const short = loadingShortfall(sheet);
+        const question = [
+            lead,
+            short.length
+                ? `Not everything is ticked:\n${short.map(entry => `• ${entry.name}: ${entry.loaded} of ${entry.total}`).join('\n')}\nMark those customers "Partly delivered" if the rest goes on another truck.`
+                : 'Every item is ticked.',
+            `Record truck ${sheet.batch.batch_no || ''} as loaded by ${loaderName} now?`
+        ].filter(Boolean).join('\n\n');
+        if (!await showConfirm(question, { title: 'Truck loaded?', type: 'success', confirmLabel: 'Truck loaded', cancelLabel: 'Not yet' })) return 'cancelled';
+        let result;
+        try {
+            result = await markBatchLoaded(supabase, { batchId: sheet.batch.id, user: currentUser });
+        } catch (error) {
+            showAlert(describeSaveError(error, 'The truck was not marked loaded.'), { title: 'Truck not marked loaded', type: 'error' });
+            return 'failed';
         }
-        const today = localDateKey();
-        const failed = [];
-        for (const project of withBom) {
+        const batch = { ...sheet.batch, ...result.stamp };
+        setTruckSheet(prev => prev && prev.batch.id === batch.id ? { ...prev, batch } : prev);
+        putBatch(result.stamp);
+        if (result.alreadyLoaded) {
+            showAlert(`This truck was already marked loaded. ${truckLoadedLabel(batch)}.`, { title: 'Already loaded', type: 'warning' });
+            return 'done';
+        }
+        const failed = await stampBomLoadedDates(supabase, { sheet, date: localDateKey(), tickedIds: tickedOnSheetRef.current });
+        void logActivity(currentUser?.id || 'admin', 'update', `Truck ${sheet.batch.batch_no || ''} marked loaded by ${loaderName}`, 'Delivery batches', null);
+        for (const project of sheet.projects) {
+            if (!sheet.bomIdByCustomer?.[project.id]) continue;
             const progress = sheet.progressByCustomer?.[project.id] || { loaded: 0, total: 0 };
-            if (tickedOnSheetRef.current.has(project.id) && progress.loaded > 0) {
-                const { data, error } = await supabase.from('bom').update({ material_loaded_date: today }).eq('id', sheet.bomIdByCustomer[project.id]).select('id');
-                if (error || !data?.length) failed.push(project.customer_name || project.id);
-            }
             void logActivity(currentUser?.id || 'admin', 'update',
                 `${project.customer_name || 'Customer'}: Loading finished (${progress.loaded} of ${progress.total} loaded) by ${loaderName}`, LOADING_LOG, project.id);
         }
         tickedOnSheetRef.current = new Set();
-        if (failed.length) showAlert(`Loading finished, but the loading date was not saved for: ${failed.join(', ')}.`, { title: 'Loading date not saved', type: 'warning' });
-        return true;
+        if (failed.length) showAlert(`The truck is marked loaded, but the loading date was not saved on the BOM for: ${failed.join(', ')}. Set it on the customer card.`, { title: 'Loading date not saved', type: 'warning' });
+        return 'done';
+    };
+
+    // Ticks are already saved. Closing after ticking without "Truck loaded"
+    // offers to record it, so the who/when is not forgotten.
+    const closeTruckSheet = async () => {
+        const sheet = truckSheet;
+        if (sheet && canTickTruck && !sheet.batch.loaded_at && tickedOnSheetRef.current.size > 0
+            && await markTruckLoaded({ lead: 'You ticked items on this truck, but it is not marked loaded yet.' }) === 'failed') return;
+        setTruckSheet(null);
     };
 
     // Save Batch & Bulk Update Selected Projects in Supabase
@@ -950,6 +1051,11 @@ export default function DeliveryBatchesView({
                                                      <Package size={12} className="text-stone-400" /> Vendor: <strong className="text-stone-700">{batch.vendor}</strong>
                                                  </span>
                                             )}
+                                            {batch.loaded_at && (
+                                                 <span className="flex items-center gap-1 font-semibold text-emerald-700">
+                                                     <CheckCircle2 size={12} /> {truckLoadedLabel(batch)}
+                                                 </span>
+                                            )}
                                             <span className="h-3 w-px bg-stone-300 mx-1"></span>
                                             <div className="flex items-center gap-1.5 font-medium text-stone-500">
                                                  <span className="text-[10px] uppercase font-bold text-stone-400">Car Rent Paid:</span>
@@ -1005,7 +1111,7 @@ export default function DeliveryBatchesView({
                                          >
                                              <Printer size={13} /> Print Gate Pass
                                          </button>
-                                         <button type="button" disabled={loadingTruckSheet} onClick={() => openTruckSheet(batch)} className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 disabled:opacity-50 text-amber-900 rounded-xl text-xs font-bold flex items-center gap-1"><Package size={13} /> Truck load sheet</button>
+                                         <button type="button" disabled={loadingTruckSheet} onClick={() => openTruckSheet(batch)} title={truckLoadedLabel(batch) || 'Not marked loaded yet'} className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 disabled:opacity-50 text-amber-900 rounded-xl text-xs font-bold flex items-center gap-1"><Package size={13} /> Truck load sheet</button>
 
                                          <button
                                              type="button"
@@ -1618,7 +1724,7 @@ export default function DeliveryBatchesView({
             )}
 
             {truckSheet && createPortal(
-                <TruckLoadingSheet sheet={truckSheet} onPrint={handlePrintTruckSheet} onClose={() => setTruckSheet(null)} canTick={['admin', 'sales', 'channel_partner_office', 'office2'].includes(currentUser?.userType)} onTick={saveTruckTicks} onLoadingMode={setTruckLoadingMode} />,
+                <TruckLoadingSheet sheet={truckSheet} onClose={closeTruckSheet} canTick={canTickTruck} onTick={saveTruckTicks} onMarkLoaded={() => markTruckLoaded()} />,
                 document.body
             )}
 
@@ -1626,10 +1732,10 @@ export default function DeliveryBatchesView({
             <style>{`
                 @media print {
                     @page {
-                        size: ${printingBatch || truckSheet ? 'A4 landscape' : 'A4 portrait'};
+                        size: ${printingBatch ? 'A4 landscape' : 'A4 portrait'};
                         margin: ${truckSheet ? '0' : '12mm'};
                     }
-                    ${printingBatch || truckSheet ? 'body > #root { display: none !important; }' : ''}
+                    ${printingBatch ? 'body > #root { display: none !important; }' : ''}
                     body * {
                         visibility: hidden !important;
                     }
@@ -1668,43 +1774,6 @@ export default function DeliveryBatchesView({
                         max-height: none !important;
                     }
                     .print-container > div > div:last-child { padding: 0 !important; }
-                    .truck-sheet-print .truck-sheet-preview {
-                        display: block !important;
-                        overflow: visible !important;
-                        width: 296mm !important;
-                        gap: 0 !important;
-                    }
-                    .truck-sheet-print .truck-sheet-page {
-                        width: 296mm !important;
-                        height: 208mm !important;
-                        min-height: 208mm !important;
-                        max-height: 208mm !important;
-                        padding: 8mm 10mm 9mm !important;
-                        margin: 0 !important;
-                        overflow: hidden !important;
-                        box-shadow: none !important;
-                        break-after: page;
-                        page-break-after: always;
-                    }
-                    .truck-sheet-print .truck-sheet-page > header {
-                        display: flex !important;
-                        flex-direction: row !important;
-                        align-items: flex-start !important;
-                        justify-content: space-between !important;
-                        break-inside: avoid !important;
-                    }
-                    .truck-sheet-print .truck-sheet-page > footer {
-                        position: relative !important;
-                        z-index: 1 !important;
-                        flex-shrink: 0 !important;
-                        min-height: 7mm !important;
-                        background: #ffffff !important;
-                        margin-top: 3mm !important;
-                    }
-                    .truck-sheet-print .truck-sheet-page:last-child {
-                        break-after: auto;
-                        page-break-after: auto;
-                    }
                     .print-container #printable-master-batch { padding: 0 !important; }
                     .print-container #printable-master-batch { aspect-ratio: auto !important; }
                     .print-container header { display: block !important; }

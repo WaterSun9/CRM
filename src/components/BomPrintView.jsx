@@ -146,6 +146,10 @@ export default function BomPrintView({ customer, bom, bomItems, activeType }) {
                                         wide
                                     />
                                 </tr>
+                                <tr>
+                                    <td className="w-[22%] px-2 py-1 border border-stone-300 text-[10px] font-semibold text-stone-600 align-top">Notes / Special Instructions:</td>
+                                    <td colSpan={3} className="px-2 py-1 border border-stone-300 text-[10px] leading-relaxed font-semibold text-stone-900 align-top whitespace-pre-wrap [overflow-wrap:anywhere]">{dash(customer?.material_order_notes)}</td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>

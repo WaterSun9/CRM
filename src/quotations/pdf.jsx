@@ -60,23 +60,4 @@ export function downloadQuotationFile(file) {
     window.dispatchEvent(new CustomEvent('watersun:download-complete',{detail:{file,fileName:file.name}}));
 }
 
-export async function shareQuotationFile(file) {
-    if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-            await navigator.share({
-                title: file.name,
-                files: [file],
-            });
-            window.dispatchEvent(new CustomEvent('watersun:share-complete',{detail:{file,fileName:file.name}}));
-            return 'shared';
-        } catch (err) {
-            if (err.name !== 'AbortError') {
-                console.warn('Native share failed, downloading instead:', err);
-                return 'download-required';
-            }
-            return 'cancelled';
-        }
-    } else {
-        return 'download-required';
-    }
-}
+export { shareQuotationFile } from './fileShare';

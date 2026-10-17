@@ -1,3 +1,4 @@
+import { loadCustomerHistory } from '../utils/customerHistory';
 // ─── CustomerDetailModal.jsx ──────────────────────────────────────────────────
 // Full customer detail: 4-tab layout (Overview, Finance & Bank, Checklist,
 // Notes & History). Section-level editing, payments array editor, generic
@@ -667,40 +668,52 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
     const logCountRef = useRef(LOG_PAGE_SIZE);
     const [logsHasMore, setLogsHasMore] = useState(false);
     const [logsLoadingMore, setLogsLoadingMore] = useState(false);
-    const logsQuery = useCallback(() => supabase.from('activity_log').select('*, profiles(name)')
-        // Match on the customer's id. The old name match also pulled in other
-        // customers ("Ram" matched "Ramesh") and broke on names with commas.
-        .or(`customer_id.eq.${customer.id},new_value.eq.${customer.id}`)
-        .order('created_at', { ascending: false }), [customer.id]);
-
+    const historyCustomerRef = useRef(customer.id);
+    if (historyCustomerRef.current !== customer.id) {
+        logCountRef.current = LOG_PAGE_SIZE;
+        historyCustomerRef.current = customer.id;
+    }
+    const loadingMoreRef = useRef(false);
     const fetchLogs = useCallback(async () => {
-        const count = Math.max(logCountRef.current, LOG_PAGE_SIZE);
-        const { data } = await logsQuery().range(0, count - 1);
-        if (data) {
-            setActivityLogs(data);
-            setLogsHasMore(data.length === count);
+        try {
+            const count = Math.max(logCountRef.current, LOG_PAGE_SIZE);
+            const page = await loadCustomerHistory(supabase, customer.id, 0, count);
+            if (historyCustomerRef.current !== customer.id) return;
+            setActivityLogs(page.rows);
+            logCountRef.current = page.rows.length;
+            setLogsHasMore(page.hasMore);
+        } catch (error) {
+            if (historyCustomerRef.current === customer.id) void showAlert(error.message || 'Could not load customer history.', {type:'error'});
         }
-    }, [logsQuery]);
+    }, [customer.id, showAlert]);
 
     const loadMoreLogs = useCallback(async () => {
+        if (loadingMoreRef.current) return;
+        loadingMoreRef.current = true;
         setLogsLoadingMore(true);
         try {
             const from = logCountRef.current;
-            const { data } = await logsQuery().range(from, from + LOG_PAGE_SIZE - 1);
-            if (data) {
-                logCountRef.current = from + LOG_PAGE_SIZE;
-                setActivityLogs(prev => {
-                    const seen = new Set(prev.map(l => l.id));
-                    return [...prev, ...data.filter(l => !seen.has(l.id))];
-                });
-                setLogsHasMore(data.length === LOG_PAGE_SIZE);
-            }
+            const page = await loadCustomerHistory(supabase, customer.id, from, LOG_PAGE_SIZE);
+            if (historyCustomerRef.current !== customer.id) return;
+            logCountRef.current = from + page.rows.length;
+            setActivityLogs(prev => {
+                const seen = new Set(prev.map(log => log.id));
+                return [...prev, ...page.rows.filter(log => !seen.has(log.id))];
+            });
+            setLogsHasMore(page.hasMore);
+        } catch (error) {
+            if (historyCustomerRef.current === customer.id) void showAlert(error.message || 'Could not load older history. Please try again.', {type:'error'});
         } finally {
+            loadingMoreRef.current = false;
             setLogsLoadingMore(false);
         }
-    }, [logsQuery]);
+    }, [customer.id, showAlert]);
 
-    useEffect(() => { logCountRef.current = LOG_PAGE_SIZE; }, [customer.id]);
+    useEffect(() => {
+        logCountRef.current = LOG_PAGE_SIZE;
+        setActivityLogs([]);
+        setLogsHasMore(false);
+    }, [customer.id]);
 
     const urlCacheRef = useRef({});
 

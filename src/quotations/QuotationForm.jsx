@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Save, Trash2 } from 'lucide-react';
-import { calculate, chargeLabel, extraCharges, fromRow, money, newForm, STEPS } from './model';
+import { calculate, chargeLabel, extraCharges, fromRow, money, newForm, STEPS, validate } from './model';
 import { brandedTemplate } from './branding';
 import { quotationRepository as repo } from './client';
 import { readRecovery, removeRecovery, writeRecovery } from './recovery';
@@ -27,7 +27,17 @@ function OptionSelect({ label,value,options,onChange,placeholder }) {
     if (current && !list.includes(current)) list.unshift(current);
     return <Field label={label}><select value={current} onChange={e => onChange(e.target.value)}><option value="">{placeholder}</option>{list.map(option => <option key={option} value={option}>{option}</option>)}</select></Field>;
 }
-export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onSaved,onPreview }) {
+function ModuleCountSelect({ value, onChange }) {
+    const [custom, setCustom] = useState(false);
+    if (custom) return <Field label="No of Modules"><span className="q-auto-field">
+        <input aria-label="No of Modules" type="number" min="1" step="1" value={value ?? ''} onChange={e => onChange(e.target.value)} />
+        <button type="button" onClick={() => setCustom(false)}>List</button>
+    </span></Field>;
+    return <OptionSelect label="No of Modules" placeholder="Select module count…" value={value}
+        options={[...Array.from({length:200},(_,index) => String(index + 1)), 'Other quantity…']}
+        onChange={next => next === 'Other quantity…' ? setCustom(true) : onChange(next)} />;
+}
+export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onSaved,onPreview,onDraftSaved }) {
     const { showAlert,showConfirm } = useGlobalPopup();
     const [form,setForm] = useState(() => initialRow ? fromRow(initialRow,user) : newForm(user));
     const [template,setTemplate] = useState(() => initialRow?.quotation_data?.template || brandedTemplate());
@@ -127,15 +137,21 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
     };
     const totals = calculate(form.options, extraCharges(form));
     const panelMakes = meta?.module_brand || [];
+    const inverterMakes = meta?.inverter_make?.length ? meta.inverter_make : ['Solaryan','Growatt','Sungrow','TATA Approved / UTL'];
     const moduleWps = meta?.module_wp?.length ? meta.module_wp : DEFAULT_MODULE_WP;
     const lastStep = STEPS.length - 1;
     const saveDraft = async () => {
+        if (busy) return;
+        setBusy(true);
         try {
-            await save();
-            showAlert('Your draft is saved. It is in the quotation list now.', { title: 'Draft saved', type: 'success' });
+            const draft = await save();
+            onDraftSaved?.(draft);
+            void showAlert('Your draft is saved. You can continue editing it from the quotation list.', { title: 'Draft saved', type: 'success' });
         } catch (err) {
             setError(err.message);
-            showAlert(err.message, { title: 'Draft not saved', type: 'warning' });
+            void showAlert(err.message, { title: 'Draft not saved', type: 'warning' });
+        } finally {
+            if (active.current) setBusy(false);
         }
     };
     const autoCalcCapacity = () => {
@@ -155,22 +171,13 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
         if (busy) return;
         setBusy(true);
         try {
-            let savedRow = rowRef.current;
-            if (formRef.current.customer_name.trim() && String(formRef.current.customer_phone).trim()) {
-                savedRow = await save();
-            } else {
-                if (!formRef.current.customer_name.trim()) formRef.current.customer_name = 'Draft Customer';
-                if (!String(formRef.current.customer_phone).trim()) formRef.current.customer_phone = '9876543210';
-                setForm({ ...formRef.current });
-                savedRow = await save();
-            }
+            const issues = validate(formRef.current);
+            if (issues.length) throw new Error(issues.join('\n'));
+            const savedRow = await save();
             onPreview(savedRow);
         } catch (err) {
-            if (rowRef.current) {
-                onPreview(rowRef.current);
-            } else {
-                setError(err.message);
-            }
+            setError(err.message);
+            void showAlert(err.message, { title: 'Quotation not ready', type: 'warning' });
         } finally {
             if (active.current) setBusy(false);
         }
@@ -186,17 +193,16 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
                 {import.meta.env.DEV && <button type="button" onClick={fillTestValues} style={{background:'#fef3c7',borderColor:'#f59e0b',color:'#92400e',fontSize:12,padding:'4px 10px',minHeight:32}}>⚡ Fill Test Values</button>}
             </div>
             {step === 0 && <div className="q-grid">{customerFields.map(([key,label,type,maxLength,readOnly]) => <Field key={key} label={label} type={type} maxLength={maxLength} readOnly={readOnly} value={form[key]} onChange={value => update(key,value)} />)}</div>}
-            {step === 1 && <><h3>System</h3><div className="q-grid">
+            {step === 1 && <><div className="q-grid">
                 <Field label="Project type"><select value={form.project_type} onChange={e => update('project_type',e.target.value)}><option>Residential</option><option>Commercial</option></select></Field>
-                <OptionSelect label="Solar-panel make" placeholder="Select panel make…" value={form.solar_panel_make} options={panelMakes} onChange={v => update('solar_panel_make',v)} />
                 <OptionSelect label="Module Wp" placeholder="Select Module Wp…" value={form.panel_wattage} options={moduleWps} onChange={v => update('panel_wattage',v)} />
-                <Field label="No of Modules" type="number" value={form.solar_panel_qty} onChange={v => update('solar_panel_qty',v)} />
+                <ModuleCountSelect value={form.solar_panel_qty} onChange={v => update('solar_panel_qty',v)} />
                 <Field label="System Capacity (kWp)"><span className="q-auto-field"><input aria-label="System Capacity (kWp)" type="number" min="0" step="any" inputMode="decimal" value={form.capacity_kw ?? ''} onChange={e => update('capacity_kw',e.target.value)} /><button type="button" onClick={autoCalcCapacity} title="Calculate from Module Wp x No of Modules">Auto</button></span></Field>
-                <Field label="Inverter brand / make" value={form.inverter_brand} maxLength={100} onChange={v => update('inverter_brand',v)} />
+                <OptionSelect label="Inverter brand / make" placeholder="Select inverter…" value={form.inverter_brand} options={inverterMakes} onChange={v => update('inverter_brand',v)} />
                 <Field label="GEB charge (₹)"><input aria-label="GEB charge" type="number" min="0" step="any" inputMode="decimal" placeholder="Included" value={form.geb_charge ?? ''} onChange={e => update('geb_charge',e.target.value)} /></Field>
                 <Field label="GEDA charge (₹)"><input aria-label="GEDA charge" type="number" min="0" step="any" inputMode="decimal" placeholder="Included" value={form.geda_charge ?? ''} onChange={e => update('geda_charge',e.target.value)} /></Field>
                 <p className="q-muted">GEB and GEDA: leave blank to show "Included". An amount is added to each option's net payable.</p>
-                <p className="q-muted">Module Wp × No of Modules ÷ 1000 = {form.capacity_kw || '—'} kWp</p>
+                <p className="q-muted">Module Wp and count apply to all three panel options. Use Auto to calculate capacity.</p>
             </div>
             <h3 style={{marginTop:20}}>Price options</h3>
             <div className="q-price-options">{form.options.map((option,i) => <section className="q-option" key={i}><h3>Panel option {i + 1}</h3>
@@ -208,7 +214,7 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
                 <h3>Standard notes</h3><ul className="q-standard-notes">{template.page2.notes.map(note => <li key={note}>{note}</li>)}</ul>
                 <h3>Additional notes</h3>{form.custom_notes.map((note,i) => <div key={i} className="q-note"><Field label={`Note ${i + 1}`} type="textarea" maxLength={250} value={note} onChange={v => update('custom_notes',form.custom_notes.map((n,index) => index === i ? v : n))} /><button aria-label={`Remove note ${i + 1}`} onClick={() => update('custom_notes',form.custom_notes.filter((_,index) => index !== i))}><Trash2 size={18} /></button></div>)}
                 {form.custom_notes.length < 5 && <button onClick={() => update('custom_notes',[...form.custom_notes,''])}><Plus size={16} /> Add note</button>}
-                <h3 className="q-summary-title">Review quotation</h3><dl className="q-summary">{customerFields.map(([key,label,type]) => <div key={key}><dt>{label}</dt><dd>{(type === 'date' ? showDate(form[key]) : form[key]) || '—'}</dd></div>)}{[['capacity_kw','System capacity (kWp)'],['project_type','Project type'],['solar_panel_make','Panel make'],['solar_panel_qty','No of Modules'],['panel_wattage','Module Wp'],['inverter_brand','Inverter brand / make']].map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{form[key] || '—'}</dd></div>)}{[['geb_charge','GEB charge'],['geda_charge','GEDA charge']].map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{typeof chargeLabel(form[key]) === 'number' ? money(chargeLabel(form[key])) : 'Included'}</dd></div>)}</dl>
+                <h3 className="q-summary-title">Review quotation</h3><dl className="q-summary">{customerFields.map(([key,label,type]) => <div key={key}><dt>{label}</dt><dd>{(type === 'date' ? showDate(form[key]) : form[key]) || '—'}</dd></div>)}{[['capacity_kw','System capacity (kWp)'],['project_type','Project type'],['solar_panel_qty','No of Modules'],['panel_wattage','Module Wp'],['inverter_brand','Inverter brand / make']].map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{form[key] || '—'}</dd></div>)}{[['geb_charge','GEB charge'],['geda_charge','GEDA charge']].map(([key,label]) => <div key={key}><dt>{label}</dt><dd>{typeof chargeLabel(form[key]) === 'number' ? money(chargeLabel(form[key])) : 'Included'}</dd></div>)}</dl>
                 {totals.map((option,i) => <div className="q-option" key={i}><strong>{option.brandName}</strong><p>Base {money(option.baseValue)} · Discount {money(option.discount)} · Subsidy {money(option.subsidy)}</p><p>Net payable <strong>{money(option.netPayableAmount)}</strong> · After subsidy <strong>{money(option.netPriceAfterSubsidy)}</strong></p></div>)}
                 <details><summary>Company, terms, warranty, BOM and bank details</summary><div className="q-template-summary"><h3>{template.company.name} {template.company.tagline}</h3><p>GST: {template.company.gstNo} · CIN: {template.company.cinNo}</p><p>{template.company.email}</p>{[['Terms and conditions',template.page3.termsAndConditions],['Warranties',template.page3.warranties]].map(([title,items]) => <section key={title}><h3>{title}</h3><dl className="q-summary">{items.map(item => <div key={item.sr}><dt>{item.parameter}</dt><dd>{item.remarks}</dd></div>)}</dl></section>)}<h3>Bill of materials</h3>{template.page3.bomItems.map(item => <p key={item.sr}><strong>{item.description}</strong> — {item.qty} {item.unit}, {item.size}, {item.make}</p>)}<h3>Other charges</h3><p>{template.page3.otherChargesText}</p><h3>Bank details</h3><p>{template.page3.bankDetails.accountName}</p><p>{template.page3.bankDetails.bankName} · {template.page3.bankDetails.branchName}</p><p>Account: {template.page3.bankDetails.accountNumber} · IFSC: {template.page3.bankDetails.ifscCode}</p><h3>Offices</h3><p>{template.footer.corporateOffice}</p><p>{template.footer.branchOffice}</p></div></details>
             </>}
