@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
-import { TRIP_DISTANCE_MODE, TRIP_GRACE_KM, TRIP_ROAD_FACTOR, TRIP_ROUND_TRIP, TRIP_TRAVEL_MODE } from '../../constants';
+import { TRIP_DISTANCE_MODE, TRIP_ROAD_FACTOR, TRIP_TRAVEL_MODE } from '../../constants';
 import { NEAR_PINCODE_KM, estimateTripKm, haversineKm, nearestPincode, pincodePoint } from '../../utils/tripKm';
 import { siteSourceText, useCustomerSite } from './customerSite';
+import { TripTypeChoice, kmAmount, useKmSettings } from './kmSettings';
 import { fetchRoadDistance, latLngOrNull, roadRequestFromKey, roadRequestKey, roadTripKm } from './roadKm';
 import { formatDateTime, todayLocal } from './serviceLabels';
 import { ROUGH_ACCURACY_M, accuracyText, isPincode, pincodeInText, pincodePoints, startText, tripError } from './tripLabels';
@@ -12,7 +13,7 @@ const PRO = TRIP_DISTANCE_MODE === 'pro';
 const MODE_TEXT = { TWO_WHEELER: 'two-wheeler', DRIVE: 'car' };
 // Reached point (or saved location) this far from the customer's pincode is worth a second look.
 const FAR_FROM_CUSTOMER_KM = 15;
-const emptyVisit = () => ({ visit_date: todayLocal(), amount_inr: '', note: '' });
+const emptyVisit = () => ({ visit_date: todayLocal(), note: '' });
 
 // km_source / route_km come with 20261013120000_customer_sites.sql and are sent only
 // in 'pro' (which needs that SQL), so a 'simple' visit saves exactly as before and
@@ -52,7 +53,9 @@ function pointOf(points, end) {
 }
 
 // Office form for one visit payment. Km is pre-filled from the technician's
-// trip (start point to the customer); amount is typed. Changing the km needs a note.
+// trip (start point to the customer). Round trip or one way, the grace km and the
+// rate come from the km settings (round trip / rate can be changed per visit); the
+// amount is km x rate and can be typed over. Changing the km needs a note.
 // The customer end is the customer's saved location, else the trip's "Reached
 // site" point, else the customer's pincode. In 'pro' mode the km is the Google
 // road km (there and back + grace), falling back to the estimate.
@@ -67,6 +70,13 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
     const [typedKm, setTypedKm] = useState(null);
     const [kmNote, setKmNote] = useState('');
     const [visit, setVisit] = useState(emptyVisit);
+    const [roundTripChoice, setRoundTripChoice] = useState(null);
+    const [typedRate, setTypedRate] = useState(null);
+    const [typedAmount, setTypedAmount] = useState(null);
+    const { status: kmStatus, settings: kmSettings } = useKmSettings();
+    const roundTrip = roundTripChoice ?? kmSettings.round_trip;
+    const graceKm = kmSettings.grace_km;
+    const rate = typedRate ?? String(kmSettings.rate_per_km || '');
     const [road, setRoad] = useState(null);
     // Read again with the visits (every poll), so a location saved by the
     // technician's "Reached site" shows up. No table yet -> site stays null.
@@ -116,7 +126,7 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
         : trip?.reached_at ? { lat: trip.reached_lat, lng: trip.reached_lng }
             : endPin ? { pincode: endPin } : null;
     let estimate = null;
-    try { estimate = points && start && end ? estimateTripKm({ start, end, points }) : null; } catch { estimate = null; }
+    try { estimate = points && start && end ? estimateTripKm({ start, end, points, roundTrip, graceKm }) : null; } catch { estimate = null; }
 
     // Pro: Google road km between the same two points (exact or pincode points).
     const origin = PRO && points ? pointOf(points, start) : null;
@@ -131,7 +141,7 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
     }, [roadKey]);
     const roadAnswer = roadKey && road?.key === roadKey ? road.answer : null;
     const roadLoading = Boolean(roadKey) && !roadAnswer;
-    const roadKm = roadAnswer?.ok ? roadTripKm(roadAnswer) : null;
+    const roadKm = roadAnswer?.ok ? roadTripKm(roadAnswer, { roundTrip, graceKm }) : null;
     const roadFailed = Boolean(roadAnswer) && !roadKm;
 
     // The km the form starts from, and where it came from (saved as km_source).
@@ -171,6 +181,9 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
     const shownKm = typedKm ?? (chosen ? String(chosen.km) : '');
     const kmChanged = Boolean(chosen) && shownKm !== '' && Number(shownKm) !== chosen.km;
     const chooseTrip = value => { setTripChoice(value); setTypedKm(null); setKmNote(''); };
+    const chooseRoundTrip = value => { setRoundTripChoice(value); setTypedKm(null); setKmNote(''); };
+    const autoAmount = kmAmount(shownKm, rate);
+    const shownAmount = typedAmount ?? (autoAmount ? String(autoAmount) : '');
 
     const save = event => {
         event.preventDefault();
@@ -178,15 +191,21 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
             const km = Number(shownKm);
             if (shownKm === '' || !Number.isFinite(km) || km < 0) throw new Error('Enter the km travelled.');
             if (kmChanged && !kmNote.trim()) throw new Error('Write why the km is different from the estimate.');
+            const rateValue = rate === '' ? 0 : Number(rate);
+            if (!Number.isFinite(rateValue) || rateValue < 0 || rateValue > 1000) throw new Error('Rate per km must be between ₹0 and ₹1000.');
+            const amount = Number(shownAmount);
+            if (shownAmount === '' || !Number.isFinite(amount) || amount < 0) throw new Error('Enter the amount.');
             const row = {
                 issue_id: issue.id, technician_id: issue.assigned_to, entered_by: user.id,
-                visit_date: visit.visit_date, kilometers: km, amount_inr: Number(visit.amount_inr), note: visit.note.trim()
+                visit_date: visit.visit_date, kilometers: km, amount_inr: amount, note: visit.note.trim()
             };
             // The trip columns are sent only when filled, so a typed-km visit still
             // saves on a database where the trips SQL has not been run yet.
             if (trip) row.trip_id = trip.id;
             if (chosen) row.km_estimate = chosen.km;
             if (kmChanged) row.km_note = kmNote.trim().slice(0, 300);
+            // How this visit was counted, kept so a later rate change does not rewrite it.
+            if (kmStatus === 'ready') Object.assign(row, { round_trip: roundTrip, grace_km: graceKm, rate_per_km: rateValue });
             // 'pro' only: where the km came from (Google, the estimate, or typed by the office).
             const source = { km_source: chosen && !kmChanged ? chosen.source : 'manual' };
             if (roadKm) source.route_km = roadKm.routeKm;
@@ -197,6 +216,7 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
             }
             if (error) throw new Error(visitError(error));
             setVisit(emptyVisit()); setTripChoice(null); setTypedKm(null); setKmNote(''); setTypedPin('');
+            setRoundTripChoice(null); setTypedRate(null); setTypedAmount(null);
             await onSaved?.();
         }, 'Visit distance and amount saved.', 'issue');
     };
@@ -206,7 +226,7 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
     else if (trip?.reached_at) toText = `Reached site ${formatDateTime(trip.reached_at)}${accuracyText(trip.reached_accuracy_m) ? ` (${accuracyText(trip.reached_accuracy_m)})` : ''}, so km is counted to that point.`;
     else if (trip) toText = endPin ? `"Reached site" not tapped, so km is counted to the customer pincode ${endPin}${customerPin?.pin ? ` (from ${customerPin.from})` : ''}.` : '"Reached site" not tapped.';
 
-    const graceText = `${TRIP_ROUND_TRIP ? ' x 2 (there and back)' : ''} + ${TRIP_GRACE_KM} km grace`;
+    const graceText = `${roundTrip ? ' x 2 (there and back)' : ' (one way)'}${graceKm ? ` + ${graceKm} km grace` : ''}`;
     const rule = chosen?.source === 'google' ? `Google road km${graceText}` : `straight line x ${TRIP_ROAD_FACTOR} road${graceText}`;
     const otherMode = roadKm?.travelModeUsed && roadKm.travelModeUsed !== TRIP_TRAVEL_MODE;
     const minutes = Number(roadAnswer?.durationMinutes);
@@ -235,8 +255,10 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
             <p className="text-stone-500">Km = {rule}. You can change it with a reason.</p>
         </div>
         <label className="text-xs">Date<input required type="date" value={visit.visit_date} onChange={e => setVisit(v => ({ ...v, visit_date: e.target.value }))} className={input} /></label>
+        <TripTypeChoice value={roundTrip} onChange={chooseRoundTrip} />
         <label className="text-xs">Km travelled<input required min="0" step="0.01" type="number" inputMode="decimal" value={shownKm} onChange={e => setTypedKm(e.target.value)} className={input} /></label>
-        <label className="text-xs">Amount (₹)<input required min="0" step="0.01" type="number" inputMode="decimal" value={visit.amount_inr} onChange={e => setVisit(v => ({ ...v, amount_inr: e.target.value }))} className={input} /></label>
+        <label className="text-xs">Rate per km (₹)<input min="0" max="1000" step="0.01" type="number" inputMode="decimal" value={rate} onChange={e => { setTypedRate(e.target.value); setTypedAmount(null); }} placeholder="0" className={input} /></label>
+        <label className="text-xs">Amount (₹){autoAmount > 0 && typedAmount === null && <span className="text-stone-500"> = {shownKm} km x ₹{rate}</span>}<input required min="0" step="0.01" type="number" inputMode="decimal" value={shownAmount} onChange={e => setTypedAmount(e.target.value)} className={input} /></label>
         {kmChanged && <label className="sm:col-span-3 text-xs font-semibold">Why is the km different from the {chosen.source === 'google' ? 'road distance' : 'estimate'} ({chosen.km} km)? *
             <input required maxLength={300} value={kmNote} onChange={e => setKmNote(e.target.value)} placeholder="e.g. road closed, went via Santalpur" className={`${input} text-sm font-normal`} />
         </label>}

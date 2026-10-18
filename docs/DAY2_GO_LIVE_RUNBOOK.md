@@ -66,8 +66,10 @@ select policyname, cmd from pg_policies where tablename = 'vendors' order by 1; 
 select relrowsecurity from pg_class where oid = 'public.service_trips'::regclass;  -- true
 select proname from pg_proc where proname in ('service_start_trip', 'service_mark_reached');  -- 2 rows
 select column_name from information_schema.columns
- where table_name = 'service_visits' and column_name in ('trip_id', 'km_estimate', 'km_note');  -- 3 rows
+ where table_name = 'service_visits' and column_name in ('trip_id', 'km_estimate', 'km_note', 'round_trip', 'grace_km', 'rate_per_km');  -- 6 rows
+select rate_per_km, grace_km, round_trip from public.service_km_settings;  -- 1 row: 0, 5, true
 ```
+Afterwards, as Admin, open Complaints, then **Km pay settings**, and set the rate per km.
 
 ### 1.5 `20261013120000_customer_sites.sql`: saved customer location (must run after 1.4)
 ```sql
@@ -107,7 +109,7 @@ The live site still runs `main`. You test the new screens with `npm run dev`, wh
 7. **Right code.** Type the right code. The job should move to Completed.
 8. **Office.** Back as Admin, open the complaint.
    - It shows "Closed with the customer's code".
-   - Add the visit. The km comes pre-filled from the trip. Change it, and a note should be required.
+   - Add the visit. The km comes pre-filled from the trip. Switch to One way: the km should roughly halve. The amount should equal km x rate. Change the km, and a note should be required.
 9. **Office override.** Raise a second complaint and close it with **Completed without code** and a reason.
 10. **Expired page.** Open the Warranty Expired page. It should list only customers past 5 years.
 11. **Lockout check.** Sign in as a channel partner and run this in the browser console:

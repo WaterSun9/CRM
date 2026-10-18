@@ -245,6 +245,42 @@ grant execute on function public.check_service_visit_trip() to authenticated, se
 grant execute on function public.service_start_trip(uuid, double precision, double precision, numeric, text, text) to authenticated;
 grant execute on function public.service_mark_reached(uuid, double precision, double precision, numeric) to authenticated;
 
+-- 4. Km pay settings (added 18 Oct) ------------------------------------------------
+-- One row: the rate per km, the grace km and whether a visit is counted there and
+-- back by default. Admin and office (sales) can read and change it. Each visit keeps
+-- the round trip / grace / rate it was worked out with, so a later rate change
+-- never changes what was already paid.
+create table if not exists public.service_km_settings (
+    id boolean primary key default true check (id),
+    rate_per_km numeric(8,2) not null default 0 check (rate_per_km between 0 and 1000),
+    grace_km numeric(6,1) not null default 5 check (grace_km between 0 and 100),
+    round_trip boolean not null default true,
+    updated_at timestamptz not null default now(),
+    updated_by uuid references auth.users(id)
+);
+insert into public.service_km_settings (id) values (true) on conflict (id) do nothing;
+alter table public.service_km_settings enable row level security;
+revoke all on public.service_km_settings from public, anon, authenticated;
+grant select on public.service_km_settings to authenticated;
+grant update (rate_per_km, grace_km, round_trip, updated_at, updated_by) on public.service_km_settings to authenticated;
+grant all on public.service_km_settings to service_role;
+drop policy if exists service_km_settings_office_read on public.service_km_settings;
+create policy service_km_settings_office_read on public.service_km_settings
+for select to authenticated using (public.get_my_user_type() in ('admin', 'sales'));
+drop policy if exists service_km_settings_office_update on public.service_km_settings;
+create policy service_km_settings_office_update on public.service_km_settings
+for update to authenticated
+using (public.get_my_user_type() in ('admin', 'sales'))
+with check (public.get_my_user_type() in ('admin', 'sales') and updated_by = (select auth.uid()));
+
+alter table public.service_visits add column if not exists round_trip boolean;
+alter table public.service_visits add column if not exists grace_km numeric(6,1);
+alter table public.service_visits add column if not exists rate_per_km numeric(8,2);
+alter table public.service_visits drop constraint if exists service_visits_grace_km_check;
+alter table public.service_visits add constraint service_visits_grace_km_check check (grace_km between 0 and 100);
+alter table public.service_visits drop constraint if exists service_visits_rate_per_km_check;
+alter table public.service_visits add constraint service_visits_rate_per_km_check check (rate_per_km between 0 and 1000);
+
 commit;
 
 -- Check (expect the table with RLS on, 2 functions, the new visit columns and the trigger):
@@ -254,3 +290,4 @@ commit;
 --  where table_schema = 'public' and table_name = 'service_visits' and column_name in ('trip_id', 'km_estimate', 'km_note');
 -- select tgname from pg_trigger where tgrelid = 'public.service_visits'::regclass and not tgisinternal;
 -- select start_source, count(*), count(reached_at) as reached from public.service_trips group by 1;
+-- select rate_per_km, grace_km, round_trip from public.service_km_settings;  -- 1 row: 0, 5, true

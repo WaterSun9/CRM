@@ -5,6 +5,7 @@ import IssueForm from './service/IssueForm';
 import TechnicianJobPanel from './service/TechnicianJobPanel';
 import OfficeIssuePanel from './service/OfficeIssuePanel';
 import VisitForm from './service/VisitForm';
+import { KmSettingsPanel } from './service/kmSettings';
 import WhatsAppLog from './service/WhatsAppLog';
 import {
     ACTIVE_STATUSES, OFFICE_FILTERS, STATUS_LABELS, STATUS_PILL, TECHNICIAN_FILTERS, WARRANTY_PILL,
@@ -22,7 +23,7 @@ function VisitRow({ visit }) {
     const changed = estimate !== null && Number(visit.kilometers) !== estimate;
     const google = visit.km_source === 'google' || (visit.route_km !== null && visit.route_km !== undefined);
     return <p className="rounded-lg bg-stone-50 p-2 text-xs">
-        {visit.visit_date} · {visit.kilometers} km{estimate !== null && (changed ? ` (${google ? 'Google Maps road km' : 'estimate'} ${estimate} km${visit.km_note ? `: ${visit.km_note}` : ''})` : google ? ' (Google Maps road km)' : ' (trip estimate)')} · {money(visit.amount_inr)}{visit.note ? ` · ${visit.note}` : ''}
+        {visit.visit_date} · {visit.kilometers} km{estimate !== null && (changed ? ` (${google ? 'Google Maps road km' : 'estimate'} ${estimate} km${visit.km_note ? `: ${visit.km_note}` : ''})` : google ? ' (Google Maps road km)' : ' (trip estimate)')} · {money(visit.amount_inr)}{visit.rate_per_km != null && ` · ${visit.round_trip === false ? 'one way' : 'round trip'}, ₹${Number(visit.rate_per_km)}/km`}{visit.note ? ` · ${visit.note}` : ''}
     </p>;
 }
 
@@ -189,6 +190,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, formOn
         {!formOnly && <header className="rounded-2xl border bg-white p-4"><h1 className="text-xl font-bold">Complaints</h1><p className="text-sm text-stone-500">{isTechnician ? "Claim an open job to see the customer's phone and address. When the work is done, send the completion code to the customer." : canManage ? 'Assign complaints, close them, and record each visit’s distance and amount.' : 'Track the complaints you have raised.'}</p></header>}
         {loadError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">Could not load complaints: {loadError}</p>}
         {bannersAtTop && banners}
+        {canManage && !formOnly && <KmSettingsPanel user={user} busy={busy} run={run} />}
         {!isTechnician && <IssueForm user={user} initialCustomer={initialCustomer} formOnly={formOnly} canManage={canManage} defaultPartner={defaultPartner}
             busy={busy} run={run} setError={message => { setMessageSpot('top'); setError(message); }} onRaised={setSelectedId} />}
         {!formOnly && <><div className="flex flex-wrap gap-2">{filters.map(([key, label]) =>
