@@ -3,6 +3,7 @@ import { supabase } from '../supabase';
 import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit3, UserCheck, Zap, Building2, ChevronRight, ChevronDown, UserPlus, Phone, Mail, Truck, Stamp, IndianRupee, Search } from 'lucide-react';
 import { logActivity, runWrite } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
+import { VENDOR_WHATSAPP_ENABLED } from '../constants';
 
 const normalizeDirectoryLabel = (value) => String(value || '').trim().toLocaleLowerCase();
 
@@ -1390,10 +1391,10 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                         Vendors are added in <b className="text-stone-700">User Management</b>, so the login and the
                                         directory entry are created together. This list is for reviewing them and correcting an email.
                                     </p>
-                                    <p className="text-[11px] text-stone-500 font-medium mt-1">
+                                    {VENDOR_WHATSAPP_ENABLED && <p className="text-[11px] text-stone-500 font-medium mt-1">
                                         Add the vendor's <b className="text-stone-700">WhatsApp number</b> with the pencil button. When a lead is sent,
                                         the vendor gets the email and, once WhatsApp is switched on, a WhatsApp too.
-                                    </p>
+                                    </p>}
                                 </div>
                             ) : (
                                 <div className="p-4 border-b border-stone-100 bg-stone-50/50 flex gap-2">
@@ -1469,7 +1470,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                                 className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium text-stone-700"
                                                                 placeholder="Email"
                                                             />
-                                                            <input
+                                                            {VENDOR_WHATSAPP_ENABLED && <input
                                                                 type="tel"
                                                                 inputMode="numeric"
                                                                 value={editingVendorPhone}
@@ -1478,7 +1479,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                                 className="flex-1 sm:max-w-[140px] bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium text-stone-700"
                                                                 placeholder="WhatsApp no. (optional)"
                                                                 title="Vendor's 10-digit WhatsApp number. Leave empty if they do not use WhatsApp."
-                                                            />
+                                                            />}
                                                         </div>
                                                     ) : (
                                                         <input
@@ -1514,9 +1515,9 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                                                 )}
                                                             </div>
                                                             <span className="text-[10px] text-stone-400 font-medium">{item.email}</span>
-                                                            <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1">
+                                                            {VENDOR_WHATSAPP_ENABLED && <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1">
                                                                 <Phone size={9} /> {item.phone ? `WhatsApp ${formatVendorPhone(item.phone)}` : 'No WhatsApp number'}
-                                                            </span>
+                                                            </span>}
                                                         </div>
                                                     ) : (
                                                         <span className="text-xs font-bold text-stone-700 tracking-tight">{item.label}</span>

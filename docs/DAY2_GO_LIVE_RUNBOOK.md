@@ -28,7 +28,14 @@ select pg_get_constraintdef(oid) from pg_constraint where conname = 'profiles_us
 
 If (a) returns fewer than 2 rows, tell me first: a 15 or 17 Oct migration was never run.
 
-## 1. The five migrations, in this order
+## 1. Migrations: run 1.1 and 1.4 only (18 Oct decision)
+
+Parked, don't run yet:
+- 1.2 WhatsApp message log. Only needed once codes or messages go on WhatsApp.
+- 1.3 Vendor phone. Vendor WhatsApp is parked, and the field is hidden by `VENDOR_WHATSAPP_ENABLED`.
+- 1.5 Customer sites. Only for the Google "pro" km mode.
+
+The screens that use these tables hide themselves while the tables are missing.
 
 Open each file from `supabase/migrations/`, paste the whole file and run it. Then run the check below it.
 
@@ -70,7 +77,7 @@ select column_name from information_schema.columns
  where table_name = 'service_visits' and column_name in ('km_source', 'route_km');  -- 2 rows
 ```
 
-When all five are done, tell me. I'll check them from here, regenerate `supabase/schema.sql`, and deploy the functions.
+When 1.1 and 1.4 are done, tell me. I'll check them from here, regenerate `supabase/schema.sql`, and deploy the functions.
 
 ## 2. Secrets (Dashboard > Edge Functions > Secrets, set them yourself, not in chat)
 
@@ -80,8 +87,8 @@ When all five are done, tell me. I'll check them from here, regenerate `supabase
 
 ## 3. Functions (I deploy these)
 
-- `service-otp`, `phone-otp` and `send-lead-to-vendor`. The last one still only emails, because `WA_ENABLED` is not set.
-- Not deployed yet: `whatsapp-webhook`, `whatsapp-send-quotation` and `trip-distance`. They wait for Meta setup or Google "pro" km.
+- `service-otp`, and `phone-otp` (already deployed 18 Oct, v4).
+- Not deployed yet: `send-lead-to-vendor` (the live v16 keeps emailing as now), `whatsapp-webhook`, `whatsapp-send-quotation` and `trip-distance`.
 
 ## 4. End-to-end test (local app on your Mac, against the live database)
 
