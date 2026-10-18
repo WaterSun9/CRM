@@ -339,7 +339,7 @@ export default function App() {
                 ) : isStamp ? (
                     <StampPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isTechnician && TECHNICIAN_FEATURE_ENABLED ? (
-                    <div className="min-h-screen bg-[#FCFBFA]"><header className="flex items-center justify-between border-b bg-white p-4"><strong>Technician Portal</strong><button type="button" onClick={handleLogout} className="rounded-lg border px-3 py-2 text-xs font-bold">Logout</button></header><ServiceIssuesView user={user} /></div>
+                    <div className="min-h-screen bg-[#FCFBFA]"><header className="flex items-center justify-between border-b bg-white p-4"><strong>Technician jobs</strong><button type="button" onClick={handleLogout} className="min-h-11 rounded-lg border px-4 text-xs font-bold">Logout</button></header><ServiceIssuesView user={user} /></div>
                 ) : isTechnician ? (
                     <div className="min-h-screen bg-[#FCFBFA] flex flex-col items-center justify-center gap-4 p-6"><p className="text-sm text-stone-600">This portal is temporarily unavailable.</p><button type="button" onClick={handleLogout} className="rounded-lg border px-4 py-2 text-xs font-bold">Logout</button></div>
                 ) : (
@@ -348,13 +348,13 @@ export default function App() {
             </Suspense>
 
             {canRaiseServiceIssue && <>
-                <button type="button" onClick={() => { setIssueCustomer(null); setShowServiceIssues(true); setShowTeamChat(false); }} aria-label="Open field service issues"
+                <button type="button" onClick={() => { setIssueCustomer(null); setShowServiceIssues(true); setShowTeamChat(false); }} aria-label="Open complaints"
                     className="fixed bottom-4 left-4 z-40 flex items-center gap-2 rounded-full bg-amber-500 px-4 py-3 text-stone-950 shadow-xl sm:bottom-6 sm:left-6">
-                    <Wrench size={18} /><span className="text-xs font-bold">Service issues</span>
+                    <Wrench size={18} /><span className="text-xs font-bold">Complaints</span>
                 </button>
-                {showServiceIssues && <div role="dialog" aria-label={issueCustomer ? 'Raise a service issue' : 'Field Service Management'} aria-modal="true" className={issueCustomer ? 'fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3 sm:p-6' : 'fixed inset-0 z-[60] overflow-y-auto bg-[#FCFBFA]'}>
+                {showServiceIssues && <div role="dialog" aria-label={issueCustomer ? 'Raise a complaint' : 'Complaints'} aria-modal="true" className={issueCustomer ? 'fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3 sm:p-6' : 'fixed inset-0 z-[60] overflow-y-auto bg-[#FCFBFA]'}>
                     <div className={issueCustomer ? 'w-full max-w-3xl max-h-[92dvh] overflow-y-auto rounded-2xl bg-white p-3 shadow-2xl sm:p-5' : ''}>
-                        <div className="sticky top-0 z-10 flex justify-end border-b bg-white p-2"><button type="button" onClick={() => { setShowServiceIssues(false); setIssueCustomer(null); }} aria-label="Close service issues" className="rounded-lg border p-2"><X size={20} /></button></div>
+                        <div className="sticky top-0 z-10 flex justify-end border-b bg-white p-2"><button type="button" onClick={() => { setShowServiceIssues(false); setIssueCustomer(null); }} aria-label="Close complaints" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border"><X size={20} /></button></div>
                         <Suspense fallback={<ScreenLoader />}><ServiceIssuesView key={issueCustomer?.id || 'all-issues'} user={user} initialCustomer={issueCustomer} formOnly={Boolean(issueCustomer)} /></Suspense>
                     </div>
                 </div>}

@@ -13,13 +13,12 @@ Written 4 Oct 2026, the day of the release. Everything here is **not** in today'
   - Test conversion end to end with a real channel partner and dealer login.
 - **To turn on:** set the switch to `true`, then deploy. No SQL needed.
 
-### 2. Technician / field service - `TECHNICIAN_FEATURE_ENABLED = false`
-- **Plan:** October week 2, together with WhatsApp.
-- **Before switching on:**
-  1. Run `supabase/migrations/20261004120000_allow_technician_role.sql`. The live role list doesn't include "technician", so technician accounts can't be created yet.
-  2. Create one real technician account.
-  3. Test: raise an issue from a completed customer, upload photos, technician claims it and gives it up, office enters a visit.
-- **WhatsApp:** decide which messages are sent and when, customer consent, the provider (see earlier SMS/WhatsApp notes), delivery log, what happens when sending fails. Test with a small group first.
+### 2. Technician / field service - switched ON in code 12 Oct (`TECHNICIAN_FEATURE_ENABLED = true`)
+- Built 12 Oct: complaints from completed customers, 5-year warranty (badge + Warranty Expired page), WhatsApp completion code, office close without code.
+- Km per visit is estimated from two points, as the client asked: the technician's start (phone location, or a typed pincode) to the customer's pincode (or the "Reached site" location). Straight line x 1.3 road x 2 + 5 km grace. Office can change it with a note; amount is still typed.
+- Also built 12 Oct: vendor gets a WhatsApp with the lead email; quotations can be sent on WhatsApp; office sees WhatsApp ticks and replies on a complaint.
+- **Before deploying:** run the four SQL files `20261012190000`, `20261013090000`, `20261013100000`, `20261013110000` (in that order) first. Deploy order and details: [TECHNICIAN_PLAN.md](TECHNICIAN_PLAN.md).
+- WhatsApp is off until Meta is set up (agency: verification + invite; Ravi: card + number code). Developer steps: [WHATSAPP_DEV_SETUP.md](WHATSAPP_DEV_SETUP.md).
 
 ### 3. Personal (one-to-one) chats - `DIRECT_MESSAGES_ENABLED = false`
 - **State:** the database already supports CPO ↔ their staff and dealers, dealer ↔ their CPO, and Admin/Office reading and replying in those chats. Only the screen is switched off.

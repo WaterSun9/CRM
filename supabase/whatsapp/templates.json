@@ -1,0 +1,61 @@
+[
+  {
+    "name": "watersun_service_code",
+    "language": "en_US",
+    "category": "AUTHENTICATION",
+    "message_send_ttl_seconds": 600,
+    "components": [
+      { "type": "BODY", "add_security_recommendation": false },
+      { "type": "FOOTER", "code_expiration_minutes": 10 },
+      { "type": "BUTTONS", "buttons": [{ "type": "OTP", "otp_type": "COPY_CODE", "text": "Copy code" }] }
+    ]
+  },
+  {
+    "name": "service_completed_confirm",
+    "language": "en_US",
+    "category": "UTILITY",
+    "components": [
+      {
+        "type": "BODY",
+        "text": "Hello {{1}}, technician {{2}} has completed the work on your Watersun Solar service request no. {{3}} today. Warranty status: {{4}}. Please confirm if the problem is solved.",
+        "example": { "body_text": [["Ramesh Patel", "Suresh Thakor", "1023", "valid until 11 Oct 2031"]] }
+      },
+      {
+        "type": "BUTTONS",
+        "buttons": [
+          { "type": "QUICK_REPLY", "text": "Yes, solved" },
+          { "type": "QUICK_REPLY", "text": "Not solved" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "watersun_vendor_lead",
+    "language": "en_US",
+    "category": "UTILITY",
+    "components": [
+      {
+        "type": "BODY",
+        "text": "Hello {{1}}, Watersun Solar has assigned you the delivery and installation work for a new customer. Customer: {{2}}, mobile {{3}}. Address: {{4}}. System size (kW): {{5}}. File no. {{6}}. Please log in to the Watersun vendor portal to see the full details. Thank you.",
+        "example": { "body_text": [["Shree Ganesh Solar Services", "Ramesh Patel", "9876543210", "12 Gayatri Society, Radhanpur, Patan", "3.3", "1045"]] }
+      }
+    ]
+  },
+  {
+    "name": "watersun_quotation",
+    "language": "en_US",
+    "category": "UTILITY",
+    "components": [
+      {
+        "type": "HEADER",
+        "format": "DOCUMENT",
+        "example": { "header_handle": ["<sample PDF handle, uploaded by scripts/whatsapp_templates.mjs>"] }
+      },
+      {
+        "type": "BODY",
+        "text": "Hello {{1}}, please find attached your Watersun Solar quotation {{2}} for a {{3}} kW solar system. This quotation is valid until {{4}}. For any questions, please call the contact number given in the quotation. Thank you.",
+        "example": { "body_text": [["Ramesh Patel", "Quote-1023", "3.3", "11 Nov 2026"]] }
+      }
+    ]
+  }
+]

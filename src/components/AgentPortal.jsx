@@ -19,6 +19,7 @@ import { canUseQuotations } from '../quotations/model';
 import { FilePreviewModal, CheckboxRemarkItem, isReplacedDocument, isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
+import WarrantyBadge from './WarrantyBadge';
 import BrandMark from './BrandMark';
 import { newestCustomerFirst } from '../utils/customerActivity';
 import LeadsTab from './modal-tabs/LeadsTab';
@@ -1268,11 +1269,6 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                                 <RedFlagBadge customerId={cust.id} user={user} size={13} />
                                             </h4>
                                             <div className="flex items-center gap-1.5">
-                                                {cust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(cust); }}
-                                                    aria-label={`Raise service issue for ${cust.customer_name || 'customer'}`} title="Raise service issue"
-                                                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 text-[10px] font-bold text-amber-800 hover:bg-amber-100">
-                                                    <Flag size={12} /> Raise issue
-                                                </button>}
                                                 {getTelephoneHref(cust.phone_number) && (
                                                     <a
                                                         href={getTelephoneHref(cust.phone_number)}
@@ -1290,6 +1286,16 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                             </div>
                                         </div>
                                         
+                                        {cust.stage === STAGE_IDS.COMPLETED && (
+                                            <div className="-mt-1 mb-3 flex flex-wrap items-center gap-2">
+                                                <WarrantyBadge customer={cust} />
+                                                {onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(cust); }}
+                                                    aria-label={`Raise complaint for ${cust.customer_name || 'customer'}`} title="Raise complaint"
+                                                    className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 text-[11px] font-bold text-amber-800 hover:bg-amber-100">
+                                                    <Flag size={12} /> Raise complaint
+                                                </button>}
+                                            </div>
+                                        )}
                                         <div className="space-y-1.5 md:space-y-2 text-[11px] md:text-xs text-stone-600">
                                             <div className="flex items-center gap-2">
                                                 <Phone size={11} className="text-stone-400 shrink-0" />
@@ -1368,13 +1374,14 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                         {/* Detail Header - Name, Phone Number & Consumer No on Top */}
                         <div className="shrink-0 px-5 py-5 border-b border-stone-150 bg-stone-50/90 flex justify-between items-start">
                             <div className="space-y-1">
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-[8px] font-black uppercase text-amber-600 tracking-widest bg-amber-50 border border-amber-200/60 px-1.5 py-0.5 rounded">
                                         {isAgent2 ? 'Dealer Workdesk' : 'Channel Partner Workdesk'}
                                     </span>
                                     <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-white tracking-wider">
                                         {PRIMARY_STAGES.find(s => s.id === selectedCust.stage)?.label || selectedCust.stage}
                                     </span>
+                                    {selectedCust.stage === STAGE_IDS.COMPLETED && <WarrantyBadge customer={selectedCust} />}
                                 </div>
                                 <h3 className="text-base font-black text-stone-900 uppercase leading-tight pt-0.5 flex items-center gap-1.5">
                                     <span>{selectedCust.customer_name}</span>
@@ -1405,8 +1412,9 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                             <div className="flex items-center gap-2 ml-3">
                                 <RedFlagToggle customer={selectedCust} user={user} tone="light" className="h-9 w-9 rounded-full" />
                                 {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(selectedCust)}
-                                    className="inline-flex h-9 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 text-[10px] font-bold text-amber-800 hover:bg-amber-100">
-                                    <Flag size={13} /> Raise issue
+                                    aria-label={`Raise complaint for ${selectedCust.customer_name || 'customer'}`} title="Raise complaint"
+                                    className="inline-flex min-h-11 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 text-[11px] font-bold text-amber-800 hover:bg-amber-100">
+                                    <Flag size={13} /> Raise complaint
                                 </button>}
                                 {getTelephoneHref(selectedCust.phone_number) && (
                                     <a

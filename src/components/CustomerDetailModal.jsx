@@ -54,6 +54,7 @@ import CustomerDocumentsTab from './modal-tabs/CustomerDocumentsTab';
 import { FilePreviewModal, DocGalleryRemarkRow, getStageRemarkFromData } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
+import WarrantyBadge from './WarrantyBadge';
 import ConflictResolutionModal from './ConflictResolutionModal';
 import { normalizeInstallationStatus } from '../utils';
 import { findUnsavedFields, fieldLabel, valuesMatch, mergeServerRecord } from '../utils/saveCheck';
@@ -2062,7 +2063,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 {/* Header */}
                 <div className="bg-stone-900 px-6 py-5 flex justify-between items-center flex-shrink-0">
                     <div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                             <h2 className="text-xl font-bold text-white">{customer.customer_name}</h2>
                             <RedFlagBadge customerId={customer.id} user={user} size={17} />
                             {isCompleted && (
@@ -2070,6 +2071,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     {isFrozen ? <><Lock size={9} /> Frozen</> : <><Unlock size={9} /> Unlocked</>}
                                 </span>
                             )}
+                            {/* Waits for the full record (a search result has no dates) and uses saved dates, not unsaved typing. */}
+                            {isCompleted && fullRecordLoaded && <WarrantyBadge customer={savedDataRef.current} tone="dark" />}
                         </div>
                         <p className="text-[11px] text-stone-400 font-medium mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-1">
                             <span className="inline-flex items-center gap-1.5"><Calendar size={11} className="flex-shrink-0" />Lead Created: {customer.created_at ? `${formatCustomerTimestamp(customer.created_at)} IST` : '—'}</span>
@@ -2078,8 +2081,9 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     </div>
                     <div className="flex items-center gap-2">
                         {isCompleted && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(savedDataRef.current)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-500/15 px-2.5 py-1.5 text-[10px] font-bold text-amber-300 hover:bg-amber-500/25">
-                            <Flag size={13} /> Raise issue
+                            aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
+                            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-500/15 px-3 text-[11px] font-bold text-amber-300 hover:bg-amber-500/25">
+                            <Flag size={13} /> Raise complaint
                         </button>}
                         <RedFlagToggle customer={customer} user={user} tone="dark" />
                         {/* Admin unlock/lock toggle for completed cards */}

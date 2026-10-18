@@ -3,6 +3,7 @@ import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, T
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 import { formatCustomerTimestamp } from '../utils/customerActivity';
 import { RedFlagBadge } from './RedFlag';
+import WarrantyBadge from './WarrantyBadge';
 
 const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStage, onRaiseServiceIssue, currentUser }) {
     const [showStageMenu, setShowStageMenu] = useState(false);
@@ -54,13 +55,19 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                     </h3>
                     <div className="ml-2 flex shrink-0 flex-wrap items-center justify-end gap-2">
                         {tagInfo && <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase whitespace-nowrap border ${tagColors.bg} ${tagColors.text} ${tagColors.border}`}>{tagInfo.label}</span>}
-                        {isCompleted && onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(customer); }}
-                            aria-label={`Raise service issue for ${customer.customer_name || 'customer'}`} title="Raise service issue"
-                            className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800 hover:bg-amber-100">
-                            <Flag size={12} /> Raise issue
-                        </button>}
                     </div>
                 </div>
+                {/* Own row: the warranty text is too long to share the name's line on a phone. */}
+                {isCompleted && (
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <WarrantyBadge customer={customer} />
+                        {onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(customer); }}
+                            aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
+                            className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 text-[11px] font-bold text-amber-800 hover:bg-amber-100">
+                            <Flag size={12} /> Raise complaint
+                        </button>}
+                    </div>
+                )}
                 <div className="grid grid-cols-2 gap-y-1.5 mb-3">
                     <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
                         <FolderOpen size={11} className="text-stone-300 flex-shrink-0" />
