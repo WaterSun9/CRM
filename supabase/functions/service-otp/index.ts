@@ -1,12 +1,14 @@
 // supabase/functions/service-otp/index.ts
 //
-// Completion code for a service complaint, sent to the customer on WhatsApp
-// (Meta Cloud API, no BSP). The technician taps "Work done - send code", the
-// customer reads the 6-digit code out, the technician types it and the job closes.
+// Completion code for a service complaint, sent to the customer by SMS through
+// Message Central VerifyNow (its own DLT route, no Meta setup), or on WhatsApp
+// (Meta Cloud API, no BSP) once OTP_CHANNEL is 'whatsapp'. The technician taps
+// "Work done - send code", the customer reads the 6-digit code out, the technician
+// types it and the job closes.
 // Both actions need the signed-in technician the job is assigned to:
 //   POST { action: 'send', issueId }
-//        -> { ok: true, maskedPhone, expiresInSeconds: 600, resendAfterSeconds: 45, testMode }
-//        -> { ok: false, code, error }  code: wa_disabled | no_phone | cooldown | limit (both + retryAfterSeconds)
+//        -> { ok: true, channel: 'sms' | 'whatsapp', maskedPhone, expiresInSeconds, resendAfterSeconds: 45, testMode }
+//        -> { ok: false, code, error }  code: otp_disabled | wa_disabled | no_phone | cooldown | limit (both + retryAfterSeconds)
 //           | not_on_whatsapp | billing | token | send_failed (+ metaCode) | not_assigned | closed
 //   POST { action: 'verify', issueId, code: '482913' }
 //        -> { ok: true, verified: true, noticeSent }
@@ -16,9 +18,11 @@
 // 400 bad input, 401 not signed in, 403 not a technician, 500 unexpected (plain message;
 // the technical reason goes to the function logs only).
 //
-// Only a salted SHA-256 of the code is kept (public.service_completion_otps,
-// migration 20261012190000); the code is never stored, logged or returned.
-// Rules: 10-min expiry, 5 wrong tries per code, new code after 45 s, 3 codes per job per hour.
+// SMS: Message Central makes the code and checks it; we keep only its verificationId.
+// WhatsApp: only a salted SHA-256 of our code is kept. Either way the code is never
+// stored, logged or returned (public.service_completion_otps, migration 20261012190000).
+// Rules: expiry (Message Central's timeout for SMS, 10 min on WhatsApp), 5 wrong tries
+// per code, new code after 45 s, 3 codes per job per hour.
 // All reads and writes use the service role; the caller's token only says who is asking.
 //
 // Every WhatsApp message (code and "work completed") goes through ../_shared/whatsapp.ts,
@@ -27,6 +31,11 @@
 // not on WhatsApp (Meta error 131026) gets no code; the technician asks the office.
 //
 // Secrets (Supabase Dashboard > Edge Functions > Secrets), never in the app or in chat.
+//   OTP_CHANNEL         'sms' (default) or 'whatsapp'
+//   MC_CUSTOMER_ID, MC_PASSWORD   Message Central login (already set for phone-otp); needed for SMS
+//   OTP_TEST_TO         optional, SMS only: every code goes to this number instead of the customer.
+//                       DELETE IT BEFORE GOING LIVE (same reason as WA_TEST_TO below).
+// WhatsApp only:
 // The agency that runs Watersun's Facebook hands over the token and phone number ID;
 // the owner pastes them here (spaces and new lines around a pasted value are ignored).
 //   WA_ENABLED          'true' to send codes. Anything else: the technician is told to ask the office.
@@ -52,6 +61,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { env, isKnownNotOnWhatsapp, sendTemplate, waEnabled, waReady } from '../_shared/whatsapp.ts'
+import { mcCheckOtp, mcReady, mcSendOtp } from '../_shared/messageCentral.ts'
 import {
   CODE_TTL_SECONDS, MAX_TRIES, RESEND_AFTER_SECONDS, cleanPhone, hashCode, jobFailure, maskPhone,
   randomCode, randomHex, sameHex, sendWait, templateParam, warrantyText,
@@ -61,6 +71,8 @@ const ALLOWED_ORIGINS = ['https://crm.watersunsolar.com', 'https://watersun.deep
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ACTIVE = ['assigned', 'completion_pending']
 const WA_OFF = 'WhatsApp codes are not switched on yet. Ask the office to close this job.'
+const OTP_OFF = 'Completion codes are not switched on yet. Ask the office to close this job.'
+const useWhatsApp = () => env('OTP_CHANNEL').toLowerCase() === 'whatsapp'
 const NOT_ASSIGNED = { ok: false, code: 'not_assigned', error: 'This job is not assigned to you any more. Refresh the page.' }
 const CLOSED = { ok: false, code: 'closed', error: 'This job is already closed. Refresh the page.' }
 const SERVER_ERROR = 'Something went wrong on the server. Please try again in a minute, or ask the office to close this job.'
@@ -104,7 +116,91 @@ async function discardCode(db: Db, id: string) {
   if (error) await db.from('service_completion_otps').update({ superseded_at: new Date().toISOString() }).eq('id', id)
 }
 
+// Every code made for this job counts, sent or not, so failures cannot be hammered either.
+async function hourlyWait(db: Db, issueId: string) {
+  const { data: recent, error } = await db.from('service_completion_otps').select('created_at')
+    .eq('issue_id', issueId).gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+  if (error) throw error
+  return sendWait((recent ?? []).map(r => String(r.created_at)))
+}
+
+// Double tap on a slow phone: two requests can pass the wait check together. Only the
+// earliest new row goes out, otherwise the customer gets two codes and reads out the wrong one.
+async function lostDoubleTap(db: Db, issueId: string, rowId: string) {
+  const { data: first, error } = await db.from('service_completion_otps').select('id')
+    .eq('issue_id', issueId).gte('created_at', new Date(Date.now() - RESEND_AFTER_SECONDS * 1000).toISOString())
+    .order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1)
+  if (error) throw error
+  if (!first?.[0] || first[0].id === rowId) return false
+  await discardCode(db, rowId)
+  return true
+}
+const COOLDOWN = { ok: false, code: 'cooldown', retryAfterSeconds: RESEND_AFTER_SECONDS, error: 'A code was just sent. Please wait before sending a new one.' }
+
+// After a code went out: retire older codes and move the job to completion_pending.
+// Older codes are retired only now, so a failed resend leaves the previous code working.
+async function markSent(req: Request, db: Db, userId: string, issue: Issue, rowId: string, body: Record<string, unknown>) {
+  const now = new Date().toISOString()
+  // Not fatal: the code is already on the customer's phone, and verify only checks the newest code.
+  const { error: oldError } = await db.from('service_completion_otps').update({ superseded_at: now })
+    .eq('issue_id', issue.id).neq('id', rowId).is('verified_at', null).is('superseded_at', null)
+  if (oldError) console.error(`service-otp: could not retire older codes for issue ${issue.id}: ${oldError.message}`)
+
+  const { data: moved, error: moveError } = await db.from('service_issues')
+    .update({ status: 'completion_pending', completion_requested_at: now, updated_at: now })
+    .eq('id', issue.id).eq('assigned_to', userId).in('status', ACTIVE).select('id')
+  if (moveError) throw moveError
+  if (!moved?.length) {
+    // The office moved, closed or cancelled the job while the message was going out.
+    await db.from('service_completion_otps').update({ superseded_at: now }).eq('id', rowId)
+    const { data: latest } = await db.from('service_issues').select('status').eq('id', issue.id).maybeSingle()
+    return json(req, 200, latest?.status === 'completed' || latest?.status === 'cancelled' ? CLOSED : NOT_ASSIGNED)
+  }
+  return json(req, 200, { ok: true, resendAfterSeconds: RESEND_AFTER_SECONDS, ...body })
+}
+
+// SMS through Message Central: it makes the 6-digit code; we keep its verificationId.
+async function sendSmsCode(req: Request, db: Db, userId: string, issue: Issue) {
+  if (!mcReady()) {
+    console.error('service-otp: OTP_CHANNEL is sms but MC_CUSTOMER_ID or MC_PASSWORD is missing')
+    return json(req, 200, { ok: false, code: 'otp_disabled', error: OTP_OFF })
+  }
+  const testTo = env('OTP_TEST_TO')
+  const phone = cleanPhone(testTo || issue.otp_phone)
+  if (testTo && !phone) {
+    console.error('service-otp: OTP_TEST_TO is set but is not a valid 10-digit Indian mobile number')
+    return json(req, 200, { ok: false, code: 'otp_disabled', error: OTP_OFF })
+  }
+  if (!phone) return json(req, 200, { ok: false, code: 'no_phone', error: 'This customer has no valid mobile number. Ask the office to close this job.' })
+  const wait = await hourlyWait(db, issue.id)
+  if (wait) return json(req, 200, wait)
+
+  const { data: row, error: insertError } = await db.from('service_completion_otps').insert({
+    issue_id: issue.id, phone, provider: 'sms',
+    expires_at: new Date(Date.now() + CODE_TTL_SECONDS * 1000).toISOString(), requested_by: userId,
+  }).select('id').single()
+  if (insertError) throw insertError
+  if (await lostDoubleTap(db, issue.id, row.id)) return json(req, 200, COOLDOWN)
+
+  const sent = await mcSendOtp(phone, 'SMS', 6)
+  if (!sent.ok) {
+    console.error(`service-otp: SMS code not sent for issue ${issue.id}: ${sent.status} ${sent.error}`)
+    // Kept for the owner to see why; superseded so it can never be verified.
+    await db.from('service_completion_otps').update({ send_error: `${sent.status} ${sent.error}`, superseded_at: new Date().toISOString() }).eq('id', row.id)
+    return json(req, 200, { ok: false, code: 'send_failed', error: 'The code could not be sent by SMS. Try again in a minute, or ask the office to close this job.' })
+  }
+  const { error: idError } = await db.from('service_completion_otps').update({
+    mc_verification_id: sent.verificationId, expires_at: new Date(Date.now() + sent.timeoutSeconds * 1000).toISOString(),
+  }).eq('id', row.id)
+  // Without the id the code can never be checked, so this one is fatal.
+  if (idError) throw idError
+  return await markSent(req, db, userId, issue, row.id, {
+    channel: 'sms', maskedPhone: maskPhone(phone), expiresInSeconds: sent.timeoutSeconds, testMode: Boolean(testTo),
+  })
+}
+
 async function sendCode(req: Request, db: Db, userId: string, issue: Issue) {
+  if (!useWhatsApp()) return await sendSmsCode(req, db, userId, issue)
   if (!waEnabled()) return json(req, 200, { ok: false, code: 'wa_disabled', error: WA_OFF })
   if (!waReady()) {
     console.error('service-otp: WA_ENABLED is true but WA_TOKEN or WA_PHONE_NUMBER_ID is missing')
@@ -124,31 +220,18 @@ async function sendCode(req: Request, db: Db, userId: string, issue: Issue) {
     return json(req, 200, { ok: false, code: 'not_on_whatsapp', error: 'This customer is not on WhatsApp. Ask the office to close this job.' })
   }
 
-  // Every code made for this job counts, sent or not, so failures cannot be hammered either.
-  const { data: recent, error: recentError } = await db.from('service_completion_otps').select('created_at')
-    .eq('issue_id', issue.id).gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
-  if (recentError) throw recentError
-  const wait = sendWait((recent ?? []).map(r => String(r.created_at)))
+  const wait = await hourlyWait(db, issue.id)
   if (wait) return json(req, 200, wait)
 
   const code = randomCode()
   const salt = randomHex(16)
   const { data: row, error: insertError } = await db.from('service_completion_otps').insert({
-    issue_id: issue.id, phone, code_salt: salt, code_hash: await hashCode(salt, issue.id, code),
+    issue_id: issue.id, phone, provider: 'whatsapp', code_salt: salt, code_hash: await hashCode(salt, issue.id, code),
     expires_at: new Date(Date.now() + CODE_TTL_SECONDS * 1000).toISOString(), requested_by: userId,
   }).select('id').single()
   if (insertError) throw insertError
 
-  // Double tap on a slow phone: two requests can pass the check above together. Only the
-  // earliest new row goes out, otherwise the customer gets two codes and reads out the wrong one.
-  const { data: first, error: firstError } = await db.from('service_completion_otps').select('id')
-    .eq('issue_id', issue.id).gte('created_at', new Date(Date.now() - RESEND_AFTER_SECONDS * 1000).toISOString())
-    .order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1)
-  if (firstError) throw firstError
-  if (first?.[0] && first[0].id !== row.id) {
-    await discardCode(db, row.id)
-    return json(req, 200, { ok: false, code: 'cooldown', retryAfterSeconds: RESEND_AFTER_SECONDS, error: 'A code was just sent. Please wait before sending a new one.' })
-  }
+  if (await lostDoubleTap(db, issue.id, row.id)) return json(req, 200, COOLDOWN)
 
   // In test mode the shared sender sends to WA_TEST_TO, the same number as `phone` above.
   const sent = await sendTemplate(db, {
@@ -172,25 +255,8 @@ async function sendCode(req: Request, db: Db, userId: string, issue: Issue) {
 
   const { error: idError } = await db.from('service_completion_otps').update({ wa_message_id: sent.messageId }).eq('id', row.id)
   if (idError) console.error(`service-otp: could not save the WhatsApp message id for issue ${issue.id}: ${idError.message}`)
-  // Older codes are retired only now, so a failed resend leaves the previous code working.
-  // Not fatal: the code is already on the customer's phone, and verify only checks the newest code.
-  const { error: oldError } = await db.from('service_completion_otps').update({ superseded_at: now })
-    .eq('issue_id', issue.id).neq('id', row.id).is('verified_at', null).is('superseded_at', null)
-  if (oldError) console.error(`service-otp: could not retire older codes for issue ${issue.id}: ${oldError.message}`)
-
-  const { data: moved, error: moveError } = await db.from('service_issues')
-    .update({ status: 'completion_pending', completion_requested_at: now, updated_at: now })
-    .eq('id', issue.id).eq('assigned_to', userId).in('status', ACTIVE).select('id')
-  if (moveError) throw moveError
-  if (!moved?.length) {
-    // The office moved, closed or cancelled the job while the message was going out.
-    await db.from('service_completion_otps').update({ superseded_at: now }).eq('id', row.id)
-    const { data: latest } = await db.from('service_issues').select('status').eq('id', issue.id).maybeSingle()
-    return json(req, 200, latest?.status === 'completed' || latest?.status === 'cancelled' ? CLOSED : NOT_ASSIGNED)
-  }
-  return json(req, 200, {
-    ok: true, maskedPhone: maskPhone(phone), expiresInSeconds: CODE_TTL_SECONDS,
-    resendAfterSeconds: RESEND_AFTER_SECONDS, testMode: Boolean(testTo),
+  return await markSent(req, db, userId, issue, row.id, {
+    channel: 'whatsapp', maskedPhone: maskPhone(phone), expiresInSeconds: CODE_TTL_SECONDS, testMode: Boolean(testTo),
   })
 }
 
@@ -222,7 +288,7 @@ async function verifyCode(req: Request, db: Db, userId: string, technicianName: 
   for (let round = 0; round <= MAX_TRIES; round++) {
     // Codes belong to the technician who asked for them; a reassigned job needs a new code.
     const { data: row, error } = await db.from('service_completion_otps')
-      .select('id, phone, code_salt, code_hash, expires_at, attempts')
+      .select('id, phone, provider, mc_verification_id, code_salt, code_hash, expires_at, attempts')
       .eq('issue_id', issue.id).eq('requested_by', userId).is('verified_at', null).is('superseded_at', null)
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
     if (error) throw error
@@ -246,7 +312,26 @@ async function verifyCode(req: Request, db: Db, userId: string, technicianName: 
     if (countError) throw countError
     if (!counted?.length) continue
 
-    if (!sameHex(await hashCode(row.code_salt, issue.id, code), row.code_hash)) {
+    let right: boolean
+    if (row.provider === 'sms') {
+      // A row whose SMS never went out has no id; it can never match.
+      if (!row.mc_verification_id) return json(req, 200, { ok: true, verified: false, reason: 'no_code', message: 'Send a new code.' })
+      const check = await mcCheckOtp(row.mc_verification_id, code, 'SMS')
+      if (!check.verified && check.reason === 'expired') {
+        return json(req, 200, { ok: true, verified: false, reason: 'expired', message: 'This code has expired. Send a new code.' })
+      }
+      if (!check.verified && check.reason === 'limit') {
+        return json(req, 200, { ok: true, verified: false, reason: 'locked', message: 'Too many wrong tries. Send a new code.' })
+      }
+      if (!check.verified && check.reason === 'failed') {
+        console.error(`service-otp: Message Central could not check the code for issue ${issue.id}: ${check.detail}`)
+        throw new PlainError('The code could not be checked. Please try again.')
+      }
+      right = check.verified
+    } else {
+      right = sameHex(await hashCode(String(row.code_salt), issue.id, code), String(row.code_hash))
+    }
+    if (!right) {
       const attemptsLeft = MAX_TRIES - attempts - 1
       return json(req, 200, {
         ok: true, verified: false, reason: 'wrong_code', attemptsLeft,

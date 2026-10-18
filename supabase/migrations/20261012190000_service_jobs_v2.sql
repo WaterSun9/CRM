@@ -457,8 +457,12 @@ create table if not exists public.service_completion_otps (
     id uuid primary key default gen_random_uuid(),
     issue_id uuid not null references public.service_issues(id) on delete cascade,
     phone text not null,
-    code_salt text not null,
-    code_hash text not null,
+    -- 'sms': Message Central made the code and checks it (mc_verification_id);
+    -- 'whatsapp': we made it and keep only its salted hash.
+    provider text not null default 'sms' check (provider in ('sms', 'whatsapp')),
+    mc_verification_id text,
+    code_salt text,
+    code_hash text,
     expires_at timestamptz not null,
     attempts integer not null default 0,
     verified_at timestamptz,
@@ -468,6 +472,11 @@ create table if not exists public.service_completion_otps (
     send_error text,
     created_at timestamptz not null default now()
 );
+-- For a table made by an earlier run of this file.
+alter table public.service_completion_otps add column if not exists provider text not null default 'sms';
+alter table public.service_completion_otps add column if not exists mc_verification_id text;
+alter table public.service_completion_otps alter column code_salt drop not null;
+alter table public.service_completion_otps alter column code_hash drop not null;
 create index if not exists service_completion_otps_issue_time_idx on public.service_completion_otps (issue_id, created_at desc);
 alter table public.service_completion_otps enable row level security;
 revoke all on public.service_completion_otps from public, anon, authenticated;
@@ -477,7 +486,7 @@ grant all on public.service_completion_otps to service_role;
 drop policy if exists service_completion_otps_admin_read on public.service_completion_otps;
 create policy service_completion_otps_admin_read on public.service_completion_otps
 for select to authenticated using (public.get_my_user_type() = 'admin');
-grant select (id, issue_id, phone, expires_at, attempts, verified_at, superseded_at, requested_by,
+grant select (id, issue_id, phone, provider, expires_at, attempts, verified_at, superseded_at, requested_by,
               wa_message_id, send_error, created_at) on public.service_completion_otps to authenticated;
 
 -- A code stops working once the job leaves its technician (give up, reassign,

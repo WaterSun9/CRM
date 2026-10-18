@@ -27,7 +27,7 @@ function verifyMessage(data) {
 }
 
 // What a technician can do on one job: claim it, start a trip (for the km),
-// send the completion code to the customer's WhatsApp, type the code the
+// send the completion code to the customer (SMS, or WhatsApp), type the code the
 // customer reads out, or give up.
 // The server sends and checks the code; this screen never sees it.
 // "Work done" first reminds the technician to tap "Reached site" when the open
@@ -69,7 +69,7 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
             if (data.retryAfterSeconds) holdResend(data.retryAfterSeconds);
             throw new Error(data.error || 'Could not send the code. Try again.');
         }
-        setSent({ maskedPhone: data.maskedPhone, testMode: Boolean(data.testMode) });
+        setSent({ maskedPhone: data.maskedPhone, testMode: Boolean(data.testMode), channel: data.channel === 'whatsapp' ? 'on WhatsApp' : 'by SMS' });
         setCode('');
         holdResend(data.resendAfterSeconds || RESEND_SECONDS);
         return '';
@@ -152,8 +152,8 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
         </div>}
         {showCodeEntry && <form onSubmit={verify} className="space-y-3 rounded-xl border border-green-200 bg-green-50 p-3">
             <p className="text-sm text-green-900">{sent
-                ? <>Code sent on WhatsApp to <strong>{sent.maskedPhone}</strong>. Ask the customer to read it out.</>
-                : 'A code was sent to the customer on WhatsApp. Ask the customer to read it out.'}</p>
+                ? <>Code sent {sent.channel} to <strong>{sent.maskedPhone}</strong>. Ask the customer to read it out.</>
+                : 'A code was sent to the customer. Ask the customer to read it out.'}</p>
             {sent?.testMode && <p className="rounded-lg bg-amber-100 p-2 text-xs font-semibold text-amber-900">Test mode: the code went to the test number, not to the customer.</p>}
             <label className="block text-xs font-semibold">6-digit code from the customer
                 <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="------"

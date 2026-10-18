@@ -81,7 +81,7 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
     if (!expanded) {
         return <div className="rounded-2xl border bg-white p-4 space-y-2">
             <button type="button" onClick={() => setExpanded(true)} className="min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-bold">Raise a complaint</button>
-            <p className="text-xs text-stone-500">For a customer in the CRM, open the completed customer and press Raise complaint, so the warranty and WhatsApp number are filled in. Use this form only for someone who is not in the CRM.</p>
+            <p className="text-xs text-stone-500">For a customer in the CRM, open the completed customer and press Raise complaint, so the warranty and mobile number are filled in. Use this form only for someone who is not in the CRM.</p>
         </div>;
     }
 
@@ -101,7 +101,7 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
         <label className="text-xs font-semibold">Channel Partner name<input maxLength={160} value={newIssue.channel_partner_name} onChange={e => setNewIssue(v => ({ ...v, channel_partner_name: e.target.value }))} className={field} /></label>
         <label className="text-xs font-semibold">Required date<input required type="date" value={newIssue.required_date} onChange={e => setNewIssue(v => ({ ...v, required_date: e.target.value }))} className={field} /></label>
         <label className="text-xs font-semibold">Customer mobile number<input type="tel" value={newIssue.customer_phone} onChange={e => setNewIssue(v => ({ ...v, customer_phone: e.target.value }))} className={field} />
-            {linked && <span className="mt-1 block font-normal text-stone-500">The WhatsApp completion code always goes to the number on the customer record.</span>}</label>
+            {linked && <span className="mt-1 block font-normal text-stone-500">The completion code always goes to the number on the customer record.</span>}</label>
         <label className="text-xs font-semibold">Customer address<input value={newIssue.service_address} onChange={e => setNewIssue(v => ({ ...v, service_address: e.target.value }))} className={field} /></label>
         <label className="text-xs font-semibold">Type of problem *<input required autoFocus={formOnly} maxLength={160} value={newIssue.problem_type} onChange={e => setNewIssue(v => ({ ...v, problem_type: e.target.value }))} className={field} /></label>
         <label className="text-xs font-semibold">System company name<input value={newIssue.system_company_name} onChange={e => setNewIssue(v => ({ ...v, system_company_name: e.target.value }))} className={field} /></label>

@@ -28,7 +28,7 @@ export const warrantyLabel = status => WARRANTY_STATUS_LABELS[status] || WARRANT
 export const ACTIVE_STATUSES = ['open', 'assigned', 'completion_pending'];
 export const OFFICE_FILTERS = [['all', 'All'], ['open', 'Open'], ['assigned', 'Assigned'], ['completed', 'Completed'], ['cancelled', 'Cancelled']];
 export const TECHNICIAN_FILTERS = [['open', 'Open jobs'], ['mine', 'My jobs']];
-export const OVERRIDE_REASONS = ['Customer has no WhatsApp', 'Confirmed by phone call', 'No network at site', 'WhatsApp not live yet', 'Other'];
+export const OVERRIDE_REASONS = ['Customer did not get the code', 'Confirmed by phone call', 'No network at site', 'Customer has no mobile', 'Other'];
 // Same cooldown the service-otp function enforces between two codes.
 export const RESEND_SECONDS = 45;
 
