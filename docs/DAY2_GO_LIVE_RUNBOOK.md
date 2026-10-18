@@ -81,11 +81,15 @@ select column_name from information_schema.columns
 
 When 1.1 and 1.4 are done, tell me. I'll check them from here, regenerate `supabase/schema.sql`, and deploy the functions.
 
-## 2. Secrets (Dashboard > Edge Functions > Secrets, set them yourself, not in chat)
+## 2. Firebase and secrets
 
-- `OTP_TEST_TO`: your own 10-digit mobile. While it is set, every completion code goes to you, not the customer.
-- `OTP_CHANNEL`: leave it unset (it defaults to SMS).
-- `MC_CUSTOMER_ID` and `MC_PASSWORD` are already set.
+Completion codes are sent by Firebase Phone Auth. Message Central was dropped on 18 Oct because of its ₹2.5k/month minimum.
+1. Firebase console: follow the steps I gave in chat. The client adds the card for the Blaze plan.
+2. Send me the web app config (apiKey, authDomain, projectId, appId). It goes into `FIREBASE_CONFIG` in `src/constants.js`; these values are public.
+3. Supabase secrets (Dashboard > Edge Functions > Secrets):
+   - `FIREBASE_PROJECT_ID`: the project ID.
+   - `OTP_TEST_TO`: while testing, a Firebase test number such as 9999900001. Later, your own mobile. Delete it at go-live.
+   - `OTP_CHANNEL`: leave it unset. It defaults to firebase.
 
 ## 3. Functions (I deploy these)
 
@@ -104,7 +108,7 @@ The live site still runs `main`. You test the new screens with `npm run dev`, wh
 4. **Trip.** Press **Start trip**: allow location, or type a pincode. Then press **Reached site**.
 5. **Code.** Press **Work done - send code to customer**.
    - The screen should say "Code sent by SMS to ******1234".
-   - The SMS reaches YOUR phone, because `OTP_TEST_TO` is set.
+   - The SMS reaches YOUR phone (or, with a Firebase test number, nothing is sent and the code is the one set in the console).
 6. **Wrong code.** Type a wrong code. It should say "Wrong code… try again".
 7. **Right code.** Type the right code. The job should move to Completed.
 8. **Office.** Back as Admin, open the complaint.

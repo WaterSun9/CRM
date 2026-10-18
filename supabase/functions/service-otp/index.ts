@@ -1,13 +1,21 @@
 // supabase/functions/service-otp/index.ts
 //
-// Completion code for a service complaint, sent to the customer by SMS through
-// Message Central VerifyNow (its own DLT route, no Meta setup), or on WhatsApp
-// (Meta Cloud API, no BSP) once OTP_CHANNEL is 'whatsapp'. The technician taps
-// "Work done - send code", the customer reads the 6-digit code out, the technician
-// types it and the job closes.
+// Completion code for a service complaint. The technician taps "Work done - send
+// code", the customer reads the 6-digit code out, the technician types it and the
+// job closes. Three ways to send it (OTP_CHANNEL):
+//   'firebase' (default) Firebase Phone Auth: the technician's browser asks Google
+//              to SMS the customer (first 10 SMS a day free, then about $0.07 each).
+//              'send' only checks the job and hands back the number; the browser
+//              sends the SMS and checks the code with Google, then 'verify' gets
+//              Google's signed ID token and closes the job if its phone_number is
+//              the customer's and it was signed in after this code was asked for.
+//   'sms'      Message Central VerifyNow (has a monthly minimum; kept as a fallback).
+//   'whatsapp' Meta Cloud API, no BSP.
 // Both actions need the signed-in technician the job is assigned to:
 //   POST { action: 'send', issueId }
-//        -> { ok: true, channel: 'sms' | 'whatsapp', maskedPhone, expiresInSeconds, resendAfterSeconds: 45, testMode }
+//        -> { ok: true, channel: 'firebase' | 'sms' | 'whatsapp', maskedPhone, expiresInSeconds, resendAfterSeconds: 45, testMode }
+//           firebase also returns phone ('+919876543210'), the number the browser sends the SMS to
+//   POST { action: 'verify', issueId, idToken }   (firebase)
 //        -> { ok: false, code, error }  code: otp_disabled | wa_disabled | no_phone | cooldown | limit (both + retryAfterSeconds)
 //           | not_on_whatsapp | billing | token | send_failed (+ metaCode) | not_assigned | closed
 //   POST { action: 'verify', issueId, code: '482913' }
@@ -31,9 +39,10 @@
 // not on WhatsApp (Meta error 131026) gets no code; the technician asks the office.
 //
 // Secrets (Supabase Dashboard > Edge Functions > Secrets), never in the app or in chat.
-//   OTP_CHANNEL         'sms' (default) or 'whatsapp'
+//   OTP_CHANNEL         'firebase' (default), 'sms' or 'whatsapp'
+//   FIREBASE_PROJECT_ID the Firebase project ID (Project settings > General); needed for firebase
 //   MC_CUSTOMER_ID, MC_PASSWORD   Message Central login (already set for phone-otp); needed for SMS
-//   OTP_TEST_TO         optional, SMS only: every code goes to this number instead of the customer.
+//   OTP_TEST_TO         optional, firebase / SMS: every code goes to this number instead of the customer.
 //                       DELETE IT BEFORE GOING LIVE (same reason as WA_TEST_TO below).
 // WhatsApp only:
 // The agency that runs Watersun's Facebook hands over the token and phone number ID;
@@ -62,6 +71,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { env, isKnownNotOnWhatsapp, sendTemplate, waEnabled, waReady } from '../_shared/whatsapp.ts'
 import { mcCheckOtp, mcReady, mcSendOtp } from '../_shared/messageCentral.ts'
+import { createRemoteJWKSet, jwtVerify } from 'https://esm.sh/jose@5.10.0'
 import {
   CODE_TTL_SECONDS, MAX_TRIES, RESEND_AFTER_SECONDS, cleanPhone, hashCode, jobFailure, maskPhone,
   randomCode, randomHex, sameHex, sendWait, templateParam, warrantyText,
@@ -72,7 +82,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const ACTIVE = ['assigned', 'completion_pending']
 const WA_OFF = 'WhatsApp codes are not switched on yet. Ask the office to close this job.'
 const OTP_OFF = 'Completion codes are not switched on yet. Ask the office to close this job.'
-const useWhatsApp = () => env('OTP_CHANNEL').toLowerCase() === 'whatsapp'
+const otpChannel = () => {
+  const value = env('OTP_CHANNEL').toLowerCase()
+  return value === 'sms' || value === 'whatsapp' ? value : 'firebase'
+}
+// Google's keys for Firebase ID tokens, fetched once and cached by jose.
+const FIREBASE_KEYS = createRemoteJWKSet(new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com'))
+const CLOCK_SKEW_SECONDS = 60
 const NOT_ASSIGNED = { ok: false, code: 'not_assigned', error: 'This job is not assigned to you any more. Refresh the page.' }
 const CLOSED = { ok: false, code: 'closed', error: 'This job is already closed. Refresh the page.' }
 const SERVER_ERROR = 'Something went wrong on the server. Please try again in a minute, or ask the office to close this job.'
@@ -199,8 +215,37 @@ async function sendSmsCode(req: Request, db: Db, userId: string, issue: Issue) {
   })
 }
 
+// Firebase: the browser sends the SMS. This only checks the limits, keeps a row
+// (provider 'firebase') that the ID token must be newer than, and gives the number.
+async function sendFirebaseCode(req: Request, db: Db, userId: string, issue: Issue) {
+  if (!env('FIREBASE_PROJECT_ID')) {
+    console.error('service-otp: OTP_CHANNEL is firebase but FIREBASE_PROJECT_ID is missing')
+    return json(req, 200, { ok: false, code: 'otp_disabled', error: OTP_OFF })
+  }
+  const testTo = env('OTP_TEST_TO')
+  const phone = cleanPhone(testTo || issue.otp_phone)
+  if (testTo && !phone) {
+    console.error('service-otp: OTP_TEST_TO is set but is not a valid 10-digit Indian mobile number')
+    return json(req, 200, { ok: false, code: 'otp_disabled', error: OTP_OFF })
+  }
+  if (!phone) return json(req, 200, { ok: false, code: 'no_phone', error: 'This customer has no valid mobile number. Ask the office to close this job.' })
+  const wait = await hourlyWait(db, issue.id)
+  if (wait) return json(req, 200, wait)
+  const { data: row, error: insertError } = await db.from('service_completion_otps').insert({
+    issue_id: issue.id, phone, provider: 'firebase',
+    expires_at: new Date(Date.now() + CODE_TTL_SECONDS * 1000).toISOString(), requested_by: userId,
+  }).select('id').single()
+  if (insertError) throw insertError
+  if (await lostDoubleTap(db, issue.id, row.id)) return json(req, 200, COOLDOWN)
+  return await markSent(req, db, userId, issue, row.id, {
+    channel: 'firebase', phone: `+91${phone}`, maskedPhone: maskPhone(phone), expiresInSeconds: CODE_TTL_SECONDS, testMode: Boolean(testTo),
+  })
+}
+
 async function sendCode(req: Request, db: Db, userId: string, issue: Issue) {
-  if (!useWhatsApp()) return await sendSmsCode(req, db, userId, issue)
+  const channel = otpChannel()
+  if (channel === 'firebase') return await sendFirebaseCode(req, db, userId, issue)
+  if (channel === 'sms') return await sendSmsCode(req, db, userId, issue)
   if (!waEnabled()) return json(req, 200, { ok: false, code: 'wa_disabled', error: WA_OFF })
   if (!waReady()) {
     console.error('service-otp: WA_ENABLED is true but WA_TOKEN or WA_PHONE_NUMBER_ID is missing')
@@ -283,12 +328,48 @@ async function closedMeanwhile(req: Request, db: Db, issueId: string, userId: st
   return data?.status === 'completed' || data?.status === 'cancelled' ? json(req, 200, CLOSED) : null
 }
 
-async function verifyCode(req: Request, db: Db, userId: string, technicianName: string, issue: Issue, code: string) {
+// The code was right: mark it used and close the job.
+async function closeJob(req: Request, db: Db, userId: string, technicianName: string, issue: Issue, row: { id: string; phone: string }) {
+  const now = new Date().toISOString()
+  const { error: usedError } = await db.from('service_completion_otps').update({ verified_at: now }).eq('id', row.id).is('verified_at', null)
+  if (usedError) throw usedError
+  const { data: closed, error: closeError } = await db.from('service_issues')
+    .update({ status: 'completed', completion_method: 'otp', completed_at: now, completed_by: userId, updated_at: now })
+    .eq('id', issue.id).eq('assigned_to', userId).in('status', ACTIVE).select('id')
+  if (closeError) throw closeError
+  if (!closed?.length) return await closedMeanwhile(req, db, issue.id, userId) ?? json(req, 200, NOT_ASSIGNED)
+  await db.from('service_completion_otps').update({ superseded_at: now })
+    .eq('issue_id', issue.id).is('verified_at', null).is('superseded_at', null)
+  const noticeSent = await sendDoneNotice(db, row.phone, issue, userId, technicianName).catch(() => false)
+  return json(req, 200, { ok: true, verified: true, noticeSent })
+}
+
+// Google's signed answer that this browser just proved it holds a phone number:
+// signature, issuer and audience checked against FIREBASE_PROJECT_ID.
+async function firebasePhoneProof(idToken: string) {
+  const projectId = env('FIREBASE_PROJECT_ID')
+  if (!projectId) return null
+  try {
+    const { payload } = await jwtVerify(idToken, FIREBASE_KEYS, {
+      issuer: `https://securetoken.google.com/${projectId}`, audience: projectId, clockTolerance: CLOCK_SKEW_SECONDS,
+    })
+    const phone = typeof payload.phone_number === 'string' ? payload.phone_number : ''
+    const authTime = Number(payload.auth_time)
+    const provider = (payload.firebase as { sign_in_provider?: unknown } | undefined)?.sign_in_provider
+    if (!phone || !Number.isFinite(authTime) || !payload.sub || provider !== 'phone') return null
+    return { phone, authTime }
+  } catch (error) {
+    console.error(`service-otp: Firebase ID token refused: ${(error as Error)?.message ?? error}`)
+    return null
+  }
+}
+
+async function verifyCode(req: Request, db: Db, userId: string, technicianName: string, issue: Issue, code: string, idToken: string) {
   // Each round either uses up one try or finds that a parallel request used one, so this ends.
   for (let round = 0; round <= MAX_TRIES; round++) {
     // Codes belong to the technician who asked for them; a reassigned job needs a new code.
     const { data: row, error } = await db.from('service_completion_otps')
-      .select('id, phone, provider, mc_verification_id, code_salt, code_hash, expires_at, attempts')
+      .select('id, phone, provider, mc_verification_id, code_salt, code_hash, expires_at, attempts, created_at')
       .eq('issue_id', issue.id).eq('requested_by', userId).is('verified_at', null).is('superseded_at', null)
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
     if (error) throw error
@@ -299,6 +380,20 @@ async function verifyCode(req: Request, db: Db, userId: string, technicianName: 
     if (Date.parse(row.expires_at) <= Date.now()) {
       return json(req, 200, { ok: true, verified: false, reason: 'expired', message: 'This code has expired. Send a new code.' })
     }
+    if (row.provider === 'firebase') {
+      // The browser checked the code with Google; a reloaded page has no code to check.
+      if (!idToken) return json(req, 200, { ok: true, verified: false, reason: 'no_code', message: 'Press Send code again for a new code.' })
+      const proof = await firebasePhoneProof(idToken)
+      if (!proof) return json(req, 200, { ok: true, verified: false, reason: 'failed', message: 'The code could not be checked. Send a new code.' })
+      // Same number this code was asked for, and signed in after it was asked for
+      // (so an old sign-in for the same customer cannot close a new job).
+      if (proof.phone !== `+91${row.phone}` || proof.authTime < Date.parse(row.created_at) / 1000 - CLOCK_SKEW_SECONDS) {
+        console.error(`service-otp: Firebase proof for issue ${issue.id} does not match the code that was asked for`)
+        return json(req, 200, { ok: true, verified: false, reason: 'no_code', message: 'This code was not for this job. Send a new code.' })
+      }
+      return await closeJob(req, db, userId, technicianName, issue, row)
+    }
+    if (!/^\d{6}$/.test(code)) return json(req, 400, { error: 'Enter the 6-digit code.' })
     const attempts = Number(row.attempts) || 0
     if (attempts >= MAX_TRIES) {
       return json(req, 200, { ok: true, verified: false, reason: 'locked', message: 'Too many wrong tries. Send a new code.' })
@@ -339,18 +434,7 @@ async function verifyCode(req: Request, db: Db, userId: string, technicianName: 
       })
     }
 
-    const now = new Date().toISOString()
-    const { error: usedError } = await db.from('service_completion_otps').update({ verified_at: now }).eq('id', row.id).is('verified_at', null)
-    if (usedError) throw usedError
-    const { data: closed, error: closeError } = await db.from('service_issues')
-      .update({ status: 'completed', completion_method: 'otp', completed_at: now, completed_by: userId, updated_at: now })
-      .eq('id', issue.id).eq('assigned_to', userId).in('status', ACTIVE).select('id')
-    if (closeError) throw closeError
-    if (!closed?.length) return await closedMeanwhile(req, db, issue.id, userId) ?? json(req, 200, NOT_ASSIGNED)
-    await db.from('service_completion_otps').update({ superseded_at: now })
-      .eq('issue_id', issue.id).is('verified_at', null).is('superseded_at', null)
-    const noticeSent = await sendDoneNotice(db, row.phone, issue, userId, technicianName).catch(() => false)
-    return json(req, 200, { ok: true, verified: true, noticeSent })
+    return await closeJob(req, db, userId, technicianName, issue, row)
   }
   throw new PlainError('The code could not be checked. Please try again.')
 }
@@ -378,7 +462,8 @@ Deno.serve(async (req) => {
     if (action !== 'send' && action !== 'verify') return json(req, 400, { error: "action must be 'send' or 'verify'" })
     if (!UUID_RE.test(issueId)) return json(req, 400, { error: 'issueId is required' })
     const code = String(body?.code ?? '').replace(/\s/g, '')
-    if (action === 'verify' && !/^\d{6}$/.test(code)) return json(req, 400, { error: 'Enter the 6-digit code.' })
+    const idToken = typeof body?.idToken === 'string' ? body.idToken.trim().slice(0, 4096) : ''
+    if (action === 'verify' && !idToken && !/^\d{6}$/.test(code)) return json(req, 400, { error: 'Enter the 6-digit code.' })
 
     const { data: me, error: meError } = await db.from('profiles').select('name, user_type, status').eq('id', user.id).maybeSingle()
     if (meError) throw meError
@@ -400,7 +485,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'send') return await sendCode(req, db, user.id, issue as Issue)
-    return await verifyCode(req, db, user.id, String(me?.name || ''), issue as Issue, code)
+    return await verifyCode(req, db, user.id, String(me?.name || ''), issue as Issue, code, idToken)
   } catch (error) {
     // Database wording stays in the logs; the technician gets a plain message.
     const message = (error as { message?: unknown })?.message

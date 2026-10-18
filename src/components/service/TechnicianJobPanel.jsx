@@ -3,6 +3,7 @@ import { supabase } from '../../supabase';
 import { callServiceOtp, RESEND_SECONDS } from './serviceLabels';
 import { phonePosition, roundAccuracy, tripError } from './tripLabels';
 import TripPanel from './TripPanel';
+import { confirmFirebaseCode, firebaseErrorText, firebaseReady, sendFirebaseCode } from './firebasePhone';
 
 // "Reached site now" waits at most this long for the phone's location, then sends
 // the code anyway (a location prompt left unanswered must not hold up the job).
@@ -32,8 +33,13 @@ function verifyMessage(data) {
 // The server sends and checks the code; this screen never sees it.
 // "Work done" first reminds the technician to tap "Reached site" when the open
 // trip has none (it never blocks: "Send code without it" goes straight on).
+// Firebase confirmations, by job: a resend replaces it, a page reload loses it
+// (the technician then presses Send code again).
+const confirmations = new Map();
+
 export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed, onReleased }) {
     const mine = issue.assigned_to === userId;
+    const recaptchaId = `otp-recaptcha-${issue.id}`;
     const [sent, setSent] = useState(null);
     const [code, setCode] = useState('');
     const [resendAt, setResendAt] = useState(0);
@@ -68,6 +74,13 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
         if (!data.ok) {
             if (data.retryAfterSeconds) holdResend(data.retryAfterSeconds);
             throw new Error(data.error || 'Could not send the code. Try again.');
+        }
+        // Firebase: the server said yes; this phone now asks Google to SMS the customer.
+        if (data.channel === 'firebase') {
+            confirmations.delete(issue.id);
+            if (!firebaseReady()) throw new Error('Completion codes are not set up yet. Ask the office to close this job.');
+            try { confirmations.set(issue.id, await sendFirebaseCode(data.phone, recaptchaId)); }
+            catch (failure) { throw new Error(firebaseErrorText(failure)); }
         }
         setSent({ maskedPhone: data.maskedPhone, testMode: Boolean(data.testMode), channel: data.channel === 'whatsapp' ? 'on WhatsApp' : 'by SMS' });
         setCode('');
@@ -107,7 +120,18 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
         event.preventDefault();
         if (!/^\d{6}$/.test(code)) return;
         run(async () => {
-            const data = await callServiceOtp({ action: 'verify', issueId: issue.id, code });
+            const confirmation = confirmations.get(issue.id);
+            let body = { action: 'verify', issueId: issue.id, code };
+            if (confirmation) {
+                // Google checks the code here; a wrong code stays in the box to fix.
+                try { body = { action: 'verify', issueId: issue.id, idToken: await confirmFirebaseCode(confirmation, code) }; }
+                catch (failure) {
+                    if (failure?.code === 'auth/code-expired') { confirmations.delete(issue.id); setCode(''); setSent(null); }
+                    throw new Error(firebaseErrorText(failure));
+                }
+            }
+            const data = await callServiceOtp(body);
+            if (data.verified || data.reason !== 'wrong_code') confirmations.delete(issue.id);
             if (!data.ok) throw new Error(data.error || 'Could not check the code. Try again.');
             if (!data.verified) {
                 // An expired or locked code cannot be retried; clear it for the new one.
@@ -139,6 +163,8 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     const trip = <TripPanel issue={issue} userId={userId} busy={busy} run={run} onTripState={setTripState} reloadKey={tripReload} />;
     const showNudge = !showCodeEntry && nudge && needsReach;
     return <div className="space-y-3">
+        {/* Invisible reCAPTCHA for the Firebase SMS. */}
+        <div id={recaptchaId} />
         {!showCodeEntry && trip}
         {!showCodeEntry && !showNudge && <button type="button" disabled={busy || waitSeconds > 0} onClick={workDone} className="min-h-14 w-full rounded-xl bg-green-600 px-4 text-base font-bold text-white disabled:opacity-50">
             {waitSeconds > 0 ? `Work done - send code (wait ${waitText})` : 'Work done - send code to customer'}

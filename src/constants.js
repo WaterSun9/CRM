@@ -120,6 +120,18 @@ export const DIRECT_MESSAGES_ENABLED = false;
 // to the vendor). Parked 18 Oct 2026: needs 20261013100000_vendor_phone.sql and Meta.
 export const VENDOR_WHATSAPP_ENABLED = false;
 
+// Firebase web app config for the completion-code SMS (Firebase Phone Auth).
+// From Firebase console > Project settings > Your apps > Web app. These values are
+// public by design (every Firebase web page ships them); safe to commit. Empty =
+// codes are off and the technician is told to ask the office. The project ID must
+// also be set as the FIREBASE_PROJECT_ID secret for the service-otp function.
+export const FIREBASE_CONFIG = {
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    appId: '',
+};
+
 // Local Role Preview chat uses browser-tab test messages, never the CRM database.
 // Set false when the temporary chat test window is no longer needed.
 export const ROLE_PREVIEW_CHAT_ENABLED = true;
