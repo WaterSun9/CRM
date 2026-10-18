@@ -458,8 +458,9 @@ create table if not exists public.service_completion_otps (
     issue_id uuid not null references public.service_issues(id) on delete cascade,
     phone text not null,
     -- 'sms': Message Central made the code and checks it (mc_verification_id);
+    -- 'firebase': Google sent it from the technician's phone and signed the result;
     -- 'whatsapp': we made it and keep only its salted hash.
-    provider text not null default 'sms' check (provider in ('sms', 'whatsapp')),
+    provider text not null default 'sms' check (provider in ('sms', 'firebase', 'whatsapp')),
     mc_verification_id text,
     code_salt text,
     code_hash text,
