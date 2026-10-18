@@ -29,7 +29,7 @@ function VisitRow({ visit }) {
 // Shows how a closed complaint was closed, or that a code is on its way.
 function ClosureNote({ issue, forTechnician }) {
     if (issue.status === 'completed') {
-        const how = issue.completion_method === 'otp' ? "Closed with the customer's WhatsApp code" : `Closed by office: ${issue.override_reason || 'no reason given'}`;
+        const how = issue.completion_method === 'otp' ? "Closed with the customer's code" : `Closed by office: ${issue.override_reason || 'no reason given'}`;
         return <p className="rounded-lg bg-green-50 p-2 text-xs text-green-900"><strong>{how}</strong>{issue.completed_at && <span className="block">Completed {formatDateTime(issue.completed_at)}</span>}</p>;
     }
     if (issue.status === 'cancelled') return <p className="rounded-lg bg-stone-100 p-2 text-xs text-stone-700"><strong>Cancelled:</strong> {issue.cancel_reason || 'no reason given'}</p>;
