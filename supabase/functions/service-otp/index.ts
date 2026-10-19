@@ -16,6 +16,7 @@
 //        -> { ok: true, channel: 'firebase' | 'sms' | 'whatsapp', maskedPhone, expiresInSeconds, resendAfterSeconds: 45, testMode }
 //           firebase also returns phone ('+919876543210'), the number the browser sends the SMS to
 //   POST { action: 'verify', issueId, idToken }   (firebase)
+//   POST { action: 'discard', issueId }   (firebase: the browser's send failed; frees that code slot)
 //        -> { ok: false, code, error }  code: otp_disabled | wa_disabled | no_phone | cooldown | limit (both + retryAfterSeconds)
 //           | not_on_whatsapp | billing | token | send_failed (+ metaCode) | not_assigned | closed
 //   POST { action: 'verify', issueId, code: '482913' }
@@ -242,6 +243,21 @@ async function sendFirebaseCode(req: Request, db: Db, userId: string, issue: Iss
   })
 }
 
+// Firebase: the browser could not send the SMS (Google refused it, no network...).
+// Remove the code row it was given, so a send that never happened does not use up
+// one of the 3 codes an hour. Only this technician's newest unused Firebase row
+// from the last few minutes.
+async function discardFailedSend(req: Request, db: Db, userId: string, issueId: string) {
+  const { data: row, error } = await db.from('service_completion_otps').select('id')
+    .eq('issue_id', issueId).eq('requested_by', userId).eq('provider', 'firebase')
+    .is('verified_at', null).is('superseded_at', null)
+    .gte('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (error) throw error
+  if (row) await discardCode(db, row.id)
+  return json(req, 200, { ok: true, discarded: Boolean(row) })
+}
+
 async function sendCode(req: Request, db: Db, userId: string, issue: Issue) {
   const channel = otpChannel()
   if (channel === 'firebase') return await sendFirebaseCode(req, db, userId, issue)
@@ -459,7 +475,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => null)
     action = body?.action
     issueId = typeof body?.issueId === 'string' ? body.issueId.trim() : ''
-    if (action !== 'send' && action !== 'verify') return json(req, 400, { error: "action must be 'send' or 'verify'" })
+    if (action !== 'send' && action !== 'verify' && action !== 'discard') return json(req, 400, { error: "action must be 'send', 'verify' or 'discard'" })
     if (!UUID_RE.test(issueId)) return json(req, 400, { error: 'issueId is required' })
     const code = String(body?.code ?? '').replace(/\s/g, '')
     const idToken = typeof body?.idToken === 'string' ? body.idToken.trim().slice(0, 4096) : ''
@@ -485,6 +501,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'send') return await sendCode(req, db, user.id, issue as Issue)
+    if (action === 'discard') return await discardFailedSend(req, db, user.id, issue.id)
     return await verifyCode(req, db, user.id, String(me?.name || ''), issue as Issue, code, idToken)
   } catch (error) {
     // Database wording stays in the logs; the technician gets a plain message.

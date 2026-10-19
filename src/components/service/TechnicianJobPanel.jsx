@@ -80,7 +80,12 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
             confirmations.delete(issue.id);
             if (!firebaseReady()) throw new Error('Completion codes are not set up yet. Ask the office to close this job.');
             try { confirmations.set(issue.id, await sendFirebaseCode(data.phone, recaptchaId)); }
-            catch (failure) { throw new Error(firebaseErrorText(failure)); }
+            catch (failure) {
+                // Nothing reached the customer: give the code slot back and let them press Send at once.
+                await callServiceOtp({ action: 'discard', issueId: issue.id }).catch(() => {});
+                holdResend(0);
+                throw new Error(firebaseErrorText(failure));
+            }
         }
         setSent({ maskedPhone: data.maskedPhone, testMode: Boolean(data.testMode), channel: data.channel === 'whatsapp' ? 'on WhatsApp' : 'by SMS' });
         setCode('');
