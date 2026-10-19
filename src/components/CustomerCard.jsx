@@ -64,8 +64,8 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                         <WarrantyBadge customer={customer} />
                         {onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(customer); }}
                             aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
-                            className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 text-[11px] font-bold text-amber-800 hover:bg-amber-100">
-                            <ComplaintIcon size={12} /> Raise complaint
+                            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
+                            <ComplaintIcon size={20} />
                         </button>}
                     </div>
                 )}

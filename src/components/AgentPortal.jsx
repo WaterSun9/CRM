@@ -1292,8 +1292,8 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                                 <WarrantyBadge customer={cust} />
                                                 {onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(cust); }}
                                                     aria-label={`Raise complaint for ${cust.customer_name || 'customer'}`} title="Raise complaint"
-                                                    className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 text-[11px] font-bold text-amber-800 hover:bg-amber-100">
-                                                    <ComplaintIcon size={12} /> Raise complaint
+                                                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
+                                                    <ComplaintIcon size={20} />
                                                 </button>}
                                             </div>
                                         )}
@@ -1414,8 +1414,8 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                 <RedFlagToggle customer={selectedCust} user={user} tone="light" className="h-9 w-9 rounded-full" />
                                 {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(selectedCust)}
                                     aria-label={`Raise complaint for ${selectedCust.customer_name || 'customer'}`} title="Raise complaint"
-                                    className="inline-flex min-h-11 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 text-[11px] font-bold text-amber-800 hover:bg-amber-100">
-                                    <ComplaintIcon size={13} /> Raise complaint
+                                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
+                                    <ComplaintIcon size={20} />
                                 </button>}
                                 {getTelephoneHref(selectedCust.phone_number) && (
                                     <a
