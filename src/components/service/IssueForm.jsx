@@ -3,6 +3,7 @@ import { supabase } from '../../supabase';
 import { warrantyInfo, formatWarrantyDate } from '../../utils/warranty';
 import { complaintError, todayLocal, uploadIssueFiles, validFiles } from './serviceLabels';
 import { isPincode, pincodeInText } from './tripLabels';
+import { logFieldChanges } from '../../utils';
 
 const WARRANTY_DATE_FIELDS = ['installation_date', 'material_delivery_date', 'completed_at'];
 const SOURCE_LABELS = { installation_date: 'installation date', material_delivery_date: 'material delivery date', completed_at: 'completion date' };
@@ -71,8 +72,10 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
     useEffect(() => {
         if (!linked) return undefined;
         let active = true;
-        supabase.from('admin').select('full_address, pincode').eq('id', initialCustomer.id).maybeSingle().then(({ data }) => {
-            if (!active || !data) return;
+        supabase.from('admin').select('full_address, pincode').eq('id', initialCustomer.id).maybeSingle().then(({ data, error: readError }) => {
+            if (!active) return;
+            // Could not read the card: do not block the complaint on it.
+            if (readError || !data) { setCard({ address: '?', pincode: '?' }); return; }
             const pin = String(data.pincode ?? '').replace(/\D/g, '');
             setCard({ address: String(data.full_address ?? '').trim(), pincode: isPincode(pin) ? pin : '' });
             setNewIssue(v => ({
@@ -85,6 +88,32 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
     }, [linked, initialCustomer?.id, cardReload]);
     const cardMissing = !card ? '' : !card.address && !card.pincode ? 'Address and pincode' : !card.pincode ? 'Pincode' : !card.address ? 'Address' : '';
     const [confirmed, setConfirmed] = useState(false);
+    const [savingCard, setSavingCard] = useState(false);
+    const [cardError, setCardError] = useState('');
+
+    // A complaint cannot be raised while the card lacks the address or pincode:
+    // the form's address and pincode are saved to the customer (admin row) first,
+    // logged in the card's history like any other edit.
+    const saveToCard = async () => {
+        const address = newIssue.service_address.trim();
+        if (!address) { setCardError('Enter the customer\'s address.'); return; }
+        if (!isPincode(newIssue.pincode)) { setCardError('Enter the customer\'s 6-digit pincode.'); return; }
+        setSavingCard(true); setCardError('');
+        try {
+            const patch = {};
+            if (!card.address) patch.full_address = address;
+            if (!card.pincode) patch.pincode = newIssue.pincode;
+            const { data, error: saveError } = await supabase.from('admin').update(patch).eq('id', initialCustomer.id).select('full_address, pincode');
+            if (saveError) throw saveError;
+            if (!data?.length) throw new Error('You cannot change this customer. Ask the office to add the address and pincode.');
+            void logFieldChanges(user.id, initialCustomer.id, initialCustomer.customer_name, { full_address: card.address || null, pincode: card.pincode || null }, patch, 'Raise complaint');
+            setCardReload(n => n + 1);
+        } catch (failure) {
+            setCardError(failure.message || 'Could not save to the customer card.');
+        } finally {
+            setSavingCard(false);
+        }
+    };
 
     if (!canManage && !linked) {
         return <p className="rounded-2xl border bg-white p-4 text-sm text-stone-600">To raise a complaint, open a completed customer and press Raise complaint.</p>;
@@ -94,6 +123,7 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
     const create = event => {
         event.preventDefault();
         run(async () => {
+            if (linked && cardMissing) throw new Error('Save the address and pincode to the customer card first.');
             if (!isPincode(newIssue.pincode)) throw new Error('Enter the customer\'s 6-digit pincode.');
             if (!confirmed) throw new Error('Confirm the address and pincode with the customer first.');
             const { pincode, ...fields } = newIssue;
@@ -141,13 +171,16 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
         <label className="text-xs font-semibold">Required date<input required type="date" value={newIssue.required_date} onChange={e => setNewIssue(v => ({ ...v, required_date: e.target.value }))} className={field} /></label>
         <label className="text-xs font-semibold">Customer mobile number<input type="tel" value={newIssue.customer_phone} onChange={e => setNewIssue(v => ({ ...v, customer_phone: e.target.value }))} className={field} />
             {linked && <span className="mt-1 block font-normal text-stone-500">The completion code always goes to the number on the customer record.</span>}</label>
-        {linked && cardMissing && <div role="alert" className="sm:col-span-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-            <p className="flex-1 font-semibold">{cardMissing} missing on the customer card. Fill {cardMissing.includes(' and ') ? 'them' : 'it'} in so the technician's km can be worked out.</p>
-            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('open-customer-card', { detail: { id: initialCustomer.id } }))}
-                className="min-h-11 rounded-lg bg-stone-900 px-3 text-xs font-bold text-white">Open customer card</button>
-        </div>}
+        {linked && cardMissing && <p role="alert" className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-950">
+            {cardMissing} missing on the customer card. Ask the customer, fill in the address and pincode below and save them to the card. Then the complaint can be raised.
+        </p>}
         <label className="text-xs font-semibold">Customer address *<input required maxLength={500} value={newIssue.service_address} onChange={e => { setNewIssue(v => ({ ...v, service_address: e.target.value })); setConfirmed(false); }} className={field} /></label>
         <label className="text-xs font-semibold">Pincode *<input required inputMode="numeric" pattern="[1-9][0-9]{5}" maxLength={6} placeholder="385340" value={newIssue.pincode} onChange={e => { setNewIssue(v => ({ ...v, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })); setConfirmed(false); }} className={field} /></label>
+        {linked && cardMissing && <div className="sm:col-span-2 space-y-2">
+            <button type="button" disabled={savingCard || !newIssue.service_address.trim() || !isPincode(newIssue.pincode)} onClick={saveToCard}
+                className="min-h-11 w-full rounded-lg bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-40 sm:w-auto">{savingCard ? 'Saving…' : 'Save to customer card'}</button>
+            {cardError && <p role="alert" className="text-xs font-semibold text-red-700">{cardError}</p>}
+        </div>}
         <label className="sm:col-span-2 flex min-h-11 items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm font-semibold text-sky-950">
             <input required type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} className="mt-0.5 h-5 w-5 flex-shrink-0" />
             <span>I read this address and pincode out to the customer and they confirmed it is right.<span className="mt-0.5 block text-xs font-normal">The technician goes here and the km is worked out from it.</span></span>
@@ -161,6 +194,7 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
             if (!validFiles(chosen)) { setFiles([]); setError('Choose at most 5 JPG, PNG, WebP or PDF files, each no larger than 10 MB.'); e.target.value = ''; return; }
             setFiles(chosen); setError('');
         }} className="mt-1 block w-full rounded-lg border p-2 text-sm" />{files.length > 0 && <span className="block mt-1">{files.length} file(s) selected</span>}</label>
-        <button disabled={busy} className="min-h-11 rounded-lg bg-amber-500 px-4 py-3 text-sm font-bold disabled:opacity-50">Raise complaint</button>
+        <button disabled={busy || (linked && (!card || Boolean(cardMissing)))} className="min-h-11 rounded-lg bg-amber-500 px-4 py-3 text-sm font-bold disabled:opacity-50">Raise complaint</button>
+        {linked && cardMissing && <p className="self-center text-xs text-stone-500">Save the address and pincode to the customer card first.</p>}
     </form>;
 }
