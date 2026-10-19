@@ -59,12 +59,12 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                 </div>
                 {/* Own row: the warranty text is too long to share the name's line on a phone. */}
                 {isCompleted && (
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <WarrantyBadge customer={customer} />
                         {onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(customer); }}
                             aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
-                            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
-                            <Wrench size={20} />
+                            className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-600 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+                            <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
                         </button>}
                     </div>
                 )}

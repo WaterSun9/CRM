@@ -1287,12 +1287,12 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                         </div>
                                         
                                         {cust.stage === STAGE_IDS.COMPLETED && (
-                                            <div className="-mt-1 mb-3 flex flex-wrap items-center gap-2">
+                                            <div className="-mt-1 mb-3 flex flex-wrap items-center justify-between gap-2">
                                                 <WarrantyBadge customer={cust} />
                                                 {onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(cust); }}
                                                     aria-label={`Raise complaint for ${cust.customer_name || 'customer'}`} title="Raise complaint"
-                                                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
-                                                    <Wrench size={20} />
+                                                    className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-600 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+                                                    <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
                                                 </button>}
                                             </div>
                                         )}
@@ -1413,8 +1413,8 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                 <RedFlagToggle customer={selectedCust} user={user} tone="light" className="h-9 w-9 rounded-full" />
                                 {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(selectedCust)}
                                     aria-label={`Raise complaint for ${selectedCust.customer_name || 'customer'}`} title="Raise complaint"
-                                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
-                                    <Wrench size={20} />
+                                    className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-600 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+                                    <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
                                 </button>}
                                 {getTelephoneHref(selectedCust.phone_number) && (
                                     <a

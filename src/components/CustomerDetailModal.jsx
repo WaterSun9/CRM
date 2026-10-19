@@ -2107,8 +2107,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                         {isCompleted && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(savedDataRef.current)}
                             aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
-                            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-amber-400/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25">
-                            <Wrench size={20} />
+                            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-400 hover:text-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+                            <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
                         </button>}
                         <RedFlagToggle customer={customer} user={user} tone="dark" />
                         {/* Admin unlock/lock toggle for completed cards */}

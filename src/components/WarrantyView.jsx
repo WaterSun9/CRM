@@ -273,9 +273,9 @@ export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, is
                                                 type="button"
                                                 onClick={() => onRaiseServiceIssue(c)}
                                                 aria-label={`Raise complaint for ${c.customer_name || 'customer'}`} title="Raise complaint"
-                                                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 cursor-pointer"
+                                                className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-600 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 cursor-pointer"
                                             >
-                                                <Wrench size={20} />
+                                                <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
                                             </button>
                                         )}
                                     </div>
