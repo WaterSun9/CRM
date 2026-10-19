@@ -78,7 +78,9 @@ import {
   randomCode, randomHex, sameHex, sendWait, templateParam, warrantyText,
 } from './helpers.ts'
 
-const ALLOWED_ORIGINS = ['https://crm.watersunsolar.com', 'https://watersun.deeprootsystems.in', 'https://watersun9.github.io']
+// solarflow.deeprootsystems.in: the test copy used before go-live (real-number SMS
+// does not work on localhost). Remove it when the test site is no longer needed.
+const ALLOWED_ORIGINS = ['https://crm.watersunsolar.com', 'https://watersun.deeprootsystems.in', 'https://watersun9.github.io', 'https://solarflow.deeprootsystems.in']
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ACTIVE = ['assigned', 'completion_pending']
 const WA_OFF = 'WhatsApp codes are not switched on yet. Ask the office to close this job.'
