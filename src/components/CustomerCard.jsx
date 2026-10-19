@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar } from 'lucide-react';
-import ComplaintIcon from './ComplaintIcon';
+import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar, Wrench } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 import { formatCustomerTimestamp } from '../utils/customerActivity';
 import { RedFlagBadge } from './RedFlag';
@@ -65,7 +64,7 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                         {onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(customer); }}
                             aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
                             className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
-                            <ComplaintIcon size={20} />
+                            <Wrench size={20} />
                         </button>}
                     </div>
                 )}

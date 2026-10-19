@@ -9,7 +9,6 @@ import {
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
     Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal, Flag
 } from 'lucide-react';
-import ComplaintIcon from './ComplaintIcon';
 import { logActivity, logFieldChanges, readAdminFields, toIndianCommas, formatInputValue, parseIndianNumber, normalizePhoneForSave, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
 import { PRIMARY_STAGES, STAGE_IDS, ADMIN_NUMERIC_COLUMNS, QUOTATION_PARTNER_ENABLED, needsFullLeadDocs } from '../constants';
@@ -1293,7 +1292,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                                 {onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(cust); }}
                                                     aria-label={`Raise complaint for ${cust.customer_name || 'customer'}`} title="Raise complaint"
                                                     className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
-                                                    <ComplaintIcon size={20} />
+                                                    <Wrench size={20} />
                                                 </button>}
                                             </div>
                                         )}
@@ -1415,7 +1414,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                 {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(selectedCust)}
                                     aria-label={`Raise complaint for ${selectedCust.customer_name || 'customer'}`} title="Raise complaint"
                                     className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
-                                    <ComplaintIcon size={20} />
+                                    <Wrench size={20} />
                                 </button>}
                                 {getTelephoneHref(selectedCust.phone_number) && (
                                     <a

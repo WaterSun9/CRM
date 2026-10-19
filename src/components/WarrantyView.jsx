@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ShieldAlert, ShieldCheck, ShieldQuestion, Search, RefreshCw, ChevronDown, Info } from 'lucide-react';
-import ComplaintIcon from './ComplaintIcon';
+import { ShieldAlert, ShieldCheck, ShieldQuestion, Search, RefreshCw, ChevronDown, Info, Wrench } from 'lucide-react';
 import { CUSTOMER_CARD_COLUMNS, STAGE_IDS } from '../constants';
 import { supabase } from '../supabase';
 import { todayIST, warrantyInfo, expiredWarrantyOrFilter, inWarrantyOrFilter, formatWarrantyDate } from '../utils/warranty';
@@ -276,7 +275,7 @@ export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, is
                                                 aria-label={`Raise complaint for ${c.customer_name || 'customer'}`} title="Raise complaint"
                                                 className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 cursor-pointer"
                                             >
-                                                <ComplaintIcon size={20} />
+                                                <Wrench size={20} />
                                             </button>
                                         )}
                                     </div>

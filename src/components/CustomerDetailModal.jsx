@@ -15,9 +15,7 @@ import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
-    Eye, Search, Image as ImageIcon, MessageSquare, Calendar, Flag
-} from 'lucide-react';
-import ComplaintIcon from './ComplaintIcon';
+    Eye, Search, Image as ImageIcon, MessageSquare, Calendar, Flag, Wrench } from 'lucide-react';
 import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN } from '../constants';
 import { logActivity, formatDateToDDMMYYYY, parseIndianNumber, fetchAgent2SubAgents, normalizeMeterInstallation, sanitizePhoneNumber, logFieldChanges, readAdminFields } from '../utils';
 import { supabase } from '../supabase';
@@ -2084,7 +2082,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         {isCompleted && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(savedDataRef.current)}
                             aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
                             className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-amber-400/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25">
-                            <ComplaintIcon size={20} />
+                            <Wrench size={20} />
                         </button>}
                         <RedFlagToggle customer={customer} user={user} tone="dark" />
                         {/* Admin unlock/lock toggle for completed cards */}
