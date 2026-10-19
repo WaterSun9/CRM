@@ -179,7 +179,7 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
         {showCodeEntry && <form onSubmit={verify} className="space-y-3 rounded-xl border border-green-200 bg-green-50 p-3">
             <p className="text-sm text-green-900">{sent
                 ? <>Code sent {sent.channel} to <strong>{sent.maskedPhone}</strong>. Ask the customer to read it out.</>
-                : 'A code was sent to the customer. Ask the customer to read it out.'}</p>
+                : 'If the customer got a code, type it below. If not, press Send code again.'}</p>
             {sent?.testMode && <p className="rounded-lg bg-amber-100 p-2 text-xs font-semibold text-amber-900">Test mode: the code went to the test number, not to the customer.</p>}
             <label className="block text-xs font-semibold">6-digit code from the customer
                 <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="------"
