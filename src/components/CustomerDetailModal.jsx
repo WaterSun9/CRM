@@ -116,6 +116,32 @@ const getChangedFields = (draft = {}, saved = {}) => {
 };
 
 // ─── CustomerDetailModal ──────────────────────────────────────────────────────
+// Completed cards are frozen, but the office can still fix the address and pincode:
+// complaints and the technician's km are worked out from them.
+function FrozenAddressEditor({ address, pincode, onSave }) {
+    const startAddress = String(address ?? '');
+    const startPin = String(pincode ?? '').replace(/\D/g, '');
+    const [form, setForm] = useState({ address: startAddress, pincode: startPin });
+    const [saving, setSaving] = useState(false);
+    const changed = form.address.trim() !== startAddress.trim() || form.pincode !== startPin;
+    const pinOk = form.pincode === '' || /^[1-9]\d{5}$/.test(form.pincode);
+    const save = async event => {
+        event.preventDefault();
+        if (!changed || !pinOk) return;
+        setSaving(true);
+        try { await onSave({ full_address: form.address.trim() || null, pincode: form.pincode || null }); }
+        finally { setSaving(false); }
+    };
+    const input = 'mt-1 block w-full min-h-11 rounded-xl border border-stone-200 bg-white p-2 text-sm font-medium text-stone-800';
+    return <form onSubmit={save} className="mb-6 grid gap-3 rounded-2xl border border-stone-200 bg-white p-4 sm:grid-cols-[1fr_10rem_auto] sm:items-end">
+        <p className="sm:col-span-3 text-xs font-bold text-stone-700">Address and pincode <span className="font-medium text-stone-400">(office can fix these on a completed customer)</span></p>
+        <label className="text-[11px] font-semibold text-stone-500">Full address<textarea rows={2} maxLength={500} value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={input} /></label>
+        <label className="text-[11px] font-semibold text-stone-500">Pincode<input inputMode="numeric" maxLength={6} placeholder="385340" value={form.pincode} onChange={e => setForm(f => ({ ...f, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))} className={input} />
+            {!pinOk && <span className="mt-1 block text-red-600">6 digits</span>}</label>
+        <button disabled={saving || !changed || !pinOk} className="min-h-11 rounded-xl bg-stone-900 px-4 text-xs font-bold text-white disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
+    </form>;
+}
+
 export default function CustomerDetailModal({ customer, onClose, onUpdate, onDelete, onRaiseServiceIssue, user, meta, channel_partners = [], defaultTab }) {
     const { showAlert, showConfirm, showChoice } = useGlobalPopup();
     const [activeTab, setActiveTab] = useState(() => {
@@ -2134,6 +2160,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                 <p className="text-[10px] text-stone-400">{isAdmin ? 'Click "Unlock to Edit" in the header to make changes' : 'Only an admin can unlock this record for editing'}</p>
                             </div>
                         </div>
+                    )}
+                    {isCompleted && isFrozen && (isAdmin || isOffice) && fullRecordLoaded && (
+                        <FrozenAddressEditor key={`${customer.id}:${savedDataRef.current?.full_address ?? ''}:${savedDataRef.current?.pincode ?? ''}`}
+                            address={savedDataRef.current?.full_address} pincode={savedDataRef.current?.pincode}
+                            onSave={patch => handleSectionUpdate(customer.id, patch)} />
                     )}
                     {isCompleted && !isFrozen && (
                         <div className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-6 border bg-amber-50 border-amber-200">
