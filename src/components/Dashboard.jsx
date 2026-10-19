@@ -211,6 +211,27 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
         restoreOpenedCustomer();
     }, []);
 
+    // "Open customer card" from the Complaints screen: the card opens above it
+    // (cardOverComplaints), and closing it tells the visit form to read the card again.
+    const [cardOverComplaints, setCardOverComplaints] = useState(false);
+    useEffect(() => {
+        const open = async event => {
+            const id = event.detail?.id;
+            if (!id) return;
+            const { data } = await supabase.from('admin').select('*').eq('id', id).maybeSingle();
+            if (!data) return;
+            setCardOverComplaints(true);
+            setSelectedCustomer(data);
+        };
+        window.addEventListener('open-customer-card', open);
+        return () => window.removeEventListener('open-customer-card', open);
+    }, []);
+    const closeCustomerCard = () => {
+        if (cardOverComplaints && selectedCustomer?.id) window.dispatchEvent(new CustomEvent('customer-card-closed', { detail: { id: selectedCustomer.id } }));
+        setCardOverComplaints(false);
+        setSelectedCustomer(null);
+    };
+
     const PAGE_SIZE = 50;
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
@@ -1581,19 +1602,22 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
 
             {/* Modals */}
             {selectedCustomer && (
+                <div className={cardOverComplaints ? 'relative z-[95]' : undefined}>
                 <Suspense fallback={<ViewLoader />}>
                 <CustomerDetailModal
                     customer={selectedCustomer}
-                    onClose={() => setSelectedCustomer(null)}
+                    onClose={closeCustomerCard}
                     onUpdate={handleUpdateCustomer}
                     onDelete={handleSoftDelete}
-                    onRaiseServiceIssue={onRaiseServiceIssue}
+                    // The raise form opens above the card, so a card lifted over Complaints drops back down.
+                    onRaiseServiceIssue={onRaiseServiceIssue && (customer => { setCardOverComplaints(false); onRaiseServiceIssue(customer); })}
                     user={user}
                     meta={meta}
                     channel_partners={uniqueChannelPartners}
                     defaultTab={currentView === 'subsidy' ? STAGE_IDS.SUBSIDY_STATUS : currentView === 'loan_tags' ? STAGE_IDS.LOAN : currentView === 'installation_tags' ? STAGE_IDS.INSTALLATION_STATUS : currentView === 'stages' ? selectedStage : undefined}
                 />
                 </Suspense>
+                </div>
             )}
             {showAddLead && <Suspense fallback={<ViewLoader />}><AddLeadModal isOpen={showAddLead} onClose={() => setShowAddLead(false)} onSave={handleAddLead} meta={meta} channel_partners={uniqueChannelPartners} user={user} /></Suspense>}
         </div>

@@ -94,6 +94,13 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
     }, [issue.id, issue.assigned_to, visits]);
 
     // Customer pincode: the customer card, else a pincode written in an address.
+    // Read again when the office closes the customer card opened from here.
+    const [cardReload, setCardReload] = useState(0);
+    useEffect(() => {
+        const closed = event => { if (event.detail?.id === issue.customer_id) { setCardReload(n => n + 1); setTypedKm(null); } };
+        window.addEventListener('customer-card-closed', closed);
+        return () => window.removeEventListener('customer-card-closed', closed);
+    }, [issue.customer_id]);
     useEffect(() => {
         let active = true;
         const fromComplaint = pincodeInText(issue.service_address);
@@ -102,12 +109,13 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
             .then(({ data }) => {
                 if (!active) return;
                 const card = String(data?.pincode ?? '').replace(/\D/g, '');
-                if (isPincode(card)) setCustomerPin({ pin: card, from: 'the customer card' });
-                else if (pincodeInText(data?.full_address)) setCustomerPin({ pin: pincodeInText(data.full_address), from: "the customer's address" });
-                else setCustomerPin({ pin: fromComplaint, from: 'the complaint address' });
+                const missing = { pincode: !isPincode(card), address: !String(data?.full_address ?? '').trim() };
+                if (isPincode(card)) setCustomerPin({ pin: card, from: 'the customer card', missing });
+                else if (pincodeInText(data?.full_address)) setCustomerPin({ pin: pincodeInText(data.full_address), from: "the customer's address", missing });
+                else setCustomerPin({ pin: fromComplaint, from: 'the complaint address', missing });
             });
         return () => { active = false; };
-    }, [issue.customer_id, issue.service_address]);
+    }, [issue.customer_id, issue.service_address, cardReload]);
 
     useEffect(() => {
         let active = true;
@@ -156,7 +164,7 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
     else if (pointsFailed) reason = 'Could not load the pincode list.';
     else if (!points) reason = '';
     else if (trip.start_source === 'manual' && !pincodePoint(points, trip.start_pincode)) reason = `Start pincode ${trip.start_pincode} has no map point in our list.`;
-    else if (!end) reason = 'Customer pincode missing.';
+    else if (!end) { reason = 'Customer pincode missing.'; reasonAction = issue.customer_id ? 'Fill it in on the customer card, or type it above for this visit.' : reasonAction; }
     else if (!site && !trip.reached_at && !pincodePoint(points, endPin)) {
         reason = `Customer pincode ${endPin} has no map point in our list.`;
         reasonAction = `Type the km, or ask the technician to tap Reached site next time.${siteStatus === 'ready' && issue.customer_id ? ' You can also set the customer location above.' : ''}`;
@@ -231,8 +239,18 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
     const otherMode = roadKm?.travelModeUsed && roadKm.travelModeUsed !== TRIP_TRAVEL_MODE;
     const minutes = Number(roadAnswer?.durationMinutes);
     const input = 'mt-1 block w-full min-h-11 rounded-lg border p-2';
+    // What the linked customer's card lacks: 'Address and pincode', 'Pincode' or 'Address'.
+    // Shown only while no pincode is known at all (card, card address or complaint address).
+    const cardMissing = !issue.customer_id || !customerPin?.missing || customerPin.pin ? ''
+        : customerPin.missing.address && customerPin.missing.pincode ? 'Address and pincode'
+            : customerPin.missing.pincode ? 'Pincode' : customerPin.missing.address ? 'Address' : '';
     return <form onSubmit={save} className="grid gap-2 sm:grid-cols-3 border-t pt-3">
         <h3 className="sm:col-span-3 text-sm font-bold">Record a visit payment</h3>
+        {cardMissing && <div role="alert" className="sm:col-span-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950">
+            <p className="flex-1 font-semibold">{cardMissing} missing on the customer card. Fill {cardMissing.includes(' and ') ? 'them' : 'it'} in so the km can be worked out.</p>
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('open-customer-card', { detail: { id: issue.customer_id } }))}
+                className="min-h-11 rounded-lg bg-stone-900 px-3 font-bold text-white">Open customer card</button>
+        </div>}
         <div className="sm:col-span-3 space-y-1 rounded-lg bg-sky-50 p-2 text-xs text-sky-950">
             {openTrips.length > 0 && <label className="block font-semibold">Trip
                 <select value={trip?.id || ''} onChange={e => chooseTrip(e.target.value)} className={`${input} bg-white text-sm font-normal`}>
@@ -241,7 +259,7 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
                 </select>
             </label>}
             {trip && <p>Started {formatDateTime(trip.started_at)} from {startText(trip, points)}. {toText}</p>}
-            {trip && !trip.reached_at && !site && !customerPin?.pin && customerPin !== null && <label className="block font-semibold">Customer pincode missing. Type it to work out the km
+            {trip && !trip.reached_at && !site && !customerPin?.pin && customerPin !== null && <label className="block font-semibold">{cardMissing ? 'Or type the customer pincode for this visit' : 'Customer pincode missing. Type it to work out the km'}
                 <input value={typedPin} onChange={e => { setTypedPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setTypedKm(null); }} inputMode="numeric" maxLength={6} placeholder="385340" className={`${input} bg-white text-sm`} />
             </label>}
             {roadLoading

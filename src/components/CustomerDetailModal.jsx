@@ -17,6 +17,7 @@ import {
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
     Eye, Search, Image as ImageIcon, MessageSquare, Calendar, Flag
 } from 'lucide-react';
+import ComplaintIcon from './ComplaintIcon';
 import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN } from '../constants';
 import { logActivity, formatDateToDDMMYYYY, parseIndianNumber, fetchAgent2SubAgents, normalizeMeterInstallation, sanitizePhoneNumber, logFieldChanges, readAdminFields } from '../utils';
 import { supabase } from '../supabase';
@@ -2061,8 +2062,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 )}
 
                 {/* Header */}
-                <div className="bg-stone-900 px-6 py-5 flex justify-between items-center flex-shrink-0">
-                    <div>
+                <div className="bg-stone-900 px-4 sm:px-6 py-4 sm:py-5 flex flex-wrap justify-between items-center gap-x-4 gap-y-3 flex-shrink-0">
+                    <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                             <h2 className="text-xl font-bold text-white">{customer.customer_name}</h2>
                             <RedFlagBadge customerId={customer.id} user={user} size={17} />
@@ -2079,11 +2080,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             <span className="inline-flex items-center gap-1.5"><Calendar size={11} className="flex-shrink-0" />Updated: {lastUpdatedAt ? `${formatCustomerTimestamp(lastUpdatedAt)} IST` : '—'}</span>
                         </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                         {isCompleted && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(savedDataRef.current)}
                             aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
                             className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-500/15 px-3 text-[11px] font-bold text-amber-300 hover:bg-amber-500/25">
-                            <Flag size={13} /> Raise complaint
+                            <ComplaintIcon size={13} /> Raise complaint
                         </button>}
                         <RedFlagToggle customer={customer} user={user} tone="dark" />
                         {/* Admin unlock/lock toggle for completed cards */}
