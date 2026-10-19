@@ -22,16 +22,24 @@ function loadAuth() {
     return loading;
 }
 
-// Sends the SMS. containerId: an empty element on the page for the invisible reCAPTCHA.
+// Sends the SMS. containerId: an empty element on the page; each send renders its
+// invisible reCAPTCHA in a new element inside it, because reCAPTCHA refuses to
+// render twice in one element (a resend, or a retry after a failed send, would fail).
 // Returns the confirmation to pass to confirmFirebaseCode.
 export async function sendFirebaseCode(phone, containerId) {
     const { auth, authModule } = await loadAuth();
-    const verifier = new authModule.RecaptchaVerifier(auth, containerId, { size: 'invisible' });
+    const container = document.getElementById(containerId);
+    if (!container) throw new Error('The page is not ready. Try again.');
+    container.replaceChildren();
+    const spot = document.createElement('div');
+    container.appendChild(spot);
+    let verifier = null;
     try {
+        verifier = new authModule.RecaptchaVerifier(auth, spot, { size: 'invisible' });
         return await authModule.signInWithPhoneNumber(auth, phone, verifier);
     } finally {
-        // A fresh reCAPTCHA for every send; a used one cannot be sent again.
-        verifier.clear();
+        try { verifier?.clear(); } catch { /* already gone */ }
+        spot.remove();
     }
 }
 
