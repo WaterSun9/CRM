@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     WARRANTY_YEARS, todayIST, warrantyStartOf, warrantyEndDate, warrantyInfo,
-    expiredStartCutoff, istMidnightUtc, expiredWarrantyOrFilter, formatWarrantyDate, WARRANTY_STATUS_LABELS,
+    expiredStartCutoff, istMidnightUtc, expiredWarrantyOrFilter, inWarrantyOrFilter, formatWarrantyDate, WARRANTY_STATUS_LABELS,
 } from '../src/utils/warranty.js';
 
 const addDays = (iso, days) => new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
@@ -142,10 +142,12 @@ const matchesCondition = (part, row) => {
     if (op === 'is' && value === 'null') return field == null;
     if (op === 'lte') return field != null && field <= value;
     if (op === 'lt') return field != null && Date.parse(field) < Date.parse(value);
+    if (op === 'gt') return field != null && field > value;
+    if (op === 'gte') return field != null && Date.parse(field) >= Date.parse(value);
     throw new Error(`operator not handled in test: ${part}`);
 };
 
-test('Warranty Expired filter picks exactly the customers the badge calls out of warranty', () => {
+test('Out-of-warranty filter picks exactly the customers the badge calls out of warranty', () => {
     for (const today of ['2026-10-12', '2028-02-29', '2028-03-01', '2029-02-28', '2029-03-01', '2031-01-01']) {
         const filter = expiredWarrantyOrFilter(today);
         const cutoff = expiredStartCutoff(today);
@@ -164,6 +166,28 @@ test('Warranty Expired filter picks exactly the customers the badge calls out of
         for (const row of rows) {
             const inFilter = splitTop(filter).some(part => matchesCondition(part, row));
             assert.equal(inFilter, warrantyInfo(row, today).status === 'out_of_warranty', `${today} ${JSON.stringify(row)}`);
+        }
+    }
+});
+
+test('In-warranty filter picks exactly the customers the badge calls in warranty', () => {
+    for (const today of ['2026-10-12', '2028-02-29', '2028-03-01', '2029-02-28', '2029-03-01', '2031-01-01']) {
+        const filter = inWarrantyOrFilter(today);
+        const cutoff = expiredStartCutoff(today);
+        const rows = [{ installation_date: null, material_delivery_date: null, completed_at: null }];
+        for (const delta of [-2, -1, 0, 1, 2]) {
+            const day = addDays(cutoff, delta);
+            rows.push({ installation_date: day, material_delivery_date: null, completed_at: null });
+            rows.push({ installation_date: null, material_delivery_date: day, completed_at: null });
+            rows.push({ installation_date: addDays(cutoff, -400), material_delivery_date: day, completed_at: null });
+            const midnight = Date.parse(istMidnightUtc(day));
+            for (const ms of [-1, 0, 1, 23 * 3600000, 86400000 - 1]) {
+                rows.push({ installation_date: null, material_delivery_date: null, completed_at: new Date(midnight + ms).toISOString() });
+            }
+        }
+        for (const row of rows) {
+            const inFilter = splitTop(filter).some(part => matchesCondition(part, row));
+            assert.equal(inFilter, warrantyInfo(row, today).status === 'in_warranty', `${today} ${JSON.stringify(row)}`);
         }
     }
 });

@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ShieldAlert, ShieldCheck, ShieldQuestion, Search, RefreshCw, ChevronDown, Flag, Info } from 'lucide-react';
 import { CUSTOMER_CARD_COLUMNS, STAGE_IDS } from '../constants';
 import { supabase } from '../supabase';
-import { todayIST, warrantyInfo, expiredWarrantyOrFilter, formatWarrantyDate } from '../utils/warranty';
+import { todayIST, warrantyInfo, expiredWarrantyOrFilter, inWarrantyOrFilter, formatWarrantyDate } from '../utils/warranty';
 import WarrantyBadge from './WarrantyBadge';
 
 const PAGE_SIZE = 50;
 
 const TABS = [
+    { id: 'in_warranty', label: 'In warranty', icon: ShieldCheck, selected: 'bg-emerald-600 border-emerald-600 text-white' },
     { id: 'expired', label: 'Out of warranty', icon: ShieldAlert, selected: 'bg-red-600 border-red-600 text-white' },
     { id: 'missing', label: 'Date missing', icon: ShieldQuestion, selected: 'bg-amber-500 border-amber-500 text-white' },
 ];
@@ -23,13 +24,13 @@ const cleanSearch = (term) => term.replace(/[,()"\\]/g, ' ').trim();
 
 const withTab = (query, tabId, today) => tabId === 'missing'
     ? query.is('installation_date', null).is('material_delivery_date', null).is('completed_at', null)
-    : query.or(expiredWarrantyOrFilter(today));
+    : query.or(tabId === 'in_warranty' ? inWarrantyOrFilter(today) : expiredWarrantyOrFilter(today));
 
-// Completed customers whose 5-year warranty has ended, worked out on the server
-// from the same dates as the badge (src/utils/warranty.js), plus the completed
-// customers with no date at all so the office can fill them in.
-export default function WarrantyExpiredView({ onSelectCustomer, onRaiseServiceIssue, isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter }) {
-    const [activeTab, setActiveTab] = useState('expired');
+// Warranty page: completed customers in warranty, out of warranty (5 years ended),
+// worked out on the server from the same dates as the badge (src/utils/warranty.js),
+// and the completed customers with no date at all so the office can fill them in.
+export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter }) {
+    const [activeTab, setActiveTab] = useState('in_warranty');
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [customers, setCustomers] = useState([]);
@@ -82,7 +83,7 @@ export default function WarrantyExpiredView({ onSelectCustomer, onRaiseServiceIs
 
         try {
             let query = withTab(scopedQuery(CUSTOMER_CARD_COLUMNS), activeTab, todayIST());
-            // Most recently expired first. id keeps the pages stable when dates tie.
+            // Newest start date first (most recently expired / installed). id keeps the pages stable when dates tie.
             query = activeTab === 'missing'
                 ? query.order('updated_at', { ascending: false, nullsFirst: false })
                 : query.order('installation_date', { ascending: false, nullsFirst: false })
@@ -189,7 +190,7 @@ export default function WarrantyExpiredView({ onSelectCustomer, onRaiseServiceIs
                 </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:max-w-md">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 sm:max-w-xl">
                 {TABS.map(tab => {
                     const isSelected = activeTab === tab.id;
                     const count = tabCounts[tab.id];
@@ -221,6 +222,7 @@ export default function WarrantyExpiredView({ onSelectCustomer, onRaiseServiceIs
                     <p className="font-bold text-stone-600 text-sm">
                         {debouncedSearch ? `No customers matched "${debouncedSearch}".`
                             : isMissingTab ? 'Every completed customer has a warranty date.'
+                            : activeTab === 'in_warranty' ? 'No completed customers are in warranty.'
                             : 'No customers are out of warranty yet.'}
                     </p>
                 </div>

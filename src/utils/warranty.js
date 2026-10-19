@@ -86,7 +86,7 @@ export function warrantyInfo(customer, todayIso = todayIST()) {
 
 // The latest start date whose warranty has already ended on todayIso: a start
 // on or before this date is out of warranty. Used for the server-side filter
-// on the Warranty Expired page. Found by stepping from "today minus 5 years"
+// on the Warranty page. Found by stepping from "today minus 5 years"
 // so the 29 Feb clamping matches warrantyEndDate exactly.
 export function expiredStartCutoff(todayIso = todayIST()) {
     const today = isoDateOnly(todayIso);
@@ -117,6 +117,19 @@ export function expiredWarrantyOrFilter(todayIso = todayIST()) {
         `installation_date.lte.${cutoff}`,
         `and(installation_date.is.null,material_delivery_date.lte.${cutoff})`,
         `and(installation_date.is.null,material_delivery_date.is.null,completed_at.lt."${completedBefore}")`,
+    ].join(',');
+}
+
+// PostgREST .or() filter for admin rows still in warranty on todayIso: has a start
+// date and it is after the expired cutoff. Exactly the rows expiredWarrantyOrFilter
+// leaves out, minus the ones with no date at all.
+export function inWarrantyOrFilter(todayIso = todayIST()) {
+    const cutoff = expiredStartCutoff(todayIso);
+    const completedFrom = istMidnightUtc(addDays(cutoff, 1));
+    return [
+        `installation_date.gt.${cutoff}`,
+        `and(installation_date.is.null,material_delivery_date.gt.${cutoff})`,
+        `and(installation_date.is.null,material_delivery_date.is.null,completed_at.gte."${completedFrom}")`,
     ].join(',');
 }
 
