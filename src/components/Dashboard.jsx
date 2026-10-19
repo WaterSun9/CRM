@@ -223,8 +223,11 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             setCardOverComplaints(true);
             setSelectedCustomer(data);
         };
+        // Opening a complaint (red wrench, history row) shows Complaints above the card.
+        const lower = () => setCardOverComplaints(false);
         window.addEventListener('open-customer-card', open);
-        return () => window.removeEventListener('open-customer-card', open);
+        window.addEventListener('open-complaint', lower);
+        return () => { window.removeEventListener('open-customer-card', open); window.removeEventListener('open-complaint', lower); };
     }, []);
     const closeCustomerCard = () => {
         if (cardOverComplaints && selectedCustomer?.id) window.dispatchEvent(new CustomEvent('customer-card-closed', { detail: { id: selectedCustomer.id } }));

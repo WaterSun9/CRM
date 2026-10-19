@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ShieldAlert, ShieldCheck, ShieldQuestion, Search, RefreshCw, ChevronDown, Info, Wrench } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, ShieldQuestion, Search, RefreshCw, ChevronDown, Info } from 'lucide-react';
 import { CUSTOMER_CARD_COLUMNS, STAGE_IDS } from '../constants';
 import { supabase } from '../supabase';
 import { todayIST, warrantyInfo, expiredWarrantyOrFilter, inWarrantyOrFilter, formatWarrantyDate } from '../utils/warranty';
 import WarrantyBadge from './WarrantyBadge';
 
+import ComplaintButton from './service/ComplaintButton';
 const PAGE_SIZE = 50;
 
 const TABS = [
@@ -269,14 +270,7 @@ export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, is
                                     <div className="px-4 pb-4 flex flex-wrap items-center justify-between gap-2">
                                         <WarrantyBadge info={info} />
                                         {onRaiseServiceIssue && (
-                                            <button
-                                                type="button"
-                                                onClick={() => onRaiseServiceIssue(c)}
-                                                aria-label={`Raise complaint for ${c.customer_name || 'customer'}`} title="Raise complaint"
-                                                className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-600 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 cursor-pointer"
-                                            >
-                                                <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
-                                            </button>
+                                            <ComplaintButton customer={c} onRaise={onRaiseServiceIssue} className="ml-auto" />
                                         )}
                                     </div>
                                 </div>

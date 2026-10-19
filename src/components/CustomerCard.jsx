@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar, Wrench } from 'lucide-react';
+import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 import { formatCustomerTimestamp } from '../utils/customerActivity';
 import { RedFlagBadge } from './RedFlag';
 import WarrantyBadge from './WarrantyBadge';
 
+import ComplaintButton from './service/ComplaintButton';
 const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStage, onRaiseServiceIssue, currentUser }) {
     const [showStageMenu, setShowStageMenu] = useState(false);
     const [menuDirection, setMenuDirection] = useState('down');
@@ -61,11 +62,7 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                 {isCompleted && (
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <WarrantyBadge customer={customer} />
-                        {onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(customer); }}
-                            aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
-                            className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-600 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
-                            <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
-                        </button>}
+                        {onRaiseServiceIssue && <ComplaintButton customer={customer} onRaise={onRaiseServiceIssue} stopPropagation className="ml-auto" />}
                     </div>
                 )}
                 <div className="grid grid-cols-2 gap-y-1.5 mb-3">

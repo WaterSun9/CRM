@@ -15,7 +15,7 @@ import {
     X, Edit3, Trash2, Save, Send, AlertTriangle, CheckSquare,
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
-    Eye, Search, Image as ImageIcon, MessageSquare, Calendar, Flag, Wrench } from 'lucide-react';
+    Eye, Search, Image as ImageIcon, MessageSquare, Calendar } from 'lucide-react';
 import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN } from '../constants';
 import { logActivity, formatDateToDDMMYYYY, parseIndianNumber, fetchAgent2SubAgents, normalizeMeterInstallation, sanitizePhoneNumber, logFieldChanges, readAdminFields } from '../utils';
 import { supabase } from '../supabase';
@@ -60,6 +60,8 @@ import { findUnsavedFields, fieldLabel, valuesMatch, mergeServerRecord } from '.
 import { missingDetailsForMove } from '../utils/stageRequirements';
 import { formatCustomerTimestamp } from '../utils/customerActivity';
 
+import ComplaintButton from './service/ComplaintButton';
+import ServiceHistory from './service/ServiceHistory';
 // ─── formatDateTime: helper to format date as "04 Aug, 11:01 PM" ──────────────
 const formatDateTime = (date) => {
     if (!date) return '–';
@@ -2105,11 +2107,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         </p>
                     </div>
                     <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                        {isCompleted && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(savedDataRef.current)}
-                            aria-label={`Raise complaint for ${customer.customer_name || 'customer'}`} title="Raise complaint"
-                            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-400 hover:text-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
-                            <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
-                        </button>}
+                        {isCompleted && onRaiseServiceIssue && <ComplaintButton customer={savedDataRef.current} onRaise={onRaiseServiceIssue} tone="dark" />}
                         <RedFlagToggle customer={customer} user={user} tone="dark" />
                         {/* Admin unlock/lock toggle for completed cards */}
                         {isCompleted && isAdmin && (
@@ -2166,6 +2164,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             address={savedDataRef.current?.full_address} pincode={savedDataRef.current?.pincode}
                             onSave={patch => handleSectionUpdate(customer.id, patch)} />
                     )}
+                    {isCompleted && onRaiseServiceIssue && fullRecordLoaded && <ServiceHistory customerId={customer.id} />}
                     {isCompleted && !isFrozen && (
                         <div className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-6 border bg-amber-50 border-amber-200">
                             <Unlock className="w-4 h-4 text-amber-600 flex-shrink-0" />

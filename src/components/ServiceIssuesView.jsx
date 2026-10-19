@@ -6,6 +6,7 @@ import TechnicianJobPanel from './service/TechnicianJobPanel';
 import OfficeIssuePanel from './service/OfficeIssuePanel';
 import VisitForm from './service/VisitForm';
 import { KmSettingsPanel } from './service/kmSettings';
+import { announceComplaintsChanged } from './service/complaintStatus';
 import WhatsAppLog from './service/WhatsAppLog';
 import {
     ACTIVE_STATUSES, OFFICE_FILTERS, STATUS_LABELS, STATUS_PILL, TECHNICIAN_FILTERS, WARRANTY_PILL,
@@ -38,12 +39,12 @@ function ClosureNote({ issue, forTechnician }) {
     return null;
 }
 
-export default function ServiceIssuesView({ user, initialCustomer = null, formOnly = false }) {
+export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false }) {
     const isTechnician = user?.userType === 'technician';
     const canManage = ['admin', 'sales'].includes(user?.userType);
     const defaultPartner = ['channel_partner_office', 'office2', 'agent', 'agent2'].includes(user?.userType) ? user?.channel_partner || '' : '';
     const [issues, setIssues] = useState([]);
-    const [selectedId, setSelectedId] = useState(null);
+    const [selectedId, setSelectedId] = useState(initialIssueId);
     const [visits, setVisits] = useState([]);
     const [extraFiles, setExtraFiles] = useState([]);
     const [attachedFiles, setAttachedFiles] = useState([]);
@@ -101,6 +102,13 @@ export default function ServiceIssuesView({ user, initialCustomer = null, formOn
     }, [canManage, formOnly]);
 
     const selected = issues.find(issue => issue.id === selectedId);
+    // Opened at one complaint (red wrench, customer history): bring it into view once it has loaded.
+    const focusedOnce = useRef(false);
+    useEffect(() => {
+        if (!initialIssueId || focusedOnce.current || !issues.some(issue => issue.id === initialIssueId)) return;
+        focusedOnce.current = true;
+        setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }, [initialIssueId, issues]);
     const loadVisits = useCallback(async issueId => {
         const { data, error: readError } = await supabase.from('service_visits').select('*').eq('issue_id', issueId).order('visit_date', { ascending: false });
         if (readError) throw readError;
@@ -129,6 +137,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, formOn
             if (user?.id !== authData.user.id) throw new Error('This is a role preview, not a login to that account. Sign in as the user to raise or change a complaint.');
             const message = await action();
             setNotice(message ?? successMessage);
+            announceComplaintsChanged();
             if (!formOnly) await load();
         }
         catch (failure) {

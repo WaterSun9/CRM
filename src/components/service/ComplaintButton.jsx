@@ -1,0 +1,31 @@
+import { Wrench } from 'lucide-react';
+import { FIXED_GREEN_DAYS, useComplaintStatus } from './complaintStatus';
+
+const shortDate = iso => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }) : '');
+
+// The wrench on a completed customer. Black: no complaint (tap to raise one).
+// Red: a complaint is open (tap to open it). Green: fixed in the last
+// FIXED_GREEN_DAYS days (tap to raise a new one). tone="dark" for the dark card header.
+export default function ComplaintButton({ customer, onRaise, tone = 'light', stopPropagation = false, className = '' }) {
+    const status = useComplaintStatus(customer?.id);
+    if (!onRaise || !customer?.id) return null;
+    const name = customer.customer_name || 'customer';
+    const ticket = status?.ticketNo ? ` #${status.ticketNo}` : '';
+    const open = status?.state === 'open';
+    const fixed = status?.state === 'fixed';
+    const color = open ? 'text-red-600 hover:text-red-700'
+        : fixed ? 'text-green-600 hover:text-green-700'
+            : tone === 'dark' ? 'text-white hover:text-stone-200' : 'text-stone-900 hover:text-stone-700';
+    const label = open ? `Complaint${ticket} open for ${name}. Open it`
+        : fixed ? `Complaint${ticket} fixed on ${shortDate(status.completedAt)} for ${name} (green for ${FIXED_GREEN_DAYS} days). Raise a new complaint`
+            : `Raise complaint for ${name}`;
+    const click = event => {
+        if (stopPropagation) event.stopPropagation();
+        if (open) window.dispatchEvent(new CustomEvent('open-complaint', { detail: { issueId: status.issueId } }));
+        else onRaise(customer);
+    };
+    return <button type="button" onClick={click} aria-label={label} title={open ? `Complaint${ticket} open` : fixed ? `Fixed ${shortDate(status.completedAt)}` : 'Raise complaint'}
+        className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${color} ${className}`}>
+        <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
+    </button>;
+}

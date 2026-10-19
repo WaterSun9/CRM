@@ -41,6 +41,7 @@ import BomPrintModal from './BomPrintModal';
 import { loadBomForCustomer, getBomTypeForCustomer } from '../utils/bom';
 import { findUnsavedFields, fieldLabel } from '../utils/saveCheck';
 
+import ComplaintButton from './service/ComplaintButton';
 // Documents asked for when the lead is created.
 const LEAD_DOC_TYPES = new Set(['adhaar_card_front', 'adhaar_card_back', 'pan_card', 'index_2', 'house_geo_tag_photo', 'light_bill', 'bank_details', 'extra_docs']);
 
@@ -1289,11 +1290,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                         {cust.stage === STAGE_IDS.COMPLETED && (
                                             <div className="-mt-1 mb-3 flex flex-wrap items-center justify-between gap-2">
                                                 <WarrantyBadge customer={cust} />
-                                                {onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(cust); }}
-                                                    aria-label={`Raise complaint for ${cust.customer_name || 'customer'}`} title="Raise complaint"
-                                                    className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-600 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
-                                                    <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
-                                                </button>}
+                                                {onRaiseServiceIssue && <ComplaintButton customer={cust} onRaise={onRaiseServiceIssue} stopPropagation className="ml-auto" />}
                                             </div>
                                         )}
                                         <div className="space-y-1.5 md:space-y-2 text-[11px] md:text-xs text-stone-600">
@@ -1411,11 +1408,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                             </div>
                             <div className="flex items-center gap-2 ml-3">
                                 <RedFlagToggle customer={selectedCust} user={user} tone="light" className="h-9 w-9 rounded-full" />
-                                {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(selectedCust)}
-                                    aria-label={`Raise complaint for ${selectedCust.customer_name || 'customer'}`} title="Raise complaint"
-                                    className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-600 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
-                                    <Wrench size={22} fill="currentColor" strokeWidth={1.5} />
-                                </button>}
+                                {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <ComplaintButton customer={selectedCust} onRaise={onRaiseServiceIssue} className="ml-auto" />}
                                 {getTelephoneHref(selectedCust.phone_number) && (
                                     <a
                                         href={getTelephoneHref(selectedCust.phone_number)}
