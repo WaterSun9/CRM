@@ -126,10 +126,10 @@ export const VENDOR_WHATSAPP_ENABLED = false;
 // codes are off and the technician is told to ask the office. The project ID must
 // also be set as the FIREBASE_PROJECT_ID secret for the service-otp function.
 export const FIREBASE_CONFIG = {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    appId: '',
+    apiKey: 'AIzaSyAYPy3dJvz-Cf7mdWZuFCKigC4t0n5b7mw',
+    authDomain: 'watersun-crm.firebaseapp.com',
+    projectId: 'watersun-crm',
+    appId: '1:984440243354:web:cff2a303d35d3e17ae4b23',
 };
 
 // Local Role Preview chat uses browser-tab test messages, never the CRM database.
