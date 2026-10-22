@@ -244,14 +244,14 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
     const cardMissing = !issue.customer_id || !customerPin?.missing || customerPin.pin ? ''
         : customerPin.missing.address && customerPin.missing.pincode ? 'Address and pincode'
             : customerPin.missing.pincode ? 'Pincode' : customerPin.missing.address ? 'Address' : '';
-    return <form onSubmit={save} className="grid gap-2 sm:grid-cols-3 border-t pt-3">
-        <h3 className="sm:col-span-3 text-sm font-bold">Record a visit payment</h3>
-        {cardMissing && <div role="alert" className="sm:col-span-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950">
+    return <form onSubmit={save} className="grid gap-2 sm:grid-cols-2 border-t pt-3">
+        <h3 className="sm:col-span-2 text-sm font-bold">Record a visit payment</h3>
+        {cardMissing && <div role="alert" className="sm:col-span-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950">
             <p className="flex-1 font-semibold">{cardMissing} missing on the customer card. Fill {cardMissing.includes(' and ') ? 'them' : 'it'} in so the km can be worked out.</p>
             <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('open-customer-card', { detail: { id: issue.customer_id } }))}
                 className="min-h-11 rounded-lg bg-stone-900 px-3 font-bold text-white">Open customer card</button>
         </div>}
-        <div className="sm:col-span-3 space-y-1 rounded-lg bg-sky-50 p-2 text-xs text-sky-950">
+        <div className="sm:col-span-2 space-y-1 rounded-lg bg-sky-50 p-2 text-xs text-sky-950">
             {openTrips.length > 0 && <label className="block font-semibold">Trip
                 <select value={trip?.id || ''} onChange={e => chooseTrip(e.target.value)} className={`${input} bg-white text-sm font-normal`}>
                     {openTrips.map(row => <option key={row.id} value={row.id}>{formatDateTime(row.started_at)} from {startText(row, points)}</option>)}
@@ -270,17 +270,17 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
             {roadKm && (otherMode || minutes > 0) && <p className="text-stone-500">{otherMode ? `No ${MODE_TEXT[TRIP_TRAVEL_MODE] || 'two-wheeler'} route found, so the ${MODE_TEXT[roadKm.travelModeUsed] || 'road'} route is used. ` : ''}{minutes > 0 ? `About ${Math.round(minutes)} min one way.` : ''}</p>}
             {roadFailed && estimate && <p className="text-stone-500" title={roadAnswer?.error || ''}>Road distance not available, using the estimate</p>}
             {warnings.map(text => <p key={text} className="rounded bg-amber-100 p-1.5 font-semibold text-amber-900">{text}</p>)}
-            <p className="text-stone-500">Km = {rule}. You can change it with a reason.</p>
+            <details className="text-stone-500"><summary className="cursor-pointer py-1">How distance is calculated</summary><p>Km = {rule}. You can change it with a reason.</p></details>
         </div>
         <label className="text-xs">Date<input required type="date" value={visit.visit_date} onChange={e => setVisit(v => ({ ...v, visit_date: e.target.value }))} className={input} /></label>
-        <TripTypeChoice value={roundTrip} onChange={chooseRoundTrip} />
         <label className="text-xs">Km travelled<input required min="0" step="0.01" type="number" inputMode="decimal" value={shownKm} onChange={e => setTypedKm(e.target.value)} className={input} /></label>
+        <TripTypeChoice value={roundTrip} onChange={chooseRoundTrip} className="sm:col-span-2" />
         <label className="text-xs">Rate per km (₹)<input min="0" max="1000" step="0.01" type="number" inputMode="decimal" value={rate} onChange={e => { setTypedRate(e.target.value); setTypedAmount(null); }} placeholder="0" className={input} /></label>
         <label className="text-xs">Amount (₹){autoAmount > 0 && typedAmount === null && <span className="text-stone-500"> = {shownKm} km x ₹{rate}</span>}<input required min="0" step="0.01" type="number" inputMode="decimal" value={shownAmount} onChange={e => setTypedAmount(e.target.value)} className={input} /></label>
-        {kmChanged && <label className="sm:col-span-3 text-xs font-semibold">Why is the km different from the {chosen.source === 'google' ? 'road distance' : 'estimate'} ({chosen.km} km)? *
+        {kmChanged && <label className="sm:col-span-2 text-xs font-semibold">Why is the km different from the {chosen.source === 'google' ? 'road distance' : 'estimate'} ({chosen.km} km)? *
             <input required maxLength={300} value={kmNote} onChange={e => setKmNote(e.target.value)} placeholder="e.g. road closed, went via Santalpur" className={`${input} text-sm font-normal`} />
         </label>}
-        <input maxLength={1000} value={visit.note} onChange={e => setVisit(v => ({ ...v, note: e.target.value }))} placeholder="Visit note (optional)" className="sm:col-span-3 min-h-11 rounded-lg border p-2 text-sm" />
-        <button disabled={busy || roadLoading || (kmChanged && !kmNote.trim())} className="sm:col-span-3 min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-bold disabled:opacity-50">Save visit</button>
+        <input maxLength={1000} value={visit.note} onChange={e => setVisit(v => ({ ...v, note: e.target.value }))} placeholder="Visit note (optional)" className="sm:col-span-2 min-h-11 rounded-lg border p-2 text-sm" />
+        <button disabled={busy || roadLoading || (kmChanged && !kmNote.trim())} className="sm:col-span-2 min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-bold disabled:opacity-50">Save visit</button>
     </form>;
 }

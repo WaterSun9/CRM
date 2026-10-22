@@ -18,7 +18,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { supabase } from './supabase';
-import { Sun, MessageCircle, Wrench, X } from 'lucide-react';
+import { Sun, MessageCircle, X } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import SetPasswordPage from './components/SetPassword';
@@ -78,11 +78,11 @@ export default function App() {
     useEffect(() => {
         const open = event => {
             if (!event.detail?.issueId) return;
-            setIssueCustomer(null); setFocusIssueId(event.detail.issueId); setShowServiceIssues(true); setShowTeamChat(false);
+            setIssueCustomer(null); setFocusIssueId(event.detail.issueId); setShowServiceIssues(['agent','agent2'].includes(user?.userType)); setShowTeamChat(false);
         };
         window.addEventListener('open-complaint', open);
         return () => window.removeEventListener('open-complaint', open);
-    }, []);
+    }, [user?.userType]);
 
     useEffect(() => {
         // ── Detect auth errors or recovery link from URL hash ──
@@ -343,7 +343,7 @@ export default function App() {
                 {!user ? (
                     <LoginScreen onLogin={(userData) => { setAuthError(''); setUser(userData); }} initialError={authError} />
                 ) : isAgent ? (
-                    <AgentPortal user={user} onLogout={handleLogout} onRaiseServiceIssue={canRaiseServiceIssue ? customer => { setIssueCustomer(customer); setShowServiceIssues(true); setShowTeamChat(false); } : undefined} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
+                    <AgentPortal user={user} onOpenComplaints={() => {setIssueCustomer(null);setFocusIssueId(null);setShowServiceIssues(true);setShowTeamChat(false);}} onLogout={handleLogout} onRaiseServiceIssue={canRaiseServiceIssue ? customer => { setIssueCustomer(customer); setShowServiceIssues(true); setShowTeamChat(false); } : undefined} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isVendor ? (
                     <VendorPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isStamp ? (
@@ -358,12 +358,8 @@ export default function App() {
             </Suspense>
 
             {canRaiseServiceIssue && <>
-                <button type="button" onClick={() => { setIssueCustomer(null); setFocusIssueId(null); setShowServiceIssues(true); setShowTeamChat(false); }} aria-label="Open complaints"
-                    className="fixed bottom-4 left-4 z-40 flex items-center gap-2 rounded-full bg-amber-500 px-4 py-3 text-stone-950 shadow-xl sm:bottom-6 sm:left-6">
-                    <Wrench size={18} /><span className="text-xs font-bold">Complaints</span>
-                </button>
-                {showServiceIssues && <div role="dialog" aria-label={issueCustomer ? 'Raise a complaint' : 'Complaints'} aria-modal="true" className={issueCustomer ? 'fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3 sm:p-6' : 'fixed inset-0 z-[60] overflow-y-auto bg-[#FCFBFA]'}>
-                    <div className={issueCustomer ? 'w-full max-w-3xl max-h-[92dvh] overflow-y-auto rounded-2xl bg-white p-3 shadow-2xl sm:p-5' : ''}>
+                {showServiceIssues && <div role="dialog" aria-label={issueCustomer ? 'Raise a complaint' : 'Complaints'} aria-modal="true" className={issueCustomer ? 'fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3 sm:p-6' : 'fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/50 p-3 sm:p-6'}>
+                    <div className={issueCustomer ? 'w-full max-w-3xl max-h-[92dvh] overflow-y-auto rounded-2xl bg-white p-3 shadow-2xl sm:p-5' : 'w-full max-w-[1500px] max-h-[94dvh] overflow-y-auto rounded-2xl bg-[#FCFBFA] shadow-2xl'}>
                         <div className="sticky top-0 z-10 flex justify-end border-b bg-white p-2"><button type="button" onClick={() => { setShowServiceIssues(false); setIssueCustomer(null); }} aria-label="Close complaints" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border"><X size={20} /></button></div>
                         <Suspense fallback={<ScreenLoader />}><ServiceIssuesView key={issueCustomer?.id || `all-issues:${focusIssueId || ''}`} user={user} initialCustomer={issueCustomer} initialIssueId={focusIssueId} formOnly={Boolean(issueCustomer)} /></Suspense>
                     </div>

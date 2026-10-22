@@ -55,8 +55,8 @@ export function KmSettingsPanel({ user, busy, run }) {
         }, 'Km settings saved. New visits use them; saved visits keep their own.');
     };
     const input = 'mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm';
-    return <details className="rounded-2xl border bg-white p-4">
-        <summary className="min-h-11 cursor-pointer py-2 text-sm font-bold">Km pay settings: ₹{settings.rate_per_km}/km · {settings.round_trip ? 'round trip' : 'one way'} · +{settings.grace_km} km grace</summary>
+    return <details className="service-settings rounded-xl border bg-white p-3">
+        <summary className="min-h-11 cursor-pointer py-2 text-sm font-bold">Travel payment settings</summary>
         {status === 'error' && <p role="alert" className="text-xs text-red-700">Could not load the km settings.</p>}
         <form onSubmit={save} className="mt-2 grid gap-2 sm:grid-cols-3">
             <label className="text-xs font-semibold">Rate per km (₹)
@@ -70,10 +70,10 @@ export function KmSettingsPanel({ user, busy, run }) {
 }
 
 // Round trip (x 2) or one way.
-export function TripTypeChoice({ value, onChange, label = 'Trip' }) {
+export function TripTypeChoice({ value, onChange, label = 'Trip', className = '' }) {
     const option = (on, text) => <button type="button" aria-pressed={value === on} onClick={() => onChange(on)}
         className={`min-h-11 flex-1 rounded-lg border px-2 text-xs font-bold ${value === on ? 'border-stone-900 bg-stone-900 text-white' : 'bg-white'}`}>{text}</button>;
-    return <div className="text-xs font-semibold">{label}
+    return <div className={`text-xs font-semibold ${className}`}>{label}
         <div role="group" aria-label={label} className="mt-1 flex gap-1">{option(true, 'Round trip (x 2)')}{option(false, 'One way')}</div>
     </div>;
 }

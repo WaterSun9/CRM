@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
+import './service/service.css';
 import { supabase } from '../supabase';
 import WarrantyBadge from './WarrantyBadge';
 import IssueForm from './service/IssueForm';
@@ -39,7 +41,7 @@ function ClosureNote({ issue, forTechnician }) {
     return null;
 }
 
-export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false }) {
+export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false, embedded = false }) {
     const isTechnician = user?.userType === 'technician';
     const canManage = ['admin', 'sales'].includes(user?.userType);
     const defaultPartner = ['channel_partner_office', 'office2', 'agent', 'agent2'].includes(user?.userType) ? user?.channel_partner || '' : '';
@@ -107,7 +109,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     useEffect(() => {
         if (!initialIssueId || focusedOnce.current || !issues.some(issue => issue.id === initialIssueId)) return;
         focusedOnce.current = true;
-        setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+        if (window.matchMedia?.('(max-width: 1023px)').matches) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     }, [initialIssueId, issues]);
     const loadVisits = useCallback(async issueId => {
         const { data, error: readError } = await supabase.from('service_visits').select('*').eq('issue_id', issueId).order('visit_date', { ascending: false });
@@ -160,7 +162,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
         // On a phone the details sit below the list; bring them into view.
         if (window.matchMedia?.('(max-width: 1023px)').matches) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     };
-    const chooseFilter = key => { filterChosen.current = true; setFilter(key); };
+    const chooseFilter = (key, keepSelection = false) => { filterChosen.current = true; setFilter(key); if (!keepSelection) { setSelectedId(null); setError(''); setNotice(''); } };
     const reloadVisits = async () => {
         try { setVisits(await loadVisits(selected.id)); } catch { /* the next poll tries again */ }
     };
@@ -195,24 +197,24 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     </>;
     const bannersAtTop = formOnly || !selected || messageSpot === 'top';
 
-    return <div className={formOnly ? 'w-full space-y-3' : 'mx-auto w-full max-w-6xl p-3 sm:p-6 space-y-4'}>
-        {!formOnly && <header className="rounded-2xl border bg-white p-4"><h1 className="text-xl font-bold">Complaints</h1><p className="text-sm text-stone-500">{isTechnician ? "Claim an open job to see the customer's phone and address. When the work is done, send the completion code to the customer." : canManage ? 'Assign complaints, close them, and record each visit’s distance and amount.' : 'Track the complaints you have raised.'}</p></header>}
+    return <div className={formOnly ? 'w-full space-y-3' : `service-root ${embedded ? 'service-embedded' : ''} ${selected ? 'has-selection' : ''}`}>
+        {!formOnly && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? "Claim an open job to see the customer's phone and address. When the work is done, send the completion code to the customer." : canManage ? 'Assign complaints, close them, and record each visit’s distance and amount.' : 'Track the complaints you have raised.'}</p></header>}
         {loadError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">Could not load complaints: {loadError}</p>}
         {bannersAtTop && banners}
-        {canManage && !formOnly && <KmSettingsPanel user={user} busy={busy} run={run} />}
+        <div className="service-tools">{canManage && !formOnly && <KmSettingsPanel user={user} busy={busy} run={run} />}
         {!isTechnician && <IssueForm user={user} initialCustomer={initialCustomer} formOnly={formOnly} canManage={canManage} defaultPartner={defaultPartner}
-            busy={busy} run={run} setError={message => { setMessageSpot('top'); setError(message); }} onRaised={setSelectedId} />}
-        {!formOnly && <><div className="flex flex-wrap gap-2">{filters.map(([key, label]) =>
+            busy={busy} run={run} setError={message => { setMessageSpot('top'); setError(message); }} onRaised={setSelectedId} />}</div>
+        {!formOnly && <><div className="service-filters flex flex-wrap gap-2">{filters.map(([key, label]) =>
             <button key={key} type="button" onClick={() => chooseFilter(key)} className={`min-h-11 rounded-full px-4 text-xs font-bold ${filter === key ? 'bg-stone-900 text-white' : 'bg-white border text-stone-700'}`}>{label} ({countFor(key)})</button>)}</div>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-            <div className="space-y-2">{shown.length === 0 && <p className="rounded-2xl border bg-white p-4 text-sm text-stone-500">No complaints in this view.</p>}{shown.map(issue =>
-                <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} className={`block w-full rounded-2xl border p-4 text-left ${selectedId === issue.id ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
-                    <span className="flex flex-wrap items-center gap-1.5">{issue.ticket_no && <span className="text-xs font-bold text-stone-500">{ticketLabel(issue)}</span>}<strong className="mr-1">{issue.customer_name}</strong><StatusPill status={issue.status} /><WarrantyPill status={issue.warranty_status} /></span>
-                    <span className="mt-1 block text-xs text-stone-500">{issue.consumer_no ? `${issue.consumer_no} · ` : ''}Required {issue.required_date}{canManage && issue.assigned_to ? ` · ${technicianName(issue.assigned_to)}` : ''}</span>
-                    <p className="mt-1 truncate text-sm text-stone-700">{issue.problem_type}</p>
+        <div className={`service-workspace ${selected ? 'has-selection' : ''} ${shown.length <= 1 ? 'single-result' : ''}`}>
+            <div className="service-list space-y-2" aria-label="Complaint list">{shown.length === 0 && <p className="rounded-2xl border bg-white p-4 text-sm text-stone-500">No complaints in this view.</p>}{shown.map(issue =>
+                <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} aria-pressed={selectedId === issue.id} className={`service-list-item block w-full rounded-xl border p-3 text-left ${selectedId === issue.id ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
+                    <span className="flex items-start gap-2"><span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-stone-500">{ticketLabel(issue)}</span><strong className="block break-words">{issue.customer_name}</strong></span><ChevronRight size={16} className="mt-1 shrink-0 text-stone-400" /></span>
+                    <span className="mt-2 inline-flex"><StatusPill status={issue.status} /></span>
                 </button>)}</div>
-            <div ref={detailRef} className="scroll-mt-4 rounded-2xl border bg-white p-4 space-y-4 min-w-0">
-                {!selected ? <p className="text-sm text-stone-500">Select a complaint to see details.</p> : <>
+            <div ref={detailRef} className="service-detail scroll-mt-4 rounded-2xl border bg-white p-4 sm:p-5 space-y-4 min-w-0">
+                {!selected ? null : <>
+                    <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} className="service-back inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-stone-600"><ArrowLeft size={16} /> All complaints</button>
                     <div className="space-y-1">
                         <h2 className="font-bold text-lg break-words">{selected.ticket_no && <span className="text-stone-500">{ticketLabel(selected)} </span>}{selected.customer_name}</h2>
                         <div className="flex flex-wrap items-center gap-1.5"><StatusPill status={selected.status} />
@@ -227,14 +229,14 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
                     {/* The technician's next step comes before the details, so the
                         code box is on screen without scrolling on a phone. */}
                     {isTechnician && <TechnicianJobPanel key={selected.id} issue={selected} userId={user.id} busy={busy} run={run}
-                        onClaimed={id => { setSelectedId(id); chooseFilter('mine'); }} onReleased={() => setSelectedId(null)} />}
-                    {showDetails && <div className="space-y-1 text-sm break-words"><p><strong>Channel Partner:</strong> {selected.channel_partner_name || '—'}</p><p><strong>Consumer Number:</strong> {selected.consumer_no}</p><p><strong>Phone:</strong> {selected.customer_phone ? <a href={`tel:${selected.customer_phone}`} className="font-semibold text-blue-700 underline">{selected.customer_phone}</a> : '—'}</p><p><strong>Address:</strong> {selected.service_address || '—'}</p><p><strong>Type of problem:</strong> {selected.problem_type}</p><p><strong>System company:</strong> {selected.system_company_name || '—'}</p><p><strong>System kW:</strong> {selected.system_kw ?? '—'}</p><p><strong>Comment:</strong> {selected.comment || '—'}</p></div>}
+                        onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)} />}
+                    <div className="service-detail-grid"><div className="service-customer-column space-y-4">{showDetails && <dl className="service-customer-facts text-sm break-words">{[['Channel partner',selected.channel_partner_name],['Consumer number',selected.consumer_no],['Phone',selected.customer_phone ? <a href={`tel:${selected.customer_phone}`} className="font-semibold text-blue-700 underline">{selected.customer_phone}</a> : null],['Address',selected.service_address],['Problem',selected.problem_type],['System',`${selected.system_company_name || '—'}${selected.system_kw ? ` · ${selected.system_kw} kW` : ''}`],['Comment',selected.comment]].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value || '—'}</dd></div>)}</dl>}
                     {selected.give_up_reason && <p className="rounded-lg bg-amber-50 p-2 text-xs">Previous give-up reason: {selected.give_up_reason}</p>}
                     {showDetails && <div className="border-t pt-3 space-y-2"><h3 className="text-sm font-bold">Problem files ({attachedFiles.length}/5)</h3>{attachedFiles.map(photo => <button key={photo.id} type="button" onClick={() => openPhoto(photo)} className="block min-h-9 text-left text-sm font-semibold text-blue-700 underline break-all">{photo.file_name}</button>)}{!isTechnician && attachedFiles.length < 5 && <form onSubmit={addPhotos} className="space-y-2"><input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setExtraFiles([...e.target.files])} className="block w-full text-xs" /><button disabled={busy || !extraFiles.length} className="min-h-11 rounded-lg border px-3 text-xs font-bold">Add files</button></form>}</div>}
                     {canManage && <OfficeIssuePanel key={selected.id} issue={selected} technicians={technicians} techError={techError} busy={busy} run={run} update={update} />}
                     {canManage && <WhatsAppLog key={`wa:${selected.id}`} issueId={selected.id} />}
-                    {(canManage || isTechnician) && <div className="border-t pt-3 space-y-2"><h3 className="text-sm font-bold">Visits and travel</h3>{visits.length === 0 && <p className="text-xs text-stone-500">No visits recorded.</p>}{visits.map(visit => <VisitRow key={visit.id} visit={visit} />)}</div>}
-                    {canManage && selected.assigned_to && <VisitForm key={`${selected.id}:${selected.assigned_to}`} issue={selected} user={user} busy={busy} run={run} visits={visits} onSaved={reloadVisits} />}
+                    </div><div className="service-visit-column space-y-4">{(canManage || isTechnician) && <div className="space-y-2"><h3 className="text-sm font-bold">Visits and travel</h3>{visits.length === 0 && <p className="text-xs text-stone-500">No visits recorded.</p>}{visits.map(visit => <VisitRow key={visit.id} visit={visit} />)}</div>}
+                    {canManage && selected.assigned_to && <VisitForm key={`${selected.id}:${selected.assigned_to}`} issue={selected} user={user} busy={busy} run={run} visits={visits} onSaved={reloadVisits} />}</div></div>
                 </>}
             </div>
         </div></>}

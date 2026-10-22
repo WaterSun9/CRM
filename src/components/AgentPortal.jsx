@@ -77,7 +77,7 @@ function DetailRow({ label, value, children }) {
     );
 }
 
-export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpenDevSwitcher }) {
+export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpenComplaints, onOpenDevSwitcher }) {
     const { showAlert, showConfirm } = useGlobalPopup();
     const [view, setView] = useState('menu');
     const [activeWorkdeskTab, setActiveWorkdeskTab] = useState(STAGE_IDS.LEADS);
@@ -1193,6 +1193,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                             )}
                         </div>
                         <div className="flex items-center gap-1 md:gap-2">
+                            {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-bold text-stone-700">Complaints</button>}
                             {import.meta.env.DEV && onOpenDevSwitcher && (
                                 <button
                                     type="button"

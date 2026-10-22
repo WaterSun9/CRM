@@ -21,6 +21,7 @@ import { fuzzyPatterns, mergeSearchResults } from '../utils/fuzzySearch';
 const SubsidyView = lazyWithRetry(() => import('./SubsidyView'));
 const LoanView = lazyWithRetry(() => import('./LoanView'));
 const InstallationView = lazyWithRetry(() => import('./InstallationView'));
+const ServiceIssuesView = lazyWithRetry(() => import('./ServiceIssuesView'));
 const WarrantyView = lazyWithRetry(() => import('./WarrantyView'));
 const CustomerDetailModal = lazyWithRetry(() => import('./CustomerDetailModal'));
 const AddLeadModal = lazyWithRetry(() => import('./AddLeadModal'));
@@ -59,11 +60,11 @@ const getMonthBounds = (monthValue, timestamp = false) => {
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldCheck
+    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldCheck, ClipboardList
 } from 'lucide-react';
 
 // ── NavBtn ────────────────────────────────────────────────────────────────────
-const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, selectedStage, setCurrentView, setSelectedStage }) => {
+const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, selectedStage, setCurrentView, setSelectedStage, setSidebarOpen }) => {
     const isActive = view === 'stages'
         ? (currentView === 'stages' && selectedStage === stage)
         : currentView === view;
@@ -72,6 +73,7 @@ const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, 
             onClick={() => {
                 if (view === 'stages') { setCurrentView('stages'); setSelectedStage(stage); }
                 else setCurrentView(view);
+                setSidebarOpen?.(false);
             }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold mb-0.5 transition-colors cursor-pointer ${isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}
         >
@@ -214,6 +216,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
     // "Open customer card" from the Complaints screen: the card opens above it
     // (cardOverComplaints), and closing it tells the visit form to read the card again.
     const [cardOverComplaints, setCardOverComplaints] = useState(false);
+    const [focusedComplaintId, setFocusedComplaintId] = useState(null);
     useEffect(() => {
         const open = async event => {
             const id = event.detail?.id;
@@ -224,7 +227,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             setSelectedCustomer(data);
         };
         // Opening a complaint (red wrench, history row) shows Complaints above the card.
-        const lower = () => setCardOverComplaints(false);
+        const lower = event => { setCardOverComplaints(false); setFocusedComplaintId(event.detail?.issueId || null); setCurrentView('complaints'); setSidebarOpen(false); };
         window.addEventListener('open-customer-card', open);
         window.addEventListener('open-complaint', lower);
         return () => { window.removeEventListener('open-customer-card', open); window.removeEventListener('open-complaint', lower); };
@@ -1285,6 +1288,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                 : currentView === 'loan_tags' ? 'Loan Tag Tracking'
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
                 : currentView === 'warranty' ? 'Warranty'
+                : currentView === 'complaints' ? 'Complaints'
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
                     : currentView === 'installation_payments' ? 'Installation Payments'
                     : currentView === 'activity' ? 'Activity Log'
@@ -1328,6 +1332,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {/* Completed customers past their 5-year warranty (and those with no date). Every role. */}
                     <NavBtn view="warranty" icon={ShieldCheck} label="Warranty" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
 
+                    {onRaiseServiceIssue && <NavBtn view="complaints" icon={ClipboardList} label="Complaints" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />}
                     {/* Office system tools */}
                     {['admin', 'sales'].includes(user.userType) && (
                         <>
@@ -1530,6 +1535,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
+                    {currentView === 'complaints' && <ServiceIssuesView key={focusedComplaintId || 'complaint-list'} user={user} initialIssueId={focusedComplaintId} embedded />}
                     {currentView === 'warranty' && <WarrantyView onSelectCustomer={setSelectedCustomer} onRaiseServiceIssue={onRaiseServiceIssue} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
 
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView currentUser={user} />}
@@ -1605,7 +1611,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
 
             {/* Modals */}
             {selectedCustomer && (
-                <div className={cardOverComplaints ? 'relative z-[95]' : undefined}>
+                <div className={currentView === 'complaints' && !cardOverComplaints ? 'hidden' : cardOverComplaints ? 'relative z-[95]' : undefined}>
                 <Suspense fallback={<ViewLoader />}>
                 <CustomerDetailModal
                     customer={selectedCustomer}

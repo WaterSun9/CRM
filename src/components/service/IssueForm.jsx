@@ -148,9 +148,9 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
     };
 
     if (!expanded) {
-        return <div className="rounded-2xl border bg-white p-4 space-y-2">
+        return <div className="service-new-complaint space-y-2">
             <button type="button" onClick={() => setExpanded(true)} className="min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-bold">Raise a complaint</button>
-            <p className="text-xs text-stone-500">For a customer in the CRM, open the completed customer and press Raise complaint, so the warranty and mobile number are filled in. Use this form only for someone who is not in the CRM.</p>
+            <p className="text-xs text-stone-500">Existing customer? Raise the complaint from their completed customer card.</p>
         </div>;
     }
 
