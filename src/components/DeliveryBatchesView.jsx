@@ -498,7 +498,7 @@ export default function DeliveryBatchesView({
             showAlert(`This truck was already marked loaded. ${truckLoadedLabel(batch)}.`, { title: 'Already loaded', type: 'warning' });
             return 'done';
         }
-        const failed = await stampBomLoadedDates(supabase, { sheet, date: localDateKey(), tickedIds: tickedOnSheetRef.current });
+        const failed = await stampBomLoadedDates(supabase, { sheet, date: localDateKey(), loadedBy: result.stamp.loaded_by_name || currentUser?.name, tickedIds: tickedOnSheetRef.current });
         void logActivity(currentUser?.id || 'admin', 'update', `Truck ${sheet.batch.batch_no || ''} marked loaded by ${loaderName}`, 'Delivery batches', null);
         for (const project of sheet.projects) {
             if (!sheet.bomIdByCustomer?.[project.id]) continue;
@@ -507,7 +507,7 @@ export default function DeliveryBatchesView({
                 `${project.customer_name || 'Customer'}: Loading finished (${progress.loaded} of ${progress.total} loaded) by ${loaderName}`, LOADING_LOG, project.id);
         }
         tickedOnSheetRef.current = new Set();
-        if (failed.length) showAlert(`The truck is marked loaded, but the loading date was not saved on the BOM for: ${failed.join(', ')}. Set it on the customer card.`, { title: 'Loading date not saved', type: 'warning' });
+        if (failed.length) showAlert(`The truck is marked loaded, but the loading name/date were not saved on the BOM for: ${failed.join(', ')}. Set it on the customer card.`, { title: 'Loading date not saved', type: 'warning' });
         return 'done';
     };
 

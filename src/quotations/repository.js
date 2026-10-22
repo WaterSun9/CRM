@@ -1,6 +1,6 @@
-import { payload, fromRow, validate, revisionInfo } from './model.js';
+import { payload, fromRow, validate, revisionInfo, finalForm, quoteLabel, isFinalQuotation } from './model.js';
 
-export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by,selected_option,chosen_brands:quotation_data->form->options';
+export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by,selected_option,kind:quotation_data->>kind,final_of_label:quotation_data->>final_of_label,chosen_brands:quotation_data->form->options';
 export const STATUSES = ['draft','issued','converted','lost'];
 export const PAGE_SIZE = 20;
 // PostgreSQL jsonb reorders object keys; compare canonical values, not wire key order.
@@ -11,6 +11,13 @@ export const locked = () => new Error('This quotation has already been downloade
 export const conflict = () => new Error('This quotation changed in another session. Reopen it to review the latest version. Your local recovery copy is retained.');
 const event = (type, user, extra = {}) => ({ type, actor_id: user.id, at: new Date().toISOString(), ...extra });
 const activityData = (row, entry) => ({ ...row.quotation_data, activity: [...(row.quotation_data?.activity || []), entry] });
+// Stable identifier makes simultaneous creation and retry after a lost response safe.
+export async function finalQuotationId(parentId, leadId) {
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`watersun-final:${parentId}:${leadId}`)));
+    digest[6] = (digest[6] & 15) | 128; digest[8] = (digest[8] & 63) | 128;
+    const hex = Array.from(digest.slice(0,16), n => n.toString(16).padStart(2,'0')).join('');
+    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
 export function createQuotationRepository(client) {
     const get = async id => {
         const { data, error } = await client.from('quotations').select('*').eq('id',id).single();
@@ -93,9 +100,33 @@ export function createQuotationRepository(client) {
             await update(fresh,{ quotation_data:{ ...activityData(fresh,event('revised',user,{ new_id:id })), superseded_by:{ id, label:`Quote-${info.baseNo}-R${info.n + 1}` } } });
             return data;
         },
+        async ensureFinal(row, user) {
+            const original = await get(row.id);
+            if (isFinalQuotation(original)) return original;
+            if (!original.converted_lead_id) throw new Error('Save the lead before creating its final quotation.');
+            const form = finalForm(fromRow(original), original.selected_option);
+            const id = await finalQuotationId(original.id, original.converted_lead_id);
+            const { data: existing, error: readError } = await client.from('quotations').select('*').eq('id',id).maybeSingle();
+            fail(readError);
+            if (existing) {
+                if (existing.quotation_data?.final_of !== original.id || existing.source_lead_id !== original.converted_lead_id) throw conflict();
+                return existing;
+            }
+            const body = payload({ ...form, source_lead_id: original.converted_lead_id }, original.quotation_data.template);
+            body.quotation_data = { ...body.quotation_data, kind:'final', final_of:original.id, final_of_label:quoteLabel(original),
+                selected_option:original.selected_option, activity:[event('final_created',user,{ quotation_id:original.id })] };
+            const { data, error } = await client.from('quotations').insert({ ...body, id, owner_id:original.owner_id }).select('*').single();
+            if (error?.code === '23505') {
+                const latest = await get(id);
+                if (latest.quotation_data?.final_of !== original.id || latest.source_lead_id !== original.converted_lead_id) throw conflict();
+                return latest;
+            }
+            fail(error); return data;
+        },
         async save(id, previous, form, template, user) {
-            if (previous && (previous.issued_at || previous.converted_lead_id || previous.quotation_data?.superseded_by)) throw locked();
+            if (previous && !isFinalQuotation(previous) && (previous.issued_at || previous.converted_lead_id || previous.quotation_data?.superseded_by)) throw locked();
             const body = payload(form,template);
+            if (isFinalQuotation(previous)) body.status = 'draft';
             body.quotation_data = { ...previous?.quotation_data, ...body.quotation_data };
             if (!previous) {
                 body.quotation_data.activity = [event('created',user)];

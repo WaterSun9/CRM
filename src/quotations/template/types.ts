@@ -8,6 +8,9 @@ export interface AssetImages {
 }
 
 export interface BrandQuoteOption {
+  panel_wattage?: number | string;
+  solar_panel_qty?: number | string;
+  capacity_kw?: number | string;
   brandName: string; // e.g., "Waaree Solar", "Tata Power Solar", "Adani Solar"
   baseValue: number; // e.g., 189000
   discount: number; // e.g., 0
@@ -59,7 +62,7 @@ export interface QuotationData {
     projectSize?: string; // e.g., "3.48 kW"
 
     // 3 Brand / Company Options with their values & totals
-    brandOptions: [BrandQuoteOption, BrandQuoteOption, BrandQuoteOption];
+    brandOptions: BrandQuoteOption[];
 
     // Financials (legacy fallback support)
     baseValue: number; // ₹1,89,000.00

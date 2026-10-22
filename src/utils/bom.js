@@ -152,5 +152,13 @@ export const loadBomForCustomer = async (customer, activeType) => {
         return { bom: null, items: mergeAgainstTemplate(null, template), loadError };
     }
 
+    // Truck loading writes milestones directly to the relational BOM. Refresh these
+    // even when the item list came from an older inline/customer cache snapshot.
+    if (bomData?.id) {
+        const { data: milestones, error } = await supabase.from('bom')
+            .select('material_loaded_by,material_loaded_date').eq('id',bomData.id).maybeSingle();
+        if (!error && milestones) bomData = { ...bomData, ...milestones };
+        else if (error) loadError = loadError || error;
+    }
     return { bom: bomData, items: mergeAgainstTemplate(itemData, template), loadError };
 };

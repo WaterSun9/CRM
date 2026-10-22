@@ -84,13 +84,13 @@ export function loadingShortfall({ projects = [], progressByCustomer = {} } = {}
 // The card's "Material Loaded Date" on each BOM. Set for customers with
 // something loaded when they were ticked on this sheet, or have no date yet,
 // so an older truck marked late does not move a later date back.
-export async function stampBomLoadedDates(client, { sheet, date, tickedIds = new Set() }) {
+export async function stampBomLoadedDates(client, { sheet, date, loadedBy, tickedIds = new Set() }) {
     const failed = [];
     for (const project of sheet.projects || []) {
         const bomId = sheet.bomIdByCustomer?.[project.id];
         if (!bomId || !sheet.progressByCustomer?.[project.id]?.loaded) continue;
         if (!tickedIds.has(project.id) && sheet.bomLoadedDateByCustomer?.[project.id]) continue;
-        const { data, error } = await client.from('bom').update({ material_loaded_date: date }).eq('id', bomId).select('id');
+        const { data, error } = await client.from('bom').update({ material_loaded_date: date, ...(loadedBy ? { material_loaded_by: loadedBy } : {}) }).eq('id', bomId).select('id');
         if (error || data?.length !== 1) failed.push(project.customer_name || project.id);
     }
     return failed;

@@ -4,6 +4,7 @@ import { LOAN_TAGS, LOAN_TAG_COLORS, isFinalTagValue } from '../../constants';
 import { CheckboxRemarkItem, EditableDetailItem } from './shared';
 import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
 import { createFeasibilityPdf, getMissingFeasibilityFields, mapFeasibilityReport } from '../../feasibilityReport';
+import LoanQuotation from '../../quotations/LoanQuotation';
 import { useGlobalPopup } from '../GlobalPopup';
 
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
@@ -285,6 +286,7 @@ export default function LoanTab({
                 </div>
             ) : (
                 <>
+                    <LoanQuotation customer={customer} user={user} meta={meta} isEditable={isEditable} documents={documents} onFileUpload={onFileUpload} onFilePreview={onFilePreview} />
                     {/* Loan Application Details */}
                     <section className="bg-white p-5 rounded-2xl border border-stone-200/70 shadow-xs space-y-4">
                         <div className="flex items-center justify-between border-b border-stone-100 pb-2">

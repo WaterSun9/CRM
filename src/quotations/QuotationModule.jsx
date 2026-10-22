@@ -4,13 +4,14 @@ import { ArrowLeft, Download, Eye, FileText, Plus, Search, Share2 } from 'lucide
 import { supabase } from '../supabase';
 import AddLeadModal from '../components/AddLeadModal';
 import { useGlobalPopup } from '../components/GlobalPopup';
-import { canUseQuotations,chosenOptions,fromRow,money,toLead,validate,quoteLabel } from './model';
+import { canUseQuotations,chosenOptions,fromRow,money,toLead,validate,quoteLabel,isFinalQuotation } from './model';
 import { quotationRepository as repo } from './client';
 import { PAGE_SIZE } from './repository';
 import { recoveries } from './recovery';
 import QuotationForm from './QuotationForm';
 import DocumentPages from './DocumentPages';
 import { downloadQuotationFile, generateQuotationPdf, shareQuotationFile } from './pdf';
+import { saveLoanQuotationPdf } from './loanPdf';
 import { canShareQuotationFile } from './fileShare';
 import './quotation.css';
 
@@ -24,7 +25,7 @@ const statusText = status => status;
 const supersededOf = item => item?.superseded_by || item?.quotation_data?.superseded_by || null;
 const isConverted = item => !!item?.converted_lead_id;
 // Only an issued quote is revised; a lost one is reopened first, a converted one is final.
-const canRevise = item => !isConverted(item) && !supersededOf(item) && item?.status !== 'lost';
+const canRevise = item => !isFinalQuotation(item) && !isConverted(item) && !supersededOf(item) && item?.status !== 'lost';
 // Tell the dashboard (sidebar badge) that quotation statuses changed.
 // Per-status counts of the live (not replaced) quotations.
 const tally = list => {
@@ -36,7 +37,7 @@ const tally = list => {
 const announceCounts = counts => { if (counts) window.dispatchEvent(new CustomEvent('quotations-changed',{ detail:counts })); };
 // 2026-10-16 -> 16-10-2026, as printed on the quotation.
 const showDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value).split('-').reverse().join('-') : (value || '');
-const isLocked = item => !!(item?.issued_at || isConverted(item) || supersededOf(item));
+const isLocked = item => !isFinalQuotation(item) && !!(item?.issued_at || isConverted(item) || supersededOf(item));
 /* WhatsApp disabled at owner request. Original helpers preserved:
 // WhatsApp: share the PDF from the phone, or open the customer's chat by
 // number (wa.me) with the PDF saved to attach - no typing the number again.
@@ -51,7 +52,7 @@ const waDigits = phone => {
 
 */
 
-function Preview({ row,onGenerate,onEdit,onRevise,busy }) {
+function Preview({ row,onGenerate,onEdit,onRevise,onSaveDraft,busy }) {
     const scrollRef = useRef(null);
     const [zoom,setZoom] = useState(() => Math.min(1, Math.max(0.25, (typeof window !== 'undefined' ? window.innerWidth - 64 : 794) / 794)));
     const [highlights,setHighlights] = useState(false);
@@ -84,7 +85,7 @@ function Preview({ row,onGenerate,onEdit,onRevise,busy }) {
         if (available > 0) setZoom(Math.min(1, Math.max(0.25, available / 794)));
     };
 
-    return <div style={full ? {position:'fixed',inset:0,zIndex:55,background:'#f6f7f9',padding:12,overflow:'auto'} : undefined}><div className="q-preview-toolbar"><div className="q-tools">{!isLocked(row) ? <button onClick={onEdit}>Edit values</button> : (canRevise(row) && <button disabled={busy} onClick={() => onRevise(row)}>Revise</button>)}<div className="q-zoom" role="group" aria-label="Zoom"><button onClick={() => changeZoom(z => Math.max(.25,z - .1))} aria-label="Zoom out">−</button><span aria-live="polite">{Math.round(zoom * 100)}%</span><button onClick={() => changeZoom(z => Math.min(1.5,z + .1))} aria-label="Zoom in">+</button></div><button onClick={fitToWidth}>Fit width</button><button aria-pressed={highlights} onClick={() => setHighlights(v => !v)}>Highlights: {highlights ? 'on' : 'off'}</button><button onClick={() => { manualZoom.current = false; setFull(v => !v); }}>{full ? 'Exit full screen' : 'Full screen'}</button></div><div className="q-send"><button className="q-primary" disabled={busy} onClick={() => onGenerate(row, 'download')}><Download size={16} /> {busy ? 'Generating…' : 'Download'}</button><button disabled={busy} onClick={() => onGenerate(row, 'share')}><Share2 size={16} /> Share</button>{/* WhatsApp disabled: {onWhatsAppChat && canWhatsAppChat(row) && <button className="q-wa" disabled={busy} onClick={() => onWhatsAppChat(row)}><MessageCircle size={16} /> WhatsApp</button>} */}</div></div><div className="q-preview-scroll" ref={scrollRef}><div style={{width:794 * zoom,height:(1123 * 3 + 60) * zoom,margin:'0 auto'}}><div className="q-preview-surface" style={{width:794,transform:`scale(${zoom})`,transformOrigin:'top left'}}><DocumentPages row={row} highlights={highlights} /></div></div></div></div>;
+    return <div style={full ? {position:'fixed',inset:0,zIndex:55,background:'#f6f7f9',padding:12,overflow:'auto'} : undefined}><div className="q-preview-toolbar"><div className="q-tools">{!isLocked(row) ? <button onClick={onEdit}>Edit values</button> : (canRevise(row) && <button disabled={busy} onClick={() => onRevise(row)}>Revise</button>)}<div className="q-zoom" role="group" aria-label="Zoom"><button onClick={() => changeZoom(z => Math.max(.25,z - .1))} aria-label="Zoom out">−</button><span aria-live="polite">{Math.round(zoom * 100)}%</span><button onClick={() => changeZoom(z => Math.min(1.5,z + .1))} aria-label="Zoom in">+</button></div><button onClick={fitToWidth}>Fit width</button><button aria-pressed={highlights} onClick={() => setHighlights(v => !v)}>Highlights: {highlights ? 'on' : 'off'}</button><button onClick={() => { manualZoom.current = false; setFull(v => !v); }}>{full ? 'Exit full screen' : 'Full screen'}</button></div><div className="q-send">{isFinalQuotation(row) && <button disabled={busy} onClick={onSaveDraft}>Save as draft & back</button>}<button className="q-primary" disabled={busy} onClick={() => onGenerate(row, 'download')}><Download size={16} /> {busy ? 'Generating…' : 'Download & save'}</button><button disabled={busy} onClick={() => onGenerate(row, 'share')}><Share2 size={16} /> Share</button>{/* WhatsApp disabled: {onWhatsAppChat && canWhatsAppChat(row) && <button className="q-wa" disabled={busy} onClick={() => onWhatsAppChat(row)}><MessageCircle size={16} /> WhatsApp</button>} */}</div></div><div className="q-preview-scroll" ref={scrollRef}><div style={{width:794 * zoom,height:(1123 * 3 + 60) * zoom,margin:'0 auto'}}><div className="q-preview-surface" style={{width:794,transform:`scale(${zoom})`,transformOrigin:'top left'}}><DocumentPages row={row} highlights={highlights} /></div></div></div></div>;
 }
 export default function QuotationModule({ user,meta,channelPartners = [],onCreateLead,onViewLead,embedded = false,onClose }) {
     const { showAlert,showConfirm } = useGlobalPopup();
@@ -193,6 +194,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
             const file = await generateQuotationPdf(stored);
             const updated = await repo.generated(stored,user);
             setRow(updated);
+            if (isFinalQuotation(updated)) await saveLoanQuotationPdf(updated,file,user);
             downloadQuotationFile(file);
             showAlert(`Downloaded ${file.name}`, { title: 'Download complete', type: 'success' });
             setRefresh(n => n + 1);
@@ -268,7 +270,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     const convert = quotation => run(async () => {
         const current = await repo.verifyConversion(await repo.get(quotation.id));
         if (supersededOf(current)) { await showAlert('This quotation was revised. Use Won on the newest version instead.',{type:'warning'}); return; }
-        if (current.converted_lead_id) { await showLead(current.converted_lead_id); return; }
+        if (current.converted_lead_id) { await openFinal(current); return; }
         const choices = chosenOptions(fromRow(current));
         // With priced options, the customer's choice is recorded first and fills the lead.
         if (choices.length) { setChoosing({ row:current, choices, picked:current.selected_option || null }); return; }
@@ -279,12 +281,18 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         setConversion(current); setLeadPrefill(lead); dirty.current = true;
     };
     const confirmChoice = () => run(async () => {
-        const { row: picked, choices, picked: number } = choosing;
+        const { row: picked, picked: number } = choosing;
         const latest = await repo.get(picked.id);
         const saved = latest.selected_option === number ? latest : await repo.update(latest,{ selected_option:number });
         patchRow({ ...saved, chosen_brands:saved.quotation_data?.form?.options });
         setChoosing(null);
-        startLead(saved, choices.find(choice => choice.number === number));
+        startLead(saved, chosenOptions(fromRow(saved)).find(choice => choice.number === number));
+    });
+    const openFinal = quotation => run(async () => {
+        const final = await repo.ensureFinal(quotation, profile);
+        dirty.current = false;
+        navigate(`/quotations/${final.id}/edit`);
+        setRefresh(n => n + 1);
     });
     const showLead = async leadId => { const lead = await repo.lead(leadId); dirty.current = false; navigate(''); onViewLead(lead); };
     // A saved draft goes straight into the list too, so it is there on Back.
@@ -321,8 +329,8 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
                 {!!localCopies.length && <div className="q-notice"><strong>Draft recovery on this device</strong>{localCopies.map(copy => <div key={copy.id}><button onClick={() => navigate(`/quotations/new/${copy.id}`)}>Recover {copy.form?.customer_name || 'unnamed quotation'}</button></div>)}</div>}
                 <div className="q-toolbar"><input className="q-search" aria-label="Search quotations" placeholder="Search quote number, customer or phone" value={search} onChange={e => {setSearch(e.target.value);setPage(0);}} /><button aria-label="Refresh quotations" onClick={() => setRefresh(n => n + 1)}><Search size={17} /> Refresh</button></div>
                 <div className="q-filters">{statusLabels.map(s => <button key={s} aria-pressed={status === s} onClick={() => {setStatus(s);setPage(0);}}>{statusText(s)[0].toUpperCase() + statusText(s).slice(1)}{counts && counts[s] != null ? <span className="q-count"> {counts[s]}</span> : null}</button>)}</div>
-                {loading && !allRows.length ? <div className="q-empty" role="status">Loading quotations…</div> : !rows.length && !error ? <div className="q-empty"><h2>No quotations found</h2><p className="q-muted">Create your first quotation or try another search.</p><button onClick={start}>Create Quotation</button></div> : <div className="q-cards">{rows.map(item => <article className="q-card" key={item.id}><div className="q-card-heading"><span>{quoteLabel(item)} · {showDate(item.quotation_date)}</span><span className={`q-status q-status-${supersededOf(item) ? 'lost' : item.status}`}>{supersededOf(item) ? 'revised' : statusText(item.status)}</span></div>{supersededOf(item) && <p className="q-muted">Replaced by {supersededOf(item).label}</p>}<h3>{item.customer_name}</h3><p>{item.customer_phone}</p><p>Created by {item.owner_name_snapshot || '—'}</p>{item.selected_option && item.chosen_brands?.[item.selected_option - 1] && <p><strong>Chosen: {item.chosen_brands[item.selected_option - 1].brandName}</strong></p>}<dl><div><dt>System capacity</dt><dd>{item.capacity_kw ? `${item.capacity_kw} kWp` : '—'}</dd></div><div><dt>Starting price</dt><dd>{item.starting_price == null ? '—' : money(item.starting_price)}</dd></div></dl><div className="q-actions">{!isLocked(item) ? <button onClick={() => navigate(`/quotations/${item.id}/edit`)}>Edit</button> : (canRevise(item) && <button disabled={busy || !online} onClick={() => revise(item)}>Revise</button>)}<button onClick={() => navigate(`/quotations/${item.id}/preview`)}><Eye size={15} /> Preview</button>{item.status !== 'lost' && <><button disabled={busy || !online} onClick={() => generate(item, 'download')}><Download size={15} /> Download</button><button disabled={busy || !online} onClick={() => generate(item, 'share')}><Share2 size={15} /> Share</button>{/* WhatsApp disabled: {canWhatsAppChat(item) && <button className="q-wa" disabled={busy || !online} onClick={() => openWhatsAppChat(item)}><MessageCircle size={15} /> WhatsApp</button>} */}</>}</div>{!supersededOf(item) && (isConverted(item)
-                    ? <div className="q-actions"><button disabled={busy || !online} onClick={() => convert(item)}>View lead</button></div>
+                {loading && !allRows.length ? <div className="q-empty" role="status">Loading quotations…</div> : !rows.length && !error ? <div className="q-empty"><h2>No quotations found</h2><p className="q-muted">Create your first quotation or try another search.</p><button onClick={start}>Create Quotation</button></div> : <div className="q-cards">{rows.map(item => <article className="q-card" key={item.id}><div className="q-card-heading"><span>{quoteLabel(item)} · {showDate(item.quotation_date)}</span><span className={`q-status q-status-${supersededOf(item) ? 'lost' : item.status}`}>{supersededOf(item) ? 'revised' : statusText(item.status)}</span></div>{supersededOf(item) && <p className="q-muted">Replaced by {supersededOf(item).label}</p>}<h3>{item.customer_name}</h3><p>{item.customer_phone}</p><p>Created by {item.owner_name_snapshot || '—'}</p>{item.selected_option && item.chosen_brands?.[item.selected_option - 1] && <p><strong>Chosen: {item.chosen_brands[item.selected_option - 1].brandName}</strong></p>}<dl><div><dt>System capacity</dt><dd>{item.capacity_kw ? `${item.capacity_kw} kWp` : '—'}</dd></div><div><dt>Starting price</dt><dd>{item.starting_price == null ? '—' : money(item.starting_price)}</dd></div></dl><div className="q-actions">{!isLocked(item) ? <button onClick={() => navigate(`/quotations/${item.id}/edit`)}>{isFinalQuotation(item) ? 'Edit final quotation' : 'Edit'}</button> : (canRevise(item) && <button disabled={busy || !online} onClick={() => revise(item)}>Revise</button>)}<button onClick={() => navigate(`/quotations/${item.id}/preview`)}><Eye size={15} /> Preview</button>{item.status !== 'lost' && <><button disabled={busy || !online} onClick={() => generate(item, 'download')}><Download size={15} /> Download & save</button><button disabled={busy || !online} onClick={() => generate(item, 'share')}><Share2 size={15} /> Share</button>{/* WhatsApp disabled: {canWhatsAppChat(item) && <button className="q-wa" disabled={busy || !online} onClick={() => openWhatsAppChat(item)}><MessageCircle size={15} /> WhatsApp</button>} */}</>}</div>{!isFinalQuotation(item) && !supersededOf(item) && (isConverted(item)
+                    ? <div className="q-actions"><button disabled={busy || !online} onClick={() => showLead(item.converted_lead_id)}>View lead</button><button disabled={busy || !online} onClick={() => openFinal(item)}>Final quotation</button></div>
                     : item.status === 'lost'
                         ? <div className="q-actions"><button disabled={busy || !online} onClick={() => run(async () => { const latest = await repo.get(item.id); patchRow(await repo.outcome(latest,'reopened',user)); setRefresh(n => n + 1); })}>Reopen</button></div>
                         : item.status === 'issued'
@@ -333,19 +341,19 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
             {validId && (loading || loadedRoute !== route) && !error && <div role="status" className="q-empty">Opening quotation…</div>}
             {validId && loadedRoute === route && mode === 'edit' && row && isLocked(row) && <div className="q-notice" role="status"><strong>{quoteLabel(row)} is locked.</strong> {isConverted(row) ? 'It has been added to leads.' : supersededOf(row) ? `It was replaced by ${supersededOf(row).label}.` : 'It was already downloaded and sent to the customer.'}<div className="q-actions">{canRevise(row) && <button disabled={busy} onClick={() => revise(row)}>Revise</button>}<button onClick={() => navigate(`/quotations/${row.id}/preview`)}>Preview</button></div></div>}
             {validId && loadedRoute === route && ['new','edit'].includes(mode) && !(row && isLocked(row)) && <QuotationForm key={id} id={id} initialRow={row} user={profile} meta={meta} onDirty={setDirty} onSaved={saved} onDraftSaved={() => { dirty.current = false; navigate('/quotations'); setRefresh(n => n + 1); }} onPreview={savedRow => {dirty.current = false; navigate(`/quotations/${savedRow.id}/preview`);}} />}
-            {validId && loadedRoute === route && mode === 'preview' && row && <Preview row={row} busy={busy} onGenerate={generate} onRevise={revise} onEdit={() => navigate(`/quotations/${id}/edit`)} />}
+            {validId && loadedRoute === route && mode === 'preview' && row && <Preview row={row} busy={busy} onSaveDraft={() => run(async () => { const latest = await repo.get(row.id); await repo.save(latest.id,latest,fromRow(latest),latest.quotation_data.template,user); dirty.current = false; navigate('/quotations'); setRefresh(n => n + 1); })} onGenerate={generate} onRevise={revise} onEdit={() => navigate(`/quotations/${id}/edit`)} />}
             {route !== '/quotations' && (!validId || !['new','edit','preview'].includes(mode)) && <div className="q-error">Quotation page not found.</div>}
         </main>
-        {choosing && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-choose-title"><div className="q-panel"><h2 id="q-choose-title">Which option did the customer choose?</h2><div className="q-choices">{choosing.choices.map(choice => <button key={choice.number} type="button" aria-pressed={choosing.picked === choice.number} className={choosing.picked === choice.number ? 'q-choice q-choice-on' : 'q-choice'} onClick={() => setChoosing(c => ({ ...c, picked:choice.number }))}><span className="q-choice-name">Option {choice.number}: {choice.brandName}</span><span>Net payable {money(choice.netPayableAmount)}</span><span className="q-muted">After subsidy {money(choice.netPriceAfterSubsidy)}</span></button>)}</div><div className="q-actions"><button disabled={busy} onClick={() => setChoosing(null)}>Cancel</button><button className="q-primary" disabled={busy || !choosing.picked} onClick={confirmChoice}>Continue to Add Lead</button></div></div></div>}
+        {choosing && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-choose-title"><div className="q-panel"><h2 id="q-choose-title">Which option did the customer choose?</h2><div className="q-choices">{choosing.choices.map(choice => <button key={choice.number} type="button" aria-pressed={choosing.picked === choice.number} className={choosing.picked === choice.number ? 'q-choice q-choice-on' : 'q-choice'} onClick={() => setChoosing(c => ({ ...c, picked:choice.number }))}><span className="q-choice-name">Option {choice.number}: {choice.brandName}</span><span>{choice.solar_panel_qty} modules × {choice.panel_wattage} Wp · {choice.capacity_kw} kWp</span><span>Net payable {money(choice.netPayableAmount)}</span><span className="q-muted">After subsidy {money(choice.netPriceAfterSubsidy)}</span></button>)}</div><div className="q-actions"><button disabled={busy} onClick={() => setChoosing(null)}>Cancel</button><button className="q-primary" disabled={busy || !choosing.picked} onClick={confirmChoice}>Continue to Add Lead</button></div></div></div>}
         {waChat && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-wa-title"><div className="q-panel"><h2 id="q-wa-title">Share quotation PDF</h2><p className="q-muted">{quoteLabel(waChat.row)} · {waChat.row.customer_name}</p>
-            <div className="q-notice" role="status" style={{marginTop:12}}>{waChat.preparing ? <strong>Preparing the PDF…</strong> : <><strong>PDF ready: {waChat.file?.name}</strong><div className="q-actions"><button type="button" onClick={() => downloadQuotationFile(waChat.file)}><Download size={15} /> Save PDF</button></div></>}</div>
+            <div className="q-notice" role="status" style={{marginTop:12}}>{waChat.preparing ? <strong>Preparing the PDF…</strong> : <><strong>PDF ready: {waChat.file?.name}</strong><div className="q-actions"><button type="button" onClick={() => generate(waChat.row, 'download')}><Download size={15} /> Save PDF</button></div></>}</div>
             {/* WhatsApp phone, message and chat controls are disabled. Complete original JSX is preserved in docs/parked-quotation-whatsapp/QuotationModule.jsx.disabled. */}
             <p className="q-muted" style={{marginTop:8}}>{waChat.preparing ? 'Preparing the PDF…' : canShareFile(waChat.file) ? 'Share the PDF using your device’s share menu.' : 'File sharing is unavailable in this browser. Use Save PDF.'}</p>
             <div className="q-actions"><button disabled={waChat.sharing} onClick={() => setWaChat(null)}>Close</button>{canShareFile(waChat.file) && <button className="q-primary" disabled={waChat.preparing || waChat.sharing} onClick={shareWhatsAppFile}><Share2 size={16} /> {waChat.sharing ? 'Sharing…' : 'Share PDF'}</button>}</div></div></div>}
 
         {lost && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-lost-title"><div className="q-panel"><h2 id="q-lost-title">Mark quotation lost</h2><label className="q-field"><span>Reason (required)</span><select value={reason} onChange={e => setReason(e.target.value)}><option value="">Choose reason</option>{['Price','Competitor selected','Project postponed','Not interested','Other'].map(r => <option key={r}>{r}</option>)}</select></label><label className="q-field" style={{marginTop:16}}><span>Remark (optional)</span><textarea maxLength={1000} value={remark} onChange={e => setRemark(e.target.value)} /></label><div className="q-actions"><button disabled={busy} onClick={() => setLost(null)}>Cancel</button><button className="q-primary" disabled={busy || !reason} onClick={() => run(async () => { const latest = await repo.get(lost.id); patchRow(await repo.outcome(latest,'lost',user,reason,remark)); setLost(null); setRefresh(n => n + 1); })}>Mark Lost</button></div></div></div>}
         {conversion && createPortal(
-            <AddLeadModal isOpen initialValues={leadPrefill} user={user} meta={meta} channel_partners={channelPartners} onClose={() => {setConversion(null);dirty.current = false;}} onSave={async (data,files) => { await onCreateLead(data,files,conversion); dirty.current = false; setConversion(null); setRefresh(n => n + 1); }} />,
+            <AddLeadModal isOpen initialValues={leadPrefill} user={user} meta={meta} channel_partners={channelPartners} onClose={() => {setConversion(null);dirty.current = false;}} onSave={async (data,files) => { await onCreateLead(data,files,conversion); const final = await repo.ensureFinal(conversion,profile); dirty.current = false; setConversion(null); navigate(`/quotations/${final.id}/edit`); setRefresh(n => n + 1); }} />,
             document.body
         )}
     </div>;

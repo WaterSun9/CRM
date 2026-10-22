@@ -6,7 +6,7 @@ import { GlobalPopupProvider } from '../components/GlobalPopup';
 import QuotationModule from '../quotations/QuotationModule';
 import { supabase } from '../supabase';
 import { memoryClient } from '../../tests/quotations/memoryClient.mjs';
-import { newForm,payload } from '../quotations/model';
+import { newForm,payload,finalForm } from '../quotations/model';
 import { brandedTemplate } from '../quotations/branding';
 import { quotationRepository } from '../quotations/client';
 import { generateQuotationPdf } from '../quotations/pdf';
@@ -15,12 +15,21 @@ if (import.meta.env.DEV) {
     const user={id:'11111111-1111-4111-8111-111111111111',name:'Test Agent',phone:'9876543210',userType:new URLSearchParams(location.search).get('role') || 'agent'};
     const id='22222222-2222-4222-8222-222222222222';
     const lead={id:'33333333-3333-4333-8333-333333333333',customer_name:'Existing Test Customer',phone_number:'9876543211',email_address:'test@example.com',full_address:'12 Test Street',villages:'Radhanpur',sub_divisions:'Radhanpur',district:'Patan',pincode:'385340',system_capacity_kwp:3.48,module_brand:'Waaree',no_of_modules:6,module_wp:580,stage:'LEADS'};
-    const form={...newForm(user),customer_name:'Test Customer A',customer_phone:'9876543211',customer_email:'testcustomer@example.com',full_address:'12 Test Society, Radhanpur',village:'Radhanpur',taluka:'Radhanpur',district:'Patan',pincode:'385340',capacity_kw:3.48,solar_panel_make:'Waaree 580',solar_panel_qty:6,panel_wattage:580,inverter_option:'Option 1',inverter_brand:'Solaryan',geb_geda_charge:'Including',options:['Waaree Solar','Tata Power Solar','Adani Solar'].map((brandName,i)=>({brandName,baseValue:189000+i*8000,discount:0,subsidy:78000}))};
+    const form={...newForm(user),customer_name:'Test Customer A',customer_phone:'9876543211',customer_email:'testcustomer@example.com',full_address:'12 Test Society, Radhanpur',village:'Radhanpur',taluka:'Radhanpur',district:'Patan',pincode:'385340',capacity_kw:3.48,solar_panel_make:'Waaree 580',solar_panel_qty:6,panel_wattage:580,inverter_option:'Option 1',inverter_brand:'Solaryan',geb_geda_charge:'Including',options:['Waaree Solar','Tata Power Solar','Adani Solar'].map((brandName,i)=>({brandName,panel_wattage:[580,600,550][i],solar_panel_qty:[6,7,8][i],capacity_kw:[3.48,4.2,4.4][i],baseValue:189000+i*8000,discount:0,subsidy:78000}))};
     const row={...payload(form,brandedTemplate()),id,owner_id:user.id,quotation_no:3255,status:'draft',created_at:'2026-09-10T12:00:00Z',updated_at:'seed'};
     if(new URLSearchParams(location.search).has('issued')) { row.status='issued'; row.issued_at=new Date().toISOString(); }
-    const seed=JSON.parse(sessionStorage.getItem('q-fixture') || 'null') || {quotations:[row],admin:[lead],profiles:[{...user,phone_number:user.phone}]};
+    const final = new URLSearchParams(location.search).has('final');
+    if (new URLSearchParams(location.search).has('sample')) form.custom_notes = ['SAMPLE - For client review only. Not a customer quotation.'];
+    if (final) {
+        Object.assign(row,payload({...finalForm(form,2),source_lead_id:lead.id},brandedTemplate()));
+        row.quotation_data = {...row.quotation_data,kind:'final',final_of:'44444444-4444-4444-8444-444444444444',final_of_label:'Quote-3254'};
+    }
+    const seed=(!final && JSON.parse(sessionStorage.getItem('q-fixture') || 'null')) || {quotations:[row],admin:[lead],profiles:[{...user,phone_number:user.phone}]};
     const client=memoryClient(seed);
     supabase.from=client.from;
+    // All fixture writes, including PDF storage, stay in memory.
+    supabase.storage.from = () => ({upload:async () => ({data:{path:'fixture-only'},error:null}),remove:async () => ({error:null})});
+    supabase.auth.getSession = async () => ({data:{session:{user:{id:user.id}}},error:null});
     window.addEventListener('beforeunload',()=>sessionStorage.setItem('q-fixture',JSON.stringify(client.state.tables)));
     window.quotationFixture={client,row,user,repo:quotationRepository,generateQuotationPdf};
     if(!location.hash) location.hash='/quotations';

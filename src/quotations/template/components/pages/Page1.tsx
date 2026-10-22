@@ -170,7 +170,7 @@ export const Page1: React.FC<Page1Props> = ({
             onClick={() => onEditField?.('page1.capacityKw')}
           >
             <span className="font-normal text-gray-800">
-              {page1.capacityKw.toLowerCase().includes('kw') ? page1.capacityKw : `${page1.capacityKw} kw`}
+              {page1.capacityKw === 'Panel options' || page1.capacityKw.toLowerCase().includes('kw') ? page1.capacityKw : `${page1.capacityKw} kw`}
             </span>
           </HighlightWrapper>
         </div>

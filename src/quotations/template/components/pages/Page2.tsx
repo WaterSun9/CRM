@@ -25,7 +25,7 @@ export const Page2: React.FC<Page2Props> = ({
   const isFieldChanged = (key: string) => changedFields.has(key);
 
   // Format capacity display
-  const displayKw = page1.capacityKw.toLowerCase().includes('kw')
+  const displayKw = page1.capacityKw === 'Panel options' || page1.capacityKw.toLowerCase().includes('kw')
     ? page1.capacityKw
     : `${page1.capacityKw} kw`;
 
@@ -59,7 +59,7 @@ export const Page2: React.FC<Page2Props> = ({
     },
   ];
 
-  const brands = page2.brandOptions && page2.brandOptions.length === 3
+  const brands = page2.brandOptions && page2.brandOptions.length > 0
     ? page2.brandOptions
     : defaultBrands;
 
@@ -108,7 +108,7 @@ export const Page2: React.FC<Page2Props> = ({
             </thead>
             <tbody>
               {/* Brands remain in the comparison columns; these specifications are shared. */}
-              {page2.panelWattage && page2.solarPanelQty && <tr>
+              {brands.length === 1 && page2.panelWattage && page2.solarPanelQty && <tr>
                 <td className="border border-black px-3 py-1.5 font-bold text-gray-900"><span className="quotation-equipment-cell">Solar modules</span></td>
                 <td className="border border-black px-3 py-1.5 text-gray-800 font-medium"><span className="quotation-equipment-cell">{page2.solarPanelQty} modules × {page2.panelWattage} Wp</span></td>
               </tr>}
@@ -153,12 +153,8 @@ export const Page2: React.FC<Page2Props> = ({
         <div className="w-full my-3">
           <table className="quotation-financial-table w-full border-collapse border border-black text-[11px]">
             <colgroup>
-              <col className="w-[4%]" />
-              <col className="w-[34%]" />
-              <col className="w-[11%]" />
-              <col className="w-[17%]" />
-              <col className="w-[17%]" />
-              <col className="w-[17%]" />
+              <col style={{width:'4%'}} /><col style={{width:'34%'}} /><col style={{width:'11%'}} />
+              {brands.map((_, i) => <col key={i} style={{width:`${51 / brands.length}%`}} />)}
             </colgroup>
             <thead>
               <tr className="bg-gray-100/90">

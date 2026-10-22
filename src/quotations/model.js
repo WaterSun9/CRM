@@ -2,7 +2,7 @@ import { INITIAL_QUOTATION } from './template/data/initialData.js';
 
 export const QUOTATION_ROLES = ['agent', 'agent2', 'channel_partner_office', 'admin', 'sales'];
 // System details (panel, Wp, inverter, GEB/GEDA) are filled on the Pricing step.
-export const STEPS = ['Customer', 'Pricing', 'Notes & review'];
+export const STEPS = ['Customer', 'Pricing & review'];
 export const canUseQuotations = user => QUOTATION_ROLES.includes(user?.userType);
 export const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value) || 0);
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -26,14 +26,33 @@ export function newForm(user = {}) {
         // GEB and GEDA are separate lines. Blank = "Included"; an amount is added
         // to each option's net payable. Stored in quotation_data only.
         geb_charge: '', geda_charge: '',
-        options: INITIAL_QUOTATION.page2.brandOptions.map(b => ({ brandName: b.brandName, baseValue: '', discount: 0, subsidy: 0 })),
+        options: INITIAL_QUOTATION.page2.brandOptions.map(b => ({ brandName: b.brandName, panel_wattage: '', solar_panel_qty: '', capacity_kw: '', baseValue: '', discount: 0, subsidy: 0 })),
         custom_notes: [],
     };
+}
+// Old quotations keep their shared specifications until edited. New options own theirs.
+export function optionSpecs(form, option) {
+    const panel_wattage = option?.panel_wattage ?? form?.panel_wattage ?? '';
+    const solar_panel_qty = option?.solar_panel_qty ?? form?.solar_panel_qty ?? '';
+    const capacity_kw = option?.capacity_kw ?? (Number(panel_wattage) > 0 && Number(solar_panel_qty) > 0
+        ? Math.round(Number(panel_wattage) * Number(solar_panel_qty)) / 1000 : form?.capacity_kw ?? '');
+    return { panel_wattage, solar_panel_qty, capacity_kw };
+}
+export const isFinalQuotation = row => row?.quotation_data?.kind === 'final' || row?.kind === 'final';
+export function finalForm(form, number) {
+    const option = form.options?.[number - 1];
+    if (!option) throw new Error('Select a panel option first.');
+    return { ...clone(form), ...optionSpecs(form, option), solar_panel_make: option.brandName,
+        options: [{ ...clone(option), ...optionSpecs(form, option) }] };
 }
 export function toLead(form, choice = null, knownBrands = []) {
     const lead = Object.fromEntries(Object.entries(leadMapping).map(([field, target]) => [target, form[field] ?? '']));
     if (choice) {
         lead.module_brand = leadBrand(choice.brandName, knownBrands);
+        const specs = optionSpecs(form, choice);
+        lead.module_wp = specs.panel_wattage;
+        lead.no_of_modules = specs.solar_panel_qty;
+        lead.system_capacity_kwp = specs.capacity_kw;
         // Net payable is the agreed project amount, before the customer subsidy.
         lead.invoice_value = choice.netPayableAmount;
     }
@@ -42,7 +61,7 @@ export function toLead(form, choice = null, knownBrands = []) {
 // The three priced options a customer can choose when the quote is won (1-based number).
 export function chosenOptions(form) {
     return calculate(form?.options || [], extraCharges(form))
-        .map((option, index) => ({ ...option, number: index + 1 }))
+        .map((option, index) => ({ ...option, ...optionSpecs(form, form.options[index]), number: index + 1 }))
         .filter(option => option.baseValue > 0);
 }
 // CRM brand names are short capitals (TATA, WAAREE, ADANI); match the option's brand to one.
@@ -58,7 +77,7 @@ export function calculate(options, charges = 0) {
     return options.map(option => {
         const baseValue = round(option.baseValue), discount = round(option.discount), subsidy = round(option.subsidy);
         const netPayableAmount = round(baseValue - discount + round(charges));
-        return { brandName: option.brandName, baseValue, discount, subsidy, netPayableAmount, netPriceAfterSubsidy: round(netPayableAmount - subsidy) };
+        return { ...option, brandName: option.brandName, baseValue, discount, subsidy, netPayableAmount, netPriceAfterSubsidy: round(netPayableAmount - subsidy) };
     });
 }
 export function validate(form) {
@@ -72,18 +91,19 @@ export function validate(form) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(form.quotation_date) || !Number.isFinite(Date.parse(form.quotation_date))) errors.push('Customer: Enter a valid quotation date');
     if (form.valid_until && form.valid_until < form.quotation_date) errors.push('Customer: Valid-until date cannot precede quotation date');
     if (form.customer_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customer_email)) errors.push('Customer: Enter a valid email');
-    if (!(Number(form.capacity_kw) > 0)) errors.push('Pricing: Capacity must be greater than zero');
-    if (!(Number(form.solar_panel_qty) > 0 && Number.isInteger(Number(form.solar_panel_qty)))) errors.push('Pricing: Panel quantity must be a positive whole number');
-    if (!(Number(form.panel_wattage) > 0) || !Number.isFinite(Number(form.panel_wattage))) errors.push('Pricing: Module Wp must be greater than zero');
     [['inverter_brand','Inverter brand / make']].forEach(([key,title]) => required(key,title,1));
     if (!['Residential','Commercial'].includes(form.project_type)) errors.push('Pricing: Select a project type');
     [['geb_charge','GEB charge'],['geda_charge','GEDA charge']].forEach(([key,title]) => {
         const v = form[key];
         if (String(v ?? '').trim() !== '' && !(Number.isFinite(Number(v)) && Number(v) >= 0)) errors.push(`Pricing: ${title} must be blank (Included) or an amount`);
     });
-    if (form.options?.length !== 3) errors.push('Pricing: Exactly three options are required');
+    if (![1, 3].includes(form.options?.length)) errors.push('Pricing: Three comparison options or one final option are required');
     (form.options || []).forEach((option, i) => {
         const prefix = `Pricing: Option ${i + 1}`;
+        const specs = optionSpecs(form, option);
+        if (!(Number(specs.capacity_kw) > 0) || !Number.isFinite(Number(specs.capacity_kw))) errors.push(`${prefix} capacity must be greater than zero`);
+        if (!(Number(specs.solar_panel_qty) > 0 && Number.isInteger(Number(specs.solar_panel_qty)))) errors.push(`${prefix} panel quantity must be a positive whole number`);
+        if (!(Number(specs.panel_wattage) > 0) || !Number.isFinite(Number(specs.panel_wattage))) errors.push(`${prefix} Module Wp must be greater than zero`);
         if (!option.brandName?.trim()) errors.push(`${prefix} brand is required`);
         if (!(Number(option.baseValue) > 0) || !Number.isFinite(Number(option.baseValue))) errors.push(`${prefix} base value must be greater than zero`);
         for (const key of ['discount','subsidy']) if (option[key] === '' || !Number.isFinite(Number(option[key])) || Number(option[key]) < 0) errors.push(`${prefix} ${key} must be non-negative`);
@@ -97,9 +117,11 @@ export function validate(form) {
 export function freshTemplate() { return clone(INITIAL_QUOTATION); }
 export function fromRow(row, user) {
     if (row.schema_version !== 1) throw new Error('This quotation uses a newer format. Update the CRM before editing it.');
-    return { ...newForm(user), ...Object.fromEntries(Object.keys(newForm(user)).filter(k => row[k] != null).map(k => [k,row[k]])), ...row.quotation_data?.form };
+    const form = { ...newForm(user), ...Object.fromEntries(Object.keys(newForm(user)).filter(k => row[k] != null).map(k => [k,row[k]])), ...row.quotation_data?.form };
+    return { ...form, options: form.options.map(option => ({ ...option, ...optionSpecs(form, option) })) };
 }
 export function payload(form, template) {
+    form = { ...form, ...optionSpecs(form, form.options?.[0]), options: form.options.map(option => ({ ...option, ...optionSpecs(form, option) })) };
     const columns = Object.keys(newForm()).filter(k => !['options','custom_notes','geb_charge','geda_charge'].includes(k));
     const values = Object.fromEntries(columns.map(k => [k, form[k] === '' ? null : form[k]]));
     // Retain the legacy column for older clients without a second editable brand.
@@ -116,7 +138,7 @@ export function documentFor(row) {
     const data = clone(row.quotation_data?.template || INITIAL_QUOTATION);
     data.page1 = { ...data.page1, customerName: form.customer_name || '', customerPhone: form.customer_phone || '',
         quotationNo: quoteLabel(row), date: form.quotation_date ? form.quotation_date.split('-').reverse().join('-') : '',
-        capacityKw: form.capacity_kw ? `${form.capacity_kw} kWp` : '', yoursTrulyName: form.owner_name_snapshot || '', yoursTrulyPhone: form.owner_phone_snapshot || '',
+        capacityKw: form.options.length === 1 || new Set(form.options.map(o => String(o.capacity_kw))).size === 1 ? `${form.options[0]?.capacity_kw || ''} kWp` : 'Panel options', yoursTrulyName: form.owner_name_snapshot || '', yoursTrulyPhone: form.owner_phone_snapshot || '',
         address: [form.full_address, form.village, form.taluka, form.district, form.pincode].filter(Boolean).join(', '),
         email: form.customer_email || '', validUntil: form.valid_until || '' };
     data.page2 = { ...data.page2, solarPanelMake: form.solar_panel_make || '', solarPanelQty: form.solar_panel_qty || '', panelWattage: form.panel_wattage || '',
@@ -124,13 +146,13 @@ export function documentFor(row) {
         // Quotations saved before the split show their old single choice.
         gebCharge: extraCharges(form) === 0 && form.geb_geda_charge === 'Excluding' ? 'Excluding' : chargeLabel(form.geb_charge),
         gedaCharge: extraCharges(form) === 0 && form.geb_geda_charge === 'Excluding' ? 'Excluding' : chargeLabel(form.geda_charge),
-        projectType: form.project_type || 'Residential', projectSize: form.capacity_kw ? `${form.capacity_kw} kWp` : '', brandOptions: calculate(form.options || [], extraCharges(form)),
+        projectType: form.project_type || 'Residential', projectSize: form.options.length === 1 ? `${form.options[0]?.capacity_kw || ''} kWp` : 'Per option', brandOptions: calculate(form.options || [], extraCharges(form)),
         notes: [...data.page2.notes, ...(form.custom_notes || []).filter(n => n && n.trim())] };
     data.page3.bomItems = data.page3.bomItems.map(item => {
         if (/^solar modules$/i.test(item.description)) return { ...item,
-            qty: String(form.solar_panel_qty || item.qty),
-            size: form.panel_wattage ? `${form.panel_wattage} Wp` : item.size,
-            make: 'See price options on page 2' };
+            qty: new Set(form.options.map(option => String(option.solar_panel_qty))).size > 1 ? 'Per option' : String(form.solar_panel_qty || item.qty),
+            size: new Set(form.options.map(option => String(option.panel_wattage))).size > 1 ? 'See page 2' : form.panel_wattage ? `${form.panel_wattage} Wp` : item.size,
+            make: form.options.length === 1 ? form.options[0].brandName : 'See price options on page 2' };
         if (/inverter/i.test(item.description) && form.inverter_brand) return { ...item, make: form.inverter_brand };
         return item;
     });
@@ -143,6 +165,7 @@ export function revisionInfo(row) {
     return r ? { baseNo: r.base_no, n: r.n } : { baseNo: row?.quotation_no, n: 0 };
 }
 export const quoteLabel = row => {
+    if (isFinalQuotation(row)) return `${row.quotation_data?.final_of_label || row.final_of_label || `Quote-${row.quotation_no}`} — Final`;
     const { baseNo, n } = revisionInfo(row);
     if (!baseNo) return 'Quote-DRAFT';
     return n ? `Quote-${baseNo}-R${n}` : `Quote-${baseNo}`;
@@ -152,5 +175,5 @@ export const quoteLabel = row => {
 export const pdfName = row => {
     const name = String(row.customer_name || 'Quotation').replace(/[\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim().slice(0,100) || 'Quotation';
     const { n } = revisionInfo(row);
-    return `${name}${n ? ` (R${n})` : ''}.pdf`;
+    return `${name}${isFinalQuotation(row) ? ' (Final)' : n ? ` (R${n})` : ''}.pdf`;
 };

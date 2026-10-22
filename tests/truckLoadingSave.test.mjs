@@ -183,3 +183,12 @@ test('BOM loading date: set when ticked on this sheet or still blank, never move
     assert.deepEqual(db.tables.bom.map(row => row.material_loaded_date), ['2026-10-17', '2026-10-01', '2026-10-17', null, null]);
     assert.deepEqual(failed, ['D']);
 });
+
+test('delivery loading copies the loader name into the customer BOM with its date', async () => {
+    const db = fakeDb();
+    db.tables.bom.push({id:'bom-a',material_loaded_by:null,material_loaded_date:null});
+    const sheet = {projects:[{id:'a',customer_name:'Ramesh'}],bomIdByCustomer:{a:'bom-a'},progressByCustomer:{a:{loaded:1,total:2}},bomLoadedDateByCustomer:{}};
+    assert.deepEqual(await stampBomLoadedDates(db,{sheet,date:'2026-10-22',loadedBy:'Asha'}),[]);
+    assert.equal(db.tables.bom[0].material_loaded_by,'Asha');
+    assert.equal(db.tables.bom[0].material_loaded_date,'2026-10-22');
+});
