@@ -72,3 +72,24 @@ test('legacy shared specifications remain available separately on each old optio
     const restored = fromRow({...payload(old,freshTemplate()),quotation_no:1});
     assert.deepEqual(restored.options.map(option => option.panel_wattage),[580,580,580]);
 });
+
+test('a Won quotation has an editable final before conversion and links that same edited final to the admin lead', async () => {
+    const original = {...payload(form(),freshTemplate()),id,owner_id:user.id,quotation_no:12,status:'issued',selected_option:2,issued_at:'2026-10-22T10:00:00Z',updated_at:'original',converted_lead_id:null};
+    const client = memoryClient({quotations:[original]});
+    const repo = createQuotationRepository(client);
+    const [a,b] = await Promise.all([repo.ensureFinal(original,user),repo.ensureFinal(original,user)]);
+    assert.equal(a.id,b.id);
+    assert.equal(a.source_lead_id,null);
+    assert.equal((await repo.get(id)).converted_lead_id,null);
+    const edited = fromRow(a); edited.options[0].baseValue = 225000;
+    await repo.save(a.id,a,edited,freshTemplate(),user);
+    const {data:lead} = await repo.insertConversionLead(original,{customer_name:'Test Customer'},user);
+    const linked = await repo.ensureFinal(original,user);
+    assert.equal(linked.id,a.id);
+    assert.equal(linked.source_lead_id,lead.id);
+    assert.equal(fromRow(linked).source_lead_id,lead.id);
+    assert.equal(fromRow(linked).options[0].baseValue,225000);
+    assert.equal(client.state.tables.quotations.length,2);
+    assert.equal(fromRow(await repo.get(id)).options.length,3);
+    assert.equal((await repo.get(id)).status,'converted');
+});

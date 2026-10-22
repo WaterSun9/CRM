@@ -101,24 +101,34 @@ export function createQuotationRepository(client) {
             return data;
         },
         async ensureFinal(row, user) {
-            const original = await get(row.id);
+            let original = await get(row.id);
             if (isFinalQuotation(original)) return original;
-            if (!original.converted_lead_id) throw new Error('Save the lead before creating its final quotation.');
+            if (!original.selected_option) throw new Error('Choose a panel before creating its final quotation.');
+            if (!original.converted_lead_id && !original.quotation_data?.final_id) {
+                const finalId = await finalQuotationId(original.id,'won');
+                try { original = await update(original,{ quotation_data:{ ...original.quotation_data, final_id:finalId } }); }
+                catch (error) {
+                    const latest = await get(original.id);
+                    if (latest.quotation_data?.final_id !== finalId || latest.selected_option !== original.selected_option) throw error;
+                    original = latest;
+                }
+            }
             const form = finalForm(fromRow(original), original.selected_option);
-            const id = await finalQuotationId(original.id, original.converted_lead_id);
+            const id = original.quotation_data?.final_id || await finalQuotationId(original.id, original.converted_lead_id || 'won');
             const { data: existing, error: readError } = await client.from('quotations').select('*').eq('id',id).maybeSingle();
             fail(readError);
             if (existing) {
-                if (existing.quotation_data?.final_of !== original.id || existing.source_lead_id !== original.converted_lead_id) throw conflict();
+                if (existing.quotation_data?.final_of !== original.id || (existing.source_lead_id && existing.source_lead_id !== original.converted_lead_id)) throw conflict();
+                if (original.converted_lead_id && !existing.source_lead_id) return update(existing,{ source_lead_id:original.converted_lead_id, quotation_data:{ ...existing.quotation_data, form:{ ...existing.quotation_data.form, source_lead_id:original.converted_lead_id } } });
                 return existing;
             }
-            const body = payload({ ...form, source_lead_id: original.converted_lead_id }, original.quotation_data.template);
+            const body = payload({ ...form, source_lead_id: original.converted_lead_id || null }, original.quotation_data.template);
             body.quotation_data = { ...body.quotation_data, kind:'final', final_of:original.id, final_of_label:quoteLabel(original),
                 selected_option:original.selected_option, activity:[event('final_created',user,{ quotation_id:original.id })] };
             const { data, error } = await client.from('quotations').insert({ ...body, id, owner_id:original.owner_id }).select('*').single();
             if (error?.code === '23505') {
                 const latest = await get(id);
-                if (latest.quotation_data?.final_of !== original.id || latest.source_lead_id !== original.converted_lead_id) throw conflict();
+                if (latest.quotation_data?.final_of !== original.id || (latest.source_lead_id || null) !== (original.converted_lead_id || null)) throw conflict();
                 return latest;
             }
             fail(error); return data;
