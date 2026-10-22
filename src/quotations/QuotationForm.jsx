@@ -192,7 +192,7 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
                 <h2 style={{margin:0}}>{STEPS[step]}</h2>
                 {import.meta.env.DEV && <button type="button" onClick={fillTestValues} style={{background:'#fef3c7',borderColor:'#f59e0b',color:'#92400e',fontSize:12,padding:'4px 10px',minHeight:32}}>⚡ Fill Test Values</button>}
             </div>
-            {isFinalQuotation(initialRow) && <p className="q-notice">Final quotation: selected panel only. You can edit it, preview it, or save as draft and return later. Download again after changes to save an updated Loan PDF.</p>}
+            {isFinalQuotation(initialRow) && <p className="q-notice">Final quotation: selected panel only. You can edit it, preview it, or save as draft and return later. Download again after changes to save an updated PDF in the lead’s documents.</p>}
             {step === 0 && <div className="q-grid">{customerFields.map(([key,label,type,maxLength,readOnly]) => <Field key={key} label={label} type={type} maxLength={maxLength} readOnly={readOnly} value={form[key]} onChange={value => update(key,value)} />)}</div>}
             {step === 1 && <><div className="q-grid">
                 <Field label="Project type"><select value={form.project_type} onChange={e => update('project_type',e.target.value)}><option>Residential</option><option>Commercial</option></select></Field>
@@ -210,7 +210,7 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
                     <Field label="System Capacity (kWp)"><input aria-label={`Option ${i + 1} capacity (kWp)`} readOnly value={optionSpecs(form, option).capacity_kw} /></Field>
                     <OptionSelect label="Solar panel brand" placeholder="Select panel brand…" value={option.brandName} options={panelMakes} onChange={value => update('options',form.options.map((o,index) => index === i ? {...o,brandName:value} : o))} />{[['baseValue','Base value (₹)','number'],['discount','Discount (₹)','number'],['subsidy','Subsidy (₹)','number']].map(([key,label,type]) => <Field key={key} label={label} type={type} maxLength={80} value={option[key]} onChange={value => update('options',form.options.map((o,index) => index === i ? {...o,[key]:value} : o))} />)}</div>
                 <dl><div><dt>Net payable</dt><dd>{money(totals[i].netPayableAmount)}</dd></div><div><dt>After subsidy</dt><dd>{money(totals[i].netPriceAfterSubsidy)}</dd></div></dl>
-                {i === 0 && <div className="q-actions"><button onClick={() => update('options',form.options.map(o => ({...o,discount:option.discount})))}>Apply discount to all</button><button onClick={() => update('options',form.options.map(o => ({...o,subsidy:option.subsidy})))}>Apply subsidy to all</button></div>}
+                {i === 0 && form.options.length > 1 && <div className="q-actions"><button onClick={() => update('options',form.options.map(o => ({...o,discount:option.discount})))}>Apply discount to all</button><button onClick={() => update('options',form.options.map(o => ({...o,subsidy:option.subsidy})))}>Apply subsidy to all</button></div>}
             </section>)}</div></>}
             {step === 1 && <>
                 <h3>Standard notes</h3><ul className="q-standard-notes">{template.page2.notes.map(note => <li key={note}>{note}</li>)}</ul>

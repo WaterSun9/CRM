@@ -296,7 +296,8 @@ export const HOLD_STATUS_TAGS = [
 // DOCUMENT TYPE LABELS
 // ════════════════════════════════════════════════════════════
 export const DOC_TYPE_LABELS = {
-    loan_quotation: 'Final Quotation (Loan)',
+    lead_quotation: 'Final Quotation',
+    loan_quotation: 'Final Quotation (Legacy)',
     application_acknowledgment: 'Application Acknowledgment',
     vendor_feasibility: 'Vendor Feasibility',
     site_feasibility: 'Site Feasibility',

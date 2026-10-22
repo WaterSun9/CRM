@@ -11,7 +11,7 @@ import { recoveries } from './recovery';
 import QuotationForm from './QuotationForm';
 import DocumentPages from './DocumentPages';
 import { downloadQuotationFile, generateQuotationPdf, shareQuotationFile } from './pdf';
-import { saveLoanQuotationPdf } from './loanPdf';
+import { saveLeadQuotationPdf } from './leadPdf';
 import { canShareQuotationFile } from './fileShare';
 import './quotation.css';
 
@@ -20,7 +20,7 @@ const readRoute = () => window.location.hash.replace(/^#/,'');
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const statusLabels = ['all','draft','issued','converted','lost'];
 // Draft until downloaded, then Issued; Won adds the lead and marks it Converted.
-const statusText = status => status;
+const statusText = status => status === 'converted' ? 'won' : status;
 // Downloaded (issued), converted or already-revised quotations cannot be edited.
 const supersededOf = item => item?.superseded_by || item?.quotation_data?.superseded_by || null;
 const isConverted = item => !!item?.converted_lead_id;
@@ -110,6 +110,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     const [remark,setRemark] = useState('');
     const [conversion,setConversion] = useState(null);
     const [choosing,setChoosing] = useState(null);
+    const [finalChoice,setFinalChoice] = useState(null);
     const [leadPrefill,setLeadPrefill] = useState(null);
     const [online,setOnline] = useState(navigator.onLine);
     const allowed = canUseQuotations(user);
@@ -188,13 +189,14 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     const generate = async (quotation, action = 'download') => {
         if (action === 'share') { prepareShare(quotation); return; }
         return run(async () => {
-            const stored = await repo.get(quotation.id);
+            const original = await repo.get(quotation.id);
+            const stored = isConverted(original) ? await repo.ensureFinal(original,profile) : original;
             const issues = validate(fromRow(stored));
             if (issues.length) { await showAlert(issues.join('\n'),{title:'Complete these fields',type:'warning'}); return; }
             const file = await generateQuotationPdf(stored);
             const updated = await repo.generated(stored,user);
             setRow(updated);
-            if (isFinalQuotation(updated)) await saveLoanQuotationPdf(updated,file,user);
+            if (isFinalQuotation(updated)) await saveLeadQuotationPdf(updated,file,user);
             downloadQuotationFile(file);
             showAlert(`Downloaded ${file.name}`, { title: 'Download complete', type: 'success' });
             setRefresh(n => n + 1);
@@ -206,7 +208,8 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         setWaChat({ row:item, file:null, preparing:true, issued:false });
         run(async () => {
             try {
-                const stored = await repo.get(item.id);
+                const original = await repo.get(item.id);
+                const stored = isConverted(original) ? await repo.ensureFinal(original,profile) : original;
                 const issues = validate(fromRow(stored));
                 if (issues.length) { setWaChat(null); await showAlert(issues.join('\n'),{title:'Complete these fields',type:'warning'}); return; }
                 const file = await generateQuotationPdf(stored);
@@ -288,10 +291,10 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         setChoosing(null);
         startLead(saved, chosenOptions(fromRow(saved)).find(choice => choice.number === number));
     });
-    const openFinal = quotation => run(async () => {
+    const openFinal = (quotation, destination = 'edit') => run(async () => {
         const final = await repo.ensureFinal(quotation, profile);
         dirty.current = false;
-        navigate(`/quotations/${final.id}/edit`);
+        navigate(`/quotations/${final.id}/${destination}`);
         setRefresh(n => n + 1);
     });
     const showLead = async leadId => { const lead = await repo.lead(leadId); dirty.current = false; navigate(''); onViewLead(lead); };
@@ -329,7 +332,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
                 {!!localCopies.length && <div className="q-notice"><strong>Draft recovery on this device</strong>{localCopies.map(copy => <div key={copy.id}><button onClick={() => navigate(`/quotations/new/${copy.id}`)}>Recover {copy.form?.customer_name || 'unnamed quotation'}</button></div>)}</div>}
                 <div className="q-toolbar"><input className="q-search" aria-label="Search quotations" placeholder="Search quote number, customer or phone" value={search} onChange={e => {setSearch(e.target.value);setPage(0);}} /><button aria-label="Refresh quotations" onClick={() => setRefresh(n => n + 1)}><Search size={17} /> Refresh</button></div>
                 <div className="q-filters">{statusLabels.map(s => <button key={s} aria-pressed={status === s} onClick={() => {setStatus(s);setPage(0);}}>{statusText(s)[0].toUpperCase() + statusText(s).slice(1)}{counts && counts[s] != null ? <span className="q-count"> {counts[s]}</span> : null}</button>)}</div>
-                {loading && !allRows.length ? <div className="q-empty" role="status">Loading quotations…</div> : !rows.length && !error ? <div className="q-empty"><h2>No quotations found</h2><p className="q-muted">Create your first quotation or try another search.</p><button onClick={start}>Create Quotation</button></div> : <div className="q-cards">{rows.map(item => <article className="q-card" key={item.id}><div className="q-card-heading"><span>{quoteLabel(item)} · {showDate(item.quotation_date)}</span><span className={`q-status q-status-${supersededOf(item) ? 'lost' : item.status}`}>{supersededOf(item) ? 'revised' : statusText(item.status)}</span></div>{supersededOf(item) && <p className="q-muted">Replaced by {supersededOf(item).label}</p>}<h3>{item.customer_name}</h3><p>{item.customer_phone}</p><p>Created by {item.owner_name_snapshot || '—'}</p>{item.selected_option && item.chosen_brands?.[item.selected_option - 1] && <p><strong>Chosen: {item.chosen_brands[item.selected_option - 1].brandName}</strong></p>}<dl><div><dt>System capacity</dt><dd>{item.capacity_kw ? `${item.capacity_kw} kWp` : '—'}</dd></div><div><dt>Starting price</dt><dd>{item.starting_price == null ? '—' : money(item.starting_price)}</dd></div></dl><div className="q-actions">{!isLocked(item) ? <button onClick={() => navigate(`/quotations/${item.id}/edit`)}>{isFinalQuotation(item) ? 'Edit final quotation' : 'Edit'}</button> : (canRevise(item) && <button disabled={busy || !online} onClick={() => revise(item)}>Revise</button>)}<button onClick={() => navigate(`/quotations/${item.id}/preview`)}><Eye size={15} /> Preview</button>{item.status !== 'lost' && <><button disabled={busy || !online} onClick={() => generate(item, 'download')}><Download size={15} /> Download & save</button><button disabled={busy || !online} onClick={() => generate(item, 'share')}><Share2 size={15} /> Share</button>{/* WhatsApp disabled: {canWhatsAppChat(item) && <button className="q-wa" disabled={busy || !online} onClick={() => openWhatsAppChat(item)}><MessageCircle size={15} /> WhatsApp</button>} */}</>}</div>{!isFinalQuotation(item) && !supersededOf(item) && (isConverted(item)
+                {loading && !allRows.length ? <div className="q-empty" role="status">Loading quotations…</div> : !rows.length && !error ? <div className="q-empty"><h2>No quotations found</h2><p className="q-muted">Create your first quotation or try another search.</p><button onClick={start}>Create Quotation</button></div> : <div className="q-cards">{rows.map(item => <article className="q-card" key={item.id}><div className="q-card-heading"><span>{quoteLabel(item)} · {showDate(item.quotation_date)}</span><span className={`q-status q-status-${supersededOf(item) ? 'lost' : item.status}`}>{supersededOf(item) ? 'revised' : statusText(item.status)}</span></div>{supersededOf(item) && <p className="q-muted">Replaced by {supersededOf(item).label}</p>}<h3>{item.customer_name}</h3><p>{item.customer_phone}</p><p>Created by {item.owner_name_snapshot || '—'}</p>{item.selected_option && item.chosen_brands?.[item.selected_option - 1] && <p><strong>Chosen: {item.chosen_brands[item.selected_option - 1].brandName}</strong></p>}<dl><div><dt>System capacity</dt><dd>{item.capacity_kw ? `${item.capacity_kw} kWp` : '—'}</dd></div><div><dt>Starting price</dt><dd>{item.starting_price == null ? '—' : money(item.starting_price)}</dd></div></dl><div className="q-actions">{!isLocked(item) ? <button onClick={() => navigate(`/quotations/${item.id}/edit`)}>{isFinalQuotation(item) ? 'Edit final quotation' : 'Edit'}</button> : (canRevise(item) && <button disabled={busy || !online} onClick={() => revise(item)}>Revise</button>)}<button onClick={() => isConverted(item) ? openFinal(item,'preview') : navigate(`/quotations/${item.id}/preview`)}><Eye size={15} /> Preview</button>{item.status !== 'lost' && <><button disabled={busy || !online} onClick={() => generate(item, 'download')}><Download size={15} /> Download & save</button><button disabled={busy || !online} onClick={() => generate(item, 'share')}><Share2 size={15} /> Share</button>{/* WhatsApp disabled: {canWhatsAppChat(item) && <button className="q-wa" disabled={busy || !online} onClick={() => openWhatsAppChat(item)}><MessageCircle size={15} /> WhatsApp</button>} */}</>}</div>{!isFinalQuotation(item) && !supersededOf(item) && (isConverted(item)
                     ? <div className="q-actions"><button disabled={busy || !online} onClick={() => showLead(item.converted_lead_id)}>View lead</button><button disabled={busy || !online} onClick={() => openFinal(item)}>Final quotation</button></div>
                     : item.status === 'lost'
                         ? <div className="q-actions"><button disabled={busy || !online} onClick={() => run(async () => { const latest = await repo.get(item.id); patchRow(await repo.outcome(latest,'reopened',user)); setRefresh(n => n + 1); })}>Reopen</button></div>
@@ -344,7 +347,8 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
             {validId && loadedRoute === route && mode === 'preview' && row && <Preview row={row} busy={busy} onSaveDraft={() => run(async () => { const latest = await repo.get(row.id); await repo.save(latest.id,latest,fromRow(latest),latest.quotation_data.template,user); dirty.current = false; navigate('/quotations'); setRefresh(n => n + 1); })} onGenerate={generate} onRevise={revise} onEdit={() => navigate(`/quotations/${id}/edit`)} />}
             {route !== '/quotations' && (!validId || !['new','edit','preview'].includes(mode)) && <div className="q-error">Quotation page not found.</div>}
         </main>
-        {choosing && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-choose-title"><div className="q-panel"><h2 id="q-choose-title">Which option did the customer choose?</h2><div className="q-choices">{choosing.choices.map(choice => <button key={choice.number} type="button" aria-pressed={choosing.picked === choice.number} className={choosing.picked === choice.number ? 'q-choice q-choice-on' : 'q-choice'} onClick={() => setChoosing(c => ({ ...c, picked:choice.number }))}><span className="q-choice-name">Option {choice.number}: {choice.brandName}</span><span>{choice.solar_panel_qty} modules × {choice.panel_wattage} Wp · {choice.capacity_kw} kWp</span><span>Net payable {money(choice.netPayableAmount)}</span><span className="q-muted">After subsidy {money(choice.netPriceAfterSubsidy)}</span></button>)}</div><div className="q-actions"><button disabled={busy} onClick={() => setChoosing(null)}>Cancel</button><button className="q-primary" disabled={busy || !choosing.picked} onClick={confirmChoice}>Continue to Add Lead</button></div></div></div>}
+        {choosing && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-choose-title"><div className="q-panel"><h2 id="q-choose-title">Which option did the customer choose?</h2><div className="q-choices">{choosing.choices.map(choice => <button key={choice.number} type="button" aria-pressed={choosing.picked === choice.number} className={choosing.picked === choice.number ? 'q-choice q-choice-on' : 'q-choice'} onClick={() => setChoosing(c => ({ ...c, picked:choice.number }))}><span className="q-choice-name">Option {choice.number}: {choice.brandName}</span><span>{choice.solar_panel_qty} modules × {choice.panel_wattage} Wp · {choice.capacity_kw} kWp</span><span>Net payable {money(choice.netPayableAmount)}</span><span className="q-muted">After subsidy {money(choice.netPriceAfterSubsidy)}</span></button>)}</div><div className="q-actions"><button disabled={busy} onClick={() => setChoosing(null)}>Cancel</button><button className="q-primary" disabled={busy || !choosing.picked} onClick={confirmChoice}>Confirm panel & continue</button></div></div></div>}
+        {finalChoice && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-final-title"><div className="q-panel"><h2 id="q-final-title">Quotation won</h2><p>The chosen panel is saved and the quotation is in Won. Would you like to revise the final document?</p><p className="q-muted">Revise opens steps 1 and 2 with only the selected panel. All three document pages, including terms and warranty, are retained.</p><div className="q-actions"><button onClick={() => { const final = finalChoice; setFinalChoice(null); navigate(`/quotations/${final.id}/preview`); }}>Skip to preview</button><button className="q-primary" onClick={() => { const final = finalChoice; setFinalChoice(null); navigate(`/quotations/${final.id}/edit`); }}>Revise document</button></div></div></div>}
         {waChat && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-wa-title"><div className="q-panel"><h2 id="q-wa-title">Share quotation PDF</h2><p className="q-muted">{quoteLabel(waChat.row)} · {waChat.row.customer_name}</p>
             <div className="q-notice" role="status" style={{marginTop:12}}>{waChat.preparing ? <strong>Preparing the PDF…</strong> : <><strong>PDF ready: {waChat.file?.name}</strong><div className="q-actions"><button type="button" onClick={() => generate(waChat.row, 'download')}><Download size={15} /> Save PDF</button></div></>}</div>
             {/* WhatsApp phone, message and chat controls are disabled. Complete original JSX is preserved in docs/parked-quotation-whatsapp/QuotationModule.jsx.disabled. */}
@@ -353,7 +357,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
 
         {lost && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-lost-title"><div className="q-panel"><h2 id="q-lost-title">Mark quotation lost</h2><label className="q-field"><span>Reason (required)</span><select value={reason} onChange={e => setReason(e.target.value)}><option value="">Choose reason</option>{['Price','Competitor selected','Project postponed','Not interested','Other'].map(r => <option key={r}>{r}</option>)}</select></label><label className="q-field" style={{marginTop:16}}><span>Remark (optional)</span><textarea maxLength={1000} value={remark} onChange={e => setRemark(e.target.value)} /></label><div className="q-actions"><button disabled={busy} onClick={() => setLost(null)}>Cancel</button><button className="q-primary" disabled={busy || !reason} onClick={() => run(async () => { const latest = await repo.get(lost.id); patchRow(await repo.outcome(latest,'lost',user,reason,remark)); setLost(null); setRefresh(n => n + 1); })}>Mark Lost</button></div></div></div>}
         {conversion && createPortal(
-            <AddLeadModal isOpen initialValues={leadPrefill} user={user} meta={meta} channel_partners={channelPartners} onClose={() => {setConversion(null);dirty.current = false;}} onSave={async (data,files) => { await onCreateLead(data,files,conversion); const final = await repo.ensureFinal(conversion,profile); dirty.current = false; setConversion(null); navigate(`/quotations/${final.id}/edit`); setRefresh(n => n + 1); }} />,
+            <AddLeadModal isOpen initialValues={leadPrefill} user={user} meta={meta} channel_partners={channelPartners} onClose={() => {setConversion(null);dirty.current = false;}} onSave={async (data,files) => { await onCreateLead(data,files,conversion); const final = await repo.ensureFinal(conversion,profile); dirty.current = false; setConversion(null); setStatus('converted'); setPage(0); setFinalChoice(final); setRefresh(n => n + 1); }} />,
             document.body
         )}
     </div>;
