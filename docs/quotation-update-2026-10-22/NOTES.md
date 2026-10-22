@@ -26,3 +26,7 @@ Deployment confirmed: source commit a36d690, build a36d690-mvjshba6, Pages commi
 - Final quotation controls moved from Loan to the Lead tab, available for both Cash and Loan leads. New PDFs use lead_quotation and also appear in the card's all-documents gallery. Existing loan_quotation PDFs remain accessible in the Lead section; historical files/data are not migrated.
 - Local in-memory browser check: issued quotation → Won → Tata option (600 Wp × 7, 4.2 kWp) → prefilled lead → Won prompt → revise → two editor steps → three-page preview containing only Tata → draft save/reopen. No live records written.
 - ESLint, 152 automated tests and production build passed. Live signed-in upload still requires a client check.
+
+### Correction: Won and Converted are separate
+
+The previous release incorrectly labelled Converted as Won. Restored Converted between Won and Lost. Won means an issued comparison has selected_option and no converted admin lead; Converted means the lead was successfully added to admin. Panel selection immediately selects the Won tab. The existing Add Lead form and final-document revision flow remain. Cancelling the lead form leaves the quotation in Won, with Add to admin leads available later. Existing converted records show Converted again without data changes. Local in-memory UI test verified Won 1 / Converted 0 after choosing a panel, then Won 0 / Converted 1 after saving the admin lead. ESLint, all 152 tests and build passed.
