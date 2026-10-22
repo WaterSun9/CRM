@@ -9,8 +9,10 @@
 
 Validation: ESLint has no errors; all 152 Node tests pass; production build succeeds (existing dependency/chunk warnings). Isolated browser preview showed all three final pages, only the chosen option on page 2, selected specifications in the BOM, and successful PDF generation. Screenshot: final-selected-panel.png.
 
-Not deployed. No production records, storage objects or database schema were changed during testing. Real-role storage permissions and a real Loan PDF upload remain deployment smoke checks. Existing quotation RLS is retained; no roles were granted new access.
+Frontend deployed to https://crm.watersunsolar.com on 22 October 2026. No production records, storage objects or database schema were changed during testing. Real-role storage permissions and a real Loan PDF upload remain deployment smoke checks. Existing quotation RLS is retained; no roles were granted new access.
 
 Follow-up: Save as draft is explicit in the editor; final preview has Save as draft & back. Saving an exported final resets its current status to draft while retaining issued history. Browser checked download -> save as draft -> reopen -> edit price -> save -> reopen with the edited price retained, using memory-only database and storage. Client sample PDF: output/pdf/Watersun-Final-Quotation-Sample.pdf; all three rendered A4 pages inspected. Page 2 brand header contains only the brand name.
 
 Release preflight: last backup workflow 39689918446 succeeded (21 October UTC). Production version before release: d2624f6-mvc8aqzc. GitHub Pages source is gh-pages; use npm run deploy. Existing warranty/visit/trip/OTP REST resources resolve and reject anonymous reads; service-otp GET returns its expected 405 POST-only response. This establishes endpoint presence, not signed-in role or SMS delivery success. No Supabase migrations/settings changes are included in this release.
+
+Deployment confirmed: source commit a36d690, build a36d690-mvjshba6, Pages commit 81833bdc37533cdbcca5375ba2875c74b0086e0c. GitHub Pages reports built without error; the production domain serves the matching build. No Supabase schema, secrets, settings, or edge-function deployment was changed. Firebase SMS delivery and signed-in role tests remain client preview checks.
