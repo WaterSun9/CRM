@@ -7,21 +7,38 @@ import IssueForm from './service/IssueForm';
 import TechnicianJobPanel from './service/TechnicianJobPanel';
 import OfficeIssuePanel from './service/OfficeIssuePanel';
 import VisitForm from './service/VisitForm';
-import { KmSettingsPanel } from './service/kmSettings';
 import { announceComplaintsChanged } from './service/complaintStatus';
 import WhatsAppLog from './service/WhatsAppLog';
+import { WHATSAPP_ENABLED } from '../constants';
+import ComplaintPhotos from './service/ComplaintPhotos';
+import ComplaintComments from './service/ComplaintComments';
+import CustomerFacts from './service/CustomerFacts';
+import ComplaintHistory from './service/ComplaintHistory';
+import VisitStage from './service/VisitStage';
+import CombinedVisitForm from './service/CombinedVisitForm';
 import {
-    ACTIVE_STATUSES, OFFICE_FILTERS, STATUS_LABELS, STATUS_PILL, TECHNICIAN_FILTERS, WARRANTY_PILL,
-    formatDateTime, matchesFilter, money, ticketLabel, uploadIssueFiles, validFiles, warrantyLabel
+    ACTIVE_STATUSES, OFFICE_FILTERS, PARTNER_TYPES, STAGE_LABELS, STAGE_PILL, STATUS_LABELS, TECHNICIAN_FILTERS, WARRANTY_PILL,
+    formatDateTime, isOpenJobFor, issueStage, matchesFilter, money, ticketLabel, warrantyLabel
 } from './service/serviceLabels';
 
-const StatusPill = ({ status }) => <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${STATUS_PILL[status] || 'bg-stone-100 text-stone-700'}`}>{STATUS_LABELS[status] || status}</span>;
+// The tab the complaint is in (Raised, In process, Visited, ...); "Waiting for code" is said too.
+const StatusPill = ({ issue }) => {
+    const stage = issueStage(issue);
+    return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${STAGE_PILL[stage] || 'bg-stone-100 text-stone-700'}`}>{STAGE_LABELS[stage] || STATUS_LABELS[issue.status] || issue.status}{issue.status === 'completion_pending' ? ` · ${STATUS_LABELS.completion_pending}` : ''}</span>;
+};
 const WarrantyPill = ({ status }) => <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${WARRANTY_PILL[status] || WARRANTY_PILL.unknown}`}>{warrantyLabel(status)}</span>;
 
 // One saved visit: km (and the trip estimate when the office changed it), amount, note.
 // In 'pro' mode the pre-filled km can be the Google road km (km_source 'google', or
 // route_km kept when the office changed it).
 function VisitRow({ visit }) {
+    if (visit.trip_group) {
+        const lead = visit.group?.find(row => Number(row.kilometers) > 0 || Number(row.amount_inr) > 0) || visit;
+        const tickets = (visit.group || [visit]).map(row => row.ticket).filter(Boolean).join(', ');
+        return <p className="rounded-lg bg-stone-50 p-2 text-xs">
+            {visit.visit_date} · <strong>Combined trip</strong>{tickets ? ` (${tickets})` : ''} · {lead.kilometers} km · {money(lead.amount_inr)} for the whole trip{lead.km_note ? ` · ${lead.km_note}` : ''}
+        </p>;
+    }
     const estimate = visit.km_estimate === null || visit.km_estimate === undefined ? null : Number(visit.km_estimate);
     const changed = estimate !== null && Number(visit.kilometers) !== estimate;
     const google = visit.km_source === 'google' || (visit.route_km !== null && visit.route_km !== undefined);
@@ -44,13 +61,12 @@ function ClosureNote({ issue, forTechnician }) {
 export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false, embedded = false }) {
     const isTechnician = user?.userType === 'technician';
     const canManage = ['admin', 'sales'].includes(user?.userType);
+    const isPartner = PARTNER_TYPES.includes(user?.userType);
     const defaultPartner = ['channel_partner_office', 'office2', 'agent', 'agent2'].includes(user?.userType) ? user?.channel_partner || '' : '';
     const [issues, setIssues] = useState([]);
     const [selectedId, setSelectedId] = useState(initialIssueId);
     const [visits, setVisits] = useState([]);
-    const [extraFiles, setExtraFiles] = useState([]);
-    const [attachedFiles, setAttachedFiles] = useState([]);
-    const [filter, setFilter] = useState(isTechnician ? 'open' : 'all');
+    const [filter, setFilter] = useState(isTechnician ? 'open' : initialIssueId ? 'all' : 'raised');
     const [technicians, setTechnicians] = useState(null);
     const [techError, setTechError] = useState('');
     const [loadError, setLoadError] = useState('');
@@ -63,20 +79,28 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     const filterChosen = useRef(false);
     const detailRef = useRef(null);
 
+    // Loads overlap (the 15 s poll, an action, a slow phone network): only the newest
+    // one may replace the list, so an older, slower answer never wipes newer data.
+    const loadSeq = useRef(0);
     const load = useCallback(async () => {
+        const seq = ++loadSeq.current;
         const rows = [];
-        if (isTechnician) {
-            const { data: queue, error: queueError } = await supabase.rpc('open_service_issue_queue');
-            if (queueError) { setLoadError(queueError.message); return; }
-            rows.push(...(queue || []));
-        }
-        for (let offset = 0; ; offset += 500) {
-            const { data, error: readError } = await supabase.from('service_issues').select('*')
-                .order('required_date', { ascending: true }).range(offset, offset + 499);
-            if (readError) { setLoadError(readError.message); return; }
-            rows.push(...(data || []));
-            if (!data || data.length < 500) break;
-        }
+        const fail = message => { if (seq === loadSeq.current) setLoadError(message); };
+        try {
+            if (isTechnician) {
+                const { data: queue, error: queueError } = await supabase.rpc('open_service_issue_queue');
+                if (queueError) { fail(queueError.message); return; }
+                rows.push(...(queue || []));
+            }
+            for (let offset = 0; ; offset += 500) {
+                const { data, error: readError } = await supabase.from('service_issues').select('*')
+                    .order('required_date', { ascending: true }).range(offset, offset + 499);
+                if (readError) { fail(readError.message); return; }
+                rows.push(...(data || []));
+                if (!data || data.length < 500) break;
+            }
+        } catch (failure) { fail(failure?.message || 'No internet.'); return; }
+        if (seq !== loadSeq.current) return;
         // The technician queue RPC and the table query can return the same
         // open issue. Keep one row per id so counts and actions stay accurate.
         setIssues([...new Map(rows.map(issue => [issue.id, issue])).values()]);
@@ -104,6 +128,8 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     }, [canManage, formOnly]);
 
     const selected = issues.find(issue => issue.id === selectedId);
+    const issuesRef = useRef(issues);
+    issuesRef.current = issues;
     // Opened at one complaint (red wrench, customer history): bring it into view once it has loaded.
     const focusedOnce = useRef(false);
     useEffect(() => {
@@ -114,7 +140,15 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     const loadVisits = useCallback(async issueId => {
         const { data, error: readError } = await supabase.from('service_visits').select('*').eq('issue_id', issueId).order('visit_date', { ascending: false });
         if (readError) throw readError;
-        return data || [];
+        const rows = data || [];
+        // A combined trip: the visits of the other houses, for their tickets and the trip's km.
+        const groups = [...new Set(rows.map(row => row.trip_group).filter(Boolean))];
+        if (!groups.length) return rows;
+        const { data: siblings } = await supabase.from('service_visits').select('id, issue_id, trip_group, kilometers, amount_inr, km_note').in('trip_group', groups);
+        const ticketOf = id => ticketLabel(issuesRef.current.find(issue => issue.id === id)) || '';
+        return rows.map(row => (row.trip_group
+            ? { ...row, group: (siblings || []).filter(other => other.trip_group === row.trip_group).map(other => ({ ...other, ticket: ticketOf(other.issue_id) })) }
+            : row));
     }, []);
     useEffect(() => {
         if (!selectedId || !(canManage || isTechnician)) { setVisits([]); return; }
@@ -122,13 +156,6 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
         loadVisits(selectedId).then(rows => { if (active) setVisits(rows); }, readError => { if (active) setError(readError.message); });
         return () => { active = false; };
     }, [selectedId, issues, canManage, isTechnician, loadVisits]);
-    useEffect(() => {
-        if (!selectedId) { setAttachedFiles([]); return; }
-        let active = true;
-        supabase.from('service_issue_files').select('id,file_name,storage_path').eq('issue_id', selectedId).order('created_at')
-            .then(({ data, error: readError }) => { if (active) { if (readError) setError(readError.message); else setAttachedFiles(data || []); } });
-        return () => { active = false; };
-    }, [selectedId, issues]);
 
     const run = async (action, successMessage, spot = 'top') => {
         if (busy) return;
@@ -166,22 +193,6 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     const reloadVisits = async () => {
         try { setVisits(await loadVisits(selected.id)); } catch { /* the next poll tries again */ }
     };
-    const addPhotos = async event => {
-        event.preventDefault();
-        if (!selected || !extraFiles.length || attachedFiles.length + extraFiles.length > 5 || !validFiles(extraFiles)) { setMessageSpot('issue'); setError('A complaint can have at most 5 files, each no larger than 10 MB.'); return; }
-        await run(async () => {
-            const failed = await uploadIssueFiles(selected.id, extraFiles, user.id);
-            setExtraFiles([]);
-            const { data } = await supabase.from('service_issue_files').select('id,file_name,storage_path').eq('issue_id', selected.id).order('created_at');
-            setAttachedFiles(data || []);
-            return failed.length ? `${failed.length} file(s) did not upload: ${failed.join(', ')}` : 'Files attached.';
-        }, 'Files attached.', 'issue');
-    };
-    const openPhoto = async photo => {
-        const { data, error: linkError } = await supabase.storage.from('service-issues').createSignedUrl(photo.storage_path, 120);
-        if (linkError) { setMessageSpot('issue'); setError(linkError.message); return; }
-        window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
-    };
 
     const filters = isTechnician ? TECHNICIAN_FILTERS : OFFICE_FILTERS;
     const countFor = key => issues.filter(issue => matchesFilter(issue, key, user?.id)).length;
@@ -190,7 +201,11 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     const shown = issues.filter(issue => matchesFilter(issue, filter, user?.id))
         .sort((a, b) => closedLast(a) - closedLast(b) || String(a.required_date).localeCompare(String(b.required_date)));
     const technicianName = id => technicians?.find(tech => tech.id === id)?.name || (technicians ? 'Technician no longer active' : 'Technician');
+    // Partners see every complaint of their customers (database rules), not only the ones they raised.
     const showDetails = selected && (!isTechnician || selected.assigned_to === user.id);
+    // The technician's own open job shows the photos (with the camera buttons) in the job panel.
+    const photosInJobPanel = isTechnician && isOpenJobFor(selected, user?.id);
+    const hasVisitColumn = canManage || isTechnician;
     const banners = <>
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {notice && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
@@ -198,26 +213,26 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     const bannersAtTop = formOnly || !selected || messageSpot === 'top';
 
     return <div className={formOnly ? 'w-full space-y-3' : `service-root ${embedded ? 'service-embedded' : ''} ${selected ? 'has-selection' : ''}`}>
-        {!formOnly && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? "Claim an open job to see the customer's phone and address. When the work is done, send the completion code to the customer." : canManage ? 'Assign complaints, close them, and record each visit’s distance and amount.' : 'Track the complaints you have raised.'}</p></header>}
-        {loadError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">Could not load complaints: {loadError}</p>}
+        {!formOnly && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? "Claim an open job to see the customer's phone and address. When the work is done, tap Completed to send the OTP to the customer and type the OTP they read out." : canManage ? 'Assign complaints, follow each step, close them, and record each visit’s distance and amount. The km rate is set in Operations.' : 'Track the complaints of your customers, step by step, and add comments.'}</p></header>}
+        {loadError && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700"><span className="flex-1">Could not load complaints: {loadError}</span><button type="button" onClick={() => load()} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold">Try again</button></p>}
         {bannersAtTop && banners}
-        <div className="service-tools">{canManage && !formOnly && <KmSettingsPanel user={user} busy={busy} run={run} />}
+        <div className="service-tools">
         {!isTechnician && <IssueForm user={user} initialCustomer={initialCustomer} formOnly={formOnly} canManage={canManage} defaultPartner={defaultPartner}
-            busy={busy} run={run} setError={message => { setMessageSpot('top'); setError(message); }} onRaised={setSelectedId} />}</div>
+            busy={busy} run={run} onRaised={setSelectedId} />}</div>
         {!formOnly && <><div className="service-filters flex flex-wrap gap-2">{filters.map(([key, label]) =>
             <button key={key} type="button" onClick={() => chooseFilter(key)} className={`min-h-11 rounded-full px-4 text-xs font-bold ${filter === key ? 'bg-stone-900 text-white' : 'bg-white border text-stone-700'}`}>{label} ({countFor(key)})</button>)}</div>
         <div className={`service-workspace ${selected ? 'has-selection' : ''} ${shown.length <= 1 ? 'single-result' : ''}`}>
             <div className="service-list space-y-2" aria-label="Complaint list">{shown.length === 0 && <p className="rounded-2xl border bg-white p-4 text-sm text-stone-500">No complaints in this view.</p>}{shown.map(issue =>
                 <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} aria-pressed={selectedId === issue.id} className={`service-list-item block w-full rounded-xl border p-3 text-left ${selectedId === issue.id ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
                     <span className="flex items-start gap-2"><span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-stone-500">{ticketLabel(issue)}</span><strong className="block break-words">{issue.customer_name}</strong></span><ChevronRight size={16} className="mt-1 shrink-0 text-stone-400" /></span>
-                    <span className="mt-2 inline-flex"><StatusPill status={issue.status} /></span>
+                    <span className="mt-2 inline-flex"><StatusPill issue={issue} /></span>
                 </button>)}</div>
             <div ref={detailRef} className="service-detail scroll-mt-4 rounded-2xl border bg-white p-4 sm:p-5 space-y-4 min-w-0">
                 {!selected ? null : <>
                     <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} className="service-back inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-stone-600"><ArrowLeft size={16} /> All complaints</button>
                     <div className="space-y-1">
                         <h2 className="font-bold text-lg break-words">{selected.ticket_no && <span className="text-stone-500">{ticketLabel(selected)} </span>}{selected.customer_name}</h2>
-                        <div className="flex flex-wrap items-center gap-1.5"><StatusPill status={selected.status} />
+                        <div className="flex flex-wrap items-center gap-1.5"><StatusPill issue={selected} />
                             {selected.warranty_end || !selected.warranty_status || selected.warranty_status === 'unknown'
                                 ? <WarrantyBadge info={{ status: selected.warranty_status || 'unknown', start: selected.warranty_start || null, end: selected.warranty_end || null, source: null }} />
                                 : <WarrantyPill status={selected.warranty_status} />}
@@ -230,13 +245,18 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
                         code box is on screen without scrolling on a phone. */}
                     {isTechnician && <TechnicianJobPanel key={selected.id} issue={selected} userId={user.id} busy={busy} run={run}
                         onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)} />}
-                    <div className="service-detail-grid"><div className="service-customer-column space-y-4">{showDetails && <dl className="service-customer-facts text-sm break-words">{[['Channel partner',selected.channel_partner_name],['Consumer number',selected.consumer_no],['Phone',selected.customer_phone ? <a href={`tel:${selected.customer_phone}`} className="font-semibold text-blue-700 underline">{selected.customer_phone}</a> : null],['Address',selected.service_address],['Problem',selected.problem_type],['System',`${selected.system_company_name || '—'}${selected.system_kw ? ` · ${selected.system_kw} kW` : ''}`],['Comment',selected.comment]].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value || '—'}</dd></div>)}</dl>}
+                    <div className={`service-detail-grid ${hasVisitColumn ? '' : 'no-visit-column'}`}><div className="service-customer-column space-y-4">{showDetails && <CustomerFacts issue={selected} userType={user?.userType} />}
                     {selected.give_up_reason && <p className="rounded-lg bg-amber-50 p-2 text-xs">Previous give-up reason: {selected.give_up_reason}</p>}
-                    {showDetails && <div className="border-t pt-3 space-y-2"><h3 className="text-sm font-bold">Problem files ({attachedFiles.length}/5)</h3>{attachedFiles.map(photo => <button key={photo.id} type="button" onClick={() => openPhoto(photo)} className="block min-h-9 text-left text-sm font-semibold text-blue-700 underline break-all">{photo.file_name}</button>)}{!isTechnician && attachedFiles.length < 5 && <form onSubmit={addPhotos} className="space-y-2"><input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setExtraFiles([...e.target.files])} className="block w-full text-xs" /><button disabled={busy || !extraFiles.length} className="min-h-11 rounded-lg border px-3 text-xs font-bold">Add files</button></form>}</div>}
+                    {/* Before / After photos are the technician's; partners do not see the photo section. */}
+                    {showDetails && !photosInJobPanel && !isPartner && <ComplaintPhotos key={`photos:${selected.id}`} issue={selected} userId={user?.id} userType={user?.userType} busy={busy} run={run} />}
+                    {canManage && <VisitStage key={`stage:${selected.id}`} issue={selected} busy={busy} run={run} office />}
                     {canManage && <OfficeIssuePanel key={selected.id} issue={selected} technicians={technicians} techError={techError} busy={busy} run={run} update={update} />}
-                    {canManage && <WhatsAppLog key={`wa:${selected.id}`} issueId={selected.id} />}
-                    </div><div className="service-visit-column space-y-4">{(canManage || isTechnician) && <div className="space-y-2"><h3 className="text-sm font-bold">Visits and travel</h3>{visits.length === 0 && <p className="text-xs text-stone-500">No visits recorded.</p>}{visits.map(visit => <VisitRow key={visit.id} visit={visit} />)}</div>}
-                    {canManage && selected.assigned_to && <VisitForm key={`${selected.id}:${selected.assigned_to}`} issue={selected} user={user} busy={busy} run={run} visits={visits} onSaved={reloadVisits} />}</div></div>
+                    {showDetails && <ComplaintComments key={`comments:${selected.id}`} issue={selected} user={user} busy={busy} run={run} />}
+                    {showDetails && <ComplaintHistory key={`history:${selected.id}`} issue={selected} />}
+                    {canManage && WHATSAPP_ENABLED && <WhatsAppLog key={`wa:${selected.id}`} issueId={selected.id} />}
+                    </div>{hasVisitColumn && <div className="service-visit-column space-y-4"><div className="space-y-2"><h3 className="text-sm font-bold">Visits and travel</h3>{visits.length === 0 && <p className="text-xs text-stone-500">No visits recorded.</p>}{visits.map(visit => <VisitRow key={visit.id} visit={visit} />)}</div>
+                    {canManage && selected.assigned_to && <VisitForm key={`${selected.id}:${selected.assigned_to}`} issue={selected} user={user} busy={busy} run={run} visits={visits} onSaved={reloadVisits} />}
+                    {canManage && selected.assigned_to && <CombinedVisitForm key={`combined:${selected.id}:${selected.assigned_to}`} issue={selected} issues={issues} user={user} busy={busy} run={run} onSaved={reloadVisits} />}</div>}</div>
                 </>}
             </div>
         </div></>}

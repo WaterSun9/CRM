@@ -8,7 +8,8 @@ import { supabase } from '../../supabase';
 // One small list for the whole app (only open complaints and recently fixed ones),
 // read once and again every few minutes, when the tab comes back, and whenever
 // a complaint is raised or changed ('complaints-changed').
-// Office reads every complaint; a partner sees the ones they raised (database rules).
+// Office reads every complaint; a channel partner sees every complaint of the customers
+// they can see, whoever raised it (database rules).
 export const FIXED_GREEN_DAYS = 30;
 const OPEN_STATUSES = ['open', 'assigned', 'completion_pending'];
 const REFRESH_MS = 3 * 60 * 1000;

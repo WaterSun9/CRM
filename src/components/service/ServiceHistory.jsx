@@ -8,7 +8,8 @@ const rupees = value => `₹${Number(value || 0).toLocaleString('en-IN', { maxim
 
 // Complaints and technician visits of one customer, newest first, on the
 // completed customer's card. Each row opens that complaint. Office sees every
-// complaint, the visits and the technician; a partner sees the complaints they raised.
+// complaint, the visits and the technician; a channel partner sees every complaint
+// of this customer (whoever raised it), without the visits.
 export default function ServiceHistory({ customerId }) {
     const [rows, setRows] = useState(null);
     const [failed, setFailed] = useState(false);

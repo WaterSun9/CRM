@@ -68,6 +68,15 @@ export function sendWait(createdAts: string[], nowMs = Date.now()) {
   return null
 }
 
+// The technician's photos (service_issue_files.kind) that must be there before a code goes
+// out and before a job closes by code. The office's "Completed without code" needs none.
+export const PHOTO_KINDS = ['before', 'after'] as const
+export const PHOTOS_NEEDED = { ok: false, code: 'photos_needed', error: 'Add at least one Before photo and one After photo first.' } as const
+
+// Counts from the database; a count that did not come back (null) counts as no photos.
+export const photosReady = (counts: { before: number | null | undefined; after: number | null | undefined }) =>
+  (Number(counts.before) || 0) >= 1 && (Number(counts.after) || 0) >= 1
+
 const SEND_FAILED = 'The code could not be sent on WhatsApp. Try again in a minute, or ask the office to close this job.'
 
 // The shared Meta error, worded for a technician standing at the customer's site.

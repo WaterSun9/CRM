@@ -49,3 +49,7 @@
   .service-detail .grid.sm\:grid-cols-3 { grid-template-columns: minmax(0, 1fr); }
   .service-detail input[type=file] { max-width: 100%; }
 }
+/* Channel partners have no visits: the complaint uses the whole width. */
+@container service-detail (min-width: 760px) {
+  .service-detail-grid.no-visit-column { grid-template-columns: minmax(0, 1fr); }
+}

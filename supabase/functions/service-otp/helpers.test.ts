@@ -3,8 +3,8 @@
 
 import assert from 'node:assert/strict'
 import {
-  cleanPhone, formatDateShort, hashCode, jobFailure, maskPhone, metaFailure, networkFailure, randomCode, randomHex,
-  sameHex, sendWait, sha256Hex, templateParam, todayIST, warrantyText,
+  PHOTO_KINDS, PHOTOS_NEEDED, cleanPhone, formatDateShort, hashCode, jobFailure, maskPhone, metaFailure, networkFailure,
+  photosReady, randomCode, randomHex, sameHex, sendWait, sha256Hex, templateParam, todayIST, warrantyText,
 } from './helpers.ts'
 
 Deno.test('cleanPhone keeps 10-digit Indian mobiles only', () => {
@@ -57,6 +57,21 @@ Deno.test('sendWait: 45 s cooldown, then 3 codes per hour', () => {
   assert.equal(limit?.retryAfterSeconds, 600)
   assert.match(String(limit?.error), /10 minutes/)
   assert.equal(sendWait([ago(100), ago(2000), ago(3700)], now), null)
+})
+
+Deno.test('photosReady needs at least one Before and one After photo', () => {
+  assert.deepEqual([...PHOTO_KINDS], ['before', 'after'])
+  assert.equal(photosReady({ before: 0, after: 0 }), false)
+  assert.equal(photosReady({ before: 3, after: 0 }), false)
+  assert.equal(photosReady({ before: 0, after: 2 }), false)
+  assert.equal(photosReady({ before: 1, after: 1 }), true)
+  assert.equal(photosReady({ before: 10, after: 10 }), true)
+  // A count that did not come back is never taken as "photos are there".
+  assert.equal(photosReady({ before: null, after: 1 }), false)
+  assert.equal(photosReady({ before: 1, after: undefined }), false)
+  assert.deepEqual({ ...PHOTOS_NEEDED }, {
+    ok: false, code: 'photos_needed', error: 'Add at least one Before photo and one After photo first.',
+  })
 })
 
 Deno.test('metaFailure maps the Meta error codes', () => {

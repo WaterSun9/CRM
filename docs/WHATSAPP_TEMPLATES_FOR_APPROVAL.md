@@ -1,3 +1,5 @@
+> **Parked 23 Oct 2026:** the client dropped WhatsApp. Completion codes go by SMS (Firebase). Kept for reference only.
+
 # WhatsApp messages - for the owner to approve
 
 The CRM will send these 4 WhatsApp messages from Watersun Solar's number **92744 04398**. Meta must approve each one first. After approval, any change to the wording needs a fresh Meta review (usually within a day).

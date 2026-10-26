@@ -32,8 +32,8 @@ export const kmAmount = (km, rate) => {
     return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
 };
 
-// Office panel: change the rate, the grace km and the default trip type.
-export function KmSettingsPanel({ user, busy, run }) {
+// Operations panel: change the rate, the grace km and the default trip type.
+export function KmSettingsPanel({ user, busy, run, open = false }) {
     const { status, settings, refresh } = useKmSettings();
     const [form, setForm] = useState(null);
     if (status === 'not_set_up' || status === 'loading') return null;
@@ -55,8 +55,8 @@ export function KmSettingsPanel({ user, busy, run }) {
         }, 'Km settings saved. New visits use them; saved visits keep their own.');
     };
     const input = 'mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm';
-    return <details className="service-settings rounded-xl border bg-white p-3">
-        <summary className="min-h-11 cursor-pointer py-2 text-sm font-bold">Travel payment settings</summary>
+    return <details className="service-settings rounded-xl border bg-white p-3" open={open}>
+        <summary className="min-h-11 cursor-pointer py-2 text-sm font-bold">Travel payment: money per km</summary>
         {status === 'error' && <p role="alert" className="text-xs text-red-700">Could not load the km settings.</p>}
         <form onSubmit={save} className="mt-2 grid gap-2 sm:grid-cols-3">
             <label className="text-xs font-semibold">Rate per km (₹)

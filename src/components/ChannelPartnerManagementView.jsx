@@ -4,6 +4,7 @@ import { Users, Plus, Award, Trash2, Tag, ShieldCheck, BarChart2, X, Check, Edit
 import { logActivity, runWrite } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 import { VENDOR_WHATSAPP_ENABLED } from '../constants';
+import ServiceSettingsSection from './service/ServiceSettingsSection';
 
 const normalizeDirectoryLabel = (value) => String(value || '').trim().toLocaleLowerCase();
 
@@ -1014,6 +1015,8 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                                 </button>
                             </div>
                         </div>
+
+                        <ServiceSettingsSection user={currentUser} />
 
                         {/* Demoted from the right-hand column to a collapsed strip:
                             it is reference, not a working surface. Collapsed by

@@ -217,6 +217,8 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
     // (cardOverComplaints), and closing it tells the visit form to read the card again.
     const [cardOverComplaints, setCardOverComplaints] = useState(false);
     const [focusedComplaintId, setFocusedComplaintId] = useState(null);
+    // Complaints and Warranty share one page: 'complaints' or 'warranty'.
+    const [complaintsTab, setComplaintsTab] = useState('complaints');
     useEffect(() => {
         const open = async event => {
             const id = event.detail?.id;
@@ -227,7 +229,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             setSelectedCustomer(data);
         };
         // Opening a complaint (red wrench, history row) shows Complaints above the card.
-        const lower = event => { setCardOverComplaints(false); setFocusedComplaintId(event.detail?.issueId || null); setCurrentView('complaints'); setSidebarOpen(false); };
+        const lower = event => { setCardOverComplaints(false); setFocusedComplaintId(event.detail?.issueId || null); setComplaintsTab('complaints'); setCurrentView('complaints'); setSidebarOpen(false); };
         window.addEventListener('open-customer-card', open);
         window.addEventListener('open-complaint', lower);
         return () => { window.removeEventListener('open-customer-card', open); window.removeEventListener('open-complaint', lower); };
@@ -1287,8 +1289,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             : currentView === 'subsidy' ? 'Subsidy Tag Tracking'
                 : currentView === 'loan_tags' ? 'Loan Tag Tracking'
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
-                : currentView === 'warranty' ? 'Warranty'
-                : currentView === 'complaints' ? 'Complaints'
+                : currentView === 'complaints' ? (onRaiseServiceIssue ? 'Complaints & Warranty' : 'Warranty')
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
                     : currentView === 'installation_payments' ? 'Installation Payments'
                     : currentView === 'activity' ? 'Activity Log'
@@ -1329,10 +1330,9 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {PRIMARY_STAGES.map(s => (
                         <NavBtn key={s.id} view="stages" stage={s.id} icon={s.icon} label={s.label} count={stageCounts[s.id] || 0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     ))}
-                    {/* Completed customers past their 5-year warranty (and those with no date). Every role. */}
-                    <NavBtn view="warranty" icon={ShieldCheck} label="Warranty" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
-
-                    {onRaiseServiceIssue && <NavBtn view="complaints" icon={ClipboardList} label="Complaints" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />}
+                    {/* Complaints and the Warranty list (completed customers in / out of their 5-year
+                        warranty, and those with no date) on one page. Every role sees Warranty. */}
+                    <NavBtn view="complaints" icon={onRaiseServiceIssue ? ClipboardList : ShieldCheck} label={onRaiseServiceIssue ? 'Complaints & Warranty' : 'Warranty'} count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     {/* Office system tools */}
                     {['admin', 'sales'].includes(user.userType) && (
                         <>
@@ -1535,8 +1535,13 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
-                    {currentView === 'complaints' && <ServiceIssuesView key={focusedComplaintId || 'complaint-list'} user={user} initialIssueId={focusedComplaintId} embedded />}
-                    {currentView === 'warranty' && <WarrantyView onSelectCustomer={setSelectedCustomer} onRaiseServiceIssue={onRaiseServiceIssue} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
+                    {currentView === 'complaints' && onRaiseServiceIssue && <div role="tablist" aria-label="Complaints and warranty" className="mb-4 flex gap-2">
+                        {[['complaints', 'Complaints', ClipboardList], ['warranty', 'Warranty customers', ShieldCheck]].map(([id, label, Icon]) =>
+                            <button key={id} type="button" role="tab" aria-selected={complaintsTab === id} onClick={() => setComplaintsTab(id)}
+                                className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${complaintsTab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}
+                    </div>}
+                    {currentView === 'complaints' && onRaiseServiceIssue && complaintsTab === 'complaints' && <ServiceIssuesView key={focusedComplaintId || 'complaint-list'} user={user} initialIssueId={focusedComplaintId} embedded />}
+                    {currentView === 'complaints' && (!onRaiseServiceIssue || complaintsTab === 'warranty') && <WarrantyView onSelectCustomer={setSelectedCustomer} onRaiseServiceIssue={onRaiseServiceIssue} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
 
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView currentUser={user} />}
                     {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} />}
@@ -1611,7 +1616,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
 
             {/* Modals */}
             {selectedCustomer && (
-                <div className={currentView === 'complaints' && !cardOverComplaints ? 'hidden' : cardOverComplaints ? 'relative z-[95]' : undefined}>
+                <div className={currentView === 'complaints' && onRaiseServiceIssue && complaintsTab === 'complaints' && !cardOverComplaints ? 'hidden' : cardOverComplaints ? 'relative z-[95]' : undefined}>
                 <Suspense fallback={<ViewLoader />}>
                 <CustomerDetailModal
                     customer={selectedCustomer}

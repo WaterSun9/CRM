@@ -10,7 +10,7 @@ Written 12 Oct 2026. Builds on the switched-off module (`TECHNICIAN_FEATURE_ENAB
 | Out-of-warranty complaints | Allowed, tagged **"Out of warranty"**. Customer also listed on a separate Expired Warranty page. |
 | Warranty start | **Commissioning date, read from `installation_date`** (decided 12 Oct). Falls back to `material_delivery_date`, then `completed_at` (IST date). End = start + 5 years - 1 day. Matches agreement clause 18. |
 | WhatsApp number | **92744 04398** (not on WhatsApp). An agency manages Watersun's Facebook; the setup page is written for them too. |
-| WhatsApp | Direct Meta Cloud API, no BSP. Watersun (client) already has Facebook: use their existing business portfolio, check it matches the GST certificate, and check whether it is already Verified (if so, the code template should not be held back). They invite the developer with Full control. |
+| WhatsApp | **Parked 23 Oct 2026: the client dropped it.** Completion codes go by SMS (Firebase). All WhatsApp code stays in the repo, switched off (`WHATSAPP_ENABLED`, `VENDOR_WHATSAPP_ENABLED`, `WHATSAPP_QUOTATION_ENABLED` = false); its SQL (`20261013090000`, `20261013100000`) and functions (`whatsapp-webhook`, `whatsapp-send-quotation`) are not run or deployed. |
 | Phones | All Android. |
 
 ## Dates on a customer (`admin` table)
@@ -47,7 +47,7 @@ There is no invoice date and no separate commissioning date. **The customer agre
 | WhatsApp log, delivery ticks, customer replies (`whatsapp-webhook`) | Built 12 Oct. Office sees them under "WhatsApp" on a complaint. |
 | Vendor gets a WhatsApp with the lead email | Built 12 Oct. Admin adds the number in Operations > Vendors Allotment. |
 | Quotation PDF on WhatsApp (Quotation Maker "WhatsApp" button) | Built 12 Oct. Counts as issuing the quotation, like Download. Hidden until WhatsApp is live (`WHATSAPP_QUOTATION_ENABLED = false`). |
-| WhatsApp to real customers | Waiting on Meta (agency: verification + invite; Ravi: card + number code). Developer steps: `docs/WHATSAPP_DEV_SETUP.md`. Texts for the owner: `docs/WHATSAPP_TEMPLATES_FOR_APPROVAL.md`. |
+| WhatsApp to real customers | **Parked 23 Oct** (client dropped WhatsApp). |
 
 ## WhatsApp (Meta Cloud API, no BSP)
 
@@ -69,11 +69,25 @@ There is no invoice date and no separate commissioning date. **The customer agre
 
 ## Completion flow
 
-`open` -> `assigned` (tech claims, or office assigns) -> `completion_pending` (tech taps "Work done - send code") -> `completed` (code verified, method `otp`).
+`open` -> `assigned` (tech claims, or office assigns) -> `completion_pending` (tech taps "Work done - send code", needs 1 Before + 1 After photo) -> `completed` (code verified, method `otp`).
 
 - Office override: **Completed without code**, admin/office only, with a reason (no WhatsApp / confirmed by call / no network / WhatsApp not live yet / other). Sets `completion_method = 'office_override'`.
 - Code rules: 6 digits made on the server, only a hash stored, 10-min expiry, 5 wrong tries then locked, resend after 45 s, at most 3 per hour.
 - Technicians see phone/address only after claiming (as today).
+
+## Photos and comments (23 Oct 2026)
+
+- Raising a complaint (office or channel partner): details and a comment only, no files. Partners now see every complaint of their customers, not only the ones they raised.
+- Photos: only the technician on the job adds them, while it is Assigned or Waiting for code: Before and After, up to 10 of each, shrunk on the phone. Office and partners view them; admin / sales can delete a wrong one. The code cannot be sent or confirmed without at least 1 Before and 1 After photo; office "Completed without code" needs none.
+- Comments: anyone who can see the complaint (office, the customer's channel partners, the technician on the job) can add one. Name and role come from the profile. No editing; admin can delete.
+
+Deploy (live already has `schema.sql` + `docs/sql/RUN_19OCT_service_jobs_and_trips.sql`):
+
+1. SQL editor: `supabase/migrations/20261023120000_complaint_photos_comments.sql`, then its Check queries.
+2. `supabase functions deploy service-otp` immediately after step 1. In between, the old function gives "Something went wrong" on confirming a code for a job with no photos, and that code is used up.
+3. `npm run deploy` straight after. Until a technician reloads the app, the old screen has no photo buttons and the code cannot be sent (the office can still use "Completed without code"). Files attached in the old raise form fail from step 1 on; the complaint itself is still saved.
+
+Code: `src/components/service/ComplaintPhotos.jsx`, `ComplaintComments.jsx`, rules in `serviceLabels.js` + `tests/complaintPhotos.test.mjs`.
 
 ## As built
 

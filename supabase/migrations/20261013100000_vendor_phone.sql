@@ -1,3 +1,4 @@
+-- PARKED 23 Oct 2026: the client dropped WhatsApp. Do not run unless WhatsApp is picked up again.
 -- Vendor WhatsApp number (NOT YET RUN - needs the owner's go-ahead).
 --
 --   * vendors.phone: the vendor's WhatsApp number, 10 digits (9876543210), or

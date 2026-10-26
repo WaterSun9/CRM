@@ -1,9 +1,31 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
-import { callServiceOtp, RESEND_SECONDS } from './serviceLabels';
+import { PHOTOS_NEEDED_TEXT, RESEND_SECONDS, hasCompletionPhotos } from './serviceLabels';
 import { phonePosition, roundAccuracy, tripError } from './tripLabels';
 import TripPanel from './TripPanel';
+import VisitStage from './VisitStage';
+import ComplaintPhotos from './ComplaintPhotos';
 import { confirmFirebaseCode, firebaseErrorText, firebaseReady, sendFirebaseCode } from './firebasePhone';
+
+// Calls the service-otp edge function. Business-rule answers come back as
+// 200 { ok: false, error, code? } (code 'photos_needed': no Before or no After
+// photo yet); a non-2xx reply is read for its { error } text.
+async function callServiceOtp(body) {
+    const { data, error } = await supabase.functions.invoke('service-otp', { body });
+    if (!error) return data || {};
+    let detail = error.message || 'The completion code service did not answer.';
+    try {
+        const payload = await error.context?.json?.();
+        if (payload?.ok === false) return payload;
+        detail = payload?.error || payload?.message || detail;
+    } catch {
+        // Keep the original Supabase error message.
+    }
+    if (/failed to send a request|failed to fetch|functionsfetcherror/i.test(detail)) {
+        detail = 'Could not reach the server. Check the internet connection and try again.';
+    }
+    throw new Error(detail);
+}
 
 // "Reached site now" waits at most this long for the phone's location, then sends
 // the code anyway (a location prompt left unanswered must not hold up the job).
@@ -28,9 +50,11 @@ function verifyMessage(data) {
 }
 
 // What a technician can do on one job: claim it, start a trip (for the km),
-// send the completion code to the customer (SMS, or WhatsApp), type the code the
-// customer reads out, or give up.
+// add Before / After photos, send the completion code to the customer (SMS, or
+// WhatsApp), type the code the customer reads out, or give up.
 // The server sends and checks the code; this screen never sees it.
+// The code cannot be sent or confirmed until the job has at least one Before and
+// one After photo (the server checks again and answers code 'photos_needed').
 // "Work done" first reminds the technician to tap "Reached site" when the open
 // trip has none (it never blocks: "Send code without it" goes straight on).
 // Firebase confirmations, by job: a resend replaces it, a page reload loses it
@@ -49,6 +73,10 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     const [tripReload, setTripReload] = useState(0);
     const [nudge, setNudge] = useState(false);
     const [reaching, setReaching] = useState(false);
+    // { before, after } from ComplaintPhotos; null while loading.
+    const [photoCounts, setPhotoCounts] = useState(null);
+    const [photoReload, setPhotoReload] = useState(0);
+    const photosReady = hasCompletionPhotos(photoCounts);
 
     // The last code's time also comes from the server, so the countdown
     // survives a page reload. Capped in case the phone clock is off.
@@ -70,8 +98,10 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     }, 'Job assigned to you.', 'issue');
 
     const requestCode = async () => {
+        if (!photosReady) throw new Error(PHOTOS_NEEDED_TEXT);
         const data = await callServiceOtp({ action: 'send', issueId: issue.id });
         if (!data.ok) {
+            if (data.code === 'photos_needed') { setPhotoReload(n => n + 1); throw new Error(data.error || PHOTOS_NEEDED_TEXT); }
             if (data.retryAfterSeconds) holdResend(data.retryAfterSeconds);
             throw new Error(data.error || 'Could not send the code. Try again.');
         }
@@ -97,7 +127,7 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     // An open trip without "Reached site" gets the reminder first.
     const openTrip = tripState.current;
     const needsReach = Boolean(openTrip && !openTrip.reached_at);
-    const workDone = () => { if (needsReach) setNudge(true); else sendCode(); };
+    const workDone = () => { if (!photosReady) return; if (needsReach) setNudge(true); else sendCode(); };
 
     // "Reached site now": one GPS reading, save it, then send the code whatever
     // happened (a failed location must not stop the job being closed).
@@ -123,7 +153,7 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
 
     const verify = event => {
         event.preventDefault();
-        if (!/^\d{6}$/.test(code)) return;
+        if (!/^\d{6}$/.test(code) || !photosReady) return;
         run(async () => {
             const confirmation = confirmations.get(issue.id);
             let body = { action: 'verify', issueId: issue.id, code };
@@ -137,6 +167,12 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
             }
             const data = await callServiceOtp(body);
             if (data.verified || data.reason !== 'wrong_code') confirmations.delete(issue.id);
+            if (data.code === 'photos_needed') {
+                // Google has used up a Firebase code: add the photos, then send a new one.
+                if (confirmation) { setCode(''); setSent(null); }
+                setPhotoReload(n => n + 1);
+                throw new Error(data.error || PHOTOS_NEEDED_TEXT);
+            }
             if (!data.ok) throw new Error(data.error || 'Could not check the code. Try again.');
             if (!data.verified) {
                 // An expired or locked code cannot be retried; clear it for the new one.
@@ -166,37 +202,45 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     const waitText = waitSeconds >= 120 ? `${Math.ceil(waitSeconds / 60)} min` : `${waitSeconds} s`;
     // Before the work the trip comes first; once the code is sent, the code box does.
     const trip = <TripPanel issue={issue} userId={userId} busy={busy} run={run} onTripState={setTripState} reloadKey={tripReload} />;
+    // Same key in both places, so the photo list is moved, not loaded again.
+    const photos = <ComplaintPhotos key="photos" issue={issue} userId={userId} userType="technician" busy={busy} run={run} onCounts={setPhotoCounts} reloadKey={photoReload} />;
+    const photosHint = !photosReady && <p role="note" className="rounded-lg bg-amber-50 p-2 text-xs font-semibold text-amber-900">{PHOTOS_NEEDED_TEXT}</p>;
     const showNudge = !showCodeEntry && nudge && needsReach;
     return <div className="space-y-3">
         {/* Invisible reCAPTCHA for the Firebase SMS. */}
         <div id={recaptchaId} />
         {!showCodeEntry && trip}
-        {!showCodeEntry && !showNudge && <button type="button" disabled={busy || waitSeconds > 0} onClick={workDone} className="min-h-14 w-full rounded-xl bg-green-600 px-4 text-base font-bold text-white disabled:opacity-50">
-            {waitSeconds > 0 ? `Work done - send code (wait ${waitText})` : 'Work done - send code to customer'}
+        {!showCodeEntry && photos}
+        {!showCodeEntry && !showNudge && photosHint}
+        {!showCodeEntry && !showNudge && <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={workDone} className="min-h-14 w-full rounded-xl bg-green-600 px-4 text-base font-bold text-white disabled:opacity-50">
+            {waitSeconds > 0 ? `Completed - send OTP (wait ${waitText})` : 'Completed - send OTP to customer'}
         </button>}
         {showNudge && <div role="alert" className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3">
             <p className="text-sm font-semibold text-amber-950">You have not tapped Reached site. Tap it now so the km is correct.</p>
             <button type="button" disabled={busy} onClick={reachThenSend} className="min-h-12 w-full rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50">
                 {reaching ? 'Finding your location…' : 'Reached site now'}</button>
-            <button type="button" disabled={busy || waitSeconds > 0} onClick={sendCode} className="min-h-11 w-full rounded-xl border bg-white px-4 text-sm font-bold disabled:opacity-50">
-                {waitSeconds > 0 ? `Send code without it (wait ${waitText})` : 'Send code without it'}</button>
+            <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={sendCode} className="min-h-11 w-full rounded-xl border bg-white px-4 text-sm font-bold disabled:opacity-50">
+                {waitSeconds > 0 ? `Send OTP without it (wait ${waitText})` : 'Send OTP without it'}</button>
         </div>}
         {showCodeEntry && <form onSubmit={verify} className="space-y-3 rounded-xl border border-green-200 bg-green-50 p-3">
             <p className="text-sm text-green-900">{sent
-                ? <>Code sent {sent.channel} to <strong>{sent.maskedPhone}</strong>. Ask the customer to read it out.</>
-                : 'If the customer got a code, type it below. If not, press Send code again.'}</p>
+                ? <>OTP sent {sent.channel} to <strong>{sent.maskedPhone}</strong>. Ask the customer to read it out and type it below.</>
+                : 'If the customer got the OTP, type it below. If not, press Send OTP again.'}</p>
             {sent?.testMode && <p className="rounded-lg bg-amber-100 p-2 text-xs font-semibold text-amber-900">Test mode: the code went to the test number, not to the customer.</p>}
-            <label className="block text-xs font-semibold">6-digit code from the customer
+            <label className="block text-xs font-semibold">6-digit OTP from the customer
                 <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="------"
                     className="mt-1 block w-full min-h-14 rounded-lg border bg-white p-2 text-center text-2xl font-bold tracking-[0.5em]" />
             </label>
-            <button disabled={busy || code.length !== 6} className="min-h-12 w-full rounded-xl bg-green-600 px-4 text-sm font-bold text-white disabled:opacity-50">Confirm code</button>
-            <button type="button" disabled={busy || waitSeconds > 0} onClick={sendCode} className="min-h-11 w-full rounded-xl border bg-white px-4 text-sm font-bold disabled:opacity-50">
-                {waitSeconds > 0 ? `Send code again (${waitText})` : 'Send code again'}
+            {photosHint}
+            <button disabled={busy || code.length !== 6 || !photosReady} className="min-h-12 w-full rounded-xl bg-green-600 px-4 text-sm font-bold text-white disabled:opacity-50">Confirm OTP and close job</button>
+            <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={sendCode} className="min-h-11 w-full rounded-xl border bg-white px-4 text-sm font-bold disabled:opacity-50">
+                {waitSeconds > 0 ? `Send OTP again (${waitText})` : 'Send OTP again'}
             </button>
         </form>}
+        {showCodeEntry && photos}
         {showCodeEntry && trip}
-        <p className="text-xs text-stone-600">No code? Call the office and ask them to close this job.</p>
+        {!showCodeEntry && <VisitStage issue={issue} busy={busy} run={run} />}
+        <p className="text-xs text-stone-600">No OTP? Call the office and ask them to close this job.</p>
         <details className="rounded-xl border p-3">
             <summary className="min-h-11 cursor-pointer py-2 text-sm font-bold">Cannot finish this job?</summary>
             <div className="mt-2 space-y-2">

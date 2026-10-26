@@ -116,6 +116,11 @@ export const QUOTATION_PARTNER_ENABLED = true;
 // announcements. Office replies to a person still reach that person.
 export const DIRECT_MESSAGES_ENABLED = false;
 
+// WhatsApp (Meta Cloud API): parked 23 Oct 2026, the client dropped it. Completion
+// codes go by SMS (Firebase). Keeps the office "WhatsApp" log off complaints; the vendor
+// number and quotation button have their own switches, also off.
+export const WHATSAPP_ENABLED = false;
+
 // Vendor WhatsApp number in Operations > Vendors Allotment (and the lead WhatsApp
 // to the vendor). Parked 18 Oct 2026: needs 20261013100000_vendor_phone.sql and Meta.
 export const VENDOR_WHATSAPP_ENABLED = false;

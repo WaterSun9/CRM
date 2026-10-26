@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
 import { warrantyInfo, formatWarrantyDate } from '../../utils/warranty';
-import { complaintError, todayLocal, uploadIssueFiles, validFiles } from './serviceLabels';
+import { complaintError, todayLocal } from './serviceLabels';
 import { isPincode, pincodeInText } from './tripLabels';
 import { logFieldChanges } from '../../utils';
 
@@ -36,11 +36,11 @@ function WarrantyBanner({ customer, failed }) {
 // complaint to that customer (customer_id) and the database fills the
 // consumer number, name, WhatsApp number and warranty. Only the office may
 // raise a free-form complaint for someone who is not in the CRM.
-export default function IssueForm({ user, initialCustomer = null, formOnly = false, canManage, defaultPartner, busy, run, setError, onRaised }) {
+// Raising sends the details and a comment only: no files. The technician adds
+// Before and After photos at the site (ComplaintPhotos).
+export default function IssueForm({ user, initialCustomer = null, formOnly = false, canManage, defaultPartner, busy, run, onRaised }) {
     const linked = Boolean(initialCustomer?.id);
     const [newIssue, setNewIssue] = useState(() => issueDraft(initialCustomer, defaultPartner));
-    const [files, setFiles] = useState([]);
-    const [fileKey, setFileKey] = useState(0);
     const [expanded, setExpanded] = useState(formOnly);
     const [raised, setRaised] = useState(false);
 
@@ -138,12 +138,7 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
             if (formOnly) setRaised(true);
             else { setNewIssue(issueDraft(null, defaultPartner)); setExpanded(false); onRaised?.(data.id); }
             setConfirmed(false);
-            setFiles([]); setFileKey(key => key + 1);
-            const ticket = data.ticket_no ? `Complaint #${data.ticket_no}` : 'Complaint';
-            const failed = await uploadIssueFiles(data.id, files, user.id);
-            return failed.length
-                ? `${ticket} raised, but ${failed.length} photo(s) did not upload: ${failed.join(', ')}. Open the complaint and add them later.`
-                : `${ticket} raised. Technicians can now claim it.`;
+            return `${data.ticket_no ? `Complaint #${data.ticket_no}` : 'Complaint'} raised. Technicians can now claim it.`;
         }, 'Complaint raised. Technicians can now claim it.');
     };
 
@@ -188,12 +183,8 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
         <label className="text-xs font-semibold">Type of problem *<input required autoFocus={formOnly} maxLength={160} value={newIssue.problem_type} onChange={e => setNewIssue(v => ({ ...v, problem_type: e.target.value }))} className={field} /></label>
         <label className="text-xs font-semibold">System company name<input value={newIssue.system_company_name} onChange={e => setNewIssue(v => ({ ...v, system_company_name: e.target.value }))} className={field} /></label>
         <label className="text-xs font-semibold">System kW<input type="number" min="0" step="0.01" value={newIssue.system_kw} onChange={e => setNewIssue(v => ({ ...v, system_kw: e.target.value }))} className={field} /></label>
-        <label className="sm:col-span-2 text-xs font-semibold">Comment<textarea maxLength={2000} rows={3} value={newIssue.comment} onChange={e => setNewIssue(v => ({ ...v, comment: e.target.value }))} className="mt-1 block w-full rounded-lg border p-2 text-sm" /></label>
-        <label className="sm:col-span-2 text-xs font-semibold">Photos of the problem (optional, up to 5 files, 10 MB each)<input key={fileKey} type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => {
-            const chosen = [...e.target.files];
-            if (!validFiles(chosen)) { setFiles([]); setError('Choose at most 5 JPG, PNG, WebP or PDF files, each no larger than 10 MB.'); e.target.value = ''; return; }
-            setFiles(chosen); setError('');
-        }} className="mt-1 block w-full rounded-lg border p-2 text-sm" />{files.length > 0 && <span className="block mt-1">{files.length} file(s) selected</span>}</label>
+        <label className="sm:col-span-2 text-xs font-semibold">Comment<textarea maxLength={2000} rows={3} value={newIssue.comment} onChange={e => setNewIssue(v => ({ ...v, comment: e.target.value }))} className="mt-1 block w-full rounded-lg border p-2 text-sm" />
+            <span className="mt-1 block font-normal text-stone-500">The technician adds Before and After photos at the site.</span></label>
         <button disabled={busy || (linked && (!card || Boolean(cardMissing)))} className="min-h-11 rounded-lg bg-amber-500 px-4 py-3 text-sm font-bold disabled:opacity-50">Raise complaint</button>
         {linked && cardMissing && <p className="self-center text-xs text-stone-500">Save the address and pincode to the customer card first.</p>}
     </form>;

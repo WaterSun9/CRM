@@ -190,3 +190,38 @@ export function estimateTripKm({
         explanation,
     };
 }
+
+// One trip to several houses: start -> house 1 -> house 2 -> ... (-> back to start
+// when roundTrip). Grace is added once for the whole trip. stops: [{ pincode } or
+// { lat, lng }, with an optional label]. Null when the start or any stop is unknown.
+//   'Start 385340 -> 385350 -> 385001 -> back: 41.0 km x 1.3 road + 5 km grace = 59 km'
+export function estimateRouteKm({
+    start,
+    stops,
+    points,
+    roadFactor = TRIP_ROAD_FACTOR,
+    roundTrip = TRIP_ROUND_TRIP,
+    graceKm = TRIP_GRACE_KM,
+} = {}) {
+    const a = resolvePoint(start, points);
+    const ends = (stops || []).map((stop) => resolvePoint(stop, points));
+    if (!a || !ends.length || ends.some((end) => !end)) return null;
+
+    const factor = Number.isFinite(Number(roadFactor)) && Number(roadFactor) > 0 ? Number(roadFactor) : TRIP_ROAD_FACTOR;
+    const grace = Number.isFinite(Number(graceKm)) && Number(graceKm) >= 0 ? Number(graceKm) : TRIP_GRACE_KM;
+    const both = Boolean(roundTrip);
+
+    const path = [a, ...ends, ...(both ? [a] : [])];
+    let straight = 0;
+    for (let i = 1; i < path.length; i += 1) straight += haversineKm(path[i - 1], path[i]);
+    const straightKm = round1(straight);
+    const raw = straightKm * factor + grace;
+    const km = Math.ceil(Math.round(raw * 1e6) / 1e6);
+
+    const name = (point, given) => given || point.pincode || 'location';
+    const route = [`Start ${name(a, start.label)}`, ...ends.map((end, i) => name(end, stops[i].label)), ...(both ? ['back'] : [])].join(' -> ');
+    const sum = [`${fmt1(straightKm)} km`];
+    if (factor !== 1) sum.push(`x ${factor} road`);
+    if (grace) sum.push(`+ ${grace} km grace`);
+    return { km, straightKm, roundTrip: both, graceKm: grace, roadFactor: factor, explanation: `${route}: ${sum.join(' ')} = ${km} km` };
+}

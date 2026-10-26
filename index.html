@@ -17,6 +17,15 @@
         href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700;800&family=Nunito+Sans:ital,opsz,wght@0,6..12,200..1000;1,6..12,200..1000&display=swap"
         rel="stylesheet">
     <script>
+        // http -> https on the live address. Phones refuse location (Start trip /
+        // Reached site) and the SMS code check on plain http, and logins would go
+        // unencrypted. Backup for GitHub Pages "Enforce HTTPS"; local and LAN
+        // testing (localhost, 192.168.x.x) is not touched.
+        if (location.protocol === 'http:' && location.hostname === 'crm.watersunsolar.com') {
+            location.replace('https://' + location.host + location.pathname + location.search + location.hash);
+        }
+    </script>
+    <script>
         // Stale-index.html rescue.
         //
         // GitHub Pages serves index.html with `cache-control: max-age=600`, and

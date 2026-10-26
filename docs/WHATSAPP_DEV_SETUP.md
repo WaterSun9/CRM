@@ -1,3 +1,5 @@
+> **Parked 23 Oct 2026:** the client dropped WhatsApp. Completion codes go by SMS (Firebase). Kept for reference only.
+
 # WhatsApp - developer setup
 
 For the developer (sadafmhavish953@gmail.com) after the agency has invited you to **Watersun's** business portfolio with **Full control**. WhatsApp goes straight to Meta's Cloud API (no Twilio, no BSP). Supabase project: `cjskyhxameobcqlfiuav`.

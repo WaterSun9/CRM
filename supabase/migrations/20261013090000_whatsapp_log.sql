@@ -1,3 +1,4 @@
+-- PARKED 23 Oct 2026: the client dropped WhatsApp. Do not run unless WhatsApp is picked up again.
 -- WhatsApp log: every template message the CRM sends, replies from customers, and
 -- numbers Meta says are not on WhatsApp (NOT YET RUN - needs the owner's go-ahead).
 -- Run AFTER 20261012190000_service_jobs_v2.sql. Background: docs/TECHNICIAN_PLAN.md.
