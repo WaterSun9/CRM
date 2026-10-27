@@ -285,7 +285,7 @@ export default function WarrantyView({ user, onSelectCustomer, onRaiseServiceIss
                                     <div className="px-4 pb-4 flex flex-wrap items-center justify-between gap-2">
                                         <WarrantyBadge info={info} />
                                         {onRaiseServiceIssue && (
-                                            <ComplaintButton customer={c} onRaise={onRaiseServiceIssue} className="ml-auto" />
+                                            <ComplaintButton customer={c} statusOnly className="ml-auto" />
                                         )}
                                     </div>
                                 </div>
@@ -293,7 +293,7 @@ export default function WarrantyView({ user, onSelectCustomer, onRaiseServiceIss
                         })}
                     </div>
 
-                    {opened && <WarrantyCustomerPanel customer={opened} user={user} onClose={() => setOpened(null)} onOpenCard={onSelectCustomer && (() => { const c = opened; setOpened(null); onSelectCustomer(c); })} onRaiseServiceIssue={onRaiseServiceIssue && (() => { const c = opened; setOpened(null); onRaiseServiceIssue(c); })} />}
+                    {opened && <WarrantyCustomerPanel customer={opened} user={user} onClose={() => setOpened(null)} onOpenCard={onSelectCustomer && (() => { const c = opened; setOpened(null); onSelectCustomer(c); })} />}
                     {hasMore && (
                         <div className="text-center pt-4 pb-8">
                             <button

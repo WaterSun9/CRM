@@ -6,9 +6,11 @@ const shortDate = iso => (iso ? new Date(iso).toLocaleDateString('en-IN', { day:
 // The wrench on a completed customer. Black: no complaint (tap to raise one).
 // Red: a complaint is open (tap to open it). Green: fixed in the last
 // FIXED_GREEN_DAYS days (tap to raise a new one). tone="dark" for the dark card header.
-export default function ComplaintButton({ customer, onRaise, tone = 'light', stopPropagation = false, className = '' }) {
+// statusOnly (lists and Warranty cards): complaints are raised only inside the customer
+// card (owner, 27 Oct 2026), so it shows only a red or green wrench and opens that complaint.
+export default function ComplaintButton({ customer, onRaise, tone = 'light', stopPropagation = false, statusOnly = false, className = '' }) {
     const status = useComplaintStatus(customer?.id);
-    if (!onRaise || !customer?.id) return null;
+    if (!customer?.id || (!statusOnly && !onRaise)) return null;
     const name = customer.customer_name || 'customer';
     const ticket = status?.ticketNo ? ` #${status.ticketNo}` : '';
     const open = status?.state === 'open';
@@ -16,12 +18,13 @@ export default function ComplaintButton({ customer, onRaise, tone = 'light', sto
     const color = open ? 'text-red-600 hover:text-red-700'
         : fixed ? 'text-green-600 hover:text-green-700'
             : tone === 'dark' ? 'text-white hover:text-stone-200' : 'text-stone-900 hover:text-stone-700';
+    if (statusOnly && !open && !fixed) return null;
     const label = open ? `Complaint${ticket} open for ${name}. Open it`
-        : fixed ? `Complaint${ticket} fixed on ${shortDate(status.completedAt)} for ${name} (green for ${FIXED_GREEN_DAYS} days). Raise a new complaint`
+        : fixed ? `Complaint${ticket} fixed on ${shortDate(status.completedAt)} for ${name} (green for ${FIXED_GREEN_DAYS} days). ${statusOnly ? 'Open it' : 'Raise a new complaint'}`
             : `Raise complaint for ${name}`;
     const click = event => {
         if (stopPropagation) event.stopPropagation();
-        if (open) window.dispatchEvent(new CustomEvent('open-complaint', { detail: { issueId: status.issueId } }));
+        if (open || (fixed && statusOnly)) window.dispatchEvent(new CustomEvent('open-complaint', { detail: { issueId: status.issueId } }));
         else onRaise(customer);
     };
     return <button type="button" onClick={click} aria-label={label} title={open ? `Complaint${ticket} open` : fixed ? `Fixed ${shortDate(status.completedAt)}` : 'Raise complaint'}

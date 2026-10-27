@@ -218,8 +218,8 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
     // (cardOverComplaints), and closing it tells the visit form to read the card again.
     const [cardOverComplaints, setCardOverComplaints] = useState(false);
     const [focusedComplaintId, setFocusedComplaintId] = useState(null);
-    // Complaints and Warranty share one page: 'complaints' or 'warranty'.
-    const [complaintsTab, setComplaintsTab] = useState('complaints');
+    // Warranty and Complaints share one page: 'warranty' (first, the default) or 'complaints'.
+    const [complaintsTab, setComplaintsTab] = useState('warranty');
     useEffect(() => {
         const open = async event => {
             const id = event.detail?.id;
@@ -1290,7 +1290,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             : currentView === 'subsidy' ? 'Subsidy Tag Tracking'
                 : currentView === 'loan_tags' ? 'Loan Tag Tracking'
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
-                : currentView === 'complaints' ? (onRaiseServiceIssue ? 'Complaints & Warranty' : 'Warranty')
+                : currentView === 'complaints' ? (onRaiseServiceIssue ? 'Warranty & Complaints' : 'Warranty')
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
                 : currentView === 'profile' ? 'Profile'
                     : currentView === 'installation_payments' ? 'Installation Payments'
@@ -1334,7 +1334,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     ))}
                     {/* Complaints and the Warranty list (completed customers in / out of their 5-year
                         warranty, and those with no date) on one page. Every role sees Warranty. */}
-                    <NavBtn view="complaints" icon={onRaiseServiceIssue ? ClipboardList : ShieldCheck} label={onRaiseServiceIssue ? 'Complaints & Warranty' : 'Warranty'} count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                    <NavBtn view="complaints" icon={ShieldCheck} label={onRaiseServiceIssue ? 'Warranty & Complaints' : 'Warranty'} count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     {/* Channel partners add or change their own phone number. */}
                     {['channel_partner_office', 'channel_partner_office_manager', 'office2'].includes(user.userType) && <NavBtn view="profile" icon={UserRound} label="Profile" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />}
                     {/* Office system tools */}
@@ -1539,8 +1539,8 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
-                    {currentView === 'complaints' && onRaiseServiceIssue && <div role="tablist" aria-label="Complaints and warranty" className="mb-4 flex gap-2">
-                        {[['complaints', 'Complaints', ClipboardList], ['warranty', 'Warranty customers', ShieldCheck]].map(([id, label, Icon]) =>
+                    {currentView === 'complaints' && onRaiseServiceIssue && <div role="tablist" aria-label="Warranty and complaints" className="mb-4 flex gap-2">
+                        {[['warranty', 'Warranty customers', ShieldCheck], ['complaints', 'Complaints', ClipboardList]].map(([id, label, Icon]) =>
                             <button key={id} type="button" role="tab" aria-selected={complaintsTab === id} onClick={() => setComplaintsTab(id)}
                                 className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${complaintsTab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}
                     </div>}

@@ -214,11 +214,12 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     const bannersAtTop = formOnly || !selected || messageSpot === 'top';
 
     return <div className={formOnly ? 'w-full space-y-3' : `service-root ${embedded ? 'service-embedded' : ''} ${selected ? 'has-selection' : ''}`}>
-        {!formOnly && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? "Claim an open job to see the customer's phone and address. When the work is done, tap Completed to send the OTP to the customer and type the OTP they read out." : canManage ? 'Assign complaints, follow each step, close them, and record each visit’s distance and amount. The km rate is set in Operations.' : 'Track the complaints of your customers, step by step, and add comments.'}</p></header>}
+        {!formOnly && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? "Claim an open job to see the customer's phone and address. When the work is done, tap Completed to send the OTP to the customer and type the OTP they read out." : canManage ? 'Assign complaints, follow each step, close them, and record each visit’s distance and amount. To raise a complaint, open the customer’s card. The km rate is set in Operations.' : 'Track the complaints of your customers, step by step, and add comments. To raise a complaint, open the customer’s card.'}</p></header>}
         {loadError && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700"><span className="flex-1">Could not load complaints: {loadError}</span><button type="button" onClick={() => load()} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold">Try again</button></p>}
         {bannersAtTop && banners}
         <div className="service-tools">
-        {!isTechnician && <IssueForm user={user} initialCustomer={initialCustomer} formOnly={formOnly} canManage={canManage} defaultPartner={defaultPartner}
+        {/* Complaints are raised only inside the customer card (owner, 27 Oct 2026). */}
+        {!isTechnician && formOnly && <IssueForm user={user} initialCustomer={initialCustomer} formOnly={formOnly} canManage={canManage} defaultPartner={defaultPartner}
             busy={busy} run={run} onRaised={setSelectedId} />}</div>
         {!formOnly && <><div className="service-filters flex flex-wrap gap-2">{filters.map(([key, label]) =>
             <button key={key} type="button" onClick={() => chooseFilter(key)} className={`min-h-11 rounded-full px-4 text-xs font-bold ${filter === key ? 'bg-stone-900 text-white' : 'bg-white border text-stone-700'}`}>{label} ({countFor(key)})</button>)}</div>

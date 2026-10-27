@@ -62,7 +62,7 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                 {isCompleted && (
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <WarrantyBadge customer={customer} />
-                        {onRaiseServiceIssue && <ComplaintButton customer={customer} onRaise={onRaiseServiceIssue} stopPropagation className="ml-auto" />}
+                        {onRaiseServiceIssue && <ComplaintButton customer={customer} statusOnly stopPropagation className="ml-auto" />}
                     </div>
                 )}
                 <div className="grid grid-cols-2 gap-y-1.5 mb-3">

@@ -290,7 +290,7 @@ const initials = name => String(name || '?').split(/\s+/).filter(Boolean).slice(
 
 // Opened from a Warranty customer. A fixed size (only the inside scrolls), so it does not
 // jump when the tab changes or a complaint opens. "Open full customer card" is for admin and staff only.
-export default function WarrantyCustomerPanel({ customer, user, onClose, onOpenCard, onRaiseServiceIssue }) {
+export default function WarrantyCustomerPanel({ customer, user, onClose, onOpenCard }) {
     useEffect(() => {
         const onKey = event => { if (event.key === 'Escape') onClose(); };
         window.addEventListener('keydown', onKey);
@@ -305,7 +305,6 @@ export default function WarrantyCustomerPanel({ customer, user, onClose, onOpenC
                     <h2 className="break-words text-lg font-bold">{customer.customer_name || 'Customer'}</h2>
                     <p className="text-xs text-stone-400">Consumer no. {customer.consumer_no || '—'}{customer.channel_partner ? ` · ${customer.channel_partner}` : ''}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2"><WarrantyBadge info={warrantyInfo(customer)} />
-                        {onRaiseServiceIssue && <button type="button" onClick={onRaiseServiceIssue} className="min-h-9 rounded-lg bg-amber-400 px-3 text-xs font-bold text-stone-900">Raise complaint</button>}
                         {office && onOpenCard && <button type="button" onClick={onOpenCard} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/20 px-3 text-xs font-bold text-white hover:bg-white/10">Open full customer card</button>}</div>
                 </div>
                 <button type="button" onClick={onClose} aria-label="Close" className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-white/20 hover:bg-white/10"><X size={20} /></button>

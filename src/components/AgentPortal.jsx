@@ -1302,7 +1302,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                         {cust.stage === STAGE_IDS.COMPLETED && (
                                             <div className="-mt-1 mb-3 flex flex-wrap items-center justify-between gap-2">
                                                 <WarrantyBadge customer={cust} />
-                                                {onRaiseServiceIssue && <ComplaintButton customer={cust} onRaise={onRaiseServiceIssue} stopPropagation className="ml-auto" />}
+                                                {onRaiseServiceIssue && <ComplaintButton customer={cust} statusOnly stopPropagation className="ml-auto" />}
                                             </div>
                                         )}
                                         <div className="space-y-1.5 md:space-y-2 text-[11px] md:text-xs text-stone-600">
