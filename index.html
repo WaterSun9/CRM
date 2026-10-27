@@ -17,6 +17,15 @@
         href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700;800&family=Nunito+Sans:ital,opsz,wght@0,6..12,200..1000;1,6..12,200..1000&display=swap"
         rel="stylesheet">
     <script>
+        // http -> https on the live address. Phones refuse location (Start trip /
+        // Reached site) and the SMS code check on plain http, and logins would go
+        // unencrypted. Backup for GitHub Pages "Enforce HTTPS"; local and LAN
+        // testing (localhost, 192.168.x.x) is not touched.
+        if (location.protocol === 'http:' && location.hostname === 'crm.watersunsolar.com') {
+            location.replace('https://' + location.host + location.pathname + location.search + location.hash);
+        }
+    </script>
+    <script>
         // Stale-index.html rescue.
         //
         // GitHub Pages serves index.html with `cache-control: max-age=600`, and
@@ -44,21 +53,22 @@
             });
         })();
     </script>
-  <script type="module" crossorigin src="./assets/main-t62EDYuT.js"></script>
+  <script type="module" crossorigin src="./assets/main-WaWf-pS_.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/chunk-QTnfLwEv.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-Dezn_h7o.js">
   <link rel="modulepreload" crossorigin href="./assets/preload-helper-kNaey6uv.js">
   <link rel="modulepreload" crossorigin href="./assets/tslib.es6-CHdXbnTP.js">
-  <link rel="modulepreload" crossorigin href="./assets/triangle-alert-DWqUI8fj.js">
-  <link rel="modulepreload" crossorigin href="./assets/constants-DtDW4UyI.js">
-  <link rel="modulepreload" crossorigin href="./assets/check-DTSzcAWg.js">
-  <link rel="modulepreload" crossorigin href="./assets/info-C2zrabNd.js">
-  <link rel="modulepreload" crossorigin href="./assets/x-Bhvoy_Cc.js">
-  <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-HcLlFvxQ.js">
-  <link rel="modulepreload" crossorigin href="./assets/GlobalPopup-BUzrG04d.js">
-  <link rel="modulepreload" crossorigin href="./assets/react-dom-ATytx35m.js">
-  <link rel="modulepreload" crossorigin href="./assets/utils-BQoER1U3.js">
-  <link rel="stylesheet" crossorigin href="./assets/main-D0FeKVci.css">
+  <link rel="modulepreload" crossorigin href="./assets/createLucideIcon-JaYO4HUe.js">
+  <link rel="modulepreload" crossorigin href="./assets/triangle-alert-Cg_wNmFS.js">
+  <link rel="modulepreload" crossorigin href="./assets/constants-CE_4kl97.js">
+  <link rel="modulepreload" crossorigin href="./assets/check-BnVV4u1U.js">
+  <link rel="modulepreload" crossorigin href="./assets/info-CJZ32k1W.js">
+  <link rel="modulepreload" crossorigin href="./assets/x-C4ypcXVY.js">
+  <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-CbbgLEbv.js">
+  <link rel="modulepreload" crossorigin href="./assets/GlobalPopup-BhDDrJql.js">
+  <link rel="modulepreload" crossorigin href="./assets/react-dom-CQx5nDis.js">
+  <link rel="modulepreload" crossorigin href="./assets/utils-DzAUUZk0.js">
+  <link rel="stylesheet" crossorigin href="./assets/main-CnCCFTZI.css">
 </head>
 
 <body>
