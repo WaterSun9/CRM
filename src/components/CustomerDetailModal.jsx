@@ -62,6 +62,7 @@ import { formatCustomerTimestamp } from '../utils/customerActivity';
 
 import ComplaintButton from './service/ComplaintButton';
 import ServiceHistory from './service/ServiceHistory';
+import { WarrantyCustomerBody } from './service/WarrantyCustomerPanel';
 // ─── formatDateTime: helper to format date as "04 Aug, 11:01 PM" ──────────────
 const formatDateTime = (date) => {
     if (!date) return '–';
@@ -2135,6 +2136,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         }).map(s => ({ id: s.id, label: s.label, icon: s.icon })),
                         { id: 'DOCUMENTS', label: 'Documents', icon: FolderOpen },
                         { id: 'history', label: 'Notes & History', icon: History },
+                        // The other side of a completed card: warranty, missing details and every complaint.
+                        ...(isCompleted ? [{ id: 'WARRANTY', label: 'Warranty & Complaints', icon: ShieldCheck }] : []),
                     ].map(tab => (
                         <button key={tab.id} onClick={async () => {
                             if (tab.id !== activeTab && !(await resolveUnsaved('Save & Continue'))) return;
@@ -2164,7 +2167,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             address={savedDataRef.current?.full_address} pincode={savedDataRef.current?.pincode}
                             onSave={patch => handleSectionUpdate(customer.id, patch)} />
                     )}
-                    {isCompleted && onRaiseServiceIssue && fullRecordLoaded && <ServiceHistory customerId={customer.id} />}
+                    {isCompleted && onRaiseServiceIssue && fullRecordLoaded && activeTab !== 'WARRANTY' && <ServiceHistory customerId={customer.id} />}
                     {isCompleted && !isFrozen && (
                         <div className="flex items-center gap-3 px-4 py-3 rounded-2xl mb-6 border bg-amber-50 border-amber-200">
                             <Unlock className="w-4 h-4 text-amber-600 flex-shrink-0" />
@@ -2185,7 +2188,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         </div>
                     )}
 
-                    {activeTab !== 'history' && (
+                    {activeTab !== 'history' && activeTab !== 'WARRANTY' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                             {/* Primary Stage Info */}
                             <div className={`p-4 rounded-2xl border shadow-sm ${isCompleted ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-stone-100'} flex flex-col justify-between`}>
@@ -2258,6 +2261,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                     <CustomerModalTabsRouter {...tabProps} />
 
                     {/* ── DOCUMENTS ── */}
+                    {activeTab === 'WARRANTY' && isCompleted && <WarrantyCustomerBody customer={customer} user={user} />}
                     {activeTab === "DOCUMENTS" && (
                         <CustomerDocumentsTab
                             documents={documents}

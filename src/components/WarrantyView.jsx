@@ -6,7 +6,10 @@ import { todayIST, warrantyInfo, expiredWarrantyOrFilter, inWarrantyOrFilter, fo
 import WarrantyBadge from './WarrantyBadge';
 
 import ComplaintButton from './service/ComplaintButton';
+import WarrantyCustomerPanel from './service/WarrantyCustomerPanel';
+import { fuzzyPatterns, mergeSearchResults } from '../utils/fuzzySearch';
 const PAGE_SIZE = 50;
+const SEARCH_LIMIT = 60;
 
 const TABS = [
     { id: 'in_warranty', label: 'In warranty', icon: ShieldCheck, selected: 'bg-emerald-600 border-emerald-600 text-white' },
@@ -30,7 +33,8 @@ const withTab = (query, tabId, today) => tabId === 'missing'
 // Warranty page: completed customers in warranty, out of warranty (5 years ended),
 // worked out on the server from the same dates as the badge (src/utils/warranty.js),
 // and the completed customers with no date at all so the office can fill them in.
-export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter }) {
+export default function WarrantyView({ user, onSelectCustomer, onRaiseServiceIssue, isChannelPartnerOffice, partnerName, channelPartnerFilter, dealerFilter }) {
+    const [opened, setOpened] = useState(null);
     const [activeTab, setActiveTab] = useState('in_warranty');
     const [searchTerm, setSearchTerm] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -83,20 +87,31 @@ export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, is
         else setLoadingMore(true);
 
         try {
-            let query = withTab(scopedQuery(CUSTOMER_CARD_COLUMNS), activeTab, todayIST());
-            // Newest start date first (most recently expired / installed). id keeps the pages stable when dates tie.
-            query = activeTab === 'missing'
-                ? query.order('updated_at', { ascending: false, nullsFirst: false })
-                : query.order('installation_date', { ascending: false, nullsFirst: false })
-                    .order('material_delivery_date', { ascending: false, nullsFirst: false })
-                    .order('completed_at', { ascending: false, nullsFirst: false });
-            query = query.order('id').range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
-
+            let data, error;
             if (debouncedSearch) {
-                query = query.or(`customer_name.ilike.%${debouncedSearch}%,consumer_no.ilike.%${debouncedSearch}%`);
+                // A search looks through EVERY completed customer on the server (not only the
+                // box that is open): name, consumer no. or phone, then the same spelling-tolerant
+                // name match as the top search ("sandeep" finds SANDIP).
+                const q = debouncedSearch;
+                const exact = await scopedQuery(CUSTOMER_CARD_COLUMNS)
+                    .or(`customer_name.ilike.%${q}%,consumer_no.ilike.%${q}%,phone_number.ilike.%${q}%`)
+                    .order('customer_name').limit(SEARCH_LIMIT);
+                ({ data, error } = exact);
+                const patterns = fuzzyPatterns(q);
+                if (!error && patterns.length && (data || []).length < SEARCH_LIMIT) {
+                    const loose = await patterns.reduce((query, pattern) => query.filter('customer_name', 'imatch', pattern), scopedQuery(CUSTOMER_CARD_COLUMNS).limit(200));
+                    if (!loose.error) data = mergeSearchResults(q, data || [], loose.data || [], SEARCH_LIMIT);
+                }
+            } else {
+                let query = withTab(scopedQuery(CUSTOMER_CARD_COLUMNS), activeTab, todayIST());
+                // Newest start date first (most recently expired / installed). id keeps the pages stable when dates tie.
+                query = activeTab === 'missing'
+                    ? query.order('updated_at', { ascending: false, nullsFirst: false })
+                    : query.order('installation_date', { ascending: false, nullsFirst: false })
+                        .order('material_delivery_date', { ascending: false, nullsFirst: false })
+                        .order('completed_at', { ascending: false, nullsFirst: false });
+                ({ data, error } = await query.order('id').range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1));
             }
-
-            const { data, error } = await query;
             if (seq !== fetchSeqRef.current) return;   // a newer search or tab replaced this one
             if (error) {
                 console.error('Warranty list query failed:', error);
@@ -115,7 +130,7 @@ export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, is
             } else {
                 setCustomers(rows);
             }
-            setHasMore(rows.length === PAGE_SIZE);
+            setHasMore(!debouncedSearch && rows.length === PAGE_SIZE);
         } catch (err) {
             if (seq !== fetchSeqRef.current) return;
             console.error('Error fetching warranty customers:', err);
@@ -164,7 +179,7 @@ export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, is
                     <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />
                     <input
                         type="text"
-                        placeholder="Search name or consumer no..."
+                        placeholder="Search all completed: name, consumer no. or phone"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                         className="w-full min-h-11 pl-10 pr-10 py-2.5 bg-white border border-stone-200 rounded-2xl text-xs font-semibold text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-300 shadow-sm transition-all"
@@ -193,13 +208,13 @@ export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, is
 
             <div className="grid grid-cols-3 gap-2 sm:gap-3 sm:max-w-xl">
                 {TABS.map(tab => {
-                    const isSelected = activeTab === tab.id;
+                    const isSelected = activeTab === tab.id && !debouncedSearch;
                     const count = tabCounts[tab.id];
                     return (
                         <button
                             key={tab.id}
                             type="button"
-                            onClick={() => { setActiveTab(tab.id); setPage(0); }}
+                            onClick={() => { setActiveTab(tab.id); setPage(0); setSearchTerm(''); }}
                             aria-pressed={isSelected}
                             className={`rounded-2xl p-3.5 border text-left transition-all cursor-pointer ${isSelected ? `${tab.selected} shadow-md` : 'bg-white border-stone-200/80 text-stone-800 hover:border-stone-300'}`}
                         >
@@ -230,9 +245,9 @@ export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, is
             ) : (
                 <div className="space-y-4">
                     <div className="flex items-center justify-between text-xs text-stone-500 font-semibold px-1">
-                        <span>Showing {customers.length} customers {debouncedSearch ? `for "${debouncedSearch}"` : ''}</span>
+                        <span>{debouncedSearch ? `${customers.length} completed ${customers.length === 1 ? 'customer matches' : 'customers match'} "${debouncedSearch}" (in and out of warranty)` : `Showing ${customers.length} customers`}</span>
                     </div>
-                    {isMissingTab && (
+                    {isMissingTab && !debouncedSearch && (
                         <p className="px-1 text-xs font-medium text-amber-800">
                             These completed customers have no installation, delivery or completed date. Open the customer and add the installation date (admin can unlock a completed customer).
                         </p>
@@ -245,7 +260,7 @@ export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, is
                                 <div key={c.id} className="bg-white rounded-2xl border border-stone-200 hover:border-amber-400 hover:shadow-md transition-all">
                                     <button
                                         type="button"
-                                        onClick={() => onSelectCustomer(c)}
+                                        onClick={() => setOpened(c)}
                                         className="w-full p-4 pb-3 text-left group cursor-pointer"
                                     >
                                         <p className="font-bold text-stone-900 text-sm group-hover:text-amber-700 transition-colors truncate">
@@ -278,6 +293,7 @@ export default function WarrantyView({ onSelectCustomer, onRaiseServiceIssue, is
                         })}
                     </div>
 
+                    {opened && <WarrantyCustomerPanel customer={opened} user={user} onClose={() => setOpened(null)} onOpenCard={onSelectCustomer && (() => { const c = opened; setOpened(null); onSelectCustomer(c); })} onRaiseServiceIssue={onRaiseServiceIssue && (() => { const c = opened; setOpened(null); onRaiseServiceIssue(c); })} />}
                     {hasMore && (
                         <div className="text-center pt-4 pb-8">
                             <button

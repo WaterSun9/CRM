@@ -23,6 +23,7 @@ const LoanView = lazyWithRetry(() => import('./LoanView'));
 const InstallationView = lazyWithRetry(() => import('./InstallationView'));
 const ServiceIssuesView = lazyWithRetry(() => import('./ServiceIssuesView'));
 const WarrantyView = lazyWithRetry(() => import('./WarrantyView'));
+const PartnerProfile = lazyWithRetry(() => import('./service/PartnerProfile'));
 const CustomerDetailModal = lazyWithRetry(() => import('./CustomerDetailModal'));
 const AddLeadModal = lazyWithRetry(() => import('./AddLeadModal'));
 const ActivityLogView = lazyWithRetry(() => import('./ActivityLogView'));
@@ -60,7 +61,7 @@ const getMonthBounds = (monthValue, timestamp = false) => {
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldCheck, ClipboardList
+    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldCheck, ClipboardList, UserRound
 } from 'lucide-react';
 
 // ── NavBtn ────────────────────────────────────────────────────────────────────
@@ -1291,6 +1292,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
                 : currentView === 'complaints' ? (onRaiseServiceIssue ? 'Complaints & Warranty' : 'Warranty')
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
+                : currentView === 'profile' ? 'Profile'
                     : currentView === 'installation_payments' ? 'Installation Payments'
                     : currentView === 'activity' ? 'Activity Log'
                         : currentView === 'users' ? 'User Management'
@@ -1333,6 +1335,8 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {/* Complaints and the Warranty list (completed customers in / out of their 5-year
                         warranty, and those with no date) on one page. Every role sees Warranty. */}
                     <NavBtn view="complaints" icon={onRaiseServiceIssue ? ClipboardList : ShieldCheck} label={onRaiseServiceIssue ? 'Complaints & Warranty' : 'Warranty'} count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                    {/* Channel partners add or change their own phone number. */}
+                    {['channel_partner_office', 'channel_partner_office_manager', 'office2'].includes(user.userType) && <NavBtn view="profile" icon={UserRound} label="Profile" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />}
                     {/* Office system tools */}
                     {['admin', 'sales'].includes(user.userType) && (
                         <>
@@ -1541,8 +1545,9 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                                 className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${complaintsTab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}
                     </div>}
                     {currentView === 'complaints' && onRaiseServiceIssue && complaintsTab === 'complaints' && <ServiceIssuesView key={focusedComplaintId || 'complaint-list'} user={user} initialIssueId={focusedComplaintId} embedded />}
-                    {currentView === 'complaints' && (!onRaiseServiceIssue || complaintsTab === 'warranty') && <WarrantyView onSelectCustomer={setSelectedCustomer} onRaiseServiceIssue={onRaiseServiceIssue} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
+                    {currentView === 'complaints' && (!onRaiseServiceIssue || complaintsTab === 'warranty') && <WarrantyView user={user} onSelectCustomer={setSelectedCustomer} onRaiseServiceIssue={onRaiseServiceIssue} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
 
+                    {currentView === 'profile' && <PartnerProfile user={user} />}
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView currentUser={user} />}
                     {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} />}
                     {currentView === 'activity' && user.userType === 'admin' && <ActivityLogView />}

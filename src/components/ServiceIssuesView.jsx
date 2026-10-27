@@ -205,7 +205,8 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     const showDetails = selected && (!isTechnician || selected.assigned_to === user.id);
     // The technician's own open job shows the photos (with the camera buttons) in the job panel.
     const photosInJobPanel = isTechnician && isOpenJobFor(selected, user?.id);
-    const hasVisitColumn = canManage || isTechnician;
+    // A technician sees visits only on a job of their own.
+    const hasVisitColumn = canManage || (isTechnician && Boolean(showDetails));
     const banners = <>
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {notice && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</p>}

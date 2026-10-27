@@ -7,7 +7,7 @@ import {
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
     ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
-    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal, Flag
+    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal, Flag, UserRound
 } from 'lucide-react';
 import { logActivity, logFieldChanges, readAdminFields, toIndianCommas, formatInputValue, parseIndianNumber, normalizePhoneForSave, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
@@ -20,6 +20,7 @@ import { FilePreviewModal, CheckboxRemarkItem, isReplacedDocument, isReturnedDoc
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
 import WarrantyBadge from './WarrantyBadge';
+import PartnerProfile from './service/PartnerProfile';
 import BrandMark from './BrandMark';
 import { newestCustomerFirst } from '../utils/customerActivity';
 import LeadsTab from './modal-tabs/LeadsTab';
@@ -80,6 +81,7 @@ function DetailRow({ label, value, children }) {
 export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpenComplaints, onOpenDevSwitcher }) {
     const { showAlert, showConfirm } = useGlobalPopup();
     const [view, setView] = useState('menu');
+    const [showProfile, setShowProfile] = useState(false);
     const [activeWorkdeskTab, setActiveWorkdeskTab] = useState(STAGE_IDS.LEADS);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [customers, setCustomers] = useState([]);
@@ -962,6 +964,12 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
 
     return (
         <>
+            {showProfile && <div role="dialog" aria-modal="true" aria-label="Profile" className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-stone-950/50 p-3 sm:items-center sm:p-6" onClick={() => setShowProfile(false)}>
+                <div className="w-full max-w-xl rounded-3xl bg-[#FCFBFA] p-4" onClick={event => event.stopPropagation()}>
+                    <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold">Profile</h2><button type="button" onClick={() => setShowProfile(false)} aria-label="Close profile" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border bg-white"><X size={20} /></button></div>
+                    <PartnerProfile user={user} />
+                </div>
+            </div>}
             {view === 'menu' && (
                 <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans flex flex-col pb-8">
                     <header className="bg-white border-b border-stone-100 px-4 py-3 sticky top-0 z-30 flex items-center justify-between shadow-sm">
@@ -1008,6 +1016,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
 
                     {QUOTATION_PARTNER_ENABLED && <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span>{quotationOpenCount > 0 && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}<ChevronRight size={18} /></button>}
                     {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="w-full flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-sm"><ClipboardList size={24} /><span className="flex-1"><strong className="block text-base">Complaints</strong><span className="text-xs text-stone-500">Track service requests</span></span><ChevronRight size={18} /></button>}
+                    <button type="button" onClick={() => setShowProfile(true)} className="w-full flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-sm"><UserRound size={24} /><span className="flex-1"><strong className="block text-base">Profile</strong><span className="text-xs text-stone-500">Your phone number</span></span><ChevronRight size={18} /></button>
 
                     <section className="rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm">
                         <div className="mb-3">
@@ -1195,6 +1204,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                         </div>
                         <div className="flex items-center gap-1 md:gap-2">
                             {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-bold text-stone-700">Complaints</button>}
+                            <button type="button" onClick={() => setShowProfile(true)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-bold text-stone-700">Profile</button>
                             {import.meta.env.DEV && onOpenDevSwitcher && (
                                 <button
                                     type="button"

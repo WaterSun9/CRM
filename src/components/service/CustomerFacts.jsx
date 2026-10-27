@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
 import { PARTNER_TYPES, cleanMobile, serialList } from './serviceLabels';
 import { pincodeInText } from './tripLabels';
+import { contactPhones } from './contactPhones';
 
 const CARD_COLUMNS = 'customer_name, phone_number, full_address, pincode, villages, district, channel_partner, sub_channel_partner, panel_serial_no, inverter_serial_no, inverter_make, module_brand, module_wp, no_of_modules, system_capacity_kwp';
 const missingFunction = failure => failure?.code === 'PGRST202' || failure?.code === '42883' || /could not find the function/i.test(failure?.message || '');
@@ -26,13 +27,6 @@ async function readCard(issue, userType) {
     throw error;
 }
 
-async function partnerPhone(name) {
-    if (!name) return '';
-    const { data, error } = await supabase.from('metadata').select('label, phone').eq('category', 'channel_partner').ilike('label', name.trim());
-    if (error) return '';   // no phone column yet
-    return (data || []).map(row => row.phone).find(Boolean) || '';
-}
-
 const Call = ({ phone }) => {
     const mobile = cleanMobile(phone);
     return mobile ? <a href={`tel:+91${mobile}`} className="font-semibold text-blue-700 underline">{mobile.slice(0, 5)} {mobile.slice(5)}</a> : (phone || null);
@@ -55,8 +49,8 @@ export default function CustomerFacts({ issue, userType }) {
         (async () => {
             try {
                 const row = await readCard(issue, userType);
-                const phone = row?.partner_phone || await partnerPhone(row?.channel_partner || issue.channel_partner_name);
-                if (active) { setCard(row ? { ...row, partner_phone: phone } : null); setFailed(''); }
+                const phones = await contactPhones(row?.channel_partner || issue.channel_partner_name, row?.sub_channel_partner);
+                if (active) { setCard(row ? { ...row, partner_phone: phones.partner || row.partner_phone, dealer_phone: phones.dealer } : null); setFailed(''); }
             } catch (failure) {
                 if (active) setFailed(failure?.message || 'Could not load the customer card.');
             }
@@ -71,7 +65,7 @@ export default function CustomerFacts({ issue, userType }) {
     useEffect(() => {
         if (linked) return undefined;
         let active = true;
-        partnerPhone(issue.channel_partner_name).then(phone => { if (active) setLoosePartnerPhone(phone); });
+        contactPhones(issue.channel_partner_name, null).then(phones => { if (active) setLoosePartnerPhone(phones.partner); });
         return () => { active = false; };
     }, [linked, issue.channel_partner_name]);
 
@@ -92,6 +86,7 @@ export default function CustomerFacts({ issue, userType }) {
         ['Pincode', pincode],
         ['Channel partner', partner],
         ['Partner phone', <Call key="partner" phone={linked ? c.partner_phone : loosePartnerPhone} />],
+        ...(c.sub_channel_partner ? [['Dealer phone', <Call key="dealer" phone={c.dealer_phone} />]] : []),
         ['Problem', issue.problem_type],
         ['System', system],
         ['Inverter', inverter],
