@@ -135,13 +135,13 @@ supabase.rpc = async (name, args = {}) => {
     return { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
 };
 
-const views = { office: 'Complaints & Warranty', operations: 'Operations', technician: 'Technician jobs', partner: 'Complaints & Warranty', profile: 'Profile' };
+const views = { office: 'Warranty & Complaints', operations: 'Operations', technician: 'Technician jobs', partner: 'Warranty & Complaints', profile: 'Profile' };
 function Demo() {
     const view = new URLSearchParams(location.search).get('view') || 'office';
     user = view === 'technician' ? TECH : ['partner', 'profile'].includes(view) ? PARTNER : OFFICE;
-    const [tab, setTab] = useState(new URLSearchParams(location.search).get('tab') || 'complaints');
+    const [tab, setTab] = useState(new URLSearchParams(location.search).get('tab') || 'warranty');
     const [raising, setRaising] = useState(null);
-    const nav = [['Complaints & Warranty', ClipboardList, ['office', 'partner'].includes(view)], ['Operations', Users, view === 'operations']];
+    const nav = [['Warranty & Complaints', ShieldCheck, ['office', 'partner'].includes(view)], ['Operations', Users, view === 'operations']];
     return <GlobalPopupProvider><div className="min-h-screen bg-[#FCFBFA] md:pl-64">
         <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-white p-5 md:block"><strong className="text-lg">Watersun CRM</strong><p className="mt-1 text-xs text-stone-500">Signed in as {user.name}</p>
             <div className="mt-6 space-y-1">{nav.map(([label, Icon, on]) => <p key={label} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold ${on ? 'bg-stone-900 text-white' : 'text-stone-600'}`}><Icon size={16} /> {label}</p>)}</div></aside>
@@ -150,7 +150,7 @@ function Demo() {
             {view === 'profile' && <PartnerProfile user={{ ...PARTNER, email: 'sunenergy@partner.in' }} />}
             {view === 'technician' && <ServiceIssuesView user={TECH} />}
             {['office', 'partner'].includes(view) && <>
-                <div role="tablist" className="mb-4 flex gap-2">{[['complaints', 'Complaints', ClipboardList], ['warranty', 'Warranty customers', ShieldCheck]].map(([id, label, Icon]) =>
+                <div role="tablist" className="mb-4 flex gap-2">{[['warranty', 'Warranty customers', ShieldCheck], ['complaints', 'Complaints', ClipboardList]].map(([id, label, Icon]) =>
                     <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${tab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}</div>
                 {tab === 'complaints' ? <ServiceIssuesView user={user} embedded onOpenWarranty={() => setTab('warranty')} /> : <WarrantyView user={user} onSelectCustomer={() => {}} onRaiseServiceIssue={setRaising} isChannelPartnerOffice={view === 'partner'} partnerName="Sun Energy Partners" />}
             </>}
