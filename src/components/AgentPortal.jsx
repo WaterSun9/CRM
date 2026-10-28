@@ -7,7 +7,7 @@ import {
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
     ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
-    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal, Flag, UserRound
+    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal, Flag, UserRound, ShieldCheck
 } from 'lucide-react';
 import { logActivity, logFieldChanges, readAdminFields, toIndianCommas, formatInputValue, parseIndianNumber, normalizePhoneForSave, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
@@ -20,6 +20,7 @@ import { FilePreviewModal, CheckboxRemarkItem, isReplacedDocument, isReturnedDoc
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
 import PartnerProfile from './service/PartnerProfile';
+import WarrantyView from './WarrantyView';
 import { warrantyInfo } from '../utils/warranty';
 import PartnerPhoneReminder from './service/PartnerPhoneReminder';
 import BrandMark from './BrandMark';
@@ -83,6 +84,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
     const { showAlert, showConfirm } = useGlobalPopup();
     const [view, setView] = useState('menu');
     const [showProfile, setShowProfile] = useState(false);
+    const [showWarranty, setShowWarranty] = useState(false);
     const [activeWorkdeskTab, setActiveWorkdeskTab] = useState(STAGE_IDS.LEADS);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [customers, setCustomers] = useState([]);
@@ -965,6 +967,16 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
 
     return (
         <>
+            {showWarranty && <div role="dialog" aria-modal="true" aria-label="Warranty customers" className="fixed inset-0 z-[70] flex items-stretch justify-center bg-stone-950/50 sm:items-center sm:p-6" onClick={() => setShowWarranty(false)}>
+                <div className="flex h-full w-full max-w-6xl flex-col overflow-hidden bg-[#FCFBFA] sm:h-[90vh] sm:rounded-3xl" onClick={event => event.stopPropagation()}>
+                    <div className="flex items-center justify-between border-b bg-white p-3"><h2 className="text-lg font-bold">Warranty customers</h2><button type="button" onClick={() => setShowWarranty(false)} aria-label="Close warranty customers" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border bg-white"><X size={20} /></button></div>
+                    <div className="flex-1 overflow-y-auto p-3 sm:p-5">
+                        <WarrantyView user={user}
+                            onSelectCustomer={cust => { setShowWarranty(false); handleSelectCustomerForStage(cust, cust.stage); }}
+                            onRaiseServiceIssue={onRaiseServiceIssue && (cust => { setShowWarranty(false); onRaiseServiceIssue(cust); })} />
+                    </div>
+                </div>
+            </div>}
             {showProfile && <div role="dialog" aria-modal="true" aria-label="Profile" className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-stone-950/50 p-3 sm:items-center sm:p-6" onClick={() => setShowProfile(false)}>
                 <div className="w-full max-w-xl rounded-3xl bg-[#FCFBFA] p-4" onClick={event => event.stopPropagation()}>
                     <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold">Profile</h2><button type="button" onClick={() => setShowProfile(false)} aria-label="Close profile" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border bg-white"><X size={20} /></button></div>
@@ -1017,6 +1029,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
 
                     {QUOTATION_PARTNER_ENABLED && <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span>{quotationOpenCount > 0 && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}<ChevronRight size={18} /></button>}
                     <PartnerPhoneReminder key={showProfile ? "profile-open" : "profile-closed"} onOpenProfile={() => setShowProfile(true)} />
+                    {onRaiseServiceIssue && <button type="button" onClick={() => setShowWarranty(true)} className="w-full flex items-center gap-3 rounded-2xl border border-emerald-200 bg-white p-5 text-left shadow-sm"><ShieldCheck size={24} className="text-emerald-600" /><span className="flex-1"><strong className="block text-base">Warranty customers</strong><span className="text-xs text-stone-500">Your completed customers, warranty and raising complaints</span></span><ChevronRight size={18} /></button>}
                     {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="w-full flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-sm"><ClipboardList size={24} /><span className="flex-1"><strong className="block text-base">Complaints</strong><span className="text-xs text-stone-500">Track service requests</span></span><ChevronRight size={18} /></button>}
                     <button type="button" onClick={() => setShowProfile(true)} className="w-full flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-sm"><UserRound size={24} /><span className="flex-1"><strong className="block text-base">Profile</strong><span className="text-xs text-stone-500">Your phone number</span></span><ChevronRight size={18} /></button>
 
