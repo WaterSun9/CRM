@@ -230,7 +230,8 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
             <div className="service-list space-y-2" aria-label="Complaint list">{shown.length === 0 && <p className="rounded-2xl border bg-white p-4 text-sm text-stone-500">No complaints in this view.</p>}{shown.map(issue =>
                 <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} aria-pressed={selectedId === issue.id} className={`service-list-item block w-full rounded-xl border p-3 text-left ${selectedId === issue.id ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
                     <span className="flex items-start gap-2"><span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-stone-500">{ticketLabel(issue)}</span><strong className="block break-words">{issue.customer_name}</strong></span><ChevronRight size={16} className="mt-1 shrink-0 text-stone-400" /></span>
-                    <span className="mt-2 inline-flex"><StatusPill issue={issue} /></span>
+                    <span className="mt-2 flex flex-wrap items-center gap-2"><StatusPill issue={issue} />
+                        {issue.created_at && <span className="text-[11px] text-stone-500">Raised {new Date(issue.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</span>}</span>
                 </button>)}</div>
             <div ref={detailRef} className="service-detail scroll-mt-4 rounded-2xl border bg-white p-4 sm:p-5 space-y-4 min-w-0">
                 {!selected ? null : <>
