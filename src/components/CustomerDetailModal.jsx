@@ -62,6 +62,7 @@ import { formatCustomerTimestamp } from '../utils/customerActivity';
 import ComplaintButton from './service/ComplaintButton';
 import ServiceHistory from './service/ServiceHistory';
 import { WarrantyCustomerBody } from './service/WarrantyCustomerPanel';
+import { warrantyInfo } from '../utils/warranty';
 // ─── formatDateTime: helper to format date as "04 Aug, 11:01 PM" ──────────────
 const formatDateTime = (date) => {
     if (!date) return '–';
@@ -2105,7 +2106,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         </p>
                     </div>
                     <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                        {isCompleted && onRaiseServiceIssue && <ComplaintButton customer={savedDataRef.current} onRaise={onRaiseServiceIssue} tone="dark" withLabel />}
+                        {isCompleted && onRaiseServiceIssue && <ComplaintButton customer={savedDataRef.current} onRaise={onRaiseServiceIssue} canRaise={fullRecordLoaded && warrantyInfo(savedDataRef.current).status === 'in_warranty'} tone="dark" withLabel />}
                         <RedFlagToggle customer={customer} user={user} tone="dark" />
                         {/* Admin unlock/lock toggle for completed cards */}
                         {isCompleted && isAdmin && (

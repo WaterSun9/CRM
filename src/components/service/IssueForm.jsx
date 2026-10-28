@@ -28,8 +28,8 @@ function WarrantyBanner({ customer, failed }) {
     const info = warrantyInfo(customer);
     const from = info.start && <span className="mt-1 block text-xs font-normal">Counted from the {SOURCE_LABELS[info.source] || 'start date'} ({formatWarrantyDate(info.start)}).</span>;
     if (info.status === 'in_warranty') return <p className="sm:col-span-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-800">In warranty until {formatWarrantyDate(info.end)}{from}</p>;
-    if (info.status === 'out_of_warranty') return <p className="sm:col-span-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">Out of warranty (ended {formatWarrantyDate(info.end)}). This complaint will be marked Out of warranty.{from}</p>;
-    return <p className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Warranty date missing<span className="mt-1 block text-xs font-normal">This customer has no installation, delivery or completion date. The complaint can still be raised.</span></p>;
+    if (info.status === 'out_of_warranty') return <p role="alert" className="sm:col-span-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">Out of warranty (ended {formatWarrantyDate(info.end)}). A complaint cannot be raised.{from}</p>;
+    return <p role="alert" className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Warranty date missing. A complaint cannot be raised.<span className="mt-1 block text-xs font-normal">Add the installation date on the customer card first.</span></p>;
 }
 
 // Raise-a-complaint form. From a completed customer card it links the
@@ -57,6 +57,8 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
         return () => { active = false; };
     }, [needsDates, initialCustomer?.id]);
     const warrantyCustomer = !linked ? null : needsDates ? (dates && { ...initialCustomer, ...dates }) : initialCustomer;
+    // Complaints only while in warranty (owner, 28 Oct 2026; the database checks again).
+    const notInWarranty = Boolean(warrantyCustomer) && warrantyInfo(warrantyCustomer).status !== 'in_warranty';
 
     // The card's own address and pincode: the km of every visit is worked out from
     // them, so a missing one is shown with a button to open the card and fill it in.
@@ -123,6 +125,7 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
     const create = event => {
         event.preventDefault();
         run(async () => {
+            if (notInWarranty) throw new Error('A complaint can be raised only while the customer is in warranty.');
             if (linked && cardMissing) throw new Error('Save the address and pincode to the customer card first.');
             if (!isPincode(newIssue.pincode)) throw new Error('Enter the customer\'s 6-digit pincode.');
             if (!confirmed) throw new Error('Confirm the address and pincode with the customer first.');
@@ -191,7 +194,7 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
         <label className="text-xs font-semibold">System kW<input type="number" min="0" step="0.01" value={newIssue.system_kw} onChange={e => setNewIssue(v => ({ ...v, system_kw: e.target.value }))} className={field} /></label>
         <label className="sm:col-span-2 text-xs font-semibold">Comment<textarea maxLength={2000} rows={3} value={newIssue.comment} onChange={e => setNewIssue(v => ({ ...v, comment: e.target.value }))} className="mt-1 block w-full rounded-lg border p-2 text-sm" />
             <span className="mt-1 block font-normal text-stone-500">The technician adds Before and After photos at the site.</span></label>
-        <button disabled={busy || (linked && (!card || Boolean(cardMissing)))} className="min-h-11 rounded-lg bg-amber-500 px-4 py-3 text-sm font-bold disabled:opacity-50">Raise complaint</button>
+        <button disabled={busy || notInWarranty || (linked && (!card || Boolean(cardMissing)))} className="min-h-11 rounded-lg bg-amber-500 px-4 py-3 text-sm font-bold disabled:opacity-50">Raise complaint</button>
         {linked && cardMissing && <p className="self-center text-xs text-stone-500">Save the address and pincode to the customer card first.</p>}
     </form>;
 }
