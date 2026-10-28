@@ -131,6 +131,7 @@ supabase.rpc = async (name, args = {}) => {
     if (name === 'my_partner_profile') return { data: [{ partner_name: 'Sun Energy Partners', phone: db.metadata[0].phone, is_dealer: false, partner_phone: db.metadata[0].phone }], error: null };
     if (name === 'contact_phones') return { data: [{ partner_phone: db.metadata.find(m => m.label === args.p_partner)?.phone || null, dealer_phone: args.p_dealer === 'Patan Dealer' ? '9898012345' : null }], error: null };
     if (name === 'set_my_partner_phone') { db.metadata[0].phone = args.p_phone; return { data: args.p_phone, error: null }; }
+    if (name === 'set_customer_location') { const c = db.admin.find(row => row.id === args.p_customer_id); if (args.p_address) c.full_address = args.p_address; if (args.p_pincode) c.pincode = args.p_pincode; return { data: [{ full_address: c.full_address, pincode: c.pincode }], error: null }; }
     if (name === 'claim_service_issue') { Object.assign(db.service_issues.find(i => i.id === args.p_issue_id), { status: 'assigned', assigned_to: TECH.id, assigned_at: new Date().toISOString() }); return { data: true, error: null }; }
     return { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
 };

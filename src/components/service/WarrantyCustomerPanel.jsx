@@ -86,7 +86,7 @@ const Section = ({ icon: Icon, title, children }) => <section className="rounded
     <dl>{children}</dl>
 </section>;
 
-function Details({ card, partnerPhone, dealerPhone, canEdit, saveCard, savePartnerPhone }) {
+function Details({ card, partnerPhone, dealerPhone, canEdit, canEditLocation, saveCard, saveLocation, savePartnerPhone }) {
     const panels = serialList(card.panel_serial_no);
     const modules = card.no_of_modules ? `${card.no_of_modules} x ${card.module_wp ? `${card.module_wp} Wp` : 'panels'}` : '';
     const pincode = String(card.pincode ?? '').replace(/\D/g, '') || pincodeInText(card.full_address);
@@ -103,9 +103,10 @@ function Details({ card, partnerPhone, dealerPhone, canEdit, saveCard, savePartn
                         hint: 'The completion OTP goes to this number.' }} />
             </Section>
             <Section icon={MapPin} title="Location">
-                <Fact label="Address" value={card.full_address || [card.villages, card.district].filter(Boolean).join(', ')} canEdit={canEdit} edit={field('full_address', { placeholder: 'House, street, village' })} />
-                <Fact label="Pincode" value={pincode} canEdit={canEdit}
-                    edit={{ inputMode: 'numeric', placeholder: '385340', save: text => { const pin = text.replace(/\D/g, ''); if (!isPincode(pin)) throw new Error('Enter the 6-digit pincode.'); return saveCard({ pincode: pin }); } }} />
+                <Fact label="Address" value={card.full_address || [card.villages, card.district].filter(Boolean).join(', ')} canEdit={canEditLocation}
+                    edit={{ placeholder: 'House, street, village', save: text => { if (!text.trim()) throw new Error('Enter the address.'); return saveLocation({ full_address: text.trim() }); } }} />
+                <Fact label="Pincode" value={pincode} canEdit={canEditLocation}
+                    edit={{ inputMode: 'numeric', placeholder: '385340', save: text => { const pin = text.replace(/\D/g, ''); if (!isPincode(pin)) throw new Error('Enter the 6-digit pincode.'); return saveLocation({ pincode: pin }); } }} />
             </Section>
             <Section icon={Store} title="Channel partner">
                 <Fact label="Partner" value={card.channel_partner} />
@@ -195,7 +196,10 @@ export function WarrantyCustomerBody({ customer, user, onCardChanged }) {
     const [reload, setReload] = useState(0);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState(null);
+    // Office edits the details; partners and dealers can only see them, except the address
+    // and pincode (set_customer_location, 20261028130000_partner_customer_location.sql).
     const canEdit = OFFICE_TYPES.includes(user?.userType);
+    const canEditLocation = canEdit || PARTNER_TYPES.includes(user?.userType);
 
     useEffect(() => {
         let active = true;
@@ -257,6 +261,19 @@ export function WarrantyCustomerBody({ customer, user, onCardChanged }) {
         void logFieldChanges(user?.id, card.id, card.customer_name, before, patch, 'Warranty details');
         onCardChanged?.(data[0]);
     };
+    const saveLocation = async patch => {
+        const { data, error } = await supabase.rpc('set_customer_location', { p_customer_id: card.id, p_address: patch.full_address ?? null, p_pincode: patch.pincode ?? null });
+        if (error) {
+            // Database not updated yet: the office can still save directly.
+            if (canEdit && /could not find the function|PGRST202/i.test(`${error.code} ${error.message}`)) return saveCard(patch);
+            throw new Error(error.message);
+        }
+        const before = Object.fromEntries(Object.keys(patch).map(key => [key, card[key] ?? null]));
+        const next = { ...card, ...(data?.[0] || patch) };
+        setCard(next);
+        void logFieldChanges(user?.id, card.id, card.customer_name, before, patch, 'Warranty details');
+        onCardChanged?.(next);
+    };
     const savePartnerPhone = async text => {
         const phone = text.trim() ? cleanMobile(text) : null;
         if (text.trim() && !phone) throw new Error('Enter a 10-digit mobile number.');
@@ -280,7 +297,7 @@ export function WarrantyCustomerBody({ customer, user, onCardChanged }) {
         <div role="tablist" className="flex gap-1 rounded-2xl border bg-white p-1">{tabButton('details', 'Details', User)}{tabButton('history', `History${issues ? ` (${issues.length})` : ''}`, History)}</div>
         {failed && <p role="alert" className="rounded-lg bg-red-50 p-2 text-xs text-red-700">Could not load everything: {failed}</p>}
         {message && <p role={message.ok ? 'status' : 'alert'} className={`rounded-lg p-2 text-xs ${message.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{message.text}</p>}
-        {tab === 'details' ? <Details card={card} partnerPhone={partnerPhone} dealerPhone={dealerPhone} canEdit={canEdit} saveCard={saveCard} savePartnerPhone={savePartnerPhone} />
+        {tab === 'details' ? <Details card={card} partnerPhone={partnerPhone} dealerPhone={dealerPhone} canEdit={canEdit} canEditLocation={canEditLocation} saveCard={saveCard} saveLocation={saveLocation} savePartnerPhone={savePartnerPhone} />
             : !issues ? <p className="text-sm text-stone-500">Loading…</p>
                 : !issues.length ? <p className="rounded-2xl border bg-white p-6 text-center text-sm text-stone-500">No complaints yet for this customer.</p>
                     : <div className="space-y-3">{issues.map(issue => <PastComplaint key={issue.id} issue={issue} visits={visits.filter(v => v.issue_id === issue.id)} extra={extras[issue.id]} user={user} run={run} busy={busy} />)}</div>}
