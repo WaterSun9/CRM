@@ -16,6 +16,7 @@ import CustomerFacts from './service/CustomerFacts';
 import ComplaintHistory from './service/ComplaintHistory';
 import VisitStage from './service/VisitStage';
 import CombinedVisitForm from './service/CombinedVisitForm';
+import RaiseComplaintPicker from './service/RaiseComplaintPicker';
 import {
     ACTIVE_STATUSES, OFFICE_FILTERS, PARTNER_TYPES, STAGE_LABELS, STAGE_PILL, STATUS_LABELS, TECHNICIAN_FILTERS, WARRANTY_PILL,
     formatDateTime, isOpenJobFor, issueStage, matchesFilter, money, ticketLabel, warrantyLabel
@@ -58,7 +59,7 @@ function ClosureNote({ issue, forTechnician }) {
     return null;
 }
 
-export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false, embedded = false }) {
+export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false, embedded = false, onRaise = null }) {
     const isTechnician = user?.userType === 'technician';
     const canManage = ['admin', 'sales'].includes(user?.userType);
     const isPartner = PARTNER_TYPES.includes(user?.userType);
@@ -214,11 +215,13 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     const bannersAtTop = formOnly || !selected || messageSpot === 'top';
 
     return <div className={formOnly ? 'w-full space-y-3' : `service-root ${embedded ? 'service-embedded' : ''} ${selected ? 'has-selection' : ''}`}>
-        {!formOnly && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? "Claim an open job to see the customer's phone and address. When the work is done, tap Completed to send the OTP to the customer and type the OTP they read out." : canManage ? 'Assign complaints, follow each step, close them, and record each visit’s distance and amount. To raise a complaint, open the customer’s card. The km rate is set in Operations.' : 'Track the complaints of your customers, step by step, and add comments. To raise a complaint, open the customer’s card.'}</p></header>}
+        {!formOnly && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? "Claim an open job to see the customer's phone and address. When the work is done, tap Completed to send the OTP to the customer and type the OTP they read out." : canManage ? 'Assign complaints, follow each step, close them, and record each visit’s distance and amount. To raise one, press Raise a complaint and find the customer. The km rate is set in Operations.' : 'Track the complaints of your customers, step by step, and add comments. To raise one, press Raise a complaint and find the customer.'}</p></header>}
         {loadError && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700"><span className="flex-1">Could not load complaints: {loadError}</span><button type="button" onClick={() => load()} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold">Try again</button></p>}
         {bannersAtTop && banners}
         <div className="service-tools">
-        {/* Complaints are raised only inside the customer card (owner, 27 Oct 2026). */}
+        {/* Raising: pick the completed customer here, or use the customer card / Warranty card;
+            the form always opens with that customer's details filled in. */}
+        {!isTechnician && !formOnly && <RaiseComplaintPicker onRaise={onRaise} />}
         {!isTechnician && formOnly && <IssueForm user={user} initialCustomer={initialCustomer} formOnly={formOnly} canManage={canManage} defaultPartner={defaultPartner}
             busy={busy} run={run} onRaised={setSelectedId} />}</div>
         {!formOnly && <><div className="service-filters flex flex-wrap gap-2">{filters.map(([key, label]) =>

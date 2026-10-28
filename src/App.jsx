@@ -361,7 +361,7 @@ export default function App() {
                 {showServiceIssues && <div role="dialog" aria-label={issueCustomer ? 'Raise a complaint' : 'Complaints'} aria-modal="true" className={issueCustomer ? 'fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3 sm:p-6' : 'fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/50 p-3 sm:p-6'}>
                     <div className={issueCustomer ? 'w-full max-w-3xl max-h-[92dvh] overflow-y-auto rounded-2xl bg-white p-3 shadow-2xl sm:p-5' : 'w-full max-w-[1500px] max-h-[94dvh] overflow-y-auto rounded-2xl bg-[#FCFBFA] shadow-2xl'}>
                         <div className="sticky top-0 z-10 flex justify-end border-b bg-white p-2"><button type="button" onClick={() => { setShowServiceIssues(false); setIssueCustomer(null); }} aria-label="Close complaints" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border"><X size={20} /></button></div>
-                        <Suspense fallback={<ScreenLoader />}><ServiceIssuesView key={issueCustomer?.id || `all-issues:${focusIssueId || ''}`} user={user} initialCustomer={issueCustomer} initialIssueId={focusIssueId} formOnly={Boolean(issueCustomer)} /></Suspense>
+                        <Suspense fallback={<ScreenLoader />}><ServiceIssuesView key={issueCustomer?.id || `all-issues:${focusIssueId || ''}`} user={user} initialCustomer={issueCustomer} initialIssueId={focusIssueId} formOnly={Boolean(issueCustomer)} onRaise={setIssueCustomer} /></Suspense>
                     </div>
                 </div>}
             </>}

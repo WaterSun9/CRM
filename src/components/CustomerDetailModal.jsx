@@ -2108,7 +2108,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         </p>
                     </div>
                     <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                        {isCompleted && onRaiseServiceIssue && <ComplaintButton customer={savedDataRef.current} onRaise={onRaiseServiceIssue} tone="dark" />}
+                        {isCompleted && onRaiseServiceIssue && <ComplaintButton customer={savedDataRef.current} onRaise={onRaiseServiceIssue} tone="dark" withLabel />}
                         <RedFlagToggle customer={customer} user={user} tone="dark" />
                         {/* Admin unlock/lock toggle for completed cards */}
                         {isCompleted && isAdmin && (

@@ -1422,7 +1422,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                             </div>
                             <div className="flex items-center gap-2 ml-3">
                                 <RedFlagToggle customer={selectedCust} user={user} tone="light" className="h-9 w-9 rounded-full" />
-                                {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <ComplaintButton customer={selectedCust} onRaise={onRaiseServiceIssue} className="ml-auto" />}
+                                {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <ComplaintButton customer={selectedCust} onRaise={onRaiseServiceIssue} withLabel className="ml-auto" />}
                                 {getTelephoneHref(selectedCust.phone_number) && (
                                     <a
                                         href={getTelephoneHref(selectedCust.phone_number)}
