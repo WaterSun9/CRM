@@ -247,6 +247,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
                         <p className="text-xs text-stone-500">Required {selected.required_date}{canManage && selected.assigned_to ? ` · Assigned to ${technicianName(selected.assigned_to)}` : ''}</p>
                     </div>
                     {!bannersAtTop && banners}
+                    {selected.warranty_exception_reason && <p className="rounded-lg border border-orange-200 bg-orange-50 p-2 text-xs text-orange-950"><strong>Raised by admin as a warranty exception:</strong> {selected.warranty_exception_reason}</p>}
                     <ClosureNote issue={selected} forTechnician={isTechnician} />
                     {/* The technician's next step comes before the details, so the
                         code box is on screen without scrolling on a phone. */}

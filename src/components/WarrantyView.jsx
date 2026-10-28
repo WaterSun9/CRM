@@ -285,7 +285,7 @@ export default function WarrantyView({ user, onSelectCustomer, onRaiseServiceIss
                                     <div className="px-4 pb-4 flex flex-wrap items-center justify-between gap-2">
                                         <WarrantyBadge info={info} />
                                         {onRaiseServiceIssue && (
-                                            <ComplaintButton customer={c} onRaise={onRaiseServiceIssue} canRaise={info.status === 'in_warranty'} withLabel className="ml-auto" />
+                                            <ComplaintButton customer={c} onRaise={onRaiseServiceIssue} canRaise={info.status === 'in_warranty' || user?.userType === 'admin'} exception={info.status !== 'in_warranty'} withLabel className="ml-auto" />
                                         )}
                                     </div>
                                 </div>

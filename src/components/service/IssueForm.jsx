@@ -28,8 +28,8 @@ function WarrantyBanner({ customer, failed }) {
     const info = warrantyInfo(customer);
     const from = info.start && <span className="mt-1 block text-xs font-normal">Counted from the {SOURCE_LABELS[info.source] || 'start date'} ({formatWarrantyDate(info.start)}).</span>;
     if (info.status === 'in_warranty') return <p className="sm:col-span-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-800">In warranty until {formatWarrantyDate(info.end)}{from}</p>;
-    if (info.status === 'out_of_warranty') return <p role="alert" className="sm:col-span-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">Out of warranty (ended {formatWarrantyDate(info.end)}). A complaint cannot be raised.{from}</p>;
-    return <p role="alert" className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Warranty date missing. A complaint cannot be raised.<span className="mt-1 block text-xs font-normal">Add the installation date on the customer card first.</span></p>;
+    if (info.status === 'out_of_warranty') return <p role="alert" className="sm:col-span-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">Out of warranty (ended {formatWarrantyDate(info.end)}). A complaint cannot be raised, except by an admin.{from}</p>;
+    return <p role="alert" className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Warranty date missing. A complaint cannot be raised, except by an admin.<span className="mt-1 block text-xs font-normal">Add the installation date on the customer card first.</span></p>;
 }
 
 // Raise-a-complaint form. From a completed customer card it links the
@@ -59,6 +59,9 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
     const warrantyCustomer = !linked ? null : needsDates ? (dates && { ...initialCustomer, ...dates }) : initialCustomer;
     // Complaints only while in warranty (owner, 28 Oct 2026; the database checks again).
     const notInWarranty = Boolean(warrantyCustomer) && warrantyInfo(warrantyCustomer).status !== 'in_warranty';
+    // Only an admin may raise one anyway, as an exception with a reason.
+    const adminException = notInWarranty && user?.userType === 'admin';
+    const [exceptionReason, setExceptionReason] = useState('');
 
     // The card's own address and pincode: the km of every visit is worked out from
     // them, so a missing one is shown with a button to open the card and fill it in.
@@ -125,7 +128,8 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
     const create = event => {
         event.preventDefault();
         run(async () => {
-            if (notInWarranty) throw new Error('A complaint can be raised only while the customer is in warranty.');
+            if (notInWarranty && !adminException) throw new Error('A complaint can be raised only while the customer is in warranty. Only an admin can make an exception.');
+            if (adminException && !exceptionReason.trim()) throw new Error('Write why this complaint is an exception to the warranty rule.');
             if (linked && cardMissing) throw new Error('Save the address and pincode to the customer card first.');
             if (!isPincode(newIssue.pincode)) throw new Error('Enter the customer\'s 6-digit pincode.');
             if (!confirmed) throw new Error('Confirm the address and pincode with the customer first.');
@@ -136,6 +140,7 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
             const service_address = pincodeInText(address) === pincode ? address : [address, pincode].filter(Boolean).join(', ');
             const payload = { ...fields, service_address, system_kw: fields.system_kw === '' ? null : Number(fields.system_kw), created_by: user.id };
             if (linked) payload.customer_id = initialCustomer.id;
+            if (adminException) payload.warranty_exception_reason = exceptionReason.trim().slice(0, 500);
             const { data, error: writeError } = await supabase.from('service_issues').insert(payload).select('id, ticket_no').single();
             if (writeError) throw new Error(complaintError(writeError));
             if (formOnly) setRaised(true);
@@ -194,7 +199,11 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
         <label className="text-xs font-semibold">System kW<input type="number" min="0" step="0.01" value={newIssue.system_kw} onChange={e => setNewIssue(v => ({ ...v, system_kw: e.target.value }))} className={field} /></label>
         <label className="sm:col-span-2 text-xs font-semibold">Comment<textarea maxLength={2000} rows={3} value={newIssue.comment} onChange={e => setNewIssue(v => ({ ...v, comment: e.target.value }))} className="mt-1 block w-full rounded-lg border p-2 text-sm" />
             <span className="mt-1 block font-normal text-stone-500">The technician adds Before and After photos at the site.</span></label>
-        <button disabled={busy || notInWarranty || (linked && (!card || Boolean(cardMissing)))} className="min-h-11 rounded-lg bg-amber-500 px-4 py-3 text-sm font-bold disabled:opacity-50">Raise complaint</button>
+        {adminException && <label className="sm:col-span-2 block rounded-lg border border-orange-300 bg-orange-50 p-3 text-xs font-semibold text-orange-950">Admin exception: why raise this complaint although the customer is not in warranty? *
+            <textarea required maxLength={500} rows={2} value={exceptionReason} onChange={e => setExceptionReason(e.target.value)} placeholder="e.g. goodwill repair approved by management"
+                className="mt-1 block w-full rounded-lg border bg-white p-2 text-sm font-normal" />
+            <span className="mt-1 block font-normal">Saved with the complaint and shown on it. It cannot be changed later.</span></label>}
+        <button disabled={busy || (notInWarranty && (!adminException || !exceptionReason.trim())) || (linked && (!card || Boolean(cardMissing)))} className="min-h-11 rounded-lg bg-amber-500 px-4 py-3 text-sm font-bold disabled:opacity-50">Raise complaint</button>
         {linked && cardMissing && <p className="self-center text-xs text-stone-500">Save the address and pincode to the customer card first.</p>}
     </form>;
 }

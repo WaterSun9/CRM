@@ -13,7 +13,8 @@ const shortDate = iso => (iso ? new Date(iso).toLocaleDateString('en-IN', { day:
 // the customer card and Warranty cards, where a bare icon was not seen as a button.
 // canRaise=false (not in warranty, owner 28 Oct 2026): no Raise button, only an existing
 // complaint's red / green wrench.
-export default function ComplaintButton({ customer, onRaise, tone = 'light', stopPropagation = false, statusOnly: onlyStatus = false, canRaise = true, withLabel = false, className = '' }) {
+// exception: an admin raising for a customer who is not in warranty.
+export default function ComplaintButton({ customer, onRaise, tone = 'light', stopPropagation = false, statusOnly: onlyStatus = false, canRaise = true, exception = false, withLabel = false, className = '' }) {
     const status = useComplaintStatus(customer?.id);
     const statusOnly = onlyStatus || !canRaise;
     if (!customer?.id || (!statusOnly && !onRaise)) return null;
@@ -34,7 +35,7 @@ export default function ComplaintButton({ customer, onRaise, tone = 'light', sto
         else onRaise(customer);
     };
     if (withLabel) {
-        const words = open ? `Complaint${ticket} open` : fixed && statusOnly ? `Complaint${ticket} fixed` : 'Raise complaint';
+        const words = open ? `Complaint${ticket} open` : fixed && statusOnly ? `Complaint${ticket} fixed` : exception ? 'Raise complaint (admin exception)' : 'Raise complaint';
         const pill = open ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
             : tone === 'dark' ? 'border-white/25 bg-white/10 text-white hover:bg-white/20' : 'border-stone-300 bg-white text-stone-900 hover:border-amber-400';
         return <button type="button" onClick={click} aria-label={label}

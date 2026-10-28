@@ -2106,7 +2106,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                         </p>
                     </div>
                     <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                        {isCompleted && onRaiseServiceIssue && <ComplaintButton customer={savedDataRef.current} onRaise={onRaiseServiceIssue} canRaise={fullRecordLoaded && warrantyInfo(savedDataRef.current).status === 'in_warranty'} tone="dark" withLabel />}
+                        {isCompleted && onRaiseServiceIssue && <ComplaintButton customer={savedDataRef.current} onRaise={onRaiseServiceIssue} canRaise={fullRecordLoaded && (isAdmin || warrantyInfo(savedDataRef.current).status === 'in_warranty')} exception={fullRecordLoaded && warrantyInfo(savedDataRef.current).status !== 'in_warranty'} tone="dark" withLabel />}
                         <RedFlagToggle customer={customer} user={user} tone="dark" />
                         {/* Admin unlock/lock toggle for completed cards */}
                         {isCompleted && isAdmin && (
