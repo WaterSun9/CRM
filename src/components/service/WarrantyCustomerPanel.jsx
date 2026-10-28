@@ -154,7 +154,7 @@ function PastComplaint({ issue, visits, extra, user, run, busy }) {
                 <span className="text-xs font-bold text-amber-700 group-open:hidden">Open ›</span><span className="hidden text-xs font-bold text-stone-500 group-open:inline">Close ˄</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
-                <Chip label="Raised" value={day(issue.created_at)} />
+                <Chip label="Raised" value={`${day(issue.created_at)}${extra?.raisedBy ? ` by ${extra.raisedBy}` : ''}`} />
                 {visited.length > 0 && <Chip label={visited.length > 1 ? `Visited ${visited.length}x` : 'Visited'} value={visited.join(', ')} tone="bg-teal-50 text-teal-900" />}
                 {issue.visit_stage === 'second_visit' && !solved && <Chip label="Second visit" value={issue.visit_stage_note || 'needed'} tone="bg-orange-50 text-orange-900" />}
                 {solved && <Chip label="Solved" value={`${day(issue.completed_at)}${issue.completion_method === 'otp' ? ' (customer OTP)' : ' (by office)'}`} tone="bg-green-50 text-green-900" />}
@@ -222,7 +222,7 @@ export function WarrantyCustomerBody({ customer, user, onCardChanged }) {
             // For the closed summaries: visit dates, the latest comment and the counts.
             if (ids.length) {
                 const [events, comments, files] = await Promise.all([
-                    supabase.from('service_issue_events').select('issue_id, event, created_at').in('issue_id', ids).eq('event', 'visited'),
+                    supabase.from('service_issue_events').select('issue_id, event, actor_name, created_at').in('issue_id', ids).in('event', ['visited', 'raised']),
                     supabase.from('service_issue_comments').select('issue_id, author_name, body, created_at').in('issue_id', ids).order('created_at', { ascending: false }),
                     PARTNER_TYPES.includes(user?.userType) ? { data: [] } : supabase.from('service_issue_files').select('issue_id, kind').in('issue_id', ids),
                 ]);
@@ -230,7 +230,8 @@ export function WarrantyCustomerBody({ customer, user, onCardChanged }) {
                 setExtras(Object.fromEntries(ids.map(id => {
                     const own = (comments.data || []).filter(c => c.issue_id === id);
                     return [id, {
-                        visited: (events.data || []).filter(e => e.issue_id === id).map(e => e.created_at),
+                        visited: (events.data || []).filter(e => e.issue_id === id && e.event === 'visited').map(e => e.created_at),
+                        raisedBy: (events.data || []).find(e => e.issue_id === id && e.event === 'raised')?.actor_name || '',
                         lastComment: own[0] || null,
                         comments: own.length,
                         photos: (files.data || []).filter(f => f.issue_id === id && ['before', 'after'].includes(f.kind)).length,

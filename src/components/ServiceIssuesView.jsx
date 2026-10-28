@@ -15,6 +15,7 @@ import ComplaintComments from './service/ComplaintComments';
 import CustomerFacts from './service/CustomerFacts';
 import ComplaintHistory from './service/ComplaintHistory';
 import VisitStage from './service/VisitStage';
+import RaisedBy from './service/RaisedBy';
 import CombinedVisitForm from './service/CombinedVisitForm';
 import {
     ACTIVE_STATUSES, OFFICE_FILTERS, PARTNER_TYPES, STAGE_LABELS, STAGE_PILL, STATUS_LABELS, TECHNICIAN_FILTERS, WARRANTY_PILL,
@@ -241,6 +242,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
                                 ? <WarrantyBadge info={{ status: selected.warranty_status || 'unknown', start: selected.warranty_start || null, end: selected.warranty_end || null, source: null }} />
                                 : <WarrantyPill status={selected.warranty_status} />}
                         </div>
+                        <RaisedBy issue={selected} />
                         <p className="text-xs text-stone-500">Required {selected.required_date}{canManage && selected.assigned_to ? ` · Assigned to ${technicianName(selected.assigned_to)}` : ''}</p>
                     </div>
                     {!bannersAtTop && banners}
