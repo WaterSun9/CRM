@@ -53,7 +53,6 @@ import CustomerDocumentsTab from './modal-tabs/CustomerDocumentsTab';
 import { FilePreviewModal, DocGalleryRemarkRow, getStageRemarkFromData } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
-import WarrantyBadge from './WarrantyBadge';
 import ConflictResolutionModal from './ConflictResolutionModal';
 import { normalizeInstallationStatus } from '../utils';
 import { findUnsavedFields, fieldLabel, valuesMatch, mergeServerRecord } from '../utils/saveCheck';
@@ -2099,8 +2098,6 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                     {isFrozen ? <><Lock size={9} /> Frozen</> : <><Unlock size={9} /> Unlocked</>}
                                 </span>
                             )}
-                            {/* Waits for the full record (a search result has no dates) and uses saved dates, not unsaved typing. */}
-                            {isCompleted && fullRecordLoaded && <WarrantyBadge customer={savedDataRef.current} tone="dark" />}
                         </div>
                         <p className="text-[11px] text-stone-400 font-medium mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-1">
                             <span className="inline-flex items-center gap-1.5"><Calendar size={11} className="flex-shrink-0" />Lead Created: {customer.created_at ? `${formatCustomerTimestamp(customer.created_at)} IST` : '—'}</span>

@@ -3,7 +3,6 @@ import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, T
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 import { formatCustomerTimestamp } from '../utils/customerActivity';
 import { RedFlagBadge } from './RedFlag';
-import WarrantyBadge from './WarrantyBadge';
 
 import ComplaintButton from './service/ComplaintButton';
 const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStage, onRaiseServiceIssue, currentUser }) {
@@ -58,10 +57,10 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                         {tagInfo && <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase whitespace-nowrap border ${tagColors.bg} ${tagColors.text} ${tagColors.border}`}>{tagInfo.label}</span>}
                     </div>
                 </div>
-                {/* Own row: the warranty text is too long to share the name's line on a phone. */}
+                {/* Warranty shows only on Warranty customers (owner, 28 Oct 2026); here just a red /
+                    green wrench when a complaint exists. The row hides itself when empty. */}
                 {isCompleted && (
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <WarrantyBadge customer={customer} />
+                    <div className="mb-3 flex flex-wrap items-center justify-end gap-2 empty:hidden">
                         {onRaiseServiceIssue && <ComplaintButton customer={customer} statusOnly stopPropagation className="ml-auto" />}
                     </div>
                 )}

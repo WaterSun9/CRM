@@ -19,7 +19,6 @@ import { canUseQuotations } from '../quotations/model';
 import { FilePreviewModal, CheckboxRemarkItem, isReplacedDocument, isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
-import WarrantyBadge from './WarrantyBadge';
 import PartnerProfile from './service/PartnerProfile';
 import PartnerPhoneReminder from './service/PartnerPhoneReminder';
 import BrandMark from './BrandMark';
@@ -1302,8 +1301,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                         </div>
                                         
                                         {cust.stage === STAGE_IDS.COMPLETED && (
-                                            <div className="-mt-1 mb-3 flex flex-wrap items-center justify-between gap-2">
-                                                <WarrantyBadge customer={cust} />
+                                            <div className="-mt-1 mb-3 flex flex-wrap items-center justify-end gap-2 empty:hidden">
                                                 {onRaiseServiceIssue && <ComplaintButton customer={cust} statusOnly stopPropagation className="ml-auto" />}
                                             </div>
                                         )}
@@ -1392,7 +1390,6 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                     <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-white tracking-wider">
                                         {PRIMARY_STAGES.find(s => s.id === selectedCust.stage)?.label || selectedCust.stage}
                                     </span>
-                                    {selectedCust.stage === STAGE_IDS.COMPLETED && <WarrantyBadge customer={selectedCust} />}
                                 </div>
                                 <h3 className="text-base font-black text-stone-900 uppercase leading-tight pt-0.5 flex items-center gap-1.5">
                                     <span>{selectedCust.customer_name}</span>
