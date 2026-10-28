@@ -305,15 +305,6 @@ serve(async (req) => {
 
             let { name, email, password, role, user_type, channel_partner } = body
 
-            // Managers and dealers belong to a CPO office: only that CPO office adds them
-            // (owner, 28 Oct 2026). Admin creates every other role.
-            if (!isCP && (user_type === "office2" || user_type === "agent2")) {
-                return new Response(
-                    JSON.stringify({ error: "Managers and dealers are added by their Channel Partner Office, not by admin." }),
-                    { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-                )
-            }
-
             if (isCP) {
                 // Limit creations for CP Office: allow Manager (office2) or Field CP (agent2)
                 if (user_type === "office2") {

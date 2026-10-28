@@ -7,11 +7,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabase';
 import { logActivity, runWrite } from '../utils';
 import { APP_ROLES } from '../constants';
-
-// Managers (office2) and dealers (agent2) belong to a CPO office and are added only by that
-// CPO office, never by admin (owner, 28 Oct 2026). The add_user function refuses it too.
-const CPO_ONLY_ROLES = ['office2', 'agent2'];
-const ADMIN_ROLES = APP_ROLES.filter(r => !CPO_ONLY_ROLES.includes(r.id));
 import { 
     ShieldCheck, Plus, RefreshCw, AlertTriangle, Eye, EyeOff, 
     UserCog, X, KeyRound, Ban, Search, Edit2, Check, Loader2, Building2, Send, Lock 
@@ -535,7 +530,7 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
                                     }}
                                     className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white cursor-pointer font-semibold"
                                 >
-                                    {ADMIN_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                                    {APP_ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
                                 </select>
                             </div>
                         )}
@@ -765,10 +760,6 @@ export default function UserManagementView({ currentUser }) {
     const handleRoleChange = async (profile, newRoleId) => {
         const selected = APP_ROLES.find(r => r.id === newRoleId);
         if (!selected) return;
-        if (CPO_ONLY_ROLES.includes(selected.id) && selected.user_type !== profile.user_type) {
-            showToast('error', 'Managers and dealers are added by their Channel Partner Office.');
-            return;
-        }
 
         setActionLoading(profile.id);
         try {
@@ -1504,7 +1495,7 @@ export default function UserManagementView({ currentUser }) {
                                                     onChange={e => handleRoleChange(profile, e.target.value)}
                                                     className="px-2.5 py-1.5 bg-white border border-stone-300 rounded-xl text-xs font-bold text-stone-850 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer shadow-xs disabled:opacity-50"
                                                 >
-                                                    {APP_ROLES.filter(r => !CPO_ONLY_ROLES.includes(r.id) || r.user_type === profile.user_type).map(r => (
+                                                    {APP_ROLES.map(r => (
                                                         <option key={r.id} value={r.id}>{r.label}</option>
                                                     ))}
                                                 </select>
