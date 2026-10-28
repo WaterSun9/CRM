@@ -152,7 +152,7 @@ function Demo() {
             {['office', 'partner'].includes(view) && <>
                 <div role="tablist" className="mb-4 flex gap-2">{[['complaints', 'Complaints', ClipboardList], ['warranty', 'Warranty customers', ShieldCheck]].map(([id, label, Icon]) =>
                     <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${tab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}</div>
-                {tab === 'complaints' ? <ServiceIssuesView user={user} embedded onRaise={setRaising} /> : <WarrantyView user={user} onSelectCustomer={() => {}} onRaiseServiceIssue={setRaising} isChannelPartnerOffice={view === 'partner'} partnerName="Sun Energy Partners" />}
+                {tab === 'complaints' ? <ServiceIssuesView user={user} embedded onOpenWarranty={() => setTab('warranty')} /> : <WarrantyView user={user} onSelectCustomer={() => {}} onRaiseServiceIssue={setRaising} isChannelPartnerOffice={view === 'partner'} partnerName="Sun Energy Partners" />}
             </>}
         </main>
         {raising && <div role="dialog" className="fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3"><div className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl bg-white"><div className="flex justify-end p-2"><button type="button" onClick={() => setRaising(null)} className="min-h-11 rounded-lg border px-3">Close</button></div><ServiceIssuesView user={user} initialCustomer={raising} formOnly /></div></div>}

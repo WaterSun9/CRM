@@ -1546,7 +1546,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                             <button key={id} type="button" role="tab" aria-selected={complaintsTab === id} onClick={() => setComplaintsTab(id)}
                                 className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${complaintsTab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}
                     </div>}
-                    {currentView === 'complaints' && onRaiseServiceIssue && complaintsTab === 'complaints' && <ServiceIssuesView key={focusedComplaintId || 'complaint-list'} user={user} initialIssueId={focusedComplaintId} embedded onRaise={onRaiseServiceIssue} />}
+                    {currentView === 'complaints' && onRaiseServiceIssue && complaintsTab === 'complaints' && <ServiceIssuesView key={focusedComplaintId || 'complaint-list'} user={user} initialIssueId={focusedComplaintId} embedded onOpenWarranty={() => setComplaintsTab('warranty')} />}
                     {currentView === 'complaints' && (!onRaiseServiceIssue || complaintsTab === 'warranty') && <WarrantyView user={user} onSelectCustomer={setSelectedCustomer} onRaiseServiceIssue={onRaiseServiceIssue} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
 
                     {currentView === 'profile' && <PartnerProfile user={user} />}
