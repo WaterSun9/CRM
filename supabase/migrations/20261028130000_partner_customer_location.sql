@@ -1,5 +1,6 @@
--- Channel partners and dealers may add or correct the address and pincode of their own
--- completed customers - nothing else (NOT YET RUN). Asked for by the owner on 28 Oct 2026.
+-- Channel partners and dealers may add a MISSING address or pincode for their own completed
+-- customers - nothing else (NOT YET RUN). Asked for by the owner on 28 Oct 2026. Changing an
+-- address or pincode that is already there, and every other detail, stays with admin / office.
 -- Run after 20261028120000_complaints_in_warranty_only.sql.
 --
 --   * set_customer_location(customer, address, pincode) changes only admin.full_address and
@@ -44,6 +45,15 @@ begin
         or (my_type = 'agent2' and my_name <> '' and lower(btrim(coalesce(card.sub_channel_partner, ''))) = my_name
             and lower(btrim(coalesce(card.channel_partner, ''))) = my_branch)) then
         raise exception 'You can only change the address of your own customers.';
+    end if;
+    -- Partners only fill what is empty.
+    if my_type not in ('admin', 'sales') then
+        if v_address is not null and nullif(btrim(coalesce(card.full_address, '')), '') is not null then
+            raise exception 'The address is already on the customer card. Ask the office to change it.';
+        end if;
+        if v_pin is not null and nullif(btrim(coalesce(card.pincode, '')), '') is not null then
+            raise exception 'The pincode is already on the customer card. Ask the office to change it.';
+        end if;
     end if;
     update public.admin a
     set full_address = coalesce(v_address, a.full_address),

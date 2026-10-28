@@ -49,7 +49,8 @@ function WarrantyBar({ card }) {
 
 // One fact. Office (admin / staff) gets Add when it is missing and Edit when it is
 // not, for the fields that can be filled in here.
-function Fact({ label, value, href, edit, canEdit, multiline }) {
+// addOnly: the button shows only while the value is missing (partners add, never change).
+function Fact({ label, value, href, edit, canEdit, addOnly = false, multiline }) {
     const [open, setOpen] = useState(false);
     const [text, setText] = useState('');
     const [saving, setSaving] = useState(false);
@@ -76,7 +77,7 @@ function Fact({ label, value, href, edit, canEdit, multiline }) {
                 : missing ? <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">Missing</span>
                     : href ? <a href={href} className="font-semibold text-blue-700 underline">{value}</a> : <span className="font-medium">{value}</span>}
         </dd>
-        {canEdit && edit && !open && <button type="button" onClick={start} className="inline-flex min-h-9 items-center gap-1 rounded-lg border bg-white px-2.5 text-xs font-bold text-stone-700 hover:border-amber-400">
+        {canEdit && edit && !open && (!addOnly || missing) && <button type="button" onClick={start} className="inline-flex min-h-9 items-center gap-1 rounded-lg border bg-white px-2.5 text-xs font-bold text-stone-700 hover:border-amber-400">
             {missing ? <><Plus size={13} /> Add</> : <><Pencil size={12} /> Edit</>}</button>}
     </div>;
 }
@@ -87,6 +88,7 @@ const Section = ({ icon: Icon, title, children }) => <section className="rounded
 </section>;
 
 function Details({ card, partnerPhone, dealerPhone, canEdit, canEditLocation, saveCard, saveLocation, savePartnerPhone }) {
+    const locationAddOnly = !canEdit;
     const panels = serialList(card.panel_serial_no);
     const modules = card.no_of_modules ? `${card.no_of_modules} x ${card.module_wp ? `${card.module_wp} Wp` : 'panels'}` : '';
     const pincode = String(card.pincode ?? '').replace(/\D/g, '') || pincodeInText(card.full_address);
@@ -103,9 +105,9 @@ function Details({ card, partnerPhone, dealerPhone, canEdit, canEditLocation, sa
                         hint: 'The completion OTP goes to this number.' }} />
             </Section>
             <Section icon={MapPin} title="Location">
-                <Fact label="Address" value={card.full_address || [card.villages, card.district].filter(Boolean).join(', ')} canEdit={canEditLocation}
+                <Fact label="Address" value={card.full_address || [card.villages, card.district].filter(Boolean).join(', ')} canEdit={canEditLocation} addOnly={locationAddOnly}
                     edit={{ placeholder: 'House, street, village', save: text => { if (!text.trim()) throw new Error('Enter the address.'); return saveLocation({ full_address: text.trim() }); } }} />
-                <Fact label="Pincode" value={pincode} canEdit={canEditLocation}
+                <Fact label="Pincode" value={pincode} canEdit={canEditLocation} addOnly={locationAddOnly}
                     edit={{ inputMode: 'numeric', placeholder: '385340', save: text => { const pin = text.replace(/\D/g, ''); if (!isPincode(pin)) throw new Error('Enter the 6-digit pincode.'); return saveLocation({ pincode: pin }); } }} />
             </Section>
             <Section icon={Store} title="Channel partner">
@@ -196,8 +198,9 @@ export function WarrantyCustomerBody({ customer, user, onCardChanged }) {
     const [reload, setReload] = useState(0);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState(null);
-    // Office edits the details; partners and dealers can only see them, except the address
-    // and pincode (set_customer_location, 20261028130000_partner_customer_location.sql).
+    // Office (admin / staff) edits the details here. Everyone else only sees them, except that
+    // they can add a missing address or pincode (set_customer_location,
+    // 20261028130000_partner_customer_location.sql); the full customer card stays office-only.
     const canEdit = OFFICE_TYPES.includes(user?.userType);
     const canEditLocation = canEdit || PARTNER_TYPES.includes(user?.userType);
 

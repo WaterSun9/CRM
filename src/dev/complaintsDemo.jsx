@@ -24,7 +24,7 @@ const admin = [
     customer('c-0002', 'Kiran Desai', { full_address: 'Station Road, Patan', pincode: '384265', installation_date: '2025-07-02' }),
     customer('c-0003', 'Jayesh Thakor', { full_address: 'Bus stand area, Sami', pincode: '384245', installation_date: '2023-11-20' }),
     customer('c-0004', 'Hetal Shah', { full_address: 'Old Market, Chanasma', pincode: '384220', installation_date: '2019-06-15' }),
-    customer('c-0005', 'Bharat Rabari', { full_address: 'Village road, Santalpur', pincode: '385350', installation_date: null, material_delivery_date: null, completed_at: null }),
+    customer('c-0005', 'Bharat Rabari', { full_address: 'Village road, Santalpur', pincode: null, installation_date: null, material_delivery_date: null, completed_at: null }),
     customer('c-0006', 'Nita Chaudhary', { full_address: 'Highway, Harij', pincode: '384240', installation_date: '2020-01-10' }),
     customer('c-0007', 'Charan Laxamandan', { full_address: 'Ranod', pincode: null, installation_date: '2026-09-12', channel_partner: 'Gujarat Solar Hub', inverter_make: null, inverter_serial_no: null, panel_serial_no: null }),
 ];
