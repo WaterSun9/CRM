@@ -157,7 +157,13 @@ export default function IssueForm({ user, initialCustomer = null, formOnly = fal
         </div>
         {linked && <WarrantyBanner customer={warrantyCustomer} failed={datesFailed} />}
         {linked
-            ? <div className="sm:col-span-2 rounded-xl bg-stone-50 p-3 text-sm break-words"><strong className="block">{newIssue.customer_name || 'Customer'}</strong><span className="text-xs text-stone-500">Consumer Number: {newIssue.consumer_no || '—'}</span></div>
+            ? <dl className="sm:col-span-2 grid gap-x-4 gap-y-1 rounded-xl bg-stone-50 p-3 text-sm break-words sm:grid-cols-2">
+                {[['Customer', newIssue.customer_name], ['Consumer number', newIssue.consumer_no], ['Phone', newIssue.customer_phone],
+                    ['Channel partner', [initialCustomer?.channel_partner, initialCustomer?.sub_channel_partner].filter(Boolean).join(' / ')],
+                    ['System', [newIssue.system_company_name, newIssue.system_kw ? `${newIssue.system_kw} kW` : ''].filter(Boolean).join(' · ')],
+                    ['Address', [newIssue.service_address, newIssue.pincode].filter(Boolean).join(', ')]].map(([label, value]) =>
+                    <div key={label} className="min-w-0"><dt className="text-xs text-stone-500">{label}</dt><dd className="font-semibold">{value || '—'}</dd></div>)}
+            </dl>
             : <>
                 <label className="text-xs font-semibold">Consumer Number *<input required maxLength={100} value={newIssue.consumer_no} onChange={e => setNewIssue(v => ({ ...v, consumer_no: e.target.value }))} className={field} /></label>
                 <label className="text-xs font-semibold">Customer name *<input required maxLength={160} value={newIssue.customer_name} onChange={e => setNewIssue(v => ({ ...v, customer_name: e.target.value }))} className={field} /></label>

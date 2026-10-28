@@ -6,8 +6,9 @@ const shortDate = iso => (iso ? new Date(iso).toLocaleDateString('en-IN', { day:
 // The wrench on a completed customer. Black: no complaint (tap to raise one).
 // Red: a complaint is open (tap to open it). Green: fixed in the last
 // FIXED_GREEN_DAYS days (tap to raise a new one). tone="dark" for the dark card header.
-// statusOnly (lists and Warranty cards): complaints are raised only inside the customer
-// card (owner, 27 Oct 2026), so it shows only a red or green wrench and opens that complaint.
+// statusOnly (stage and partner lists): complaints are raised only from the customer card
+// and the Warranty cards (owner, 27-28 Oct 2026), so it shows only a red or green wrench
+// and opens that complaint.
 export default function ComplaintButton({ customer, onRaise, tone = 'light', stopPropagation = false, statusOnly = false, className = '' }) {
     const status = useComplaintStatus(customer?.id);
     if (!customer?.id || (!statusOnly && !onRaise)) return null;

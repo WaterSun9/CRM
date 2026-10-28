@@ -140,6 +140,7 @@ function Demo() {
     const view = new URLSearchParams(location.search).get('view') || 'office';
     user = view === 'technician' ? TECH : ['partner', 'profile'].includes(view) ? PARTNER : OFFICE;
     const [tab, setTab] = useState(new URLSearchParams(location.search).get('tab') || 'complaints');
+    const [raising, setRaising] = useState(null);
     const nav = [['Complaints & Warranty', ClipboardList, ['office', 'partner'].includes(view)], ['Operations', Users, view === 'operations']];
     return <GlobalPopupProvider><div className="min-h-screen bg-[#FCFBFA] md:pl-64">
         <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-white p-5 md:block"><strong className="text-lg">Watersun CRM</strong><p className="mt-1 text-xs text-stone-500">Signed in as {user.name}</p>
@@ -151,9 +152,11 @@ function Demo() {
             {['office', 'partner'].includes(view) && <>
                 <div role="tablist" className="mb-4 flex gap-2">{[['complaints', 'Complaints', ClipboardList], ['warranty', 'Warranty customers', ShieldCheck]].map(([id, label, Icon]) =>
                     <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${tab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}</div>
-                {tab === 'complaints' ? <ServiceIssuesView user={user} embedded /> : <WarrantyView user={user} onSelectCustomer={() => {}} onRaiseServiceIssue={() => {}} isChannelPartnerOffice={view === 'partner'} partnerName="Sun Energy Partners" />}
+                {tab === 'complaints' ? <ServiceIssuesView user={user} embedded /> : <WarrantyView user={user} onSelectCustomer={() => {}} onRaiseServiceIssue={setRaising} isChannelPartnerOffice={view === 'partner'} partnerName="Sun Energy Partners" />}
             </>}
-        </main></div></GlobalPopupProvider>;
+        </main>
+        {raising && <div role="dialog" className="fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3"><div className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl bg-white"><div className="flex justify-end p-2"><button type="button" onClick={() => setRaising(null)} className="min-h-11 rounded-lg border px-3">Close</button></div><ServiceIssuesView user={user} initialCustomer={raising} formOnly /></div></div>}
+        </div></GlobalPopupProvider>;
 }
 
 if (import.meta.env.DEV) createRoot(document.getElementById('root')).render(<Demo />);
