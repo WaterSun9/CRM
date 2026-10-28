@@ -12,8 +12,10 @@ import {
 export { cleanPhone, maskPhone, templateParam, type SendFailure }
 
 export const CODE_TTL_SECONDS = 600
-export const RESEND_AFTER_SECONDS = 45
-export const MAX_CODES_PER_HOUR = 3
+// An SMS can take 1-2 minutes to arrive (tested 28 Oct 2026), and only the first 10 SMS a
+// day are free: one send and one resend per job, the resend after 2 minutes.
+export const RESEND_AFTER_SECONDS = 120
+export const MAX_CODES_PER_HOUR = 2
 export const MAX_TRIES = 5
 const HOUR_MS = 60 * 60 * 1000
 
@@ -53,7 +55,7 @@ export function sendWait(createdAts: string[], nowMs = Date.now()) {
   const times = createdAts.map(t => Date.parse(t)).filter(Number.isFinite).sort((a, b) => b - a)
   const lastHour = times.filter(t => nowMs - t < HOUR_MS)
   if (lastHour.length >= MAX_CODES_PER_HOUR) {
-    // A slot frees up when the 3rd newest code is an hour old.
+    // A slot frees up when the oldest code counted in the last hour is an hour old.
     const retryAfterSeconds = Math.max(1, Math.ceil((lastHour[MAX_CODES_PER_HOUR - 1] + HOUR_MS - nowMs) / 1000))
     const minutes = Math.ceil(retryAfterSeconds / 60)
     return {

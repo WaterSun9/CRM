@@ -70,7 +70,7 @@ export const EVENT_LABELS = {
 export const eventLabel = event => EVENT_LABELS[event] || event;
 export const OVERRIDE_REASONS = ['Customer did not get the code', 'Confirmed by phone call', 'No network at site', 'Customer has no mobile', 'Other'];
 // Same cooldown the service-otp function enforces between two codes.
-export const RESEND_SECONDS = 45;
+export const RESEND_SECONDS = 120;
 
 export function matchesFilter(issue, filter, userId) {
     if (filter === 'mine') return issue.assigned_to === userId;

@@ -42,7 +42,7 @@
 // WhatsApp: only a salted SHA-256 of our code is kept. Either way the code is never
 // stored, logged or returned (public.service_completion_otps, migration 20261012190000).
 // Rules: expiry (Message Central's timeout for SMS, 10 min on WhatsApp), 5 wrong tries
-// per code, new code after 45 s, 3 codes per job per hour.
+// per code, new code after 2 min, 2 codes per job per hour.
 // All reads and writes use the service role; the caller's token only says who is asking.
 //
 // Every WhatsApp message (code and "work completed") goes through ../_shared/whatsapp.ts,

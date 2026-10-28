@@ -43,20 +43,20 @@ Deno.test('sameHex compares exactly, ignoring case', () => {
   assert.equal(sameHex('', ''), true)
 })
 
-Deno.test('sendWait: 45 s cooldown, then 3 codes per hour', () => {
+Deno.test('sendWait: 2 min cooldown, then 2 codes per hour', () => {
   const now = Date.parse('2026-10-12T10:00:00Z')
   const ago = (s: number) => new Date(now - s * 1000).toISOString()
   assert.equal(sendWait([], now), null)
-  assert.equal(sendWait([ago(46)], now), null)
+  assert.equal(sendWait([ago(121)], now), null)
   const cool = sendWait([ago(10)], now)
   assert.equal(cool?.code, 'cooldown')
-  assert.equal(cool?.retryAfterSeconds, 35)
-  assert.equal(sendWait([ago(100), ago(2000)], now), null)
-  const limit = sendWait([ago(100), ago(2000), ago(3000)], now)
+  assert.equal(cool?.retryAfterSeconds, 110)
+  const limit = sendWait([ago(200), ago(3000)], now)
   assert.equal(limit?.code, 'limit')
   assert.equal(limit?.retryAfterSeconds, 600)
+  assert.match(String(limit?.error), /Only 2 codes/)
   assert.match(String(limit?.error), /10 minutes/)
-  assert.equal(sendWait([ago(100), ago(2000), ago(3700)], now), null)
+  assert.equal(sendWait([ago(200), ago(3700)], now), null)
 })
 
 Deno.test('photosReady needs at least one Before and one After photo', () => {

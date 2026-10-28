@@ -21,6 +21,7 @@ import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
 import WarrantyBadge from './WarrantyBadge';
 import PartnerProfile from './service/PartnerProfile';
+import PartnerPhoneReminder from './service/PartnerPhoneReminder';
 import BrandMark from './BrandMark';
 import { newestCustomerFirst } from '../utils/customerActivity';
 import LeadsTab from './modal-tabs/LeadsTab';
@@ -1015,6 +1016,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                     </section>
 
                     {QUOTATION_PARTNER_ENABLED && <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span>{quotationOpenCount > 0 && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}<ChevronRight size={18} /></button>}
+                    <PartnerPhoneReminder key={showProfile ? "profile-open" : "profile-closed"} onOpenProfile={() => setShowProfile(true)} />
                     {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="w-full flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-sm"><ClipboardList size={24} /><span className="flex-1"><strong className="block text-base">Complaints</strong><span className="text-xs text-stone-500">Track service requests</span></span><ChevronRight size={18} /></button>}
                     <button type="button" onClick={() => setShowProfile(true)} className="w-full flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-sm"><UserRound size={24} /><span className="flex-1"><strong className="block text-base">Profile</strong><span className="text-xs text-stone-500">Your phone number</span></span><ChevronRight size={18} /></button>
 

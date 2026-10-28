@@ -24,6 +24,7 @@ const InstallationView = lazyWithRetry(() => import('./InstallationView'));
 const ServiceIssuesView = lazyWithRetry(() => import('./ServiceIssuesView'));
 const WarrantyView = lazyWithRetry(() => import('./WarrantyView'));
 const PartnerProfile = lazyWithRetry(() => import('./service/PartnerProfile'));
+const PartnerPhoneReminder = lazyWithRetry(() => import('./service/PartnerPhoneReminder'));
 const CustomerDetailModal = lazyWithRetry(() => import('./CustomerDetailModal'));
 const AddLeadModal = lazyWithRetry(() => import('./AddLeadModal'));
 const ActivityLogView = lazyWithRetry(() => import('./ActivityLogView'));
@@ -1526,6 +1527,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                 {/* View router */}
                 <div className="flex-1 p-4 lg:p-6">
                     <Suspense fallback={<ViewLoader />}>
+                    {['channel_partner_office', 'channel_partner_office_manager', 'office2'].includes(user.userType) && currentView !== 'profile' && <PartnerPhoneReminder onOpenProfile={() => setCurrentView('profile')} />}
                     {currentView === 'dashboard' && <DashboardView metrics={metrics} loading={loading} />}
                     {currentView === 'quotations' && QUOTATION_FEATURE_ENABLED && canUseQuotations(user) && <QuotationModule embedded user={user} meta={meta} channelPartners={uniqueChannelPartners} onCreateLead={handleAddLead} onViewLead={handleGlobalSelect} onClose={() => setCurrentView('dashboard')} />}
                     {currentView === 'delivery_batches' && canSeeDeliveryBatches && (
