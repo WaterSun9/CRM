@@ -69,7 +69,7 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     const [resendAt, setResendAt] = useState(0);
     const [now, setNow] = useState(() => Date.now());
     const [giveUpReason, setGiveUpReason] = useState('');
-    const [tripState, setTripState] = useState({ loaded: false, current: null });
+    const [tripState, setTripState] = useState({ loaded: false, failed: false, current: null });
     const [tripReload, setTripReload] = useState(0);
     const [nudge, setNudge] = useState(false);
     const [reaching, setReaching] = useState(false);
@@ -206,13 +206,18 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     const photos = <ComplaintPhotos key="photos" issue={issue} userId={userId} userType="technician" busy={busy} run={run} onCounts={setPhotoCounts} reloadKey={photoReload} />;
     const photosHint = !photosReady && <p role="note" className="rounded-lg bg-amber-50 p-2 text-xs font-semibold text-amber-900">{PHOTOS_NEEDED_TEXT}</p>;
     const showNudge = !showCodeEntry && nudge && needsReach;
+    // The work (photos, Visited, OTP) opens once a trip is started for this job, so
+    // every visit has a start point for the km. If the trips cannot be read, nothing
+    // is held back.
+    const waitingForTrip = !showCodeEntry && !tripState.failed && !openTrip;
     return <div className="space-y-3">
         {/* Invisible reCAPTCHA for the Firebase SMS. */}
         <div id={recaptchaId} />
         {!showCodeEntry && trip}
-        {!showCodeEntry && photos}
-        {!showCodeEntry && !showNudge && photosHint}
-        {!showCodeEntry && !showNudge && <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={workDone} className="min-h-14 w-full rounded-xl bg-green-600 px-4 text-base font-bold text-white disabled:opacity-50">
+        {waitingForTrip && tripState.loaded && <p role="note" className="rounded-lg bg-sky-100 p-2 text-xs font-semibold text-sky-950">Start the trip first. Photos, Visited and the OTP open after that.</p>}
+        {!showCodeEntry && !waitingForTrip && photos}
+        {!showCodeEntry && !waitingForTrip && !showNudge && photosHint}
+        {!showCodeEntry && !waitingForTrip && !showNudge && <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={workDone} className="min-h-14 w-full rounded-xl bg-green-600 px-4 text-base font-bold text-white disabled:opacity-50">
             {waitSeconds > 0 ? `Completed - send OTP (wait ${waitText})` : 'Completed - send OTP to customer'}
         </button>}
         {showNudge && <div role="alert" className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3">
@@ -239,7 +244,7 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
         </form>}
         {showCodeEntry && photos}
         {showCodeEntry && trip}
-        {!showCodeEntry && <VisitStage issue={issue} busy={busy} run={run} />}
+        {!showCodeEntry && !waitingForTrip && <VisitStage issue={issue} busy={busy} run={run} />}
         <p className="text-xs text-stone-600">No OTP? Call the office and ask them to close this job.</p>
         <details className="rounded-xl border p-3">
             <summary className="min-h-11 cursor-pointer py-2 text-sm font-bold">Cannot finish this job?</summary>

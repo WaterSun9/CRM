@@ -11,8 +11,9 @@ const TRIP_OPEN_MS = 12 * 60 * 60 * 1000;
 // Technician's trip on their own job: "Start trip" saves where they start
 // (phone location, or a typed pincode when location fails) and "Reached site"
 // saves one more point. The office works out the km from these.
-// onTripState({ loaded, current }) tells the job panel about the open trip (for
-// the "Reached site" reminder); a new reloadKey reads the trips again.
+// onTripState({ loaded, failed, current }) tells the job panel about the open trip
+// (work waits for Start trip; the "Reached site" reminder); a new reloadKey reads
+// the trips again.
 export default function TripPanel({ issue, userId, busy, run, onTripState, reloadKey = 0 }) {
     const [trips, setTrips] = useState(null);
     const [loadError, setLoadError] = useState('');
@@ -45,9 +46,10 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     const loaded = trips !== null;
     const currentId = current?.id || null;
     const currentReachedAt = current?.reached_at || null;
+    const failed = Boolean(loadError);
     useEffect(() => {
-        onTripState?.({ loaded, current: currentId ? { id: currentId, reached_at: currentReachedAt } : null });
-    }, [onTripState, loaded, currentId, currentReachedAt]);
+        onTripState?.({ loaded, failed, current: currentId ? { id: currentId, reached_at: currentReachedAt } : null });
+    }, [onTripState, loaded, failed, currentId, currentReachedAt]);
 
     const reset = () => { setFound(null); setManual(false); setPin(''); setUnknownPinOk(''); setHint(''); setPinWarning(''); };
 
@@ -119,7 +121,8 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     return <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50 p-3">
         <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-sky-950">Trip</h3>
             {trips === null && !loadError && <span className="text-xs text-sky-900">Loading…</span>}</div>
-        <p className="text-xs text-sky-900">Km is worked out from this start point to the customer.</p>
+        <p className="text-xs text-sky-900">{current ? 'Km is worked out from this start point to the customer.'
+            : 'Tap Start trip when you leave for this customer, before you begin. Photos and the OTP open after that. Going on from another house? Start the trip there.'}</p>
         {loadError && <p role="alert" className="text-xs text-red-700">Could not load your trips: {loadError}</p>}
 
         {current && <div className="rounded-lg bg-white p-2 text-sm">
