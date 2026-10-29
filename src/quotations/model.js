@@ -26,6 +26,8 @@ export function newForm(user = {}) {
         // GEB and GEDA are separate lines. Blank = "Included"; an amount is added
         // to each option's net payable. Stored in quotation_data only.
         geb_charge: '', geda_charge: '',
+        // Optional salesperson name printed on this quotation only. Blank = their own name.
+        print_owner_name: '',
         options: INITIAL_QUOTATION.page2.brandOptions.map(b => ({ brandName: b.brandName, panel_wattage: '', solar_panel_qty: '', capacity_kw: '', baseValue: '', discount: 0, subsidy: 0 })),
         custom_notes: [],
     };
@@ -122,7 +124,7 @@ export function fromRow(row, user) {
 }
 export function payload(form, template) {
     form = { ...form, ...optionSpecs(form, form.options?.[0]), options: form.options.map(option => ({ ...option, ...optionSpecs(form, option) })) };
-    const columns = Object.keys(newForm()).filter(k => !['options','custom_notes','geb_charge','geda_charge'].includes(k));
+    const columns = Object.keys(newForm()).filter(k => !['options','custom_notes','geb_charge','geda_charge','print_owner_name'].includes(k));
     const values = Object.fromEntries(columns.map(k => [k, form[k] === '' ? null : form[k]]));
     // Retain the legacy column for older clients without a second editable brand.
     values.solar_panel_make = form.options?.[0]?.brandName || form.solar_panel_make || null;
@@ -138,7 +140,7 @@ export function documentFor(row) {
     const data = clone(row.quotation_data?.template || INITIAL_QUOTATION);
     data.page1 = { ...data.page1, customerName: form.customer_name || '', customerPhone: form.customer_phone || '',
         quotationNo: quoteLabel(row), date: form.quotation_date ? form.quotation_date.split('-').reverse().join('-') : '',
-        capacityKw: form.options.length === 1 || new Set(form.options.map(o => String(o.capacity_kw))).size === 1 ? `${form.options[0]?.capacity_kw || ''} kWp` : 'Panel options', yoursTrulyName: form.owner_name_snapshot || '', yoursTrulyPhone: form.owner_phone_snapshot || '',
+        capacityKw: form.options.length === 1 || new Set(form.options.map(o => String(o.capacity_kw))).size === 1 ? `${form.options[0]?.capacity_kw || ''} kWp` : 'Panel options', yoursTrulyName: form.print_owner_name?.trim() || form.owner_name_snapshot || '', yoursTrulyPhone: form.owner_phone_snapshot || '',
         address: [form.full_address, form.village, form.taluka, form.district, form.pincode].filter(Boolean).join(', '),
         email: form.customer_email || '', validUntil: form.valid_until || '' };
     data.page2 = { ...data.page2, solarPanelMake: form.solar_panel_make || '', solarPanelQty: form.solar_panel_qty || '', panelWattage: form.panel_wattage || '',

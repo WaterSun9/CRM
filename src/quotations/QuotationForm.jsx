@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Save, Trash2 } from 'lucide-react';
 import { calculate, chargeLabel, extraCharges, fromRow, money, newForm, optionSpecs, isFinalQuotation, STEPS, validate } from './model';
 import { brandedTemplate } from './branding';
@@ -42,6 +42,8 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
     const [form,setForm] = useState(() => initialRow ? fromRow(initialRow,user) : newForm(user));
     const [template,setTemplate] = useState(() => initialRow?.quotation_data?.template || brandedTemplate());
     const [step,setStep] = useState(0);
+    const [otherPicked,setOtherName] = useState(false);
+    const otherName = otherPicked || !!form.print_owner_name;
     const [saveState,setSaveState] = useState(initialRow ? 'Saved' : 'Enter customer name and phone to start saving');
     const [error,setError] = useState('');
     const [busy,setBusy] = useState(false);
@@ -193,7 +195,10 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
                 {import.meta.env.DEV && <button type="button" onClick={fillTestValues} style={{background:'#fef3c7',borderColor:'#f59e0b',color:'#92400e',fontSize:12,padding:'4px 10px',minHeight:32}}>⚡ Fill Test Values</button>}
             </div>
             {isFinalQuotation(initialRow) && <p className="q-notice">Final quotation: selected panel only. You can edit it, preview it, or save as draft and return later. Download again after changes to save an updated PDF in the lead’s documents.</p>}
-            {step === 0 && <div className="q-grid">{customerFields.map(([key,label,type,maxLength,readOnly]) => <Field key={key} label={label} type={type} maxLength={maxLength} readOnly={readOnly} value={form[key]} onChange={value => update(key,value)} />)}</div>}
+            {step === 0 && <div className="q-grid">{customerFields.map(([key,label,type,maxLength,readOnly]) => <Fragment key={key}><Field label={label} type={type} maxLength={maxLength} readOnly={readOnly} value={form[key]} onChange={value => update(key,value)} />
+                {/* Temporary: another salesperson name printed on this quotation only; owner_name_snapshot is unchanged. */}
+                {key === 'owner_phone_snapshot' && <><Field label="Salesperson name on quotation"><select value={otherName ? 'other' : 'default'} onChange={e => { const other = e.target.value === 'other'; setOtherName(other); update('print_owner_name', other ? form.print_owner_name || form.owner_name_snapshot : ''); }}><option value="default">Use my name</option><option value="other">Use another name</option></select></Field>
+                {otherName && <Field label="Salesperson name printed on quotation" maxLength={120} value={form.print_owner_name} onChange={value => update('print_owner_name',value)} />}</>}</Fragment>)}</div>}
             {step === 1 && <><div className="q-grid">
                 <Field label="Project type"><select value={form.project_type} onChange={e => update('project_type',e.target.value)}><option>Residential</option><option>Commercial</option></select></Field>
                 <OptionSelect label="Inverter brand / make" placeholder="Select inverter…" value={form.inverter_brand} options={inverterMakes} onChange={v => update('inverter_brand',v)} />
