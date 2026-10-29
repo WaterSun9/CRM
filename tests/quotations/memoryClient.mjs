@@ -1,4 +1,6 @@
 // Deterministic local fixture for application tests. This does not emulate or prove Postgres RLS.
+// Resolves PostgREST JSON paths such as quotation_data->superseded_by and quotation_data->>kind.
+const get=(r,k)=>k.split(/->>?/).reduce((v,part)=>v==null?undefined:v[part],r);
 export function memoryClient(seed = {}) {
     const tables = structuredClone({quotations:[],admin:[],profiles:[],...seed});
     let tick=0;
@@ -6,9 +8,10 @@ export function memoryClient(seed = {}) {
     return {state,from(table) {
         const filters=[];let action='select',body,from=0,to=100000,single=false,maybe=false,sort=[];
         const q={
-            select(){return q;},eq(k,v){filters.push(r=>r[k]===v);return q;},is(k,v){filters.push(r=>v===null ? r[k]==null : r[k]===v);return q;},in(k,vals){filters.push(r=>vals.includes(r[k]));return q;},
+            select(){return q;},eq(k,v){filters.push(r=>get(r,k)===v);return q;},neq(k,v){filters.push(r=>get(r,k)!=null&&get(r,k)!==v);return q;},is(k,v){filters.push(r=>v===null ? get(r,k)==null : get(r,k)===v);return q;},in(k,vals){filters.push(r=>vals.includes(get(r,k)));return q;},
+            not(k,op,v){filters.push(r=>op==='is'&&v===null ? get(r,k)!=null : op==='eq' ? get(r,k)!=null&&get(r,k)!==v : true);return q;},
             order(k,{ascending=true}={}){sort.push([k,ascending]);return q;},range(a,b){from=a;to=b;return q;},
-            or(filter){const clauses=filter.split(',').map(c=>c.split('.'));filters.push(r=>clauses.some(([k,op,...tail])=>op==='eq'?String(r[k])===tail.join('.'):String(r[k]||'').toLowerCase().includes(tail.join('.').replaceAll('%','').toLowerCase())));return q;},
+            or(filter){const clauses=filter.split(',').map(c=>c.split('.'));filters.push(r=>clauses.some(([k,op,...tail])=>{const v=get(r,k),t=tail.join('.');return op==='eq'?String(v)===t:op==='is'?(t==='null'?v==null:String(v)===t):op==='neq'?v!=null&&String(v)!==t:String(v||'').toLowerCase().includes(t.replaceAll('%','').toLowerCase());}));return q;},
             insert(value){action='insert';body=structuredClone(value);return q;},update(value){action='update';body=structuredClone(value);return q;},
             single(){single=true;return q;},maybeSingle(){single=true;maybe=true;return q;},
             then(resolve,reject){return Promise.resolve().then(()=>{

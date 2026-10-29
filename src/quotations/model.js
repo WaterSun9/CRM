@@ -40,6 +40,12 @@ export function optionSpecs(form, option) {
         ? Math.round(Number(panel_wattage) * Number(solar_panel_qty)) / 1000 : form?.capacity_kw ?? '');
     return { panel_wattage, solar_panel_qty, capacity_kw };
 }
+// What users see: open, won or lost. Old 'issued' rows are open; 'converted' rows are won.
+export function statusOf(row) {
+    if (row?.status === 'lost') return 'lost';
+    if (row?.selected_option || row?.converted_lead_id || row?.status === 'converted') return 'won';
+    return 'open';
+}
 export const isFinalQuotation = row => row?.quotation_data?.kind === 'final' || row?.kind === 'final';
 export function finalForm(form, number) {
     const option = form.options?.[number - 1];
@@ -99,7 +105,7 @@ export function validate(form) {
         const v = form[key];
         if (String(v ?? '').trim() !== '' && !(Number.isFinite(Number(v)) && Number(v) >= 0)) errors.push(`Pricing: ${title} must be blank (Included) or an amount`);
     });
-    if (![1, 3].includes(form.options?.length)) errors.push('Pricing: Three comparison options or one final option are required');
+    if (![1, 3].includes(form.options?.length)) errors.push('Pricing: Choose 1 or 3 options');
     (form.options || []).forEach((option, i) => {
         const prefix = `Pricing: Option ${i + 1}`;
         const specs = optionSpecs(form, option);

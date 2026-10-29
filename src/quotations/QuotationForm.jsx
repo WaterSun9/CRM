@@ -163,6 +163,16 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
             return next;
         }));
     };
+    // Switch between one panel and three panel options. Options 2 and 3 come back blank with default brands.
+    const setOptionCount = async count => {
+        if (count === form.options.length) return;
+        const blank = newForm(user).options;
+        if (count === 1) {
+            const filled = form.options.slice(1).some((o,i) => (o.brandName || '') !== (blank[i + 1]?.brandName || '') || String(o.baseValue ?? '').trim() !== '');
+            if (filled && !await showConfirm('Remove options 2 and 3?',{confirmLabel:'Remove'})) return;
+            update('options',[formRef.current.options[0]]);
+        } else update('options',[...form.options, ...blank.slice(form.options.length)]);
+    };
     const restore = async () => {
         if (recovery.base_updated_at !== (rowRef.current?.updated_at || null) && !await showConfirm('The server has a newer version. Restore your local copy into the editor for review?',{confirmLabel:'Restore for review'})) return;
         setTemplate(recovery.template || template); templateRef.current = recovery.template || template;
@@ -204,9 +214,10 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
                 <p className="q-muted">Enter Module Wp and module count separately for each panel option. Capacity is calculated automatically.</p>
             </div>
             <h3 style={{marginTop:20}}>Price options</h3>
-            <div className="q-price-options">{form.options.map((option,i) => <section className="q-option" key={i}><h3>{isFinalQuotation(initialRow) ? 'Selected panel' : `Panel option ${i + 1}`}</h3>
+            {!isFinalQuotation(initialRow) && <div className="q-filters" role="group" aria-label="How many options?" style={{alignItems:'center',margin:'4px 0 12px'}}><span className="q-muted" style={{margin:0}}>How many options?</span>{[1,3].map(n => <button key={n} type="button" aria-pressed={form.options.length === n} onClick={() => setOptionCount(n)}>{n} option{n > 1 ? 's' : ''}</button>)}</div>}
+            <div className="q-price-options">{form.options.map((option,i) => <section className="q-option" key={i}><h3>{isFinalQuotation(initialRow) ? 'Selected panel' : form.options.length === 1 ? 'Panel details' : `Panel option ${i + 1}`}</h3>
                 <div className="q-grid">
-                    <OptionSelect label={`Option ${i + 1} Module Wp`} placeholder="Select Module Wp…" value={optionSpecs(form, option).panel_wattage} options={moduleWps} onChange={value => updateOption(i, 'panel_wattage', value)} />
+                    <OptionSelect label={form.options.length > 1 ? `Option ${i + 1} Module Wp` : 'Module Wp'} placeholder="Select Module Wp…" value={optionSpecs(form, option).panel_wattage} options={moduleWps} onChange={value => updateOption(i, 'panel_wattage', value)} />
                     <ModuleCountSelect value={optionSpecs(form, option).solar_panel_qty} onChange={value => updateOption(i, 'solar_panel_qty', value)} />
                     <Field label="System Capacity (kWp)"><input aria-label={`Option ${i + 1} capacity (kWp)`} readOnly value={optionSpecs(form, option).capacity_kw} /></Field>
                     <OptionSelect label="Solar panel brand" placeholder="Select panel brand…" value={option.brandName} options={panelMakes} onChange={value => update('options',form.options.map((o,index) => index === i ? {...o,brandName:value} : o))} />{[['baseValue','Base value (₹)','number'],['discount','Discount (₹)','number'],['subsidy','Subsidy (₹)','number']].map(([key,label,type]) => <Field key={key} label={label} type={type} maxLength={80} value={option[key]} onChange={value => update('options',form.options.map((o,index) => index === i ? {...o,[key]:value} : o))} />)}</div>

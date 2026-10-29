@@ -1,15 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createQuotationRepository} from '../../src/quotations/repository.js';
-import {newForm,freshTemplate} from '../../src/quotations/model.js';
+import {newForm,freshTemplate,statusOf,validate} from '../../src/quotations/model.js';
 import {memoryClient} from './memoryClient.mjs';
 const user={id:'owner',name:'Agent',phone:'9876543210'};
 async function setup(){const client=memoryClient();const repo=createQuotationRepository(client);const form={...newForm(user),customer_name:'Customer',customer_phone:'9876543211',capacity_kw:3.48,solar_panel_qty:6,panel_wattage:580,solar_panel_make:'Waaree',inverter_option:'Option 1',inverter_brand:'Solaryan',options:['a','b','c'].map(brandName=>({brandName,baseValue:100000,discount:100,subsidy:1000}))};const row=await repo.save('quote',null,form,freshTemplate(),user);return{client,repo,form,row};}
 test('repeated initial saves share one quotation identity',async()=>{const{repo,form,client}=await setup();await repo.save('quote',null,form,freshTemplate(),user);assert.equal(client.state.tables.quotations.length,1);});
 test('concurrent edits cannot silently overwrite another session',async()=>{const{repo,row,form}=await setup();await repo.save('quote',row,{...form,customer_name:'Latest'},freshTemplate(),user);await assert.rejects(repo.save('quote',row,{...form,customer_name:'Stale'},freshTemplate(),user),/another session/);});
-test('issue, loss, reopen and PDF generation preserve outcomes and snapshots',async()=>{const{repo,row}=await setup();const issued=await repo.generated(row,user);assert.equal(issued.status,'issued');const lost=await repo.outcome(issued,'lost',user,'Price');const downloaded=await repo.generated(lost,user);assert.equal(downloaded.status,'lost');assert.equal(downloaded.quotation_data.issued_versions.length,1);assert.equal((await repo.outcome(downloaded,'reopened',user)).status,'issued');});
+test('download, loss, reopen and PDF generation keep status and snapshots',async()=>{const{repo,row}=await setup();const sent=await repo.generated(row,user);assert.equal(sent.status,'draft');assert.ok(sent.issued_at);assert.equal(sent.quotation_data.issued_versions.length,1);const lost=await repo.markLost(sent,'Price',user);const downloaded=await repo.generated(lost,user);assert.equal(downloaded.status,'lost');assert.equal(downloaded.issued_at,sent.issued_at);assert.equal(downloaded.quotation_data.issued_versions.length,1);assert.equal((await repo.markOpen(downloaded,user)).status,'draft');});
 test('incomplete documents cannot be issued',async()=>{const{repo,row}=await setup();row.quotation_data.form.customer_phone='';await assert.rejects(repo.generated(row,user),/mobile number/);});
 test('conversion retry inserts exactly one lead',async()=>{const{repo,row,client}=await setup();client.state.failLinkOnce=true;await assert.rejects(repo.insertConversionLead(row,{customer_name:'Lead'},user),/interrupted/);const result=await repo.insertConversionLead(row,{customer_name:'Lead'},user);assert.equal(result.data.id,row.id);assert.equal(client.state.tables.admin.length,1);assert.equal((await repo.get(row.id)).converted_lead_id,row.id);});
 test('simultaneous conversion attempts converge on the same lead',async()=>{const{repo,row,client}=await setup();const results=await Promise.allSettled([repo.insertConversionLead(row,{customer_name:'Lead'},user),repo.insertConversionLead(row,{customer_name:'Lead'},user)]);assert.equal(client.state.tables.admin.length,1);assert.ok(results.some(r=>r.status==='fulfilled'));const retry=await repo.insertConversionLead(row,{},user);assert.equal(retry.data.id,row.id);});
 test('conversion preserves the quotation document',async()=>{const{repo,row,client}=await setup();await repo.insertConversionLead(row,{customer_name:'Lead Customer'},user);assert.equal(client.state.tables.admin.length,1);assert.equal((await repo.get(row.id)).converted_lead_id,row.id);assert.deepEqual((await repo.get(row.id)).quotation_data.form,row.quotation_data.form);});
 test('pagination and number search',async()=>{const{repo,row,client}=await setup();for(let i=0;i<25;i++)client.state.tables.quotations.push({...row,id:`extra${i}`,quotation_no:4000+i});assert.equal((await repo.list({page:0})).rows.length,20);assert.equal((await repo.list({page:1})).rows.length,6);assert.equal((await repo.list({search:'Quote-4003'})).rows[0].quotation_no,4003);});
+
+test('statusOf shows Open, Won or Lost',()=>{
+    assert.equal(statusOf({status:'draft'}),'open');
+    assert.equal(statusOf({status:'issued'}),'open');
+    assert.equal(statusOf({status:'issued',selected_option:2}),'won');
+    assert.equal(statusOf({status:'draft',selected_option:1}),'won');
+    assert.equal(statusOf({status:'converted',converted_lead_id:'x'}),'won');
+    assert.equal(statusOf({status:'lost',selected_option:null}),'lost');
+});
+test('option count message is plain',()=>{assert.ok(validate({options:[{},{}]}).includes('Pricing: Choose 1 or 3 options'));});
+test('markWon records the chosen option on the same quotation without a final copy',async()=>{const{repo,row,client}=await setup();
+    const won=await repo.markWon(row,2,user);assert.equal(won.selected_option,2);assert.equal(won.status,'draft');assert.equal(statusOf(won),'won');
+    assert.equal(won.quotation_data.activity.at(-1).type,'won');assert.equal(won.quotation_data.activity.at(-1).option,2);
+    assert.equal(client.state.tables.quotations.length,1);assert.equal(won.quotation_data.final_id,undefined);
+    await assert.rejects(repo.markWon(won,4,user),/1 to 3/);await assert.rejects(repo.markWon(won,0,user),/1 to 3/);
+    const lost=await repo.markLost(won,'',user);const again=await repo.markWon(lost,3,user);assert.equal(again.status,'draft');assert.equal(again.selected_option,3);assert.equal(again.lost_reason,null);
+    // A stale row still works: markWon re-reads the latest version.
+    assert.equal((await repo.markWon(row,1,user)).selected_option,1);});
+test('markWon on a one-option quote accepts only option 1',async()=>{const{repo,row,form}=await setup();const single=await repo.save('quote',row,{...form,options:[form.options[0]]},freshTemplate(),user);assert.equal((await repo.markWon(single,1,user)).selected_option,1);await assert.rejects(repo.markWon(single,2,user),/1 to 1/);});
+test('markLost needs no reason, keeps an optional remark and clears the chosen option',async()=>{const{repo,row}=await setup();const won=await repo.markWon(row,2,user);
+    const lost=await repo.markLost(won,'  ',user);assert.equal(lost.status,'lost');assert.equal(lost.lost_reason,null);assert.equal(lost.lost_remark,null);assert.equal(lost.selected_option,null);assert.ok(lost.lost_at);assert.equal(statusOf(lost),'lost');
+    const withWhy=await repo.markLost(lost,' Price ',user,' too high ');assert.equal(withWhy.lost_reason,'Price');assert.equal(withWhy.lost_remark,'too high');assert.equal(withWhy.quotation_data.activity.at(-1).type,'lost');});
+test('markLost works on a converted quotation',async()=>{const{repo,row}=await setup();await repo.insertConversionLead(row,{customer_name:'Lead'},user);const lost=await repo.markLost(await repo.get(row.id),undefined,user);assert.equal(lost.status,'lost');assert.equal(statusOf(lost),'lost');});
+test('markOpen clears the chosen option and lost reason',async()=>{const{repo,row}=await setup();const lost=await repo.markLost(await repo.markWon(row,2,user),'Price',user,'note');const open=await repo.markOpen(lost,user);assert.equal(open.status,'draft');assert.equal(open.selected_option,null);assert.equal(open.lost_reason,null);assert.equal(open.lost_remark,null);assert.equal(statusOf(open),'open');
+    const reopened=await repo.markOpen(await repo.markWon(open,1,user),user);assert.equal(reopened.selected_option,null);});
+test('counts: open excludes won, final and revised-away quotations',async()=>{const{repo,row,client}=await setup();const base=client.state.tables.quotations[0];const add=(id,extra)=>client.state.tables.quotations.push({...structuredClone(base),id,...extra});
+    add('issued-open',{status:'issued'});
+    add('won',{status:'issued',selected_option:2});
+    add('converted',{status:'converted',converted_lead_id:'lead1',selected_option:1});
+    add('final',{status:'draft',quotation_data:{...base.quotation_data,kind:'final'}});
+    add('old',{status:'draft',quotation_data:{...base.quotation_data,superseded_by:{id:'quote',label:'Quote-1-R1'}}});
+    add('lost',{status:'lost'});
+    add('lost-linked',{status:'lost',converted_lead_id:'lead2'});
+    const c=await repo.counts();
+    assert.equal(c.open,2);assert.equal(c.won,2);assert.equal(c.lost,2);assert.equal(c.all,7);
+    assert.equal(c.draft,2);assert.equal(c.issued,2);assert.equal(c.converted,1);});
+test('cutting a Won quote to one option keeps it Won on that option',async()=>{const{repo,row,form}=await setup();const won=await repo.markWon(row,3,user);
+    const saved=await repo.save('quote',won,{...form,options:[form.options[0]]},freshTemplate(),user);assert.equal(saved.selected_option,1);assert.equal(statusOf(saved),'won');});

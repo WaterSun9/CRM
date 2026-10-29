@@ -133,8 +133,8 @@ export const Page1: React.FC<Page1Props> = ({
             */}
           </div>
 
-          {/* Quote info */}
-          <div className="flex flex-col items-end text-right">
+          {/* Quote info: never squeezed by a long address */}
+          <div className="q-quote-meta flex flex-col items-end text-right">
             <div className="flex gap-2">
               <span className="font-bold text-gray-900">Quotation NO :</span>
               <HighlightWrapper

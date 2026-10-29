@@ -164,6 +164,11 @@
   text-align: right;
 }
 
+/* A long address wraps on the left; quotation number and date keep their width. */
+.quotation-paper .quotation-customer-meta { gap: 16px; }
+.quotation-paper .quotation-customer-meta .q-customer-info { flex: 1 1 auto; min-width: 0; }
+.quotation-paper .quotation-customer-meta .q-quote-meta { flex: 0 0 auto; white-space: nowrap; }
+
 .quotation-paper .q-customer-info,
 .quotation-paper .q-customer-phone,
 .quotation-paper .q-customer-email {
