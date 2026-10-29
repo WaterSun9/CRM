@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isNextLeg, nextLegStart, tripChain } from '../src/utils/tripChain.js';
+import { isNextLeg, nextLegStart, tripChain, tripChainTrips, tripSummary } from '../src/utils/tripChain.js';
+import { haversineKm } from '../src/utils/tripKm.js';
 
 const at = minutes => new Date(Date.UTC(2026, 9, 29, 4, 0) + minutes * 60000).toISOString();
 const pins = { A: '384245', B: '384240', C: '385340', X: '384220' };
@@ -42,4 +43,35 @@ test('tripChain finds the whole trip from any of its houses', () => {
     assert.deepEqual(tripChain(trips, 'C', pinOf), ['A', 'B', 'C']);
     assert.deepEqual(tripChain(trips, 'X', pinOf), ['X']);
     assert.deepEqual(tripChain(trips, 'none', pinOf), ['none']);
+});
+
+test('tripSummary: start, each house by pincode, back, grace and rate from the office settings', () => {
+    const chain = tripChainTrips([tripX, tripC, tripB, tripA], 'B', pinOf);
+    const points = { 384265: [23.6, 71.7], 384245: [23.71, 71.79], 384240: [23.88, 71.95], 385340: [23.83, 71.6] };
+    const settings = { rate_per_km: 5, grace_km: 5, round_trip: true };
+    const sum = tripSummary({ chain, pincodeOf: pinOf, points, settings });
+    const path = [[23.6, 71.7], [23.71, 71.79], [23.88, 71.95], [23.83, 71.6], [23.6, 71.7]];
+    let straight = 0;
+    for (let i = 1; i < path.length; i += 1) straight += haversineKm({ lat: path[i - 1][0], lng: path[i - 1][1] }, { lat: path[i][0], lng: path[i][1] });
+    const expectedKm = Math.ceil(Math.round((Math.round(straight * 10) / 10) * 1.3 * 1e6 + 5e6) / 1e6);
+    assert.equal(sum.houses, 3);
+    assert.equal(sum.km, expectedKm);
+    assert.equal(sum.amount, expectedKm * 5);
+    assert.match(sum.explanation, /^Start 384265 -> 384245 -> 384240 -> 385340 -> back: .* \+ 5 km grace = \d+ km$/);
+
+    const oneWay = tripSummary({ chain, pincodeOf: pinOf, points, settings: { ...settings, round_trip: false, grace_km: 0, rate_per_km: 0 } });
+    assert.ok(oneWay.km < sum.km);
+    assert.equal(oneWay.amount, 0);
+    assert.doesNotMatch(oneWay.explanation, /back/);
+});
+
+test('tripSummary uses a Reached site point only for a house with no pincode', () => {
+    const chain = tripChainTrips([tripC, tripB, tripA], 'B', id => (id === 'C' ? '' : pinOf(id)));
+    const sum = tripSummary({ chain, pincodeOf: id => (id === 'C' ? '' : pinOf(id)), points: { 384265: [23.6, 71.7], 384245: [23.71, 71.79], 384240: [23.88, 71.95] }, settings: { rate_per_km: 5, grace_km: 5, round_trip: true } });
+    assert.match(sum.explanation, /^Start 384265 -> 384245 -> 384240 -> Reached site -> back:/);
+});
+
+test('tripSummary is null when a point is unknown', () => {
+    const chain = tripChainTrips([tripA], 'A', pinOf);
+    assert.equal(tripSummary({ chain, pincodeOf: pinOf, points: {}, settings: { rate_per_km: 5, grace_km: 5, round_trip: true } }), null);
 });

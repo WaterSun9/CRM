@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../supabase';
 import { NEAR_PINCODE_KM, nearestPincode, pincodePoint } from '../../utils/tripKm';
 import { formatDateTime, ticketLabel } from './serviceLabels';
-import { nextLegStart } from '../../utils/tripChain';
+import { nextLegStart, tripChainTrips, tripSummary } from '../../utils/tripChain';
+import { useKmSettings } from './kmSettings';
 import { ROUGH_ACCURACY_M, accuracyText, isPincode, phonePosition, pincodeInText, pincodePoints, roundAccuracy, startText, tripError } from './tripLabels';
 
 // A trip can still get "Reached site" for 12 hours (same rule as the database).
@@ -21,7 +22,7 @@ const TRIP_OPEN_MS = 12 * 60 * 60 * 1000;
 const endedKey = tripId => `trip-ended:${tripId}`;
 const wasEnded = tripId => { try { return localStorage.getItem(endedKey(tripId)) === '1'; } catch { return false; } };
 
-export default function TripPanel({ issue, userId, busy, run, onTripState, reloadKey = 0, otherJobs = [], onGoNext }) {
+export default function TripPanel({ issue, userId, busy, run, onTripState, reloadKey = 0, otherJobs = [], onGoNext, jobs = [] }) {
     const [trips, setTrips] = useState(null);
     const [loadError, setLoadError] = useState('');
     const [locating, setLocating] = useState('');
@@ -36,7 +37,10 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     // Reached site could not get a location: the next house can still start from this pincode.
     const [reachFailedId, setReachFailedId] = useState(null);
     // Jobs already on a trip in the last 12 hours (visited or on the way): not offered as Next.
-    const [onTripIds, setOnTripIds] = useState([]);
+    // This technician's trips of the last day: the houses of this journey and its summary.
+    const [recentTrips, setRecentTrips] = useState([]);
+    const [points, setPoints] = useState(null);
+    const { status: kmStatus, settings } = useKmSettings();
     // Set again on mount: StrictMode mounts twice in development.
     const mounted = useRef(true);
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -49,9 +53,11 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
         if (!mounted.current) return;
         if (error) { setLoadError(tripError(error)); return; }
         setTrips(data || []); setLoadError('');
-        const since = new Date(Date.now() - TRIP_OPEN_MS).toISOString();
-        const { data: recent } = await supabase.from('service_trips').select('issue_id').eq('technician_id', userId).gte('started_at', since).limit(100);
-        if (mounted.current) setOnTripIds((recent || []).map(row => row.issue_id));
+        const since = new Date(Date.now() - 2 * TRIP_OPEN_MS).toISOString();
+        const { data: recent } = await supabase.from('service_trips')
+            .select('id, issue_id, started_at, start_source, start_lat, start_lng, start_pincode, reached_at, reached_lat, reached_lng')
+            .eq('technician_id', userId).gte('started_at', since).order('started_at', { ascending: false }).limit(100);
+        if (mounted.current) setRecentTrips(recent || []);
     }, [issue.id, userId]);
     useEffect(() => { loadTrips(); }, [loadTrips, reloadKey]);
 
@@ -141,7 +147,21 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     }, `Trip to ${ticketLabel(job)} ${job.customer_name || ''} started from this house.`, 'issue');
     const endTrip = () => { try { localStorage.setItem(endedKey(current.id), '1'); } catch { /* private window */ } setEndedId(current.id); };
     const ended = current && (endedId === current.id || wasEnded(current.id));
+    const onTripIds = recentTrips.filter(t => Date.now() - Date.parse(t.started_at) < TRIP_OPEN_MS).map(t => t.issue_id);
     const nextJobs = otherJobs.filter(job => !onTripIds.includes(job.id));
+    // The journey is over here: ended, or no other job to go on to.
+    const atHouse = Boolean(current && (current.reached_at || reachFailedId === current.id));
+    const showSummary = atHouse && !startingAgain && (ended || nextJobs.length === 0);
+    useEffect(() => {
+        if (!showSummary || points) return undefined;
+        let active = true;
+        pincodePoints().then(data => { if (active) setPoints(data); }, () => {});
+        return () => { active = false; };
+    }, [showSummary, points]);
+    const pinOf = id => pincodeInText((id === issue.id ? issue : jobs.find(job => job.id === id))?.service_address);
+    const journey = showSummary ? tripChainTrips(recentTrips, issue.id, pinOf) : [];
+    let summary = null;
+    try { summary = showSummary && points ? tripSummary({ chain: journey, pincodeOf: pinOf, points, settings }) : null; } catch { summary = null; }
 
     const disabled = busy || Boolean(locating);
     const big = 'min-h-12 w-full rounded-xl px-4 text-sm font-bold disabled:opacity-50';
@@ -160,7 +180,7 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
             {!current.reached_at && <p className="mt-1 text-xs text-stone-500">Tap this when you reach the customer, so the km is correct.</p>}
         </div>}
 
-        {current && (current.reached_at || reachFailedId === current.id) && !startingAgain && !ended && nextJobs.length > 0 && <div className="space-y-2 rounded-lg border border-sky-300 bg-white p-2">
+        {atHouse && !startingAgain && !ended && nextJobs.length > 0 && <div className="space-y-2 rounded-lg border border-sky-300 bg-white p-2">
             <p className="text-sm font-bold text-sky-950">Done here? Where next on this trip?</p>
             <p className="text-xs text-stone-600">Pick the next house. Its trip starts from here, so the km of every house is right.</p>
             {nextJobs.map(job => <button key={job.id} type="button" disabled={disabled} onClick={() => goNext(job)}
@@ -170,7 +190,7 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
             </button>)}
             <button type="button" disabled={disabled} onClick={endTrip} className="min-h-11 w-full rounded-xl bg-stone-800 px-3 text-sm font-bold text-white disabled:opacity-50">End trip – no more houses</button>
         </div>}
-        {current?.reached_at && ended && <p className="rounded-lg bg-white p-2 text-xs text-stone-600">Trip ended at this house.</p>}
+        {showSummary && <TripSummary summary={summary} houses={journey.length} loading={!points} rateKnown={kmStatus === 'ready'} />}
 
         {current && !startingAgain && <button type="button" disabled={disabled} onClick={() => { reset(); setStartingAgain(true); }} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold disabled:opacity-50">Start a new trip</button>}
 
@@ -200,5 +220,29 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
         </form>}
 
         {startingAgain && <button type="button" disabled={disabled} onClick={() => { reset(); setStartingAgain(false); }} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold">Keep the current trip</button>}
+    </div>;
+}
+
+// End of the journey: km and pay worked out with the office's settings (Operations).
+// An estimate: the office saves the visit payment and may change it.
+function TripSummary({ summary, houses, loading, rateKnown }) {
+    const row = (label, value) => <div className="flex justify-between gap-3 py-1"><dt className="text-stone-600">{label}</dt><dd className="text-right font-semibold">{value}</dd></div>;
+    return <div className="rounded-lg border border-green-300 bg-white p-3 text-sm">
+        <p className="font-bold text-green-900">Trip ended{houses > 1 ? ` · ${houses} houses` : ''}</p>
+        {loading ? <p className="text-xs text-stone-500">Working out the km…</p>
+            : !summary ? <p className="text-xs text-stone-600">The km could not be worked out here (a start or house pincode is missing). The office will enter it.</p>
+                : <>
+                    <p className="mt-1 text-xs text-stone-500">{summary.explanation.split(':')[0]}</p>
+                    <dl className="mt-2 divide-y text-sm">
+                        {row('Travelled', `${(summary.straightKm * summary.roadFactor).toFixed(1)} km`)}
+                        {row('Trip', summary.roundTrip ? 'Round trip (there and back)' : 'One way')}
+                        {summary.graceKm > 0 && row('Grace', `+ ${summary.graceKm} km`)}
+                        {row('Total', `${summary.km} km`)}
+                        {rateKnown && row('Rate', `₹${summary.rate} per km`)}
+                        {rateKnown && <div className="flex justify-between gap-3 py-1 text-base"><dt className="font-bold">Amount</dt><dd className="font-bold text-green-800">₹{summary.amount.toLocaleString('en-IN')}</dd></div>}
+                    </dl>
+                    <p className="mt-2 text-xs text-stone-500">{rateKnown ? 'Grace, round trip and the rate are set by the office. The office checks this and saves the payment.'
+                        : 'The office will add the rate and the amount.'}</p>
+                </>}
     </div>;
 }

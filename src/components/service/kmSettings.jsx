@@ -4,8 +4,9 @@ import { TRIP_GRACE_KM, TRIP_ROUND_TRIP } from '../../constants';
 
 // Km pay settings (public.service_km_settings, one row, migration
 // 20261013110000_service_trips.sql): rate per km, grace km, round trip by default.
-// Admin and office read and change them. Until the table exists the app uses the
-// constants and no rate (status 'not_set_up').
+// Admin and office read and change them; technicians read them once the 29 Oct SQL is run
+// (before that they get no row: status 'not_visible'). Until the table exists the app uses
+// the constants and no rate (status 'not_set_up').
 export const DEFAULT_KM_SETTINGS = { rate_per_km: 0, grace_km: TRIP_GRACE_KM, round_trip: TRIP_ROUND_TRIP };
 const missingTable = error => ['PGRST205', '42P01'].includes(error?.code) || /could not find the table/i.test(error?.message || '');
 
@@ -18,7 +19,8 @@ export function useKmSettings() {
             .then(({ data, error }) => {
                 if (!active) return;
                 if (error) setState({ status: missingTable(error) ? 'not_set_up' : 'error', settings: DEFAULT_KM_SETTINGS });
-                else setState({ status: 'ready', settings: data ? { ...data, rate_per_km: Number(data.rate_per_km), grace_km: Number(data.grace_km) } : DEFAULT_KM_SETTINGS });
+                else setState(data ? { status: 'ready', settings: { ...data, rate_per_km: Number(data.rate_per_km), grace_km: Number(data.grace_km) } }
+                    : { status: 'not_visible', settings: DEFAULT_KM_SETTINGS });
             });
         return () => { active = false; };
     }, [reload]);

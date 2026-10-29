@@ -253,7 +253,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
                         code box is on screen without scrolling on a phone. */}
                     {isTechnician && <TechnicianJobPanel key={selected.id} issue={selected} userId={user.id} busy={busy} run={run}
                         onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)}
-                        otherJobs={issues.filter(row => row.id !== selected.id && row.assigned_to === user.id && row.status === 'assigned')} onGoNext={openIssue} />}
+                        otherJobs={issues.filter(row => row.id !== selected.id && row.assigned_to === user.id && row.status === 'assigned')} onGoNext={openIssue} jobs={issues} />}
                     <div className={`service-detail-grid ${hasVisitColumn ? '' : 'no-visit-column'}`}><div className="service-customer-column space-y-4">{showDetails && <CustomerFacts issue={selected} userType={user?.userType} />}
                     {selected.give_up_reason && <p className="rounded-lg bg-amber-50 p-2 text-xs">Previous give-up reason: {selected.give_up_reason}</p>}
                     {/* Before / After photos are the technician's; partners do not see the photo section. */}

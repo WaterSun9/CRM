@@ -1,4 +1,5 @@
 // One trip, several houses ("Next house" on the technician's trip panel). No React here.
+import { estimateRouteKm } from './tripKm.js';
 
 // The next job's trip starts where the technician is now, at the house they reached:
 // that house's Reached site point when there is one (the same numbers, so the office
@@ -22,16 +23,44 @@ export function isNextLeg(prev, next, prevPincode) {
     return Boolean(prevPincode) && next.start_pincode === prevPincode;
 }
 
-// The houses of one trip in the order visited, as complaint ids: from the latest trip
-// of `issueId` back to where the trip began and on to its last house.
+// The trips of one journey in the order visited: from the latest trip of `issueId`
+// back to where the journey began and on to its last house.
 // trips: one technician's trips; pincodeOf(issueId) gives a house's pincode.
-export function tripChain(trips, issueId, pincodeOf) {
+export function tripChainTrips(trips, issueId, pincodeOf) {
     const base = trips.filter(t => t.issue_id === issueId).sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))[0];
-    if (!base) return [issueId];
+    if (!base) return [];
     const chain = [base];
     const before = () => trips.find(t => !chain.includes(t) && isNextLeg(t, chain[0], pincodeOf(t.issue_id)));
     const after = () => { const last = chain[chain.length - 1]; return trips.find(t => !chain.includes(t) && isNextLeg(last, t, pincodeOf(last.issue_id))); };
     for (let t = before(); t && chain.length < 20; t = before()) chain.unshift(t);
     for (let t = after(); t && chain.length < 20; t = after()) chain.push(t);
-    return [...new Set(chain.map(t => t.issue_id))];
+    return chain;
+}
+
+// The same journey as complaint ids (just [issueId] when it has no trip).
+export function tripChain(trips, issueId, pincodeOf) {
+    const chain = tripChainTrips(trips, issueId, pincodeOf);
+    return chain.length ? [...new Set(chain.map(t => t.issue_id))] : [issueId];
+}
+
+// What the technician sees when a journey ends: km from the start through each house
+// and back when round trip, plus the grace km, times the rate, all from the office's km
+// settings. Pincodes first (the start pincode, each house's pincode), as the office's
+// combine form works it out, so both show the same km; a phone point only where there
+// is no pincode. Null when a point is unknown.
+//   { km, straightKm, roadFactor, graceKm, roundTrip, rate, amount, explanation, houses }
+export function tripSummary({ chain, pincodeOf, points, settings }) {
+    if (!chain?.length) return null;
+    const first = chain[0];
+    const start = first.start_pincode || !Number.isFinite(first.start_lat)
+        ? { pincode: first.start_pincode } : { lat: first.start_lat, lng: first.start_lng, label: 'phone location' };
+    const stops = chain.map(t => {
+        const pin = pincodeOf(t.issue_id);
+        return pin || !(t.reached_at && Number.isFinite(t.reached_lat)) ? { pincode: pin } : { lat: t.reached_lat, lng: t.reached_lng, label: 'Reached site' };
+    });
+    const route = estimateRouteKm({ start, stops, points, roundTrip: Boolean(settings?.round_trip), graceKm: Number(settings?.grace_km) || 0 });
+    if (!route) return null;
+    const rate = Number(settings?.rate_per_km) || 0;
+    const amount = Math.round(route.km * rate);
+    return { ...route, rate, amount, houses: chain.length };
 }

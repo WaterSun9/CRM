@@ -61,7 +61,7 @@ function verifyMessage(data) {
 // (the technician then presses Send code again).
 const confirmations = new Map();
 
-export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed, onReleased, otherJobs = [], onGoNext }) {
+export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed, onReleased, otherJobs = [], onGoNext, jobs = [] }) {
     const mine = issue.assigned_to === userId;
     const recaptchaId = `otp-recaptcha-${issue.id}`;
     const [sent, setSent] = useState(null);
@@ -201,7 +201,7 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     // After a "wait" or "3 codes an hour" answer, both send buttons wait too.
     const waitText = waitSeconds >= 120 ? `${Math.ceil(waitSeconds / 60)} min` : `${waitSeconds} s`;
     // Before the work the trip comes first; once the code is sent, the code box does.
-    const trip = <TripPanel issue={issue} userId={userId} busy={busy} run={run} onTripState={setTripState} reloadKey={tripReload} otherJobs={otherJobs} onGoNext={onGoNext} />;
+    const trip = <TripPanel issue={issue} userId={userId} busy={busy} run={run} onTripState={setTripState} reloadKey={tripReload} otherJobs={otherJobs} onGoNext={onGoNext} jobs={jobs} />;
     // Same key in both places, so the photo list is moved, not loaded again.
     const photos = <ComplaintPhotos key="photos" issue={issue} userId={userId} userType="technician" busy={busy} run={run} onCounts={setPhotoCounts} reloadKey={photoReload} />;
     const photosHint = !photosReady && <p role="note" className="rounded-lg bg-amber-50 p-2 text-xs font-semibold text-amber-900">{PHOTOS_NEEDED_TEXT}</p>;
