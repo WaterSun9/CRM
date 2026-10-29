@@ -131,6 +131,10 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
     const [globalResults, setGlobalResults] = useState([]);
     const [showGlobalDrop, setShowGlobalDrop] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    // Profile: the login's own phone number and password, from the user box above Logout
+    // (or the round button top right on a phone).
+    const openProfile = () => { setCurrentView('profile'); setSidebarOpen(false); };
+    const initials = user.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'A';
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [showAddLead, setShowAddLead] = useState(false);
     const globalSearchRef = useRef(null);
@@ -1336,8 +1340,6 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {/* Complaints and the Warranty list (completed customers in / out of their 5-year
                         warranty, and those with no date) on one page. Every role sees Warranty. */}
                     <NavBtn view="complaints" icon={ShieldCheck} label={onRaiseServiceIssue ? 'Warranty & Complaints' : 'Warranty'} count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
-                    {/* Every login adds or changes its own phone number; channel partners also their partner phone. */}
-                    <NavBtn view="profile" icon={UserRound} label="Profile" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     {/* Office system tools */}
                     {['admin', 'sales'].includes(user.userType) && (
                         <>
@@ -1365,17 +1367,22 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {user.userType === 'office2' && <NavBtn view="availability" icon={CalendarDays} label="Vendor Calendar" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />}
                 </div>
 
-                {/* User + Logout */}
+                {/* User, Profile (own phone number and password) and Logout */}
                 <div className="p-3 border-t border-stone-100 shrink-0 bg-white">
-                    <div className="flex items-center gap-3 px-3 py-2 mb-1">
-                        <div className="w-8 h-8 bg-stone-900 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                            {user.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'A'}
+                    <button type="button" onClick={openProfile} title="Profile"
+                        className={`w-full flex items-center gap-3 px-3 py-2 mb-1 rounded-xl text-left transition-colors cursor-pointer ${currentView === 'profile' ? 'bg-stone-100' : 'hover:bg-stone-50'}`}>
+                        <div className="w-8 h-8 shrink-0 bg-stone-900 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                            {initials}
                         </div>
                         <div className="min-w-0">
                             <p className="text-xs font-semibold text-stone-700 truncate">{user.name}</p>
                             <p className="text-[9px] text-stone-400">{user.role}</p>
                         </div>
-                    </div>
+                    </button>
+                    <button type="button" onClick={openProfile}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-colors mb-0.5 cursor-pointer ${currentView === 'profile' ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
+                        <UserRound className="w-4 h-4" /> Profile
+                    </button>
                     {import.meta.env.DEV && onOpenDevSwitcher && (
                         <button onClick={onOpenDevSwitcher}
                             className="w-full flex items-center gap-2 px-3 py-2 text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-xl text-xs font-bold transition-colors mb-1.5 cursor-pointer border border-amber-200">
@@ -1521,6 +1528,11 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                                 <span className="hidden sm:inline text-xs">Add Lead</span>
                             </button>
                         )}
+                        {/* Phone: Profile top right (the sidebar with it is hidden behind the menu). */}
+                        <button type="button" onClick={openProfile} aria-label="Profile" title="Profile"
+                            className="md:hidden w-9 h-9 shrink-0 bg-stone-900 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                            {initials}
+                        </button>
                     </div>
                 </header>
 

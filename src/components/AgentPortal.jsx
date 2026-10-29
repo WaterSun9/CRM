@@ -976,8 +976,13 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                 <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans flex flex-col pb-8">
                     <header className="bg-white border-b border-stone-100 px-4 py-3 sticky top-0 z-30 flex items-center justify-between shadow-sm">
                 <BrandMark label={isAgent2 ? 'Dealer Portal' : 'Channel Partner Portal'} />
-                <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-stone-600 truncate max-w-[120px]">{user.name}</span>
+                <div className="flex items-center gap-1">
+                    {/* Profile (own phone number and password), next to Logout. */}
+                    <button type="button" onClick={() => setShowProfile(true)} title="Profile"
+                        className="flex min-h-11 items-center gap-2 rounded-xl px-2 hover:bg-stone-50 cursor-pointer">
+                        <span className="w-8 h-8 shrink-0 rounded-full bg-stone-900 flex items-center justify-center text-white text-xs font-bold">{user.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'P'}</span>
+                        <span className="hidden sm:block text-left leading-tight"><span className="block text-xs font-bold text-stone-700 truncate max-w-[110px]">{user.name}</span><span className="block text-[10px] text-stone-400">Profile</span></span>
+                    </button>
                     <button
                         onClick={async () => { if (await saveBeforeAgentExit('Save & Logout')) onLogout(); }}
                         className="p-2 text-stone-400 hover:text-red-500 transition-colors rounded-xl hover:bg-stone-50 cursor-pointer"
@@ -1019,7 +1024,6 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                     {QUOTATION_PARTNER_ENABLED && <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span>{quotationOpenCount > 0 && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}<ChevronRight size={18} /></button>}
                     <PartnerPhoneReminder key={showProfile ? "profile-open" : "profile-closed"} onOpenProfile={() => setShowProfile(true)} />
                     {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="w-full flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-sm"><ClipboardList size={24} /><span className="flex-1"><strong className="block text-base">Complaints</strong><span className="text-xs text-stone-500">Track service requests</span></span><ChevronRight size={18} /></button>}
-                    <button type="button" onClick={() => setShowProfile(true)} className="w-full flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-sm"><UserRound size={24} /><span className="flex-1"><strong className="block text-base">Profile</strong><span className="text-xs text-stone-500">Your phone number</span></span><ChevronRight size={18} /></button>
 
                     {/* Warranty customers on the home page (owner, 28 Oct 2026): their own completed
                         customers as cards. They raise complaints (in warranty only) and can see
@@ -1215,7 +1219,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                         </div>
                         <div className="flex items-center gap-1 md:gap-2">
                             {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-bold text-stone-700">Complaints</button>}
-                            <button type="button" onClick={() => setShowProfile(true)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-bold text-stone-700">Profile</button>
+                            <button type="button" onClick={() => setShowProfile(true)} title="Profile" aria-label="Profile" className="flex items-center gap-1.5 rounded-xl border border-stone-200 px-2.5 py-2 text-xs font-bold text-stone-700"><UserRound size={15} /><span className="hidden md:inline">Profile</span></button>
                             {import.meta.env.DEV && onOpenDevSwitcher && (
                                 <button
                                     type="button"
