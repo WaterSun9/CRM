@@ -141,7 +141,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     useEffect(() => {
         if (!open || !allowed) return;
         let current = true;
-        supabase.from('profiles').select('*').eq('id',user.id).single().then(({data}) => { if (current && data) setProfile({...user,name:data.name || user.name,phone:data.phone_number || data.phone || data.mobile || ''}); });
+        supabase.from('profiles').select('*').eq('id',user.id).single().then(({data}) => { if (current && data) setProfile({...user,name:data.name || user.name,phone:data.phone || data.phone_number || data.mobile || ''}); });
         return () => { current = false; };
     },[open,allowed,user]);
     useEffect(() => {

@@ -1336,8 +1336,8 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {/* Complaints and the Warranty list (completed customers in / out of their 5-year
                         warranty, and those with no date) on one page. Every role sees Warranty. */}
                     <NavBtn view="complaints" icon={ShieldCheck} label={onRaiseServiceIssue ? 'Warranty & Complaints' : 'Warranty'} count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
-                    {/* Channel partners add or change their own phone number. */}
-                    {['channel_partner_office', 'channel_partner_office_manager', 'office2'].includes(user.userType) && <NavBtn view="profile" icon={UserRound} label="Profile" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />}
+                    {/* Every login adds or changes its own phone number; channel partners also their partner phone. */}
+                    <NavBtn view="profile" icon={UserRound} label="Profile" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     {/* Office system tools */}
                     {['admin', 'sales'].includes(user.userType) && (
                         <>
