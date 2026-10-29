@@ -1,4 +1,4 @@
-import { payload, fromRow, validate, revisionInfo, finalForm, quoteLabel, isFinalQuotation } from './model.js';
+import { payload, fromRow, validate, revisionInfo, finalForm, quoteLabel, isFinalQuotation, statusOf } from './model.js';
 
 export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by,selected_option,kind:quotation_data->>kind,final_of_label:quotation_data->>final_of_label,chosen_brands:quotation_data->form->options,final_id:quotation_data->>final_id';
 export const STATUSES = ['draft','issued','converted','lost'];
@@ -65,9 +65,12 @@ export function createQuotationRepository(client) {
             const live = () => client.from('quotations').select('id',{count:'exact',head:true}).is('quotation_data->superseded_by',null);
             const notFinal = query => query.or('quotation_data->>kind.is.null,quotation_data->>kind.neq.final');
             const tally = async query => { const { count, error } = await query; fail(error); return count || 0; };
-            const [entries, open, wonChosen, wonLinked] = await Promise.all([
+            const onlyFinal = query => query.eq('quotation_data->>kind','final');
+            const [entries, open, openOnePage, wonChosen, wonLinked] = await Promise.all([
                 Promise.all(STATUSES.map(async status => [status, await tally(live().eq('status',status))])),
                 tally(notFinal(live().in('status',['draft','issued']).is('selected_option',null).is('converted_lead_id',null))),
+                // Open 1-page quotes: not added to leads (old ones were linked by source_lead_id).
+                tally(onlyFinal(live().in('status',['draft','issued']).is('converted_lead_id',null).is('source_lead_id',null))),
                 tally(notFinal(live().in('status',['draft','issued']).not('selected_option','is',null).is('converted_lead_id',null))),
                 // A quotation linked to a lead is converted unless it was later marked lost
                 // (status converted always has a lead).
@@ -75,7 +78,7 @@ export function createQuotationRepository(client) {
             ]);
             const counts = Object.fromEntries(entries);
             counts.all = STATUSES.reduce((sum, status) => sum + counts[status], 0);
-            counts.open = open;
+            counts.open = open + openOnePage;
             counts.won = wonChosen;
             counts.converted = wonLinked;
             return counts;
@@ -145,15 +148,33 @@ export function createQuotationRepository(client) {
             }
             fail(error); return data;
         },
+        // The customer's chosen option becomes a 1-page quote (one copy per 3-page quote;
+        // choosing another option later updates that copy).
+        async makeOnePage(row, option, user) {
+            const finalId = (await get(row.id)).quotation_data?.final_id;
+            if (finalId) {
+                const { data: made, error } = await client.from('quotations').select('*').eq('id',finalId).maybeSingle();
+                fail(error);
+                if (made && statusOf(made) === 'converted') throw new Error('Its 1-page quote is already added to leads, so the chosen option cannot change.');
+            }
+            const original = await this.markWon(row, option, user);
+            const final = await this.ensureFinal(original, user);
+            if (final.quotation_data?.selected_option === option) return final;
+            const picked = finalForm(fromRow(original), option);
+            const form = { ...fromRow(final), ...picked, ...Object.fromEntries(['customer_name','customer_phone','customer_email','full_address','village','taluka','district','pincode','print_owner_name','owner_phone_snapshot'].map(k => [k, fromRow(final)[k]])) };
+            const body = payload(form, final.quotation_data.template);
+            return update(final, { ...body, quotation_data:{ ...final.quotation_data, ...body.quotation_data, selected_option:option } });
+        },
         async save(id, previous, form, template, user) {
             // Quotations stay editable after download, Won and Lost. Only a revised-away
             // old version (hidden behind its newer revision) refuses edits.
             if (previous && !isFinalQuotation(previous) && previous.quotation_data?.superseded_by) throw locked();
             const body = payload(form,template);
-            if (isFinalQuotation(previous)) body.status = 'draft';
             // Fewer options than the recorded Won choice: one option is that choice, else it is cleared.
             if (previous?.selected_option > form.options.length) body.selected_option = form.options.length === 1 ? 1 : null;
             body.quotation_data = { ...previous?.quotation_data, ...body.quotation_data };
+            // A 1-page quote made directly (not from a 3-page one).
+            if (!previous && form.one_page) body.quotation_data.kind = 'final';
             if (!previous) {
                 body.quotation_data.activity = [event('created',user)];
                 const { data,error } = await client.from('quotations').insert({ ...body,id,owner_id:user.id }).select('*').single();
@@ -233,6 +254,8 @@ export function createQuotationRepository(client) {
                 return fresh;
             }
             return update(fresh,{ status:'converted',converted_lead_id:leadId,converted_at:new Date().toISOString(),
+                // A 1-page quote also shows on its lead card (LeadQuotation reads source_lead_id).
+                ...(isFinalQuotation(fresh) ? { source_lead_id:leadId } : {}),
                 quotation_data:activityData(fresh,event('converted',user,{ lead_id:leadId })) });
         },
         // A stable lead UUID makes retries idempotent, including two devices converting together.

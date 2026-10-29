@@ -11,6 +11,12 @@ interface Page2Props {
   changedFields?: Set<string>;
   onEditField?: (fieldKey: string) => void;
   onOpenAssetSlot?: (slot: keyof AssetImages) => void;
+  /** Extra content right below the header (the one-page quotation's customer block). */
+  top?: React.ReactNode;
+  /** Extra content after the notes, above the footer (the one-page quotation's terms). */
+  bottom?: React.ReactNode;
+  /** Extra class on the page, e.g. quotation-page-one. */
+  pageClass?: string;
 }
 
 export const Page2: React.FC<Page2Props> = ({
@@ -19,6 +25,9 @@ export const Page2: React.FC<Page2Props> = ({
   changedFields = new Set(),
   onEditField,
   onOpenAssetSlot,
+  top,
+  bottom,
+  pageClass,
 }) => {
   const { company, page1, page2, footer, assets } = data;
 
@@ -64,7 +73,7 @@ export const Page2: React.FC<Page2Props> = ({
     : defaultBrands;
 
   return (
-    <div className="a4-page quotation-page-2 bg-white shadow-xl print:shadow-none border border-gray-200 print:border-none mx-auto w-[210mm] min-h-[297mm] p-[12mm_15mm] flex flex-col justify-between text-gray-900 text-sm relative box-border overflow-hidden">
+    <div className={`a4-page quotation-page-2${pageClass ? ` ${pageClass}` : ''} bg-white shadow-xl print:shadow-none border border-gray-200 print:border-none mx-auto w-[210mm] min-h-[297mm] p-[12mm_15mm] flex flex-col justify-between text-gray-900 text-sm relative box-border overflow-hidden`}>
       {/* Top Section */}
       <div>
         <DocumentHeader
@@ -72,6 +81,7 @@ export const Page2: React.FC<Page2Props> = ({
           assets={assets}
           onEditLogo={() => onOpenAssetSlot?.('watersunLogoUrl')}
         />
+        {top}
 
         {/* Title Header (Corporate Blue in proposal) */}
         <div className="quotation-proposal-title text-center my-3">
@@ -360,6 +370,7 @@ export const Page2: React.FC<Page2Props> = ({
             })}
           </ul>
         </div>
+        {bottom}
       </div>
 
       {/* Bottom Footer */}

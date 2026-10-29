@@ -726,3 +726,53 @@
 }
 
 .q-status-won { background:#e1f4e9; color:#246746; }
+
+/* One-page (final) quotation: page two plus the customer block, key terms,
+   warranty and sign-off. Table rules are drawn by the same SVG overlay as page three. */
+.quotation-paper .quotation-page-one .quotation-customer-meta,
+.quotation-paper .quotation-page-one .quotation-customer-meta *,
+.quotation-paper .quotation-page-one .quotation-signoff,
+.quotation-paper .quotation-page-one .quotation-signoff * {
+  font-size: 13px !important;
+  line-height: 1.3;
+}
+.quotation-paper .quotation-page-one .quotation-customer-meta .font-bold,
+.quotation-paper .quotation-page-one .quotation-customer-meta .q-customer-info > span { font-weight: 700 !important; }
+.quotation-paper .quotation-page-one .quotation-one-terms-col { flex: 0 0 56%; min-width: 0; }
+.quotation-paper .quotation-page-one .quotation-one-warranty-col { flex: 1 1 auto; min-width: 0; }
+.quotation-paper .quotation-page-one .quotation-detail-table,
+.quotation-paper .quotation-page-one .quotation-detail-table *,
+.quotation-paper .quotation-page-one .quotation-one-payment,
+.quotation-paper .quotation-page-one .quotation-one-payment * {
+  font-size: 9.5px !important;
+  color: #111 !important;
+}
+.quotation-paper .quotation-page-one .quotation-detail-table th,
+.quotation-paper .quotation-page-one .quotation-detail-table td {
+  border: 0 !important;
+  line-height: 1.2;
+  padding: 3px 4px;
+  vertical-align: middle;
+}
+.quotation-paper .quotation-page-one .quotation-detail-table th { font-size: 10.5px !important; font-weight: 700 !important; }
+.quotation-paper .quotation-page-one .quotation-detail-table td { font-weight: 400 !important; }
+.quotation-paper .quotation-page-one .quotation-detail-table { border: 0 !important; }
+.quotation-paper .quotation-page-one .quotation-section-label { padding: 0; line-height: 1.12; background: transparent; }
+.quotation-paper .quotation-page-one .quotation-one-payment { line-height: 1.3; }
+.quotation-paper .quotation-page-one .quotation-grid-overlay {
+  position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none;
+  overflow: visible; fill: none; stroke: #111; stroke-width: 0.6px;
+}
+/* Tighter page-two blocks so everything fits one A4 page without heavy scaling. */
+.quotation-paper .quotation-page-one .quotation-proposal-title { margin: 6px 0 4px; }
+.quotation-paper .quotation-page-one .quotation-proposal-title h2 { font-size: 19px !important; }
+.quotation-paper .quotation-page-one .quotation-proposal-title > div { font-size: 17px !important; margin-top: 0; }
+.quotation-paper .quotation-page-one .quotation-proposal-title p { margin-top: 0; }
+.quotation-paper .quotation-page-one .quotation-equipment-section,
+.quotation-paper .quotation-page-one div:has(> .quotation-financial-table),
+.quotation-paper .quotation-page-one .quotation-proposal-notes { margin-top: 6px; margin-bottom: 6px; }
+.quotation-paper .quotation-page-one .quotation-financial-table col:nth-child(2) { width: 54% !important; }
+.quotation-paper .quotation-page-one .quotation-financial-table col:nth-child(4) { width: 31% !important; }
+.quotation-paper .quotation-page-one .quotation-proposal-notes,
+.quotation-paper .quotation-page-one .quotation-proposal-notes * { font-size: 12px !important; line-height: 1.3; }
+.quotation-paper .quotation-page-one .quotation-proposal-notes ul > li + li { margin-top: 1px; }

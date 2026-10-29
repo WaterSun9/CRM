@@ -38,7 +38,7 @@ test('markLost needs no reason, keeps an optional remark and clears the chosen o
 test('markLost works on a converted quotation',async()=>{const{repo,row}=await setup();await repo.insertConversionLead(row,{customer_name:'Lead'},user);const lost=await repo.markLost(await repo.get(row.id),undefined,user);assert.equal(lost.status,'lost');assert.equal(statusOf(lost),'lost');});
 test('markOpen clears the chosen option and lost reason',async()=>{const{repo,row}=await setup();const lost=await repo.markLost(await repo.markWon(row,2,user),'Price',user,'note');const open=await repo.markOpen(lost,user);assert.equal(open.status,'draft');assert.equal(open.selected_option,null);assert.equal(open.lost_reason,null);assert.equal(open.lost_remark,null);assert.equal(statusOf(open),'open');
     const reopened=await repo.markOpen(await repo.markWon(open,1,user),user);assert.equal(reopened.selected_option,null);});
-test('counts: open excludes won, final and revised-away quotations',async()=>{const{repo,row,client}=await setup();const base=client.state.tables.quotations[0];const add=(id,extra)=>client.state.tables.quotations.push({...structuredClone(base),id,...extra});
+test('counts: open includes open 1-page quotes, not won or revised-away ones',async()=>{const{repo,row,client}=await setup();const base=client.state.tables.quotations[0];const add=(id,extra)=>client.state.tables.quotations.push({...structuredClone(base),id,...extra});
     add('issued-open',{status:'issued'});
     add('won',{status:'issued',selected_option:2});
     add('converted',{status:'converted',converted_lead_id:'lead1',selected_option:1});
@@ -47,7 +47,18 @@ test('counts: open excludes won, final and revised-away quotations',async()=>{co
     add('lost',{status:'lost'});
     add('lost-linked',{status:'lost',converted_lead_id:'lead2'});
     const c=await repo.counts();
-    assert.equal(c.open,2);assert.equal(c.won,1);assert.equal(c.converted,1);assert.equal(c.lost,2);assert.equal(c.all,7);
+    assert.equal(c.open,3);assert.equal(c.won,1);assert.equal(c.converted,1);assert.equal(c.lost,2);assert.equal(c.all,7);
     assert.equal(c.draft,2);assert.equal(c.issued,2);assert.equal(c.converted,1);});
 test('cutting a Won quote to one option keeps it Won on that option',async()=>{const{repo,row,form}=await setup();const won=await repo.markWon(row,3,user);
     const saved=await repo.save('quote',won,{...form,options:[form.options[0]]},freshTemplate(),user);assert.equal(saved.selected_option,1);assert.equal(statusOf(saved),'won');});
+test('Make 1-page quote copies the chosen option once; choosing again updates that copy',async()=>{const{repo,row,client}=await setup();
+    const one=await repo.makeOnePage(row,2,user);assert.equal(one.quotation_data.kind,'final');assert.equal(one.quotation_data.form.options.length,1);assert.equal(one.quotation_data.form.options[0].brandName,row.quotation_data.form.options[1].brandName);
+    assert.equal((await repo.get(row.id)).selected_option,2);
+    const again=await repo.makeOnePage(await repo.get(row.id),3,user);assert.equal(again.id,one.id);assert.equal(again.quotation_data.form.options[0].brandName,row.quotation_data.form.options[2].brandName);assert.equal(again.quotation_data.selected_option,3);
+    assert.equal(client.state.tables.quotations.filter(q=>q.quotation_data?.kind==='final').length,1);});
+test('a 1-page quote added to leads is Converted and shows on the lead card; its option is then fixed',async()=>{const{repo,row}=await setup();
+    const one=await repo.makeOnePage(row,1,user);await repo.insertConversionLead(one,{customer_name:'Lead'},user);const linked=await repo.get(one.id);
+    assert.equal(statusOf(linked),'converted');assert.equal(linked.source_lead_id,linked.converted_lead_id);
+    await assert.rejects(repo.makeOnePage(await repo.get(row.id),2,user),/already added to leads/);});
+test('a 1-page quote made directly is saved as one',async()=>{const{repo,form}=await setup();
+    const saved=await repo.save('direct',null,{...form,one_page:true,options:[form.options[0]]},freshTemplate(),user);assert.equal(saved.quotation_data.kind,'final');assert.equal(statusOf(saved),'open');});

@@ -37,12 +37,14 @@ function ModuleCountSelect({ value, onChange }) {
         options={[...Array.from({length:200},(_,index) => String(index + 1)), 'Other quantity…']}
         onChange={next => next === 'Other quantity…' ? setCustom(true) : onChange(next)} />;
 }
-export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onSaved,onPreview,onDraftSaved }) {
+export default function QuotationForm({ id,initialRow,user,meta = {},onePage = false,onDirty,onSaved,onPreview,onDraftSaved }) {
     const { showAlert,showConfirm } = useGlobalPopup();
     // The salesperson name and phone start from the profile and stay editable per quotation.
-    const [form,setForm] = useState(() => { const start = initialRow ? fromRow(initialRow,user) : newForm(user); return { ...start, print_owner_name: start.print_owner_name || start.owner_name_snapshot }; });
+    const [form,setForm] = useState(() => { const blank = newForm(user); const start = initialRow ? fromRow(initialRow,user) : onePage ? { ...blank, one_page:true, options:[blank.options[0]] } : blank; return { ...start, print_owner_name: start.print_owner_name || start.owner_name_snapshot }; });
     const [template,setTemplate] = useState(() => initialRow?.quotation_data?.template || brandedTemplate());
     const [step,setStep] = useState(0);
+    // A 1-page quote (made from a 3-page one, or directly) always has one option.
+    const isOnePage = isFinalQuotation(initialRow) || !!form.one_page;
     const [saveState,setSaveState] = useState(initialRow ? 'Saved' : 'Enter customer name and phone to start saving');
     const [error,setError] = useState('');
     const [busy,setBusy] = useState(false);
@@ -203,7 +205,7 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
                 <h2 style={{margin:0}}>{STEPS[step]}</h2>
                 {import.meta.env.DEV && <button type="button" onClick={fillTestValues} style={{background:'#fef3c7',borderColor:'#f59e0b',color:'#92400e',fontSize:12,padding:'4px 10px',minHeight:32}}>⚡ Fill Test Values</button>}
             </div>
-            {isFinalQuotation(initialRow) && <p className="q-notice">Final quotation: selected panel only. You can edit it, preview it, or save as draft and return later. Download again after changes to save an updated PDF in the lead’s documents.</p>}
+            {isOnePage && <p className="q-notice">1-page quotation: one panel option on a single page.</p>}
             {step === 0 && <div className="q-grid">{customerFields.map(([key,label,type,maxLength,readOnly]) => <Field key={key} label={label} type={type} maxLength={maxLength} readOnly={readOnly} value={form[key]} onChange={value => update(key,value)} />)}</div>}
             {step === 1 && <><div className="q-grid">
                 <Field label="Project type"><select value={form.project_type} onChange={e => update('project_type',e.target.value)}><option>Residential</option><option>Commercial</option></select></Field>
@@ -214,8 +216,8 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onDirty,onS
                 <p className="q-muted">Enter Module Wp and module count separately for each panel option. Capacity is calculated automatically.</p>
             </div>
             <h3 style={{marginTop:20}}>Price options</h3>
-            {!isFinalQuotation(initialRow) && <div className="q-filters" role="group" aria-label="How many options?" style={{alignItems:'center',margin:'4px 0 12px'}}><span className="q-muted" style={{margin:0}}>How many options?</span>{[1,3].map(n => <button key={n} type="button" aria-pressed={form.options.length === n} onClick={() => setOptionCount(n)}>{n} option{n > 1 ? 's' : ''}</button>)}</div>}
-            <div className="q-price-options">{form.options.map((option,i) => <section className="q-option" key={i}><h3>{isFinalQuotation(initialRow) ? 'Selected panel' : form.options.length === 1 ? 'Panel details' : `Panel option ${i + 1}`}</h3>
+            {!isOnePage && <div className="q-filters" role="group" aria-label="How many options?" style={{alignItems:'center',margin:'4px 0 12px'}}><span className="q-muted" style={{margin:0}}>How many options?</span>{[1,3].map(n => <button key={n} type="button" aria-pressed={form.options.length === n} onClick={() => setOptionCount(n)}>{n} option{n > 1 ? 's' : ''}</button>)}</div>}
+            <div className="q-price-options">{form.options.map((option,i) => <section className="q-option" key={i}><h3>{isOnePage ? 'Panel details' : form.options.length === 1 ? 'Panel details' : `Panel option ${i + 1}`}</h3>
                 <div className="q-grid">
                     <OptionSelect label={form.options.length > 1 ? `Option ${i + 1} Module Wp` : 'Module Wp'} placeholder="Select Module Wp…" value={optionSpecs(form, option).panel_wattage} options={moduleWps} onChange={value => updateOption(i, 'panel_wattage', value)} />
                     <ModuleCountSelect value={optionSpecs(form, option).solar_panel_qty} onChange={value => updateOption(i, 'solar_panel_qty', value)} />

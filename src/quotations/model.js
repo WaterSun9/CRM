@@ -43,7 +43,8 @@ export function optionSpecs(form, option) {
 // What users see: open, won or lost. Old 'issued' rows are open; 'converted' rows are won.
 export function statusOf(row) {
     if (row?.status === 'lost') return 'lost';
-    if (row?.converted_lead_id || row?.status === 'converted') return 'converted';
+    // An old 1-page (final) quote was linked to its lead by source_lead_id.
+    if (row?.converted_lead_id || row?.status === 'converted' || (isFinalQuotation(row) && row?.source_lead_id)) return 'converted';
     if (row?.selected_option) return 'won';
     return 'open';
 }
@@ -131,7 +132,7 @@ export function fromRow(row, user) {
 }
 export function payload(form, template) {
     form = { ...form, ...optionSpecs(form, form.options?.[0]), options: form.options.map(option => ({ ...option, ...optionSpecs(form, option) })) };
-    const columns = Object.keys(newForm()).filter(k => !['options','custom_notes','geb_charge','geda_charge','print_owner_name'].includes(k));
+    const columns = Object.keys(newForm()).filter(k => !['options','custom_notes','geb_charge','geda_charge','print_owner_name','one_page'].includes(k));
     const values = Object.fromEntries(columns.map(k => [k, form[k] === '' ? null : form[k]]));
     // Retain the legacy column for older clients without a second editable brand.
     values.solar_panel_make = form.options?.[0]?.brandName || form.solar_panel_make || null;
@@ -174,7 +175,7 @@ export function revisionInfo(row) {
     return r ? { baseNo: r.base_no, n: r.n } : { baseNo: row?.quotation_no, n: 0 };
 }
 export const quoteLabel = row => {
-    if (isFinalQuotation(row)) return `${row.quotation_data?.final_of_label || row.final_of_label || `Quote-${row.quotation_no}`} — Final`;
+    if (isFinalQuotation(row)) { const from = row.quotation_data?.final_of_label || row.final_of_label; return from ? `${from} · 1-page` : `Quote-${row.quotation_no}`; }
     const { baseNo, n } = revisionInfo(row);
     if (!baseNo) return 'Quote-DRAFT';
     return n ? `Quote-${baseNo}-R${n}` : `Quote-${baseNo}`;
