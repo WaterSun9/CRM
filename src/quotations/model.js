@@ -43,7 +43,8 @@ export function optionSpecs(form, option) {
 // What users see: open, won or lost. Old 'issued' rows are open; 'converted' rows are won.
 export function statusOf(row) {
     if (row?.status === 'lost') return 'lost';
-    if (row?.selected_option || row?.converted_lead_id || row?.status === 'converted') return 'won';
+    if (row?.converted_lead_id || row?.status === 'converted') return 'converted';
+    if (row?.selected_option) return 'won';
     return 'open';
 }
 export const isFinalQuotation = row => row?.quotation_data?.kind === 'final' || row?.kind === 'final';

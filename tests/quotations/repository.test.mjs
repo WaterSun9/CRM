@@ -14,12 +14,12 @@ test('simultaneous conversion attempts converge on the same lead',async()=>{cons
 test('conversion preserves the quotation document',async()=>{const{repo,row,client}=await setup();await repo.insertConversionLead(row,{customer_name:'Lead Customer'},user);assert.equal(client.state.tables.admin.length,1);assert.equal((await repo.get(row.id)).converted_lead_id,row.id);assert.deepEqual((await repo.get(row.id)).quotation_data.form,row.quotation_data.form);});
 test('pagination and number search',async()=>{const{repo,row,client}=await setup();for(let i=0;i<25;i++)client.state.tables.quotations.push({...row,id:`extra${i}`,quotation_no:4000+i});assert.equal((await repo.list({page:0})).rows.length,20);assert.equal((await repo.list({page:1})).rows.length,6);assert.equal((await repo.list({search:'Quote-4003'})).rows[0].quotation_no,4003);});
 
-test('statusOf shows Open, Won or Lost',()=>{
+test('statusOf shows Open, Won, Converted or Lost',()=>{
     assert.equal(statusOf({status:'draft'}),'open');
     assert.equal(statusOf({status:'issued'}),'open');
     assert.equal(statusOf({status:'issued',selected_option:2}),'won');
     assert.equal(statusOf({status:'draft',selected_option:1}),'won');
-    assert.equal(statusOf({status:'converted',converted_lead_id:'x'}),'won');
+    assert.equal(statusOf({status:'converted',converted_lead_id:'x'}),'converted');
     assert.equal(statusOf({status:'lost',selected_option:null}),'lost');
 });
 test('option count message is plain',()=>{assert.ok(validate({options:[{},{}]}).includes('Pricing: Choose 1 or 3 options'));});
@@ -47,7 +47,7 @@ test('counts: open excludes won, final and revised-away quotations',async()=>{co
     add('lost',{status:'lost'});
     add('lost-linked',{status:'lost',converted_lead_id:'lead2'});
     const c=await repo.counts();
-    assert.equal(c.open,2);assert.equal(c.won,2);assert.equal(c.lost,2);assert.equal(c.all,7);
+    assert.equal(c.open,2);assert.equal(c.won,1);assert.equal(c.converted,1);assert.equal(c.lost,2);assert.equal(c.all,7);
     assert.equal(c.draft,2);assert.equal(c.issued,2);assert.equal(c.converted,1);});
 test('cutting a Won quote to one option keeps it Won on that option',async()=>{const{repo,row,form}=await setup();const won=await repo.markWon(row,3,user);
     const saved=await repo.save('quote',won,{...form,options:[form.options[0]]},freshTemplate(),user);assert.equal(saved.selected_option,1);assert.equal(statusOf(saved),'won');});

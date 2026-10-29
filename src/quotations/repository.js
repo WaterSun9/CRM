@@ -69,14 +69,15 @@ export function createQuotationRepository(client) {
                 Promise.all(STATUSES.map(async status => [status, await tally(live().eq('status',status))])),
                 tally(notFinal(live().in('status',['draft','issued']).is('selected_option',null).is('converted_lead_id',null))),
                 tally(notFinal(live().in('status',['draft','issued']).not('selected_option','is',null).is('converted_lead_id',null))),
-                // A quotation linked to a lead is won unless it was later marked lost
+                // A quotation linked to a lead is converted unless it was later marked lost
                 // (status converted always has a lead).
                 tally(notFinal(live().neq('status','lost').not('converted_lead_id','is',null))),
             ]);
             const counts = Object.fromEntries(entries);
             counts.all = STATUSES.reduce((sum, status) => sum + counts[status], 0);
             counts.open = open;
-            counts.won = wonChosen + wonLinked;
+            counts.won = wonChosen;
+            counts.converted = wonLinked;
             return counts;
         },
         // A quotation can say "converted" only while its lead still exists. If the

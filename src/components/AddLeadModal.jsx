@@ -214,6 +214,10 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
     );
 }
 
+// Lead fields a quotation fills in (see leadMapping in src/quotations/model.js).
+const QUOTATION_FIELDS = ['customer_name', 'phone_number', 'email_address', 'full_address', 'villages', 'sub_divisions', 'district', 'pincode',
+    'module_brand', 'module_wp', 'no_of_modules', 'system_capacity_kwp', 'property_type'];
+
 export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, channel_partners = [], user, initialValues = null }) {
     const { showAlert, showConfirm } = useGlobalPopup();
     const [formData, setFormData] = useState({ ...DEFAULT_LEAD_FORM });
@@ -288,7 +292,13 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
 
     if (!isOpen) return null;
 
+    // From a quotation (Add to leads): the details it filled in are locked here.
+    // To change them, edit the quotation first.
+    const fromQuotation = initialValues?.invoice_value != null;
+    const lockedField = field => fromQuotation && QUOTATION_FIELDS.includes(field) && String(initialValues?.[field] ?? '').trim() !== '';
+    const lockProps = field => lockedField(field) ? { disabled: true, title: 'From the quotation. Edit the quotation to change it.', style: { background: '#f5f5f4', color: '#57534e', cursor: 'not-allowed' } } : {};
     const handleChange = (field, value) => {
+        if (lockedField(field)) return;
         setIsFormDirty(true);
         setValidationErrors([]);
         let processedValue = value;
@@ -485,7 +495,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                         <h3 className="mb-2 font-bold text-stone-900">Chosen quotation option</h3>
                         <p>{formData.module_brand} · {formData.no_of_modules} modules × {formData.module_wp} Wp · {formData.inverter_make}</p>
                         <p className="mt-1 font-semibold">Project amount: {new Intl.NumberFormat('en-IN', {style:'currency', currency:'INR', minimumFractionDigits:0, maximumFractionDigits:2}).format(Number(formData.invoice_value))}</p>
-                        <p className="mt-1 text-stone-500">Before subsidy. These details will be saved with the lead.</p>
+                        <p className="mt-1 text-stone-500">Before subsidy. These details will be saved with the lead. Details from the quotation are locked; to change them, edit the quotation first.</p>
                     </section>}
                     {/* Section 1: Customer Info (Strictly Line-by-Line) */}
                     <section>
@@ -505,6 +515,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 <input
                                     type="text"
                                     value={formData.customer_name || ''}
+                                    {...lockProps('customer_name')}
                                     onChange={e => handleChange('customer_name', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                     placeholder="Enter full name"
@@ -523,6 +534,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     // At 10 a +91 number could not be typed at all.
                                     maxLength={16}
                                     value={formData.phone_number || ''}
+                                    {...lockProps('phone_number')}
                                     onChange={e => handleChange('phone_number', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                     placeholder="9876543210 or +919876543210"
@@ -538,6 +550,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 <input
                                     type="email"
                                     value={formData.email_address || ''}
+                                    {...lockProps('email_address')}
                                     onChange={e => handleChange('email_address', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                     placeholder="name@example.com"
@@ -569,6 +582,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 <input
                                     type="text"
                                     value={formData.villages || ''}
+                                    {...lockProps('villages')}
                                     onChange={e => handleChange('villages', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                     placeholder="Village or address"
@@ -582,6 +596,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 <textarea
                                     rows={3}
                                     value={formData.full_address || ''}
+                                    {...lockProps('full_address')}
                                     onChange={e => handleChange('full_address', e.target.value)}
                                     className="w-full resize-y bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                     placeholder="Complete installation address"
@@ -591,6 +606,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             <div className="space-y-1">
                                 <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">Pincode <span className="normal-case text-stone-400">(optional)</span></label>
                                 <input type="text" inputMode="numeric" maxLength={6} value={formData.pincode || ''}
+                                    {...lockProps('pincode')}
                                     onChange={e => handleChange('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                     placeholder="6-digit pincode" />
@@ -604,6 +620,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 <input
                                     type="text"
                                     value={formData.sub_divisions || ''}
+                                    {...lockProps('sub_divisions')}
                                     onChange={e => handleChange('sub_divisions', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                     placeholder="Tehsil or sub division"
@@ -619,6 +636,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 <input
                                     type="text"
                                     value={formData.district || ''}
+                                    {...lockProps('district')}
                                     onChange={e => handleChange('district', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                     placeholder="District"
@@ -698,6 +716,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                  </label>
                                  <select
                                      value={formData.module_brand || ''}
+                                     {...lockProps('module_brand')}
                                      onChange={e => handleChange('module_brand', e.target.value)}
                                      className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                      required
@@ -714,6 +733,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                  </label>
                                  <select
                                      value={formData.module_wp || ''}
+                                     {...lockProps('module_wp')}
                                      onChange={e => handleChange('module_wp', e.target.value)}
                                      className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                      required
@@ -732,6 +752,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     type="number"
                                     min="1"
                                     value={formData.no_of_modules || ''}
+                                    {...lockProps('no_of_modules')}
                                     onChange={e => handleChange('no_of_modules', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                     placeholder="e.g. 10"
@@ -748,6 +769,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     <input
                                         type="text"
                                         value={formData.system_capacity_kwp || ''}
+                                        {...lockProps('system_capacity_kwp')}
                                         onChange={e => handleChange('system_capacity_kwp', e.target.value)}
                                         className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 pr-16 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
                                         placeholder="e.g. 32,940"
@@ -756,6 +778,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     <button
                                         type="button"
                                         onClick={autoCalcCapacity}
+                                        disabled={lockedField('system_capacity_kwp')}
                                         title="Calculate from Module Wp x No of Modules"
                                         className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg bg-amber-500 hover:bg-amber-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white transition cursor-pointer"
                                     >
@@ -821,6 +844,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 </label>
                                 <select
                                     value={formData.property_type || 'Residential'}
+                                    {...lockProps('property_type')}
                                     onChange={(e) => handleChange('property_type', e.target.value)}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 font-semibold text-stone-800 transition-all"
                                 >
