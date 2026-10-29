@@ -1,7 +1,7 @@
 // Local-only demo of Complaints & Warranty for the walkthrough video. Made-up
 // customers, an in-memory fake database, no login and no network. ?view=office |
 // operations | technician | partner.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ClipboardList, ShieldCheck, Users } from 'lucide-react';
 import '../index.css';
@@ -132,8 +132,8 @@ supabase.rpc = async (name, args = {}) => {
     if (name === 'contact_phones') return { data: [{ partner_phone: db.metadata.find(m => m.label === args.p_partner)?.phone || null, dealer_phone: args.p_dealer === 'Patan Dealer' ? '9898012345' : null }], error: null };
     if (name === 'set_my_partner_phone') { db.metadata[0].phone = args.p_phone; return { data: args.p_phone, error: null }; }
     if (name === 'set_customer_location') { const c = db.admin.find(row => row.id === args.p_customer_id); if (args.p_address) c.full_address = args.p_address; if (args.p_pincode) c.pincode = args.p_pincode; return { data: [{ full_address: c.full_address, pincode: c.pincode }], error: null }; }
-    if (name === 'service_start_trip') { const trip = { id: crypto.randomUUID(), issue_id: args.p_issue_id, technician_id: TECH.id, started_at: new Date().toISOString(), start_source: args.p_source, start_pincode: args.p_pincode, start_accuracy_m: args.p_accuracy, reached_at: null }; db.service_trips.push(trip); return { data: trip.id, error: null }; }
-    if (name === 'service_mark_reached') { const trip = db.service_trips.find(t => t.id === args.p_trip_id); if (trip.reached_at) return { data: false, error: null }; Object.assign(trip, { reached_at: new Date().toISOString(), reached_accuracy_m: args.p_accuracy }); const job = db.service_issues.find(i => i.id === trip.issue_id); if (job && !job.visit_stage) Object.assign(job, { visit_stage: 'visited', visit_stage_at: trip.reached_at }); return { data: true, error: null }; }
+    if (name === 'service_start_trip') { const trip = { id: crypto.randomUUID(), issue_id: args.p_issue_id, technician_id: TECH.id, started_at: new Date().toISOString(), start_source: args.p_source, start_pincode: args.p_pincode, start_lat: args.p_lat, start_lng: args.p_lng, start_accuracy_m: args.p_accuracy, reached_at: null }; db.service_trips.push(trip); return { data: trip.id, error: null }; }
+    if (name === 'service_mark_reached') { const trip = db.service_trips.find(t => t.id === args.p_trip_id); if (trip.reached_at) return { data: false, error: null }; Object.assign(trip, { reached_at: new Date().toISOString(), reached_lat: args.p_lat, reached_lng: args.p_lng, reached_accuracy_m: args.p_accuracy }); const job = db.service_issues.find(i => i.id === trip.issue_id); if (job && !job.visit_stage) Object.assign(job, { visit_stage: 'visited', visit_stage_at: trip.reached_at }); return { data: true, error: null }; }
     if (name === 'claim_service_issue') { Object.assign(db.service_issues.find(i => i.id === args.p_issue_id), { status: 'assigned', assigned_to: TECH.id, assigned_at: new Date().toISOString() }); return { data: true, error: null }; }
     return { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
 };
@@ -144,6 +144,10 @@ function Demo() {
     user = view === 'technician' ? TECH : ['partner', 'profile'].includes(view) ? PARTNER : OFFICE;
     const [tab, setTab] = useState(new URLSearchParams(location.search).get('tab') || 'warranty');
     const [raising, setRaising] = useState(null);
+    // history.pushState + a popstate event switches the view and keeps the fake database
+    // (for testing technician -> office on the same data).
+    const [, setTick] = useState(0);
+    useEffect(() => { const again = () => setTick(n => n + 1); addEventListener('popstate', again); return () => removeEventListener('popstate', again); }, []);
     const nav = [['Warranty & Complaints', ShieldCheck, ['office', 'partner'].includes(view)], ['Operations', Users, view === 'operations']];
     return <GlobalPopupProvider><div className="min-h-screen bg-[#FCFBFA] md:pl-64">
         <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-white p-5 md:block"><strong className="text-lg">Watersun CRM</strong><p className="mt-1 text-xs text-stone-500">Signed in as {user.name}</p>

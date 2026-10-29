@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../supabase';
 import { NEAR_PINCODE_KM, nearestPincode, pincodePoint } from '../../utils/tripKm';
-import { formatDateTime } from './serviceLabels';
-import { ROUGH_ACCURACY_M, accuracyText, isPincode, phonePosition, pincodePoints, roundAccuracy, startText, tripError } from './tripLabels';
+import { formatDateTime, ticketLabel } from './serviceLabels';
+import { nextLegStart } from '../../utils/tripChain';
+import { ROUGH_ACCURACY_M, accuracyText, isPincode, phonePosition, pincodeInText, pincodePoints, roundAccuracy, startText, tripError } from './tripLabels';
 
 // A trip can still get "Reached site" for 12 hours (same rule as the database).
 // Only "near 385340" when the nearest post office is within NEAR_PINCODE_KM.
@@ -14,7 +15,13 @@ const TRIP_OPEN_MS = 12 * 60 * 60 * 1000;
 // onTripState({ loaded, failed, current }) tells the job panel about the open trip
 // (work waits for Start trip; the "Reached site" reminder); a new reloadKey reads
 // the trips again.
-export default function TripPanel({ issue, userId, busy, run, onTripState, reloadKey = 0 }) {
+// One trip, several houses: after Reached site the technician picks the next of their
+// jobs (otherJobs), whose trip then starts from this house, and onGoNext opens it; or
+// ends the trip. The office links the houses from these start points.
+const endedKey = tripId => `trip-ended:${tripId}`;
+const wasEnded = tripId => { try { return localStorage.getItem(endedKey(tripId)) === '1'; } catch { return false; } };
+
+export default function TripPanel({ issue, userId, busy, run, onTripState, reloadKey = 0, otherJobs = [], onGoNext }) {
     const [trips, setTrips] = useState(null);
     const [loadError, setLoadError] = useState('');
     const [locating, setLocating] = useState('');
@@ -25,18 +32,26 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     const [hint, setHint] = useState('');
     const [pinWarning, setPinWarning] = useState('');
     const [startingAgain, setStartingAgain] = useState(false);
+    const [endedId, setEndedId] = useState(null);
+    // Reached site could not get a location: the next house can still start from this pincode.
+    const [reachFailedId, setReachFailedId] = useState(null);
+    // Jobs already on a trip in the last 12 hours (visited or on the way): not offered as Next.
+    const [onTripIds, setOnTripIds] = useState([]);
     // Set again on mount: StrictMode mounts twice in development.
     const mounted = useRef(true);
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
     const loadTrips = useCallback(async () => {
         const { data, error } = await supabase.from('service_trips')
-            .select('id, started_at, start_source, start_pincode, start_accuracy_m, reached_at, reached_accuracy_m')
+            .select('id, started_at, start_source, start_pincode, start_accuracy_m, reached_at, reached_lat, reached_lng, reached_accuracy_m')
             .eq('issue_id', issue.id).eq('technician_id', userId)
             .order('started_at', { ascending: false }).limit(6);
         if (!mounted.current) return;
         if (error) { setLoadError(tripError(error)); return; }
         setTrips(data || []); setLoadError('');
+        const since = new Date(Date.now() - TRIP_OPEN_MS).toISOString();
+        const { data: recent } = await supabase.from('service_trips').select('issue_id').eq('technician_id', userId).gte('started_at', since).limit(100);
+        if (mounted.current) setOnTripIds((recent || []).map(row => row.issue_id));
     }, [issue.id, userId]);
     useEffect(() => { loadTrips(); }, [loadTrips, reloadKey]);
 
@@ -103,7 +118,7 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
         let position;
         try { position = await phonePosition(); }
         catch (failure) {
-            if (mounted.current) { setLocating(''); setHint(`${failure.message} Reached site was not saved. That is fine: the office will use the customer's pincode.`); }
+            if (mounted.current) { setLocating(''); setReachFailedId(current.id); setHint(`${failure.message} Reached site was not saved. That is fine: the office will use the customer's pincode.`); }
             return;
         }
         if (!mounted.current) return;
@@ -115,6 +130,18 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
             if (!data) throw new Error('Reached site is already saved for this trip.');
         }, 'Reached site saved.', 'issue');
     };
+
+    // Next house: its trip starts here (this house's Reached site point, else its pincode).
+    const goNext = job => run(async () => {
+        const start = nextLegStart(current, pincodeInText(issue.service_address));
+        if (!start) throw new Error('This house has no pincode. Open the next job and tap Start trip there.');
+        const { error } = await supabase.rpc('service_start_trip', { p_issue_id: job.id, ...start });
+        if (error) throw new Error(tripError(error));
+        onGoNext?.(job.id);
+    }, `Trip to ${ticketLabel(job)} ${job.customer_name || ''} started from this house.`, 'issue');
+    const endTrip = () => { try { localStorage.setItem(endedKey(current.id), '1'); } catch { /* private window */ } setEndedId(current.id); };
+    const ended = current && (endedId === current.id || wasEnded(current.id));
+    const nextJobs = otherJobs.filter(job => !onTripIds.includes(job.id));
 
     const disabled = busy || Boolean(locating);
     const big = 'min-h-12 w-full rounded-xl px-4 text-sm font-bold disabled:opacity-50';
@@ -132,6 +159,18 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
                 : <button type="button" disabled={disabled} onClick={markReached} className={`${big} mt-2 bg-sky-700 text-white`}>{locating === 'reach' ? 'Finding your location…' : 'Reached site'}</button>}
             {!current.reached_at && <p className="mt-1 text-xs text-stone-500">Tap this when you reach the customer, so the km is correct.</p>}
         </div>}
+
+        {current && (current.reached_at || reachFailedId === current.id) && !startingAgain && !ended && nextJobs.length > 0 && <div className="space-y-2 rounded-lg border border-sky-300 bg-white p-2">
+            <p className="text-sm font-bold text-sky-950">Done here? Where next on this trip?</p>
+            <p className="text-xs text-stone-600">Pick the next house. Its trip starts from here, so the km of every house is right.</p>
+            {nextJobs.map(job => <button key={job.id} type="button" disabled={disabled} onClick={() => goNext(job)}
+                className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border px-3 text-left text-sm disabled:opacity-50">
+                <span className="min-w-0 break-words"><strong>Next: {ticketLabel(job)}</strong> {job.customer_name}</span>
+                <span className="shrink-0 text-xs text-stone-500">{pincodeInText(job.service_address) || 'no pincode'}</span>
+            </button>)}
+            <button type="button" disabled={disabled} onClick={endTrip} className="min-h-11 w-full rounded-xl bg-stone-800 px-3 text-sm font-bold text-white disabled:opacity-50">End trip – no more houses</button>
+        </div>}
+        {current?.reached_at && ended && <p className="rounded-lg bg-white p-2 text-xs text-stone-600">Trip ended at this house.</p>}
 
         {current && !startingAgain && <button type="button" disabled={disabled} onClick={() => { reset(); setStartingAgain(true); }} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold disabled:opacity-50">Start a new trip</button>}
 

@@ -4,6 +4,7 @@ import { TRIP_ROAD_FACTOR } from '../../constants';
 import { estimateRouteKm } from '../../utils/tripKm';
 import { TripTypeChoice, kmAmount, useKmSettings } from './kmSettings';
 import { combinedVisitRows, ticketLabel, todayLocal } from './serviceLabels';
+import { tripChain } from '../../utils/tripChain';
 import { isPincode, pincodeInText, pincodePoints } from './tripLabels';
 
 const RECENT_DAYS = 30;
@@ -12,9 +13,13 @@ const RECENT_DAYS = 30;
 // to other complaints of theirs in the same trip. Km = start -> each house in order
 // (-> back), with the grace km once. Saved as one visit per complaint with the same
 // trip_group; the first carries the whole km and amount, the others 0.
+// When the technician used "Next house", the houses of that trip are ticked by
+// themselves, in the order visited, with the trip's start pincode.
 export default function CombinedVisitForm({ issue, issues, user, busy, run, onSaved }) {
     const [open, setOpen] = useState(false);
-    const [chosen, setChosen] = useState([]);
+    // Complaint ids in the order visited; this complaint first unless the trip says otherwise.
+    const [order, setOrder] = useState([issue.id]);
+    const [linked, setLinked] = useState(false);
     const [startPin, setStartPin] = useState('');
     const [points, setPoints] = useState(null);
     const [date, setDate] = useState(todayLocal);
@@ -32,21 +37,34 @@ export default function CombinedVisitForm({ issue, issues, user, busy, run, onSa
     const others = issues.filter(row => row.id !== issue.id && row.assigned_to === issue.assigned_to
         && (['assigned', 'completion_pending'].includes(row.status) || (row.status === 'completed' && Date.parse(row.completed_at || '') >= since)));
 
+    const otherIds = others.map(row => row.id).join(',');
     useEffect(() => {
         if (!open) return undefined;
         let active = true;
         pincodePoints().then(data => { if (active) setPoints(data); }, () => {});
-        // The start of the technician's latest trip on this complaint, as a pincode.
-        supabase.from('service_trips').select('start_pincode').eq('issue_id', issue.id).eq('technician_id', issue.assigned_to)
-            .order('started_at', { ascending: false }).limit(1)
-            .then(({ data }) => { if (active && isPincode(data?.[0]?.start_pincode)) setStartPin(pin => pin || data[0].start_pincode); });
+        // This technician's trips on these complaints: the houses linked by "Next house",
+        // and the pincode the trip started from.
+        const ids = [issue.id, ...otherIds.split(',').filter(Boolean)];
+        supabase.from('service_trips').select('issue_id, started_at, start_source, start_lat, start_lng, start_pincode, reached_at, reached_lat, reached_lng')
+            .in('issue_id', ids).eq('technician_id', issue.assigned_to).order('started_at', { ascending: false }).limit(200)
+            .then(({ data }) => {
+                if (!active || !data?.length) return;
+                const pinOf = id => pincodeInText(issues.find(row => row.id === id)?.service_address);
+                const chain = tripChain(data, issue.id, pinOf).filter(id => ids.includes(id));
+                const first = data.filter(t => t.issue_id === chain[0]).sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))[0];
+                if (chain.length > 1) { setOrder(chain); setLinked(true); }
+                if (isPincode(first?.start_pincode)) setStartPin(pin => pin || first.start_pincode);
+            });
         return () => { active = false; };
-    }, [open, issue.id, issue.assigned_to]);
+        // issues changes on every poll; the trips are read once per opening.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, issue.id, issue.assigned_to, otherIds]);
 
     if (!others.length) return null;
     if (!open) return <button type="button" onClick={() => setOpen(true)} className="min-h-11 w-full rounded-lg border border-dashed px-3 text-xs font-bold">Combine with other houses on the same trip</button>;
 
-    const route = [issue, ...chosen.map(id => issues.find(row => row.id === id)).filter(Boolean)];
+    const chosen = order.filter(id => id !== issue.id);
+    const route = order.map(id => (id === issue.id ? issue : issues.find(row => row.id === id))).filter(Boolean);
     const stops = route.map(row => ({ pincode: pincodeInText(row.service_address), label: `${ticketLabel(row)} ${pincodeInText(row.service_address) || '(no pincode)'}` }));
     const missing = route.filter((row, i) => !stops[i].pincode);
     let estimate = null;
@@ -55,7 +73,7 @@ export default function CombinedVisitForm({ issue, issues, user, busy, run, onSa
     const kmChanged = Boolean(estimate) && shownKm !== '' && Number(shownKm) !== estimate.km;
     const autoAmount = kmAmount(shownKm, rate);
     const shownAmount = typedAmount ?? (autoAmount ? String(autoAmount) : '');
-    const toggle = id => { setChosen(list => (list.includes(id) ? list.filter(x => x !== id) : [...list, id])); setTypedKm(null); setKmNote(''); };
+    const toggle = id => { setOrder(list => (list.includes(id) ? list.filter(x => x !== id) : [...list, id])); setLinked(false); setTypedKm(null); setKmNote(''); };
 
     const save = event => {
         event.preventDefault();
@@ -83,7 +101,7 @@ export default function CombinedVisitForm({ issue, issues, user, busy, run, onSa
                 if (/row-level security/i.test(error.message || '')) throw new Error('One of these complaints is no longer with this technician. Refresh and try again.');
                 throw new Error(error.message || 'Could not save the visit.');
             }
-            setOpen(false); setChosen([]); setTypedKm(null); setKmNote(''); setTypedAmount(null); setTypedRate(null); setNote('');
+            setOpen(false); setOrder([issue.id]); setLinked(false); setTypedKm(null); setKmNote(''); setTypedAmount(null); setTypedRate(null); setNote('');
             await onSaved?.();
         }, 'Combined trip saved on every complaint.', 'issue');
     };
@@ -94,11 +112,12 @@ export default function CombinedVisitForm({ issue, issues, user, busy, run, onSa
             <h3 className="text-sm font-bold">One trip, several houses</h3>
             <button type="button" onClick={() => setOpen(false)} className="min-h-11 rounded-lg border px-3 text-xs font-bold">Hide</button>
         </div>
+        {linked && <p className="sm:col-span-2 rounded-lg bg-green-50 p-2 text-xs text-green-900"><strong>Ticked from the technician's trip</strong> (Next house): {route.map(ticketLabel).join(' → ')}. Check and save.</p>}
         <fieldset className="sm:col-span-2 space-y-1 text-xs">
             <legend className="font-semibold">Other complaints of this technician on the same trip (in the order visited)</legend>
             {others.map(row => <label key={row.id} className="flex min-h-11 items-center gap-2 rounded-lg border px-2">
                 <input type="checkbox" checked={chosen.includes(row.id)} onChange={() => toggle(row.id)} className="h-5 w-5" />
-                <span className="min-w-0 flex-1 break-words">{chosen.includes(row.id) && <strong>{chosen.indexOf(row.id) + 2}. </strong>}{ticketLabel(row)} {row.customer_name} · {pincodeInText(row.service_address) || 'no pincode'}</span>
+                <span className="min-w-0 flex-1 break-words">{order.includes(row.id) && <strong>{order.indexOf(row.id) + 1}. </strong>}{ticketLabel(row)} {row.customer_name} · {pincodeInText(row.service_address) || 'no pincode'}</span>
             </label>)}
         </fieldset>
         <label className="text-xs">Start pincode<input inputMode="numeric" maxLength={6} placeholder="385340" value={startPin} onChange={e => { setStartPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setTypedKm(null); }} className={input} /></label>
