@@ -8,6 +8,9 @@ import WarrantyBadge from './WarrantyBadge';
 import ComplaintButton from './service/ComplaintButton';
 import WarrantyCustomerPanel from './service/WarrantyCustomerPanel';
 import { fuzzyPatterns, mergeSearchResults } from '../utils/fuzzySearch';
+
+// The card also shows the inverter make (not in the usual card columns).
+const WARRANTY_COLUMNS = `${CUSTOMER_CARD_COLUMNS}, inverter_make`;
 const PAGE_SIZE = 50;
 const SEARCH_LIMIT = 60;
 
@@ -93,17 +96,17 @@ export default function WarrantyView({ user, onSelectCustomer, onRaiseServiceIss
                 // box that is open): name, consumer no. or phone, then the same spelling-tolerant
                 // name match as the top search ("sandeep" finds SANDIP).
                 const q = debouncedSearch;
-                const exact = await scopedQuery(CUSTOMER_CARD_COLUMNS)
+                const exact = await scopedQuery(WARRANTY_COLUMNS)
                     .or(`customer_name.ilike.%${q}%,consumer_no.ilike.%${q}%,phone_number.ilike.%${q}%`)
                     .order('customer_name').limit(SEARCH_LIMIT);
                 ({ data, error } = exact);
                 const patterns = fuzzyPatterns(q);
                 if (!error && patterns.length && (data || []).length < SEARCH_LIMIT) {
-                    const loose = await patterns.reduce((query, pattern) => query.filter('customer_name', 'imatch', pattern), scopedQuery(CUSTOMER_CARD_COLUMNS).limit(200));
+                    const loose = await patterns.reduce((query, pattern) => query.filter('customer_name', 'imatch', pattern), scopedQuery(WARRANTY_COLUMNS).limit(200));
                     if (!loose.error) data = mergeSearchResults(q, data || [], loose.data || [], SEARCH_LIMIT);
                 }
             } else {
-                let query = withTab(scopedQuery(CUSTOMER_CARD_COLUMNS), activeTab, todayIST());
+                let query = withTab(scopedQuery(WARRANTY_COLUMNS), activeTab, todayIST());
                 // Newest start date first (most recently expired / installed). id keeps the pages stable when dates tie.
                 query = activeTab === 'missing'
                     ? query.order('updated_at', { ascending: false, nullsFirst: false })
@@ -266,14 +269,19 @@ export default function WarrantyView({ user, onSelectCustomer, onRaiseServiceIss
                                         <p className="font-bold text-stone-900 text-sm group-hover:text-amber-700 transition-colors truncate">
                                             {c.customer_name || 'Unnamed Customer'}
                                         </p>
-                                        <div className="grid grid-cols-2 gap-2 pt-2.5 mt-2 border-t border-stone-100 text-[10px]">
+                                        {/* Name, phone, inverter make and panel company (owner, 29 Oct 2026). */}
+                                        <div className="grid grid-cols-3 gap-2 pt-2.5 mt-2 border-t border-stone-100 text-[10px]">
                                             <div className="min-w-0">
-                                                <p className="text-stone-400 font-bold uppercase tracking-wide">Consumer No.</p>
-                                                <p className="text-xs font-semibold text-stone-700 mt-0.5 truncate">{c.consumer_no || '–'}</p>
+                                                <p className="text-stone-400 font-bold uppercase tracking-wide">Phone</p>
+                                                <p className="text-xs font-semibold text-stone-700 mt-0.5 truncate">{c.phone_number || '–'}</p>
                                             </div>
                                             <div className="min-w-0">
-                                                <p className="text-stone-400 font-bold uppercase tracking-wide">Channel Partner</p>
-                                                <p className="text-xs font-semibold text-stone-700 mt-0.5 truncate">{c.channel_partner || '–'}</p>
+                                                <p className="text-stone-400 font-bold uppercase tracking-wide">Inverter</p>
+                                                <p className="text-xs font-semibold text-stone-700 mt-0.5 truncate">{c.inverter_make || '–'}</p>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-stone-400 font-bold uppercase tracking-wide">Panels</p>
+                                                <p className="text-xs font-semibold text-stone-700 mt-0.5 truncate">{c.module_brand || '–'}</p>
                                             </div>
                                         </div>
                                         {info.start && (
@@ -293,7 +301,8 @@ export default function WarrantyView({ user, onSelectCustomer, onRaiseServiceIss
                         })}
                     </div>
 
-                    {opened && <WarrantyCustomerPanel customer={opened} user={user} onClose={() => setOpened(null)} onOpenCard={onSelectCustomer && (() => { const c = opened; setOpened(null); onSelectCustomer(c); })} />}
+                    {opened && <WarrantyCustomerPanel customer={opened} user={user} onClose={() => setOpened(null)}
+                        onRaise={onRaiseServiceIssue && (c => { setOpened(null); onRaiseServiceIssue(c); })} onOpenCard={onSelectCustomer && (() => { const c = opened; setOpened(null); onSelectCustomer(c); })} />}
                     {hasMore && (
                         <div className="text-center pt-4 pb-8">
                             <button

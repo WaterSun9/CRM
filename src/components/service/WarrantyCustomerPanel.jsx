@@ -3,6 +3,7 @@ import { Cpu, History, MapPin, Pencil, Plus, ShieldCheck, Store, User, X } from 
 import { supabase } from '../../supabase';
 import { warrantyInfo, formatWarrantyDate, todayIST } from '../../utils/warranty';
 import { logFieldChanges } from '../../utils';
+import ComplaintButton from './ComplaintButton';
 import WarrantyBadge from '../WarrantyBadge';
 import ComplaintHistory from './ComplaintHistory';
 import ComplaintComments from './ComplaintComments';
@@ -311,13 +312,14 @@ const initials = name => String(name || '?').split(/\s+/).filter(Boolean).slice(
 
 // Opened from a Warranty customer. A fixed size (only the inside scrolls), so it does not
 // jump when the tab changes or a complaint opens. "Open full customer card" is for admin and staff only.
-export default function WarrantyCustomerPanel({ customer, user, onClose, onOpenCard }) {
+export default function WarrantyCustomerPanel({ customer, user, onClose, onOpenCard, onRaise }) {
     useEffect(() => {
         const onKey = event => { if (event.key === 'Escape') onClose(); };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [onClose]);
     const office = OFFICE_TYPES.includes(user?.userType);
+    const info = warrantyInfo(customer);
     return <div role="dialog" aria-modal="true" aria-label={`${customer.customer_name || 'Customer'} warranty`} className="fixed inset-0 z-[80] flex items-stretch justify-center bg-stone-950/50 backdrop-blur-[2px] sm:items-center sm:p-6" onClick={onClose}>
         <div className="flex h-full w-full flex-col overflow-hidden bg-[#FCFBFA] shadow-2xl sm:h-[88vh] sm:max-h-[960px] sm:w-[min(72rem,100%)] sm:rounded-3xl" onClick={event => event.stopPropagation()}>
             <header className="flex items-start gap-3 bg-stone-900 p-4 text-white sm:p-5">
@@ -325,7 +327,9 @@ export default function WarrantyCustomerPanel({ customer, user, onClose, onOpenC
                 <div className="min-w-0 flex-1">
                     <h2 className="break-words text-lg font-bold">{customer.customer_name || 'Customer'}</h2>
                     <p className="text-xs text-stone-400">Consumer no. {customer.consumer_no || '—'}{customer.channel_partner ? ` · ${customer.channel_partner}` : ''}</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2"><WarrantyBadge info={warrantyInfo(customer)} />
+                    <div className="mt-2 flex flex-wrap items-center gap-2"><WarrantyBadge info={info} />
+                        {/* Raise a complaint from here too: same rule as the card (in warranty, or admin as an exception). */}
+                        {onRaise && <ComplaintButton customer={customer} onRaise={onRaise} tone="dark" canRaise={info.status === 'in_warranty' || user?.userType === 'admin'} exception={info.status !== 'in_warranty'} withLabel />}
                         {office && onOpenCard && <button type="button" onClick={onOpenCard} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/20 px-3 text-xs font-bold text-white hover:bg-white/10">Open full customer card</button>}</div>
                 </div>
                 <button type="button" onClick={onClose} aria-label="Close" className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-white/20 hover:bg-white/10"><X size={20} /></button>
