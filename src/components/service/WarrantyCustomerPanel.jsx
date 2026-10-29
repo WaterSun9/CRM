@@ -328,11 +328,13 @@ export default function WarrantyCustomerPanel({ customer, user, onClose, onOpenC
                     <h2 className="break-words text-lg font-bold">{customer.customer_name || 'Customer'}</h2>
                     <p className="text-xs text-stone-400">Consumer no. {customer.consumer_no || '—'}{customer.channel_partner ? ` · ${customer.channel_partner}` : ''}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2"><WarrantyBadge info={info} />
-                        {/* Raise a complaint from here too: same rule as the card (in warranty, or admin as an exception). */}
-                        {onRaise && <ComplaintButton customer={customer} onRaise={onRaise} tone="dark" canRaise={info.status === 'in_warranty' || user?.userType === 'admin'} exception={info.status !== 'in_warranty'} withLabel />}
+                        {onRaise && <div className="sm:hidden"><ComplaintButton customer={customer} onRaise={onRaise} tone="dark" canRaise={info.status === 'in_warranty' || user?.userType === 'admin'} exception={info.status !== 'in_warranty'} withLabel className="" /></div>}
                         {office && onOpenCard && <button type="button" onClick={onOpenCard} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/20 px-3 text-xs font-bold text-white hover:bg-white/10">Open full customer card</button>}</div>
                 </div>
-                <button type="button" onClick={onClose} aria-label="Close" className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-white/20 hover:bg-white/10"><X size={20} /></button>
+                {/* Raise a complaint from here too, top right before Close (under the name on a
+                    phone): same rule as the card (in warranty, or admin as an exception). */}
+                {onRaise && <div className="hidden shrink-0 sm:block"><ComplaintButton customer={customer} onRaise={onRaise} tone="dark" canRaise={info.status === 'in_warranty' || user?.userType === 'admin'} exception={info.status !== 'in_warranty'} withLabel className="" /></div>}
+                <button type="button" onClick={onClose} aria-label="Close" className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-white/20 hover:bg-white/10"><X size={20} /></button>
             </header>
             <div className="flex-1 overflow-y-auto p-3 sm:p-6"><WarrantyCustomerBody customer={customer} user={user} /></div>
         </div>
