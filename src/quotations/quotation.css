@@ -816,3 +816,9 @@
   .q-client-actions { grid-template-columns:1fr; }
   .q-client-actions .q-primary { order:-1; }
 }
+/* History of a quote on the View page. */
+.q-history { margin:0 0 12px; background:white; border:1px solid #e7e5e4; border-radius:12px; padding:0 14px; }
+.q-history > summary { cursor:pointer; font-weight:700; font-size:13px; padding:12px 0; }
+.q-history ol { list-style:none; margin:0 0 12px; padding:0; display:grid; gap:8px; }
+.q-history li { display:flex; flex-direction:column; font-size:13px; border-left:3px solid #e7e5e4; padding-left:10px; }
+.q-history li span { font-size:12px; color:#68788b; }
