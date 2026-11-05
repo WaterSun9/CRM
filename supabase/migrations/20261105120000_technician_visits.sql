@@ -252,6 +252,9 @@ begin
     if trip.outcome is not null then
         raise exception 'This visit is already marked %. Readings cannot be changed.', case trip.outcome when 'fixed' then 'Fixed' else 'Revisit needed' end;
     end if;
+    if trip.reached_at is null then
+        raise exception 'Tap Reached site first.';
+    end if;
     foreach key in array array['ac_pn', 'ac_pe', 'ac_ne', 'dc_pm', 'dc_pe', 'dc_me'] loop
         if p_readings ? key and nullif(btrim(p_readings ->> key), '') is not null then
             begin
@@ -281,8 +284,8 @@ begin
 end;
 $$;
 
--- Fixed / Revisit needed for one visit. Needs the readings (not Reached site: the phone's
--- location can fail, and that must not stop the job).
+-- Fixed / Revisit needed for one visit. Needs Reached site and the readings (both compulsory,
+-- owner 5 Nov 2026).
 create or replace function public.service_visit_outcome(p_trip_id uuid, p_outcome text, p_note text)
 returns boolean
 language plpgsql
@@ -307,6 +310,9 @@ begin
     perform public.require_my_open_job(trip.issue_id);
     if trip.outcome is not null then
         raise exception 'This visit is already marked.';
+    end if;
+    if trip.reached_at is null then
+        raise exception 'Tap Reached site first.';
     end if;
     if trip.readings is null then
         raise exception 'Fill the site readings first.';

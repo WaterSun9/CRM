@@ -40,8 +40,6 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     const [pinWarning, setPinWarning] = useState('');
     const [startingAgain, setStartingAgain] = useState(false);
     const [endedId, setEndedId] = useState(null);
-    // Reached site could not get a location: the next house can still start from this pincode.
-    const [reachFailedId, setReachFailedId] = useState(null);
     // Jobs already on a trip in the last 12 hours (visited or on the way): not offered as Next.
     // This technician's trips of the last day: the houses of this journey and its summary.
     const [recentTrips, setRecentTrips] = useState([]);
@@ -136,7 +134,8 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
         let position;
         try { position = await phonePosition(); }
         catch (failure) {
-            if (mounted.current) { setLocating(''); setReachFailedId(current.id); setHint(`${failure.message} Reached site was not saved. That is fine: the office will use the customer's pincode.`); }
+            // Reached site is compulsory (owner, 5 Nov 2026): no going on without a location.
+            if (mounted.current) { setLocating(''); setHint(`${failure.message} Reached site is needed before the readings. Turn on location and tap Reached site again. Still failing? Call the office.`); }
             return;
         }
         if (!mounted.current) return;
@@ -162,7 +161,7 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     const onTripIds = recentTrips.filter(t => Date.now() - Date.parse(t.started_at) < TRIP_OPEN_MS).map(t => t.issue_id);
     const nextJobs = otherJobs.filter(job => !onTripIds.includes(job.id));
     // The journey is over here: ended, or no other job to go on to.
-    const arrived = Boolean(current && (current.reached_at || reachFailedId === current.id));
+    const arrived = Boolean(current?.reached_at);
     // Done at this house once the visit has its outcome (Fixed / Revisit needed).
     const atHouse = arrived && Boolean(currentOutcome);
     const showSummary = atHouse && !startingAgain && (ended || nextJobs.length === 0);
