@@ -4,8 +4,10 @@ import { tripError } from './tripLabels';
 
 // The readings the technician takes at the site, every visit (volts).
 export const READING_GROUPS = [
-    ['AC', [['ac_pn', 'P–N'], ['ac_pe', 'P–E'], ['ac_ne', 'N–E']]],
-    ['DC', [['dc_pm', '+ / −'], ['dc_pe', '+ / E'], ['dc_me', '− / E']]],
+    // The client's form: AC positive-negative, positive-earth, negative-earth;
+    // DC plus-minus, plus-earth, minus-earth.
+    ['AC', [['ac_pn', 'Pos–Neg'], ['ac_pe', 'Pos–Earth'], ['ac_ne', 'Neg–Earth']]],
+    ['DC', [['dc_pm', 'Plus–Minus'], ['dc_pe', 'Plus–Earth'], ['dc_me', 'Minus–Earth']]],
 ];
 export const readingsText = readings => (readings
     ? `AC ${readings.ac_pn} · ${readings.ac_pe} · ${readings.ac_ne} V   DC ${readings.dc_pm} · ${readings.dc_pe} · ${readings.dc_me} V   Floating ${readings.floating ? 'yes' : 'no'}`
@@ -18,11 +20,13 @@ const label = 'text-xs font-bold uppercase tracking-wider text-stone-500';
 // Saved readings, small.
 export function ReadingsLine({ readings }) {
     if (!readings) return null;
-    return <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-        {READING_GROUPS.map(([group, fields]) => <div key={group} className="contents"><dt className="font-bold text-stone-400">{group}</dt>
-            <dd className="text-stone-700">{fields.map(([key, name]) => <span key={key} className="mr-3"><span className="text-stone-400">{name}</span> {readings[key]}</span>)}</dd></div>)}
-        <dt className="font-bold text-stone-400">Float</dt><dd className="text-stone-700">{readings.floating ? 'Yes' : 'No'}</dd>
-    </dl>;
+    return <div className="space-y-1.5 text-xs">
+        {READING_GROUPS.map(([group, fields]) => <div key={group} className="grid grid-cols-[2rem_1fr_1fr_1fr] items-end gap-2">
+            <span className="font-bold text-stone-400">{group}</span>
+            {fields.map(([key, name]) => <span key={key}><span className="block text-[10px] text-stone-400">{name}</span><span className="font-semibold text-stone-800">{readings[key]} V</span></span>)}
+        </div>)}
+        <div className="grid grid-cols-[2rem_1fr] gap-2"><span className="font-bold text-stone-400">Float</span><span className="font-semibold text-stone-800">{readings.floating ? 'Yes' : 'No'}</span></div>
+    </div>;
 }
 
 // One visit at the site: readings first, then Fixed or Revisit needed.
