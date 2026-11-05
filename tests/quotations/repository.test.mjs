@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createQuotationRepository} from '../../src/quotations/repository.js';
-import {newForm,freshTemplate,statusOf,validate,groupClients,nextQuoteForm,clientKey} from '../../src/quotations/model.js';
+import {newForm,freshTemplate,statusOf,validate,groupClients,nextQuoteForm,clientKey,quoteLabel} from '../../src/quotations/model.js';
 import {memoryClient} from './memoryClient.mjs';
 const user={id:'owner',name:'Agent',phone:'9876543210'};
 async function setup(){const client=memoryClient();const repo=createQuotationRepository(client);const form={...newForm(user),customer_name:'Customer',customer_phone:'9876543211',capacity_kw:3.48,solar_panel_qty:6,panel_wattage:580,solar_panel_make:'Waaree',inverter_option:'Option 1',inverter_brand:'Solaryan',options:['a','b','c'].map(brandName=>({brandName,baseValue:100000,discount:100,subsidy:1000}))};const row=await repo.save('quote',null,form,freshTemplate(),user);return{client,repo,form,row};}
@@ -74,3 +74,12 @@ test('the picked quote added to leads is Converted, shows on the lead card, and 
 test('older quotes without a client key are each their own client; an old 1-page copy joins its 3-page quote',()=>{
     const clients=groupClients([{id:'a',created_at:'1'},{id:'b',created_at:'2',final_id:'c',selected_option:2},{id:'c',created_at:'3',quotation_data:{kind:'final',final_of:'b'}}]);
     assert.equal(clients.length,2);assert.deepEqual(clients.find(c=>c.key==='b').quotes.map(q=>q.id),['c']);});
+test('a client\'s quotes share its number (Quote-<no>-1, -2, -3) and stop at three',async()=>{const{repo,row}=await setup();
+    assert.equal(quoteLabel(row),`Quote-${row.quotation_no}-1`);
+    const second=await repo.save('second',null,nextQuoteForm(row,user),freshTemplate(),user);
+    const third=await repo.save('third',null,nextQuoteForm(second,user),freshTemplate(),user);
+    assert.equal(quoteLabel(second),`Quote-${row.quotation_no}-2`);assert.equal(quoteLabel(third),`Quote-${row.quotation_no}-3`);
+    assert.equal((await repo.save('second',second,{...nextQuoteForm(second,user),customer_name:'Edited'},freshTemplate(),user)).quotation_data.client_seq,2,'editing keeps the number');
+    await assert.rejects(repo.save('fourth',null,nextQuoteForm(row,user),freshTemplate(),user),/up to 3 quotes/);
+    assert.equal((await repo.list({search:`Quote-${row.quotation_no}-2`})).rows.length,3,'searching the number finds all the client\'s quotes');
+    assert.ok(groupClients(await repo.listAll())[0].full);});

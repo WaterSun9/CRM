@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Check, Download, Eye, FileText, Pencil, Plus, Search, Share2 } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, Download, FileText, Pencil, Plus, Search, Share2 } from 'lucide-react';
 import { supabase } from '../supabase';
 import AddLeadModal from '../components/AddLeadModal';
 import { useGlobalPopup } from '../components/GlobalPopup';
-import { canUseQuotations,chosenOptions,fromRow,money,toLead,validate,quoteLabel,statusOf,groupClients,tallyClients,CLIENT_TABS } from './model';
+import { canUseQuotations,chosenOptions,fromRow,money,toLead,validate,quoteLabel,quoteBrand,quoteFigures,statusOf,groupClients,tallyClients,CLIENT_TABS,MAX_QUOTES } from './model';
 import { quotationRepository as repo } from './client';
 import { PAGE_SIZE } from './repository';
 import { recoveries } from './recovery';
@@ -24,15 +24,11 @@ const TAB_TEXT = { all:'All', open:'Open', picked:'Picked', converted:'Added to 
 const STATUS_TEXT = { open:'Open', picked:'Picked', converted:'Added to leads', lost:'Lost' };
 const supersededOf = item => item?.superseded_by || item?.quotation_data?.superseded_by || null;
 const announceCounts = counts => { if (counts) window.dispatchEvent(new CustomEvent('quotations-changed',{ detail:{ ...counts, open:counts.waiting } })); };
-// 2026-10-16 -> 16-10-2026, as printed on the quotation.
-const showDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value).split('-').reverse().join('-') : (value || '');
 // Only a replaced old revision is read-only.
 const isLocked = item => !!supersededOf(item);
-// Panel and price of a quote for its line in the list.
-const quoteSize = item => item.capacity_kw ? `${item.capacity_kw} kW` : '— kW';
-const quotePrice = item => item.starting_price == null ? '—' : money(item.starting_price);
-// Older quotes can have three panel options (the list loads them as options).
-const optionCount = item => (item.options || item.quotation_data?.form?.options || []).length;
+// Brand, size and price of a quote for its line in the overview.
+const quoteSummary = item => [quoteBrand(item), quoteFigures(item).kw ? `${quoteFigures(item).kw} kW` : ''].filter(Boolean).join(' · ') || 'Brand and price not filled yet';
+const quotePrice = item => quoteFigures(item).price == null ? 'No price yet' : money(quoteFigures(item).price);
 /* WhatsApp disabled at owner request. Original helpers preserved:
 // WhatsApp: share the PDF from the phone, or open the customer's chat by
 // number (wa.me) with the PDF saved to attach - no typing the number again.
@@ -298,6 +294,16 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         const choice = choices.find(option => option.number === latest.selected_option) || choices[0] || null;
         setLeadPrefill(toLead(form, choice, meta?.module_brand || [])); setConversion(latest); dirty.current = true;
     });
+    // The picked quote's PDF goes into the new lead's documents; the lead's first page lists the quote too.
+    const attachToLead = async quote => {
+        try {
+            const linked = await repo.get(quote.id);
+            if (!linked.source_lead_id) return;
+            await saveLeadQuotationPdf(linked,await generateQuotationPdf(linked),user);
+        } catch (err) {
+            showAlert(`The lead was added, but the quote PDF was not saved to its documents: ${err.message}. Open the lead and use Download & save.`,{title:'Quote PDF not saved',type:'warning'});
+        }
+    };
     const reopenClient = client => run(async () => {
         for (const item of client.quotes.filter(q => statusOf(q) === 'lost')) patchRow(await repo.markOpen(await repo.get(item.id),user));
         setRefresh(n => n + 1);
@@ -323,33 +329,28 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     if (!allowed) return <div className={`q-module${embedded ? ' q-module-embedded' : ''}`}><div className="q-content q-error">Quotation Maker is unavailable for your role.<button onClick={embedded ? leaveModule : () => navigate('')}>Back to CRM</button></div></div>;
     const localCopies = mode === 'list' ? recoveries(user.id) : [];
     const isPartnerPortal = ['agent','agent2'].includes(user?.userType);
-    const heading = validId && row ? `${quoteLabel(row)} · ${STATUS_TEXT[statusOf(row)]}` : mode === 'new' ? (baseRow ? `New quote for ${baseRow.customer_name}` : 'New quote') : 'Quotation';
+    const heading = validId && row ? `${quoteLabel(row)} · ${row.customer_name || ''}` : mode === 'new' ? (baseRow ? `Another brand quote for ${baseRow.customer_name}` : 'New quote') : 'Quotation';
+    // Overview: the client in short, then one line per quote (option) with View; the circle marks the pick.
     const clientCard = client => {
         const added = client.status === 'converted';
         const closed = added || client.status === 'lost';
         return <article className="q-card q-client" key={client.key}>
-            <div className="q-card-heading"><span>{client.quotes.length} {client.quotes.length === 1 ? 'quote' : 'quotes'}</span><span className={`q-status q-status-${client.status}`}>{STATUS_TEXT[client.status]}</span></div>
-            <h3>{client.name || 'Unnamed client'}</h3>
-            {client.phone && <p>{client.phone}</p>}
-            <ol className="q-quotes">{client.quotes.map((item,i) => {
+            <div className="q-client-head"><div><h3>{client.name || 'Unnamed client'}</h3><p>{[client.phone, client.place].filter(Boolean).join(' · ')}</p></div><span className={`q-status q-status-${client.status}`}>{STATUS_TEXT[client.status]}</span></div>
+            {!closed && client.quotes.length > 1 && client.status === 'open' && <p className="q-pick-hint">Tick the option the client picked.</p>}
+            <ol className="q-lines">{client.quotes.map((item,i) => {
                 const chosen = client.picked?.id === item.id;
-                return <li key={item.id} className={`q-quote${chosen ? ' q-quote-picked' : ''}`}>
-                    <div className="q-quote-top"><strong>Quote {i + 1}</strong><span>{quoteSize(item)}</span><strong className="q-quote-price">{quotePrice(item)}</strong></div>
-                    <p className="q-quote-meta">{quoteLabel(item)} · {showDate(item.quotation_date)} · {item.owner_name_snapshot || '—'}{statusOf(item) === 'lost' && !closed ? ' · Lost' : ''}{optionCount(item) > 1 ? ` · older quote, ${optionCount(item)} options` : ''}</p>
-                    <div className="q-quote-actions">
-                        <button onClick={() => navigate(`/quotations/${item.id}/preview`)}><Eye size={15} /> View</button>
-                        <button onClick={() => navigate(`/quotations/${item.id}/edit`)}><Pencil size={15} /> Edit</button>
-                        <button disabled={busy || !online} onClick={() => generate(item, 'download')}><Download size={15} /> Download</button>
-                        <button disabled={busy || !online} onClick={() => generate(item, 'share')}><Share2 size={15} /> Share</button>
-                    </div>
-                    {added ? chosen && <p className="q-pick-note"><Check size={15} /> Client picked this one · added to leads</p>
-                        : !closed && <button className={`q-pick${chosen ? ' q-pick-on' : ''}`} aria-pressed={chosen} disabled={busy || !online} onClick={() => chosen ? unpick(item) : pick(item)}><span className="q-pick-box" aria-hidden="true">{chosen && <Check size={14} />}</span>Client picked this one</button>}
+                return <li key={item.id} className={`q-line${chosen ? ' q-line-picked' : ''}`}>
+                    {closed ? <span className={`q-radio q-radio-static${chosen ? ' q-radio-on' : ''}`} aria-hidden="true">{chosen && <Check size={14} />}</span>
+                        : <button className={`q-radio${chosen ? ' q-radio-on' : ''}`} aria-pressed={chosen} aria-label={`Client picked option ${i + 1}`} title={chosen ? 'Picked. Tap to undo.' : 'Client picked this one'} disabled={busy || !online} onClick={() => chosen ? unpick(item) : pick(item)}>{chosen && <Check size={14} />}</button>}
+                    <div className="q-line-text"><strong>Option {i + 1}</strong><span className="q-line-what">{quoteSummary(item)}</span><span className="q-line-no">{quoteLabel(item)}{chosen ? (added ? ' · picked, added to leads' : ' · picked') : ''}</span></div>
+                    <strong className="q-line-price">{quotePrice(item)}</strong>
+                    <button className="q-line-view" onClick={() => navigate(`/quotations/${item.id}/preview`)}>View <ChevronRight size={15} /></button>
                 </li>;
             })}</ol>
             <div className="q-actions q-client-actions">
                 {client.status === 'picked' && onCreateLead && <button className="q-primary" disabled={busy || !online} onClick={() => addToLeads(client.picked)}>Add to leads</button>}
                 {added && onViewLead && <button disabled={busy || !online} onClick={() => showLead(client.picked.converted_lead_id || client.picked.source_lead_id)}>View lead</button>}
-                <button disabled={busy} onClick={() => startForClient(client)}><Plus size={15} /> New quote for this client</button>
+                {client.full ? <span className="q-limit">{MAX_QUOTES} of {MAX_QUOTES} options made</span> : <button disabled={busy} onClick={() => startForClient(client)}><Plus size={15} /> Another brand quote</button>}
                 {!closed && <button disabled={busy || !online} onClick={() => {setLost(client);setReason('');setRemark('');}}>Lost</button>}
                 {client.status === 'lost' && <button disabled={busy || !online} onClick={() => reopenClient(client)}>Back to open</button>}
             </div>
@@ -363,7 +364,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
             {error && <div className="q-error" role="alert">{error}<div><button onClick={() => setRefresh(n => n + 1)}>Retry / reload</button></div></div>}
             {mode === 'list' && <>
                 <section className="q-list-head" aria-label="Quotation actions"><div className="q-list-heading">{embedded && isPartnerPortal && <button className="q-list-back" aria-label="Back to portal" onClick={leaveModule}><ArrowLeft size={17} /></button>}<div><h2>Quotations</h2><p>{loading && !allRows.length ? 'Loading quotations…' : `${count} ${count === 1 ? 'client' : 'clients'}`}</p></div></div><button className="q-create" onClick={start}><Plus size={17} /> New quote</button></section>
-                <p className="q-howto">Make one or more quotes per client, tick the one the client picked, then Add to leads.</p>
+                <p className="q-howto">New quote → client details → brand &amp; price. Add up to {MAX_QUOTES} brand options per client, tick the one they pick, then Add to leads.</p>
                 {!!localCopies.length && <div className="q-notice"><strong>Draft recovery on this device</strong>{localCopies.map(copy => <div key={copy.id}><button onClick={() => navigate(`/quotations/new/${copy.id}`)}>Recover {copy.form?.customer_name || 'unnamed quotation'}</button></div>)}</div>}
                 <div className="q-toolbar"><input className="q-search" aria-label="Search quotations" placeholder="Search client name, phone or quote number" value={search} onChange={e => {setSearch(e.target.value);setPage(0);}} /><button aria-label="Refresh quotations" onClick={() => setRefresh(n => n + 1)}><Search size={17} /> Refresh</button></div>
                 <div className="q-filters" role="group" aria-label="Show clients">{CLIENT_TABS.map(tab => <button key={tab} aria-pressed={status === tab} onClick={() => {setStatus(tab);setPage(0);}}>{TAB_TEXT[tab]}<span className="q-count"> {counts[tab]}</span></button>)}</div>
@@ -384,7 +385,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
             <div className="q-actions"><button disabled={waChat.sharing} onClick={() => setWaChat(null)}>Close</button>{canShareFile(waChat.file) && <button className="q-primary" disabled={waChat.preparing || waChat.sharing} onClick={shareWhatsAppFile}><Share2 size={16} /> {waChat.sharing ? 'Sharing…' : 'Share PDF'}</button>}</div></div></div>}
 
         {conversion && createPortal(
-            <AddLeadModal isOpen initialValues={leadPrefill} user={user} meta={meta} channel_partners={channelPartners} onClose={() => {setConversion(null);dirty.current = false;}} onSave={async (data,files) => { await onCreateLead(data,files,conversion); dirty.current = false; setConversion(null); setRefresh(n => n + 1); }} />,
+            <AddLeadModal isOpen initialValues={leadPrefill} user={user} meta={meta} channel_partners={channelPartners} onClose={() => {setConversion(null);dirty.current = false;}} onSave={async (data,files) => { await onCreateLead(data,files,conversion); dirty.current = false; setConversion(null); setRefresh(n => n + 1); void attachToLead(conversion); }} />,
             document.body
         )}
         {lost && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-lost-title"><div className="q-panel"><h2 id="q-lost-title">Mark {lost.name || 'this client'} as lost</h2><p className="q-muted">{lost.quotes.length === 1 ? 'Their quote is' : `All ${lost.quotes.length} quotes are`} marked lost. Back to open undoes it.</p><label className="q-field"><span>Reason (optional)</span><select value={reason} onChange={e => setReason(e.target.value)}><option value="">Choose reason</option>{['Price','Competitor selected','Project postponed','Not interested','Other'].map(r => <option key={r}>{r}</option>)}</select></label><label className="q-field" style={{marginTop:16}}><span>Remark (optional)</span><textarea maxLength={1000} value={remark} onChange={e => setRemark(e.target.value)} /></label><div className="q-actions"><button disabled={busy} onClick={() => setLost(null)}>Cancel</button><button className="q-primary" disabled={busy} onClick={markClientLost}>Mark lost</button></div></div></div>}

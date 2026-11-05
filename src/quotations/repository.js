@@ -1,6 +1,6 @@
-import { payload, fromRow, validate, revisionInfo, clientKey, groupClients, tallyClients, statusOf } from './model.js';
+import { payload, fromRow, validate, revisionInfo, clientKey, groupClients, tallyClients, statusOf, liveQuotes, clientSeqOf, clientNoOf, MAX_QUOTES } from './model.js';
 
-export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by,selected_option,kind:quotation_data->>kind,client_id:quotation_data->>client_id,final_of:quotation_data->>final_of,final_id:quotation_data->>final_id,options:quotation_data->form->options';
+export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by,selected_option,kind:quotation_data->>kind,client_id:quotation_data->>client_id,final_of:quotation_data->>final_of,final_id:quotation_data->>final_id,client_no:quotation_data->>client_no,client_seq:quotation_data->>client_seq,village,district,options:quotation_data->form->options';
 export const STATUSES = ['draft','issued','converted','lost'];
 export const PAGE_SIZE = 20;
 // PostgreSQL jsonb reorders object keys; compare canonical values, not wire key order.
@@ -29,8 +29,9 @@ export function createQuotationRepository(client) {
             // Never interpolate PostgREST filter punctuation or wildcards supplied by users.
             const term = search.replace(/[^\p{L}\p{N}\s+-]/gu,'').trim().slice(0,100);
             if (term) {
-                const number = term.replace(/^quote-?/i,'').trim();
-                const numberFilter = /^\d{1,15}$/.test(number) ? `,quotation_no.eq.${number}` : '';
+                // Quote-3255 or Quote-3255-2 finds all of that client's quotes.
+                const number = term.replace(/^quote-?/i,'').trim().replace(/-\d$/,'');
+                const numberFilter = /^\d{1,15}$/.test(number) ? `,quotation_no.eq.${number},quotation_data->>client_no.eq.${number}` : '';
                 query = query.or(`customer_name.ilike.%${term}%,customer_phone.ilike.%${term}%${numberFilter}`);
             }
             const { data,error,count } = await query.range(page * size, (page + 1) * size - 1);
@@ -118,8 +119,21 @@ export function createQuotationRepository(client) {
             if (previous?.selected_option > form.options.length) body.selected_option = form.options.length === 1 ? 1 : null;
             body.quotation_data = { ...previous?.quotation_data, ...body.quotation_data };
             if (!previous) {
-                // A client's first quote starts the group; "New quote for this client" passes its key.
+                // A client's first quote starts the group (Quote-<no>-1); "Another brand quote" passes
+                // its key and gets the client's number with the next place, up to three quotes.
                 body.quotation_data.client_id = form.client_id || id;
+                body.quotation_data.client_seq = 1;
+                if (form.client_id) {
+                    const quotes = liveQuotes(await this.clientQuotes({ client_id:form.client_id }));
+                    if (!quotes.some(q => q.id === id)) {
+                        if (quotes.length >= MAX_QUOTES) throw new Error(`A client can have up to ${MAX_QUOTES} quotes. Edit one of them instead.`);
+                        const first = quotes.find(q => q.id === form.client_id) || quotes[0];
+                        if (first) {
+                            body.quotation_data.client_no = Number(clientNoOf(first));
+                            body.quotation_data.client_seq = Math.max(...quotes.map(q => clientSeqOf(q) || 1)) + 1;
+                        }
+                    }
+                }
                 body.quotation_data.activity = [event('created',user)];
                 const { data,error } = await client.from('quotations').insert({ ...body,id,owner_id:user.id }).select('*').single();
                 if (error?.code !== '23505') { fail(error); return data; }

@@ -65,6 +65,15 @@ const supersededOf = row => row?.superseded_by || row?.quotation_data?.supersede
 const finalIdOf = row => row?.final_id || row?.quotation_data?.final_id || null;
 const createdOf = row => String(row?.created_at || '');
 export const CLIENT_TABS = ['all', 'open', 'picked', 'converted', 'lost'];
+// A client can have up to three quotes (options), numbered Quote-<client no>-1, -2, -3.
+export const MAX_QUOTES = 3;
+export const clientSeqOf = row => Number(row?.client_seq || row?.quotation_data?.client_seq) || null;
+export const clientNoOf = row => row?.client_no || row?.quotation_data?.client_no || row?.quotation_no;
+// Quotes that are shown: not a replaced revision, and not an old 3-page quote whose 1-page copy is here.
+export function liveQuotes(rows) {
+    const ids = new Set(rows.map(row => row.id));
+    return rows.filter(row => !supersededOf(row) && !(finalIdOf(row) && ids.has(finalIdOf(row))));
+}
 // A client is converted once a quote is added to leads, lost when every quote is lost,
 // picked when they chose a quote, else open.
 export function clientStatus(quotes) {
@@ -76,28 +85,39 @@ export function clientStatus(quotes) {
 }
 // The list as clients, newest activity first, each with its quotes oldest first (Quote 1, 2 ...).
 export function groupClients(rows) {
-    const ids = new Set(rows.map(row => row.id));
-    // A replaced revision, and an old 3-page quote whose 1-page copy is listed, are not shown.
-    const live = rows.filter(row => !supersededOf(row) && !(finalIdOf(row) && ids.has(finalIdOf(row))));
     const groups = new Map();
-    for (const row of live) {
+    for (const row of liveQuotes(rows)) {
         const key = clientKey(row);
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(row);
     }
     return [...groups.entries()].map(([key, quotes]) => {
-        quotes.sort((a, b) => createdOf(a).localeCompare(createdOf(b)) || (a.quotation_no || 0) - (b.quotation_no || 0));
+        quotes.sort((a, b) => (clientSeqOf(a) || 1) - (clientSeqOf(b) || 1) || createdOf(a).localeCompare(createdOf(b)) || (a.quotation_no || 0) - (b.quotation_no || 0));
         const latest = quotes.at(-1);
         const status = clientStatus(quotes);
         // The quote the client chose: the one added to leads, else the one marked picked.
         const picked = quotes.find(q => statusOf(q) === (status === 'converted' ? 'converted' : 'picked')) || null;
-        return { key, quotes, latest, picked, status, name: latest.customer_name, phone: latest.customer_phone };
+        const place = [latest.village || latest.quotation_data?.form?.village, latest.district || latest.quotation_data?.form?.district].filter(Boolean)[0] || '';
+        return { key, quotes, latest, picked, status, name: latest.customer_name, phone: latest.customer_phone, place, full: quotes.length >= MAX_QUOTES };
     }).sort((a, b) => createdOf(b.latest).localeCompare(createdOf(a.latest)));
 }
 export function tallyClients(clients) {
     const counts = Object.fromEntries(CLIENT_TABS.map(tab => [tab, tab === 'all' ? clients.length : clients.filter(c => c.status === tab).length]));
     // The sidebar badge: clients still waiting on an outcome.
     return { ...counts, waiting: counts.open + counts.picked };
+}
+// Panel brand of a quote (its picked option on an older three-option quote).
+export function quoteBrand(row) {
+    const options = row?.options || row?.quotation_data?.form?.options || [];
+    if (options.length > 1 && !row?.selected_option) return `${options.length} brands`;
+    return options[(row?.selected_option || 1) - 1]?.brandName || options[0]?.brandName || row?.solar_panel_make || '';
+}
+// kW and price for the overview; an older three-option quote shows its picked option.
+export function quoteFigures(row) {
+    const options = row?.options || row?.quotation_data?.form?.options || [];
+    const option = options.length > 1 && row?.selected_option ? options[row.selected_option - 1] : null;
+    if (option) return { kw: option.capacity_kw ?? null, price: option.netPayableAmount ?? null };
+    return { kw: row?.capacity_kw ?? null, price: row?.starting_price ?? null };
 }
 // A new quote for an existing client: their details and their last quote's panel, dated today.
 export function nextQuoteForm(row, user = {}) {
@@ -228,6 +248,8 @@ export function revisionInfo(row) {
     return r ? { baseNo: r.base_no, n: r.n } : { baseNo: row?.quotation_no, n: 0 };
 }
 export const quoteLabel = row => {
+    // Quotes made since quotes are grouped by client carry the client's number and their place: Quote-3255-2.
+    if (clientSeqOf(row)) return clientNoOf(row) ? `Quote-${clientNoOf(row)}-${clientSeqOf(row)}` : 'Quote-DRAFT';
     if (isFinalQuotation(row)) return row.quotation_no ? `Quote-${row.quotation_no}` : 'Quote-DRAFT';
     const { baseNo, n } = revisionInfo(row);
     if (!baseNo) return 'Quote-DRAFT';

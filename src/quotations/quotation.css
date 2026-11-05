@@ -777,29 +777,42 @@
 .quotation-paper .quotation-page-one .quotation-proposal-notes * { font-size: 12px !important; line-height: 1.3; }
 .quotation-paper .quotation-page-one .quotation-proposal-notes ul > li + li { margin-top: 1px; }
 
-/* Quotes grouped by client: each quote is a row; "Client picked this one" marks one. */
+/* Overview: one card per client, one line per quote (option). The circle marks the client's pick. */
 .q-howto { margin:-8px 0 14px; font-size:13px; color:#68788b; }
 .q-status-picked { background:#fff4d6; color:#8a5a00; }
-.q-client .q-status { text-transform:none; }
-.q-quotes { list-style:none; margin:12px 0 0; padding:0; display:grid; gap:10px; }
-.q-quote { border:1px solid #e7e5e4; border-radius:12px; padding:12px; background:#fcfbfa; min-width:0; }
-.q-quote-picked { border:2px solid #246746; background:#f2faf5; padding:11px; }
-.q-quote-top { display:flex; align-items:baseline; gap:10px; font-size:14px; }
-.q-quote-top>span { color:#68788b; font-weight:600; }
-.q-quote-price { margin-left:auto; font-size:16px; white-space:nowrap; }
-.q-card p.q-quote-meta { font-size:12px; margin:4px 0 10px; overflow-wrap:anywhere; }
-.q-quote-actions { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
-.q-module .q-quote-actions button { min-height:38px; padding:6px 4px; font-size:12px; gap:4px; border-radius:10px; min-width:0; }
-.q-module .q-pick { width:100%; margin-top:8px; justify-content:flex-start; gap:10px; background:white; }
-.q-module .q-pick-on { border-color:#246746; color:#246746; background:#e1f4e9; }
-.q-module .q-pick-on:hover { background:#d3eedd; }
-.q-pick-box { width:20px; height:20px; flex:0 0 20px; border:2px solid #a8a29e; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; background:white; }
-.q-pick-on .q-pick-box { border-color:#246746; background:#246746; color:white; }
-.q-card p.q-pick-note { display:flex; align-items:center; gap:6px; margin:8px 0 0; color:#246746; font-weight:700; }
-.q-client-actions { margin-top:14px; }
+.q-client .q-status { text-transform:none; flex:0 0 auto; }
+.q-client-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+.q-client-head>div { min-width:0; }
+.q-card .q-client-head h3 { margin:0 0 2px; }
+.q-card .q-client-head p { margin:0; }
+.q-card p.q-pick-hint { margin:12px 0 0; font-size:12px; color:#8a5a00; font-weight:700; }
+.q-lines { list-style:none; margin:10px 0 0; padding:0; display:grid; gap:8px; }
+.q-line { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; align-items:center; gap:10px; border:1px solid #e7e5e4; border-radius:12px; padding:10px 10px 10px 12px; background:#fcfbfa; }
+.q-line-picked { border-color:#246746; background:#f2faf5; box-shadow:inset 0 0 0 1px #246746; }
+.q-line-text { display:flex; flex-direction:column; min-width:0; font-size:13px; line-height:1.3; }
+.q-line-what { color:#44403c; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.q-line-no { font-size:11px; color:#8b97a6; }
+.q-line-picked .q-line-no { color:#246746; font-weight:700; }
+.q-line-price { font-size:15px; white-space:nowrap; }
+.q-module button.q-line-view { min-height:38px; padding:6px 10px; gap:2px; font-size:12px; }
+.q-module button.q-radio, .q-radio-static { width:26px; height:26px; min-height:0; padding:0; border-radius:99px; border:2px solid #a8a29e; background:white; display:inline-flex; align-items:center; justify-content:center; color:white; }
+.q-module button.q-radio:hover { border-color:#246746; background:#f2faf5; }
+.q-module button.q-radio-on, .q-radio-static.q-radio-on { border-color:#246746; background:#246746; }
+.q-module button.q-radio-on:hover { background:#1d5639; }
+.q-radio-static:not(.q-radio-on) { border-color:#e7e5e4; }
+.q-client-actions { margin-top:12px; }
+.q-limit { flex:1; display:inline-flex; align-items:center; justify-content:center; min-height:44px; font-size:12px; color:#8b97a6; font-weight:700; }
+.q-context { margin-bottom:12px; }
+.q-more { margin-top:16px; }
+.q-more > summary { cursor:pointer; font-weight:700; font-size:13px; padding:10px 0; color:#44403c; }
 @media(max-width:600px) {
   .q-howto { margin-top:-6px; font-size:12px; }
-  .q-module .q-quote-actions button { flex-direction:column; font-size:11px; min-height:46px; }
+  .q-line { grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"pick text price" "pick text view"; row-gap:4px; }
+  .q-line > .q-radio, .q-line > .q-radio-static { grid-area:pick; }
+  .q-line-text { grid-area:text; }
+  .q-line-price { grid-area:price; text-align:right; }
+  .q-module button.q-line-view { grid-area:view; min-height:34px; }
+  .q-line-what { white-space:normal; }
   .q-client-actions { grid-template-columns:1fr; }
   .q-client-actions .q-primary { order:-1; }
 }
