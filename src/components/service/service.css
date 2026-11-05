@@ -62,5 +62,5 @@
 .service-root.service-phone.has-selection > .service-filters { display: none; }
 .service-root.service-phone .service-list { display: block; }
 .service-root.service-phone .service-list > * + * { margin-top: 8px !important; }
-.service-root.service-phone .service-detail { padding: 16px; }
+.service-root.service-phone .service-detail { padding: 0; }
 .service-root.service-phone .service-customer-facts > div { grid-template-columns: 105px minmax(0, 1fr); gap: 8px; }

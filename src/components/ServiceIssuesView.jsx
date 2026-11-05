@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronRight, MessageSquare, Route, UserRound, Wrench } from 'lucide-react';
 import './service/service.css';
 import { supabase } from '../supabase';
 import WarrantyBadge from './WarrantyBadge';
@@ -168,6 +168,11 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     }, [isTechnician, formOnly, user?.id, planReload]);
 
     const selected = issues.find(issue => issue.id === selectedId);
+    // Technician portal: one job in tabs, like the customer card's stages, instead of one long page.
+    // An open job starts on Customer (read, then claim); an own job on Work.
+    const [jobTab, setJobTab] = useState('work');
+    const selectedOpen = selected?.status === 'open';
+    useEffect(() => { setJobTab(selectedOpen ? 'customer' : 'work'); }, [selectedId, selectedOpen]);
     const issuesRef = useRef(issues);
     issuesRef.current = issues;
     // Opened at one complaint (red wrench, customer history): bring it into view once it has loaded.
@@ -260,6 +265,56 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     </>;
     const bannersAtTop = formOnly || !selected || messageSpot === 'top';
 
+    // Technician portal: the job as a dark header with stage tabs (Work, Customer, Visits, Notes).
+    // Every tab stays mounted and only the chosen one shows, so a typed OTP or reading is kept.
+    const phoneJob = () => {
+        const tabs = [['work', 'Work', Wrench], ['customer', 'Customer', UserRound], ['visits', 'Visits', Route], ['notes', 'Notes', MessageSquare]];
+        const pane = key => (jobTab === key ? 'space-y-4 p-4' : 'hidden');
+        const nextJobs = issues.filter(row => row.id !== selected.id && row.assigned_to === user.id && row.status === 'assigned'
+            && (!planOrder.length || planOrder.includes(row.id))).sort((a, b) => planned(a.id) - planned(b.id));
+        return <>
+            <div className="bg-stone-900 px-4 pb-0 pt-4 text-white">
+                <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} className="inline-flex min-h-9 items-center gap-1 text-xs font-bold text-stone-400 hover:text-white"><ArrowLeft size={14} /> All jobs</button>
+                <p className="mt-2 text-[11px] font-bold text-stone-400">{ticketLabel(selected)}</p>
+                <h2 className="text-xl font-bold break-words">{selected.customer_name}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5"><StatusPill issue={selected} /><WarrantyPill status={selected.warranty_status || 'unknown'} /></div>
+                <p className="mt-1.5 text-[11px] text-stone-400">{selected.problem_type}{selected.required_date ? ` · needed by ${new Date(`${selected.required_date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}</p>
+                <div role="tablist" className="-mx-4 mt-3 flex gap-5 overflow-x-auto whitespace-nowrap border-t border-white/5 px-4">{tabs.map(([key, label, Icon]) =>
+                    <button key={key} type="button" role="tab" aria-selected={jobTab === key} onClick={() => setJobTab(key)}
+                        className={`flex shrink-0 items-center gap-1.5 border-b-2 py-3 text-[10px] font-bold uppercase tracking-widest transition-all ${jobTab === key ? 'border-amber-400 text-amber-400' : 'border-transparent text-stone-500 hover:text-stone-300'}`}>
+                        <Icon size={12} /> {label}</button>)}</div>
+            </div>
+            {!bannersAtTop && <div className="space-y-2 px-4 pt-4">{banners}</div>}
+            <div className={pane('work')}>
+                {selected.warranty_exception_reason && <p className="rounded-lg border border-orange-200 bg-orange-50 p-2 text-xs text-orange-950"><strong>Raised by admin as a warranty exception:</strong> {selected.warranty_exception_reason}</p>}
+                <ClosureNote issue={selected} forTechnician />
+                {selected.status === 'open'
+                    ? <p className="rounded-2xl border border-dashed border-stone-200 p-6 text-center text-sm text-stone-400">Claim this job to start the trip.</p>
+                    : <TechnicianJobPanel key={selected.id} issue={selected} userId={user.id} busy={busy} run={run}
+                        onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)}
+                        otherJobs={nextJobs} onGoNext={openIssue} jobs={issues} />}
+            </div>
+            <div className={pane('customer')}>
+                <CustomerFacts issue={selected} userType={user?.userType} canAddInverter={ownJob && isOpenJobFor(selected, user?.id)} busy={busy} run={run} />
+                <PastComplaints key={`past:${selected.id}`} issue={selected} />
+                {selected.give_up_reason && <p className="rounded-lg bg-amber-50 p-2 text-xs">Previous give-up reason: {selected.give_up_reason}</p>}
+            </div>
+            <div className={pane('visits')}>
+                {ownJob ? <VisitTimeline issue={selected} /> : <p className="py-6 text-center text-sm text-stone-400">Visits show once you claim the job.</p>}
+                {visits.length > 0 && <div className="space-y-2"><h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">Travel payments</h3>{visits.map(visit => <VisitRow key={visit.id} visit={visit} />)}</div>}
+            </div>
+            <div className={pane('notes')}>
+                {ownJob && <ComplaintComments key={`comments:${selected.id}`} issue={selected} user={user} busy={busy} run={run} />}
+                <ComplaintHistory key={`history:${selected.id}`} issue={selected} />
+            </div>
+            {/* An open job: read it, then claim it - on any tab. */}
+            {selected.status === 'open' && <div className="sticky bottom-0 z-10 border-t border-stone-200 bg-white/95 p-3 backdrop-blur">
+                <TechnicianJobPanel key={`claim:${selected.id}`} issue={selected} userId={user.id} busy={busy} run={run}
+                    onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)} />
+            </div>}
+        </>;
+    };
+
     return <div className={formOnly ? 'w-full space-y-3' : `service-root ${embedded ? 'service-embedded' : ''} ${view ? 'service-phone' : ''} ${selected ? 'has-selection' : ''}`}>
         {!formOnly && !view && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? 'Plan the day in My trip, then follow the steps on each job.' : canManage ? 'Assign complaints, follow each step, close them, and record each visit’s distance and amount. Complaints are raised from Warranty customers and show up here. The km rate is set in Operations.' : 'Track the complaints of your customers, step by step, and add comments. Raise a complaint from Warranty customers or the customer’s card.'}</p></header>}
         {loadError && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700"><span className="flex-1">Could not load complaints: {loadError}</span><button type="button" onClick={() => load()} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold">Try again</button></p>}
@@ -282,8 +337,8 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
                     <span className="mt-2 flex flex-wrap items-center gap-2"><StatusPill issue={issue} />
                         {issue.created_at && <span className="text-[11px] text-stone-500">Raised {new Date(issue.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</span>}</span>
                 </button>)}</div>
-            <div ref={detailRef} className="service-detail scroll-mt-4 rounded-2xl border bg-white p-4 sm:p-5 space-y-4 min-w-0">
-                {!selected ? null : <>
+            <div ref={detailRef} className={`service-detail scroll-mt-4 rounded-2xl border bg-white min-w-0 ${view ? 'overflow-hidden' : 'p-4 sm:p-5 space-y-4'}`}>
+                {!selected ? null : view ? phoneJob() : <>
                     <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} className="service-back inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-stone-600"><ArrowLeft size={16} /> {isTechnician ? 'All jobs' : 'All complaints'}</button>
                     <div className="space-y-1">
                         <h2 className="font-bold text-lg break-words">{selected.ticket_no && <span className="text-stone-500">{ticketLabel(selected)} </span>}{selected.customer_name}</h2>
