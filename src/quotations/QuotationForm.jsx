@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Save, Trash2 } from 'lucide-react';
-import { calculate, chargeLabel, extraCharges, fromRow, money, newForm, optionSpecs, isFinalQuotation, STEPS, validate } from './model';
+import { calculate, chargeLabel, extraCharges, fromRow, money, newForm, nextQuoteForm, oneOption, optionSpecs, STEPS, validate } from './model';
 import { brandedTemplate } from './branding';
 import { quotationRepository as repo } from './client';
 import { readRecovery, removeRecovery, writeRecovery } from './recovery';
@@ -37,15 +37,15 @@ function ModuleCountSelect({ value, onChange }) {
         options={[...Array.from({length:200},(_,index) => String(index + 1)), 'Other quantity…']}
         onChange={next => next === 'Other quantity…' ? setCustom(true) : onChange(next)} />;
 }
-export default function QuotationForm({ id,initialRow,user,meta = {},onePage = false,onDirty,onSaved,onPreview,onDraftSaved }) {
+// baseRow: "New quote for this client" starts from that client's last quote.
+export default function QuotationForm({ id,initialRow,baseRow = null,user,meta = {},onDirty,onSaved,onPreview,onDraftSaved }) {
     const { showAlert,showConfirm } = useGlobalPopup();
     // The salesperson name and phone start from the profile and stay editable per quotation.
-    const [form,setForm] = useState(() => { const blank = newForm(user); const start = initialRow ? fromRow(initialRow,user) : onePage ? { ...blank, one_page:true, options:[blank.options[0]] } : blank; return { ...start, print_owner_name: start.print_owner_name || start.owner_name_snapshot }; });
-    const [template,setTemplate] = useState(() => initialRow?.quotation_data?.template || brandedTemplate());
-    const [step,setStep] = useState(0);
-    // A 1-page quote (made from a 3-page one, or directly) always has one option.
-    const isOnePage = isFinalQuotation(initialRow) || !!form.one_page;
-    const [saveState,setSaveState] = useState(initialRow ? 'Saved' : 'Enter customer name and phone to start saving');
+    const [form,setForm] = useState(() => { const start = initialRow ? fromRow(initialRow,user) : baseRow ? nextQuoteForm(baseRow,user) : newForm(user); return { ...start, print_owner_name: start.print_owner_name || start.owner_name_snapshot }; });
+    const [template,setTemplate] = useState(() => initialRow?.quotation_data?.template || baseRow?.quotation_data?.template || brandedTemplate());
+    // A new quote for a known client opens on Pricing: the customer details are already filled.
+    const [step,setStep] = useState(!initialRow && baseRow ? 1 : 0);
+    const [saveState,setSaveState] = useState(initialRow ? 'Saved' : baseRow ? 'Change the size or price, then Preview' : 'Enter customer name and phone to start saving');
     const [error,setError] = useState('');
     const [busy,setBusy] = useState(false);
     const [recovery,setRecovery] = useState(() => readRecovery(user.id,id));
@@ -127,8 +127,6 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onePage = f
             geda_charge: '',
             options: [
                 { brandName: 'Waaree Solar', panel_wattage: '580', solar_panel_qty: '6', capacity_kw: '3.48', baseValue: '189000', discount: '5000', subsidy: '78000' },
-                { brandName: 'Tata Power Solar', panel_wattage: '600', solar_panel_qty: '6', capacity_kw: '3.6', baseValue: '198000', discount: '5000', subsidy: '78000' },
-                { brandName: 'Adani Solar', panel_wattage: '550', solar_panel_qty: '7', capacity_kw: '3.85', baseValue: '205000', discount: '5000', subsidy: '78000' },
             ],
             custom_notes: ['Standard installation warranty included', 'Special seasonal discount applied'],
         };
@@ -165,16 +163,8 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onePage = f
             return next;
         }));
     };
-    // Switch between one panel and three panel options. Options 2 and 3 come back blank with default brands.
-    const setOptionCount = async count => {
-        if (count === form.options.length) return;
-        const blank = newForm(user).options;
-        if (count === 1) {
-            const filled = form.options.slice(1).some((o,i) => (o.brandName || '') !== (blank[i + 1]?.brandName || '') || String(o.baseValue ?? '').trim() !== '');
-            if (filled && !await showConfirm('Remove options 2 and 3?',{confirmLabel:'Remove'})) return;
-            update('options',[formRef.current.options[0]]);
-        } else update('options',[...form.options, ...blank.slice(form.options.length)]);
-    };
+    // An older quote can have three panel options; keeping one makes it a normal quote.
+    const keepOption = number => update('options', oneOption(formRef.current, number).options);
     const restore = async () => {
         if (recovery.base_updated_at !== (rowRef.current?.updated_at || null) && !await showConfirm('The server has a newer version. Restore your local copy into the editor for review?',{confirmLabel:'Restore for review'})) return;
         setTemplate(recovery.template || template); templateRef.current = recovery.template || template;
@@ -205,7 +195,7 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onePage = f
                 <h2 style={{margin:0}}>{STEPS[step]}</h2>
                 {import.meta.env.DEV && <button type="button" onClick={fillTestValues} style={{background:'#fef3c7',borderColor:'#f59e0b',color:'#92400e',fontSize:12,padding:'4px 10px',minHeight:32}}>⚡ Fill Test Values</button>}
             </div>
-            {isOnePage && <p className="q-notice">1-page quotation: one panel option on a single page.</p>}
+            {form.options.length > 1 && <div className="q-notice" role="status"><strong>This older quote has {form.options.length} panel options.</strong><p>A quote now has one. Keep the one to quote; for another size or price, make a new quote for this client.</p><div className="q-actions">{form.options.map((option,i) => <button key={i} type="button" onClick={() => keepOption(i + 1)}>Keep {option.brandName || `option ${i + 1}`}</button>)}</div></div>}
             {step === 0 && <div className="q-grid">{customerFields.map(([key,label,type,maxLength,readOnly]) => <Field key={key} label={label} type={type} maxLength={maxLength} readOnly={readOnly} value={form[key]} onChange={value => update(key,value)} />)}</div>}
             {step === 1 && <><div className="q-grid">
                 <Field label="Project type"><select value={form.project_type} onChange={e => update('project_type',e.target.value)}><option>Residential</option><option>Commercial</option></select></Field>
@@ -213,11 +203,9 @@ export default function QuotationForm({ id,initialRow,user,meta = {},onePage = f
                 <Field label="GEB charge (₹)"><input aria-label="GEB charge" type="number" min="0" step="any" inputMode="decimal" placeholder="Included" value={form.geb_charge ?? ''} onChange={e => update('geb_charge',e.target.value)} /></Field>
                 <Field label="GEDA charge (₹)"><input aria-label="GEDA charge" type="number" min="0" step="any" inputMode="decimal" placeholder="Included" value={form.geda_charge ?? ''} onChange={e => update('geda_charge',e.target.value)} /></Field>
                 <p className="q-muted">GEB and GEDA: leave blank to show "Included". An amount is added to each option's net payable.</p>
-                <p className="q-muted">Enter Module Wp and module count separately for each panel option. Capacity is calculated automatically.</p>
+                <p className="q-muted">Capacity is worked out from Module Wp × number of modules.</p>
             </div>
-            <h3 style={{marginTop:20}}>Price options</h3>
-            {!isOnePage && <div className="q-filters" role="group" aria-label="How many options?" style={{alignItems:'center',margin:'4px 0 12px'}}><span className="q-muted" style={{margin:0}}>How many options?</span>{[1,3].map(n => <button key={n} type="button" aria-pressed={form.options.length === n} onClick={() => setOptionCount(n)}>{n} option{n > 1 ? 's' : ''}</button>)}</div>}
-            <div className="q-price-options">{form.options.map((option,i) => <section className="q-option" key={i}><h3>{isOnePage ? 'Panel details' : form.options.length === 1 ? 'Panel details' : `Panel option ${i + 1}`}</h3>
+            <div className="q-price-options">{form.options.map((option,i) => <section className="q-option" key={i}><h3>{form.options.length === 1 ? 'Panel and price' : `Panel option ${i + 1}`}</h3>
                 <div className="q-grid">
                     <OptionSelect label={form.options.length > 1 ? `Option ${i + 1} Module Wp` : 'Module Wp'} placeholder="Select Module Wp…" value={optionSpecs(form, option).panel_wattage} options={moduleWps} onChange={value => updateOption(i, 'panel_wattage', value)} />
                     <ModuleCountSelect value={optionSpecs(form, option).solar_panel_qty} onChange={value => updateOption(i, 'solar_panel_qty', value)} />

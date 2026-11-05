@@ -28,7 +28,8 @@ export function newForm(user = {}) {
         geb_charge: '', geda_charge: '',
         // Optional salesperson name printed on this quotation only. Blank = their own name.
         print_owner_name: '',
-        options: INITIAL_QUOTATION.page2.brandOptions.map(b => ({ brandName: b.brandName, panel_wattage: '', solar_panel_qty: '', capacity_kw: '', baseValue: '', discount: 0, subsidy: 0 })),
+        // A quote has one panel option. Another size or price is another quote for the same client.
+        options: INITIAL_QUOTATION.page2.brandOptions.slice(0, 1).map(b => ({ brandName: b.brandName, panel_wattage: '', solar_panel_qty: '', capacity_kw: '', baseValue: '', discount: 0, subsidy: 0 })),
         custom_notes: [],
     };
 }
@@ -40,20 +41,72 @@ export function optionSpecs(form, option) {
         ? Math.round(Number(panel_wattage) * Number(solar_panel_qty)) / 1000 : form?.capacity_kw ?? '');
     return { panel_wattage, solar_panel_qty, capacity_kw };
 }
-// What users see: open, won or lost. Old 'issued' rows are open; 'converted' rows are won.
+// One quote: open, picked (the client chose it), converted (added to leads) or lost.
 export function statusOf(row) {
     if (row?.status === 'lost') return 'lost';
     // An old 1-page (final) quote was linked to its lead by source_lead_id.
     if (row?.converted_lead_id || row?.status === 'converted' || (isFinalQuotation(row) && row?.source_lead_id)) return 'converted';
-    if (row?.selected_option) return 'won';
+    if (row?.selected_option) return 'picked';
     return 'open';
 }
+// Old 1-page copies made from a 3-page quote. Every quote prints on one page now.
 export const isFinalQuotation = row => row?.quotation_data?.kind === 'final' || row?.kind === 'final';
-export function finalForm(form, number) {
+// Keeps one option of an older quote that had three.
+export function oneOption(form, number) {
     const option = form.options?.[number - 1];
     if (!option) throw new Error('Select a panel option first.');
     return { ...clone(form), ...optionSpecs(form, option), solar_panel_make: option.brandName,
         options: [{ ...clone(option), ...optionSpecs(form, option) }] };
+}
+// Quotes of one client share a key: quotation_data.client_id. Older quotes have none,
+// so each is its own client (an old 1-page copy joins the 3-page quote it came from).
+export const clientKey = row => row?.client_id || row?.quotation_data?.client_id || row?.final_of || row?.quotation_data?.final_of || row?.id;
+const supersededOf = row => row?.superseded_by || row?.quotation_data?.superseded_by || null;
+const finalIdOf = row => row?.final_id || row?.quotation_data?.final_id || null;
+const createdOf = row => String(row?.created_at || '');
+export const CLIENT_TABS = ['all', 'open', 'picked', 'converted', 'lost'];
+// A client is converted once a quote is added to leads, lost when every quote is lost,
+// picked when they chose a quote, else open.
+export function clientStatus(quotes) {
+    const states = quotes.map(statusOf);
+    if (states.includes('converted')) return 'converted';
+    if (states.every(s => s === 'lost')) return 'lost';
+    if (states.includes('picked')) return 'picked';
+    return 'open';
+}
+// The list as clients, newest activity first, each with its quotes oldest first (Quote 1, 2 ...).
+export function groupClients(rows) {
+    const ids = new Set(rows.map(row => row.id));
+    // A replaced revision, and an old 3-page quote whose 1-page copy is listed, are not shown.
+    const live = rows.filter(row => !supersededOf(row) && !(finalIdOf(row) && ids.has(finalIdOf(row))));
+    const groups = new Map();
+    for (const row of live) {
+        const key = clientKey(row);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(row);
+    }
+    return [...groups.entries()].map(([key, quotes]) => {
+        quotes.sort((a, b) => createdOf(a).localeCompare(createdOf(b)) || (a.quotation_no || 0) - (b.quotation_no || 0));
+        const latest = quotes.at(-1);
+        const status = clientStatus(quotes);
+        // The quote the client chose: the one added to leads, else the one marked picked.
+        const picked = quotes.find(q => statusOf(q) === (status === 'converted' ? 'converted' : 'picked')) || null;
+        return { key, quotes, latest, picked, status, name: latest.customer_name, phone: latest.customer_phone };
+    }).sort((a, b) => createdOf(b.latest).localeCompare(createdOf(a.latest)));
+}
+export function tallyClients(clients) {
+    const counts = Object.fromEntries(CLIENT_TABS.map(tab => [tab, tab === 'all' ? clients.length : clients.filter(c => c.status === tab).length]));
+    // The sidebar badge: clients still waiting on an outcome.
+    return { ...counts, waiting: counts.open + counts.picked };
+}
+// A new quote for an existing client: their details and their last quote's panel, dated today.
+export function nextQuoteForm(row, user = {}) {
+    const fresh = newForm(user);
+    const form = fromRow(row, user);
+    const number = row.selected_option && form.options[row.selected_option - 1] ? row.selected_option : 1;
+    return { ...oneOption(form, number), quotation_date: fresh.quotation_date, valid_until: fresh.valid_until,
+        owner_name_snapshot: fresh.owner_name_snapshot || form.owner_name_snapshot, owner_phone_snapshot: fresh.owner_phone_snapshot || form.owner_phone_snapshot,
+        print_owner_name: '', source_lead_id: null, client_id: clientKey(row) };
 }
 export function toLead(form, choice = null, knownBrands = []) {
     const lead = Object.fromEntries(Object.entries(leadMapping).map(([field, target]) => [target, form[field] ?? '']));
@@ -132,7 +185,7 @@ export function fromRow(row, user) {
 }
 export function payload(form, template) {
     form = { ...form, ...optionSpecs(form, form.options?.[0]), options: form.options.map(option => ({ ...option, ...optionSpecs(form, option) })) };
-    const columns = Object.keys(newForm()).filter(k => !['options','custom_notes','geb_charge','geda_charge','print_owner_name','one_page'].includes(k));
+    const columns = Object.keys(newForm()).filter(k => !['options','custom_notes','geb_charge','geda_charge','print_owner_name'].includes(k));
     const values = Object.fromEntries(columns.map(k => [k, form[k] === '' ? null : form[k]]));
     // Retain the legacy column for older clients without a second editable brand.
     values.solar_panel_make = form.options?.[0]?.brandName || form.solar_panel_make || null;
@@ -175,15 +228,14 @@ export function revisionInfo(row) {
     return r ? { baseNo: r.base_no, n: r.n } : { baseNo: row?.quotation_no, n: 0 };
 }
 export const quoteLabel = row => {
-    if (isFinalQuotation(row)) { const from = row.quotation_data?.final_of_label || row.final_of_label; return from ? `${from} · 1-page` : `Quote-${row.quotation_no}`; }
+    if (isFinalQuotation(row)) return row.quotation_no ? `Quote-${row.quotation_no}` : 'Quote-DRAFT';
     const { baseNo, n } = revisionInfo(row);
     if (!baseNo) return 'Quote-DRAFT';
     return n ? `Quote-${baseNo}-R${n}` : `Quote-${baseNo}`;
 };
-// Saved under the customer's full name, e.g. "Ramesh Kumar Patel.pdf" (a
-// revision adds "(R1)"). Only characters that file systems reject are removed.
+// Saved under the customer's full name and quote number, e.g. "Ramesh Kumar Patel (Quote-3255).pdf",
+// so a client's quotes do not overwrite each other. Only characters that file systems reject are removed.
 export const pdfName = row => {
     const name = String(row.customer_name || 'Quotation').replace(/[\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim().slice(0,100) || 'Quotation';
-    const { n } = revisionInfo(row);
-    return `${name}${isFinalQuotation(row) ? ' (Final)' : n ? ` (R${n})` : ''}.pdf`;
+    return `${name} (${quoteLabel(row)}).pdf`;
 };

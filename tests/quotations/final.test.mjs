@@ -1,10 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newForm, payload, freshTemplate, fromRow, chosenOptions, toLead, finalForm, documentFor, validate } from '../../src/quotations/model.js';
-import { createQuotationRepository } from '../../src/quotations/repository.js';
-import { memoryClient } from './memoryClient.mjs';
+import { newForm, payload, freshTemplate, fromRow, chosenOptions, toLead, oneOption, documentFor, validate } from '../../src/quotations/model.js';
 const user = { id:'11111111-1111-4111-8111-111111111111', name:'Office' };
-const id = '22222222-2222-4222-8222-222222222222';
 function form() {
     return { ...newForm(user), customer_name:'Test Customer', customer_phone:'9876543210', inverter_brand:'Growatt',
         options:[
@@ -28,14 +25,14 @@ test('different specifications survive saving, comparison rendering and selected
 test('every option validates its own specifications', () => {
     const invalid = form(); invalid.options[1].solar_panel_qty = 0;
     assert.ok(validate(invalid).some(error => /Option 2 panel quantity/.test(error)));
-    const final = finalForm(form(),2);
+    const final = oneOption(form(),2);
     assert.equal(final.options.length,1);
     assert.deepEqual(validate(final),[]);
 });
-test('final quote contains the selected panel only and retains intro, terms, warranty and BOM data', () => {
+test('a kept option contains that panel only and retains intro, terms, warranty and BOM data', () => {
     const original = form();
-    const final = finalForm(original,2);
-    const row = {...payload(final,freshTemplate()),quotation_no:13,quotation_data:{...payload(final,freshTemplate()).quotation_data,kind:'final',final_of_label:'Quote-12'}};
+    const final = oneOption(original,2);
+    const row = {...payload(final,freshTemplate()),quotation_no:13};
     const doc = documentFor(row);
     assert.equal(doc.page1.customerName,'Test Customer');
     assert.equal(doc.page1.capacityKw,'4.2 kWp');
@@ -47,25 +44,6 @@ test('final quote contains the selected panel only and retains intro, terms, war
     assert.ok(doc.page3.warranties.length);
     assert.equal(original.options.length,3);
 });
-test('concurrent final creation is idempotent and exported final remains editable without changing comparison', async () => {
-    const original = {...payload(form(),freshTemplate()),id,owner_id:user.id,quotation_no:12,status:'converted',selected_option:2,converted_lead_id:'33333333-3333-4333-8333-333333333333',issued_at:'2026-10-22T10:00:00Z',updated_at:'original'};
-    const client = memoryClient({quotations:[original]});
-    const repo = createQuotationRepository(client);
-    const [a,b] = await Promise.all([repo.ensureFinal(original,user),repo.ensureFinal(original,user)]);
-    assert.equal(a.id,b.id);
-    assert.equal(client.state.tables.quotations.length,2);
-    assert.equal(a.source_lead_id,original.converted_lead_id);
-    const exported = await repo.generated(a,user);
-    const edited = fromRow(exported); edited.options[0].baseValue = 215000;
-    const updated = await repo.save(exported.id,exported,edited,freshTemplate(),user);
-    assert.equal(updated.quotation_data.kind,'final');
-    assert.equal(updated.status,'draft');
-    assert.ok(updated.issued_at, 'export history remains available');
-    assert.equal(updated.quotation_data.form.options[0].baseValue,215000);
-    assert.equal((await repo.get(original.id)).quotation_data.form.options[1].baseValue,210000);
-    const retried = await repo.ensureFinal(original,user);
-    assert.equal(retried.quotation_data.form.options[0].baseValue,215000);
-});
 test('legacy shared specifications remain available separately on each old option', () => {
     const old = form(); old.panel_wattage=580;old.solar_panel_qty=6;old.capacity_kw=3.48;
     old.options = old.options.map(({brandName,baseValue,discount,subsidy}) => ({brandName,baseValue,discount,subsidy}));
@@ -73,23 +51,3 @@ test('legacy shared specifications remain available separately on each old optio
     assert.deepEqual(restored.options.map(option => option.panel_wattage),[580,580,580]);
 });
 
-test('a Won quotation has an editable final before conversion and links that same edited final to the admin lead', async () => {
-    const original = {...payload(form(),freshTemplate()),id,owner_id:user.id,quotation_no:12,status:'issued',selected_option:2,issued_at:'2026-10-22T10:00:00Z',updated_at:'original',converted_lead_id:null};
-    const client = memoryClient({quotations:[original]});
-    const repo = createQuotationRepository(client);
-    const [a,b] = await Promise.all([repo.ensureFinal(original,user),repo.ensureFinal(original,user)]);
-    assert.equal(a.id,b.id);
-    assert.equal(a.source_lead_id,null);
-    assert.equal((await repo.get(id)).converted_lead_id,null);
-    const edited = fromRow(a); edited.options[0].baseValue = 225000;
-    await repo.save(a.id,a,edited,freshTemplate(),user);
-    const {data:lead} = await repo.insertConversionLead(original,{customer_name:'Test Customer'},user);
-    const linked = await repo.ensureFinal(original,user);
-    assert.equal(linked.id,a.id);
-    assert.equal(linked.source_lead_id,lead.id);
-    assert.equal(fromRow(linked).source_lead_id,lead.id);
-    assert.equal(fromRow(linked).options[0].baseValue,225000);
-    assert.equal(client.state.tables.quotations.length,2);
-    assert.equal(fromRow(await repo.get(id)).options.length,3);
-    assert.equal((await repo.get(id)).status,'converted');
-});
