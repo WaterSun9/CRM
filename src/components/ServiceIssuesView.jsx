@@ -32,6 +32,29 @@ const StatusPill = ({ issue }) => {
 };
 const WarrantyPill = ({ status }) => <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${WARRANTY_PILL[status] || WARRANTY_PILL.unknown}`}>{warrantyLabel(status)}</span>;
 
+// Technician portal (phone): the Vendor portal's card shape - name + stage badge,
+// problem, ticket / pincode / needed-by chips, chevron.
+function PhoneJobCard({ issue, onOpen }) {
+    const stage = issueStage(issue);
+    const pin = (issue.service_address || '').match(/[1-9]\d{5}(?!\d)/g)?.pop();
+    const needed = issue.required_date ? new Date(`${issue.required_date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+    const chips = [['Ticket', ticketLabel(issue)], ['Pin', pin], ['Needed', needed]].filter(([, value]) => value);
+    return <button type="button" onClick={onOpen}
+        className="group w-full space-y-1.5 rounded-2xl border border-stone-150 bg-white p-3.5 text-left shadow-sm transition-all hover:border-amber-400 hover:shadow-md active:scale-[0.99]">
+        <span className="flex items-start justify-between gap-2">
+            <span className="min-w-0 flex-1 space-y-1">
+                <span className="flex flex-wrap items-center gap-2">
+                    <span className="truncate text-xs font-bold text-stone-900 group-hover:text-amber-600">{issue.customer_name}</span>
+                    <span className={`whitespace-nowrap rounded-md px-1.5 py-0.5 text-[8px] font-black uppercase ${STAGE_PILL[stage] || 'bg-stone-100 text-stone-700'}`}>{STAGE_LABELS[stage] || issue.status}</span>
+                </span>
+                <span className="block truncate text-[10px] font-medium text-stone-400">{issue.problem_type || 'No problem written'}</span>
+                <span className="flex flex-wrap gap-2 pt-0.5 text-[9px] text-stone-500">{chips.map(([label, value]) => <span key={label}>{label}: <b>{value}</b></span>)}</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 self-center text-stone-300 group-hover:text-stone-700" />
+        </span>
+    </button>;
+}
+
 // One saved visit: km (and the trip estimate when the office changed it), amount, note.
 // In 'pro' mode the pre-filled km can be the Google road km (km_source 'google', or
 // route_km kept when the office changed it).
@@ -237,7 +260,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     </>;
     const bannersAtTop = formOnly || !selected || messageSpot === 'top';
 
-    return <div className={formOnly ? 'w-full space-y-3' : `service-root ${embedded ? 'service-embedded' : ''} ${selected ? 'has-selection' : ''}`}>
+    return <div className={formOnly ? 'w-full space-y-3' : `service-root ${embedded ? 'service-embedded' : ''} ${view ? 'service-phone' : ''} ${selected ? 'has-selection' : ''}`}>
         {!formOnly && !view && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? 'Plan the day in My trip, then follow the steps on each job.' : canManage ? 'Assign complaints, follow each step, close them, and record each visit’s distance and amount. Complaints are raised from Warranty customers and show up here. The km rate is set in Operations.' : 'Track the complaints of your customers, step by step, and add comments. Raise a complaint from Warranty customers or the customer’s card.'}</p></header>}
         {loadError && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700"><span className="flex-1">Could not load complaints: {loadError}</span><button type="button" onClick={() => load()} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold">Try again</button></p>}
         {bannersAtTop && banners}
@@ -253,7 +276,8 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
             onOpen={id => { chooseFilter('mine', true); openIssue(id); }} />}
         {!showPlan && <div className={`service-workspace ${selected ? 'has-selection' : ''} ${shown.length <= 1 ? 'single-result' : ''}`}>
             <div className="service-list space-y-2" aria-label="Complaint list">{shown.length === 0 && <p className="rounded-2xl border bg-white p-4 text-sm text-stone-500">No complaints in this view.</p>}{shown.map(issue =>
-                <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} aria-pressed={selectedId === issue.id} className={`service-list-item block w-full rounded-xl border p-3 text-left ${selectedId === issue.id ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
+                view ? <PhoneJobCard key={issue.id} issue={issue} onOpen={() => openIssue(issue.id)} />
+                : <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} aria-pressed={selectedId === issue.id} className={`service-list-item block w-full rounded-xl border p-3 text-left ${selectedId === issue.id ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
                     <span className="flex items-start gap-2"><span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-stone-500">{ticketLabel(issue)}</span><strong className="block break-words">{issue.customer_name}</strong></span><ChevronRight size={16} className="mt-1 shrink-0 text-stone-400" /></span>
                     <span className="mt-2 flex flex-wrap items-center gap-2"><StatusPill issue={issue} />
                         {issue.created_at && <span className="text-[11px] text-stone-500">Raised {new Date(issue.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</span>}</span>

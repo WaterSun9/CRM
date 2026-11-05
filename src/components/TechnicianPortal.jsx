@@ -1,4 +1,4 @@
-// Technician portal, in the style of the Vendor and Channel Partner portals: top header
+// Technician portal (phone only), in the style of the Vendor and Channel Partner portals: top header
 // (logo, initials, logout), a slide-out menu (Home, My trip, My jobs, Open jobs), and a Home
 // with the dark welcome card, amber stat tiles and the jobs waiting to be claimed.
 import { useCallback, useEffect, useState } from 'react';
@@ -161,7 +161,7 @@ export default function TechnicianPortal({ user, onLogout, initialView = 'home',
 
         {view === 'home'
             ? <TechnicianHome user={user} jobs={jobs} plan={plan} go={go} openJob={openJob} />
-            : <main className="mx-auto w-full max-w-5xl flex-1 space-y-3 p-3 animate-in fade-in duration-300 sm:p-4">
+            : <main className="mx-auto w-full max-w-md flex-1 space-y-3 p-3 animate-in fade-in duration-300 sm:p-4">
                 <div className="flex items-center justify-between gap-2">
                     <button type="button" onClick={() => go('home')} className="flex items-center gap-1 py-1 text-xs font-bold text-stone-500 transition-colors hover:text-stone-800">
                         <ChevronLeft className="h-4 w-4" /> Home</button>
