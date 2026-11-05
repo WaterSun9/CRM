@@ -1,6 +1,6 @@
 import { payload, fromRow, validate, revisionInfo, clientKey, groupClients, tallyClients, statusOf, liveQuotes, clientSeqOf, clientNoOf, MAX_QUOTES } from './model.js';
 
-export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by,selected_option,kind:quotation_data->>kind,client_id:quotation_data->>client_id,final_of:quotation_data->>final_of,final_id:quotation_data->>final_id,client_no:quotation_data->>client_no,client_seq:quotation_data->>client_seq,village,district,options:quotation_data->form->options';
+export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by,selected_option,kind:quotation_data->>kind,client_id:quotation_data->>client_id,final_of:quotation_data->>final_of,final_id:quotation_data->>final_id,client_no:quotation_data->>client_no,client_seq:quotation_data->>client_seq,village,district,options:quotation_data->form->options,activity:quotation_data->activity';
 export const STATUSES = ['draft','issued','converted','lost'];
 export const PAGE_SIZE = 20;
 // PostgreSQL jsonb reorders object keys; compare canonical values, not wire key order.

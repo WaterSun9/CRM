@@ -51,20 +51,15 @@ const HISTORY_TEXT = {
     revised:'Replaced by a revised version', final_created:'1-page copy made',
 };
 const showWhen = at => { const d = new Date(at); return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN',{ timeZone:'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true }); };
-function QuoteHistory({ row }) {
-    const entries = useMemo(() => [...(row.quotation_data?.activity || [])].filter(e => e?.at).sort((a,b) => String(b.at).localeCompare(String(a.at))),[row]);
-    const [names,setNames] = useState({});
-    useEffect(() => {
-        const ids = [...new Set(entries.map(e => e.actor_id).filter(id => uuid.test(id || '')))];
-        if (!ids.length) return undefined;
-        let current = true;
-        // Names are a nicety: if profiles cannot be read, the entry shows without one.
-        Promise.resolve(supabase.from('profiles').select('id,name').in('id',ids)).then(({data}) => { if (current && data) setNames(Object.fromEntries(data.map(p => [p.id,p.name]))); }).catch(() => {});
-        return () => { current = false; };
-    },[entries]);
+// A client's history: every option's activity, newest first, labelled with the option.
+const clientHistory = client => client.quotes.flatMap((q,i) => (q.activity || q.quotation_data?.activity || [])
+    .filter(e => e?.at).map(e => ({ ...e, option:i + 1 }))).sort((a,b) => String(b.at).localeCompare(String(a.at)));
+const historyLine = e => `${HISTORY_TEXT[e.type] || e.type}${e.type === 'lost' && (e.reason || e.remark) ? ` · ${[e.reason,e.remark].filter(Boolean).join(' · ')}` : ''}`;
+function ClientHistory({ client,names }) {
+    const entries = useMemo(() => clientHistory(client),[client]);
     if (!entries.length) return null;
-    return <details className="q-history"><summary>History ({entries.length})</summary><ol>{entries.map((e,i) => <li key={i}>
-        <strong>{HISTORY_TEXT[e.type] || e.type}</strong>{e.type === 'lost' && (e.reason || e.remark) ? ` · ${[e.reason,e.remark].filter(Boolean).join(' · ')}` : ''}
+    return <details className="q-history"><summary><span>History</span><span className="q-history-last">{historyLine(entries[0])} · {showWhen(entries[0].at)}</span></summary><ol>{entries.map((e,i) => <li key={i}>
+        <strong>Option {e.option}: {historyLine(e)}</strong>
         <span>{showWhen(e.at)}{names[e.actor_id] ? ` · ${names[e.actor_id]}` : ''}</span></li>)}</ol></details>;
 }
 function Preview({ row,onGenerate,onEdit,onDone,busy }) {
@@ -99,7 +94,7 @@ function Preview({ row,onGenerate,onEdit,onDone,busy }) {
         if (available > 0) setZoom(Math.min(1, Math.max(0.25, available / 794)));
     };
 
-    return <div style={full ? {position:'fixed',inset:0,zIndex:55,background:'#f6f7f9',padding:12,overflow:'auto'} : undefined}><div className="q-preview-toolbar"><div className="q-tools">{!isLocked(row) && <button onClick={onEdit}><Pencil size={15} /> Edit</button>}<div className="q-zoom" role="group" aria-label="Zoom"><button onClick={() => changeZoom(z => Math.max(.25,z - .1))} aria-label="Zoom out">−</button><span aria-live="polite">{Math.round(zoom * 100)}%</span><button onClick={() => changeZoom(z => Math.min(1.5,z + .1))} aria-label="Zoom in">+</button></div><button onClick={fitToWidth}>Fit width</button><button onClick={() => { manualZoom.current = false; setFull(v => !v); }}>{full ? 'Exit full screen' : 'Full screen'}</button></div><div className="q-send"><button disabled={busy} onClick={onDone}>Done</button><button className="q-primary" disabled={busy} onClick={() => onGenerate(row, 'download')}><Download size={16} /> {busy ? 'Generating…' : 'Download'}</button><button disabled={busy} onClick={() => onGenerate(row, 'share')}><Share2 size={16} /> Share</button>{/* WhatsApp disabled: {onWhatsAppChat && canWhatsAppChat(row) && <button className="q-wa" disabled={busy} onClick={() => onWhatsAppChat(row)}><MessageCircle size={16} /> WhatsApp</button>} */}</div></div><QuoteHistory row={row} /><div className="q-preview-scroll" ref={scrollRef}><div style={{width:794 * zoom,height:(1123 + 60) * zoom,margin:'0 auto'}}><div className="q-preview-surface" style={{width:794,transform:`scale(${zoom})`,transformOrigin:'top left'}}><DocumentPages row={row} /></div></div></div></div>;
+    return <div style={full ? {position:'fixed',inset:0,zIndex:55,background:'#f6f7f9',padding:12,overflow:'auto'} : undefined}><div className="q-preview-toolbar"><div className="q-tools">{!isLocked(row) && <button onClick={onEdit}><Pencil size={15} /> Edit</button>}<div className="q-zoom" role="group" aria-label="Zoom"><button onClick={() => changeZoom(z => Math.max(.25,z - .1))} aria-label="Zoom out">−</button><span aria-live="polite">{Math.round(zoom * 100)}%</span><button onClick={() => changeZoom(z => Math.min(1.5,z + .1))} aria-label="Zoom in">+</button></div><button onClick={fitToWidth}>Fit width</button><button onClick={() => { manualZoom.current = false; setFull(v => !v); }}>{full ? 'Exit full screen' : 'Full screen'}</button></div><div className="q-send"><button disabled={busy} onClick={onDone}>Done</button><button className="q-primary" disabled={busy} onClick={() => onGenerate(row, 'download')}><Download size={16} /> {busy ? 'Generating…' : 'Download'}</button><button disabled={busy} onClick={() => onGenerate(row, 'share')}><Share2 size={16} /> Share</button>{/* WhatsApp disabled: {onWhatsAppChat && canWhatsAppChat(row) && <button className="q-wa" disabled={busy} onClick={() => onWhatsAppChat(row)}><MessageCircle size={16} /> WhatsApp</button>} */}</div></div><div className="q-preview-scroll" ref={scrollRef}><div style={{width:794 * zoom,height:(1123 + 60) * zoom,margin:'0 auto'}}><div className="q-preview-surface" style={{width:794,transform:`scale(${zoom})`,transformOrigin:'top left'}}><DocumentPages row={row} /></div></div></div></div>;
 }
 export default function QuotationModule({ user,meta,channelPartners = [],onCreateLead,onViewLead,embedded = false,onClose }) {
     const { showAlert,showConfirm } = useGlobalPopup();
@@ -187,6 +182,18 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     const visible = useMemo(() => clients.filter(c => status === 'all' || c.status === status),[clients,status]);
     const count = visible.length;
     const shown = visible.slice(page * PAGE_SIZE,(page + 1) * PAGE_SIZE);
+    // Who did each step in the shown clients' history. Names are a nicety: without them the entry still shows.
+    const [names,setNames] = useState({});
+    const actorIds = useMemo(() => [...new Set(shown.flatMap(clientHistory).map(e => e.actor_id).filter(id => uuid.test(id || '')))].sort().join(','),[shown]);
+    useEffect(() => {
+        const ids = actorIds ? actorIds.split(',').filter(id => !(id in names)) : [];
+        if (!ids.length) return undefined;
+        let current = true;
+        Promise.resolve(supabase.from('profiles').select('id,name').in('id',ids)).then(({data}) => { if (current && data) setNames(n => ({ ...n, ...Object.fromEntries(data.map(p => [p.id,p.name])) })); }).catch(() => {});
+        return () => { current = false; };
+    // names is read only to skip ids already known.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    },[actorIds]);
     // Show an action's result on the card at once; the background reload confirms it.
     const patchRow = updated => { if (updated?.id) setAllRows(list => list.map(item => item.id === updated.id ? { ...item, ...updated } : item)); };
     useEffect(() => {
@@ -373,6 +380,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         const closed = added || client.status === 'lost';
         return <article className="q-card q-client" key={client.key}>
             <div className="q-client-head"><div><h3>{client.name || 'Unnamed client'}</h3><p>{[client.phone, client.place].filter(Boolean).join(' · ')}</p></div><span className={`q-status q-status-${client.status}`}>{STATUS_TEXT[client.status]}</span></div>
+            <ClientHistory client={client} names={names} />
             {!closed && client.quotes.length > 1 && client.status === 'open' && <p className="q-pick-hint">Tick the option the client picked.</p>}
             <ol className="q-lines">{client.quotes.map((item,i) => {
                 const chosen = client.picked?.id === item.id;
