@@ -301,7 +301,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         if (busyRef.current) return;
         navigate(`/quotations/new/${crypto.randomUUID()}/${client.latest.id}`);
     };
-    // Client picked this one: confirm the pick, then offer Add to leads. An older quote with
+    // Client picked this one: confirm the pick, then the lead form opens filled from it. An older quote with
     // three options asks which option instead (that dialog is the confirmation).
     const pick = (item,number) => run(async () => {
         const latest = await repo.get(item.id);
@@ -309,20 +309,16 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         if (!choices.length) { await showAlert('Enter a price for this quote first.',{type:'warning'}); return; }
         if (choices.length > 1) { setChoosing({ row:latest, choices, picked:latest.selected_option || null }); return; }
         const c = choices[0];
-        const ok = await showConfirm(`Option ${number}: ${[c.brandName, c.capacity_kw ? `${c.capacity_kw} kW` : '', money(c.netPayableAmount)].filter(Boolean).join(' · ')}\n\nThe client's other options are unticked.`,
-            { title:`${latest.customer_name || 'Client'} picked this option?`, confirmLabel:'Yes, confirm pick', cancelLabel:'Cancel', type:'success' });
+        const ok = await showConfirm(`Option ${number}: ${[c.brandName, c.capacity_kw ? `${c.capacity_kw} kW` : '', money(c.netPayableAmount)].filter(Boolean).join(' · ')}\n\nThe client's other options are unticked and the lead form opens next.`,
+            { title:`${latest.customer_name || 'Client'} picked this option?`, confirmLabel:'Yes, add to leads', cancelLabel:'Cancel', type:'success' });
         if (!ok) return;
         const picked = await repo.pick(latest,c.number,user);
         patchPicked(picked);
         return picked;
     }).then(offerLead);
     const confirmChoice = () => run(async () => { const picked = await repo.pick(await repo.get(choosing.row.id),choosing.picked,user); patchPicked(picked); setChoosing(null); return picked; }).then(offerLead);
-    // After a pick: Add to leads opens the lead form, already filled from the picked option.
-    const offerLead = async picked => {
-        if (!picked || !onCreateLead) return;
-        if (await showConfirm(`The lead form opens already filled from this option. You can also do it later with Add to leads.`,
-            { title:`Pick confirmed. Add ${picked.customer_name || 'the client'} to leads now?`, confirmLabel:'Add to leads', cancelLabel:'Later', type:'success' })) addToLeads(picked);
-    };
+    // After a pick the lead form opens, already filled from the picked option.
+    const offerLead = picked => { if (picked && onCreateLead) addToLeads(picked); };
     // Show the pick at once: this quote on, the client's others off. The reload confirms it.
     const patchPicked = picked => {
         const key = clients.find(c => c.quotes.some(q => q.id === picked.id))?.key;
@@ -422,7 +418,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
             {validId && loadedRoute === route && mode === 'preview' && row && <Preview row={row} busy={busy} onDone={() => { dirty.current = false; navigate('/quotations'); setRefresh(n => n + 1); }} onGenerate={generate} onEdit={() => navigate(`/quotations/${id}/edit`)} />}
             {route !== '/quotations' && (!validId || !['new','edit','preview'].includes(mode)) && <div className="q-error">Quotation page not found.</div>}
         </main>
-        {choosing && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-choose-title"><div className="q-panel"><h2 id="q-choose-title">Which option did the client pick?</h2><p className="q-muted">This older quote has more than one option.</p><div className="q-choices">{choosing.choices.map(choice => <button key={choice.number} type="button" aria-pressed={choosing.picked === choice.number} className={choosing.picked === choice.number ? 'q-choice q-choice-on' : 'q-choice'} onClick={() => setChoosing(c => ({ ...c, picked:choice.number }))}><span className="q-choice-name">Option {choice.number}: {choice.brandName}</span><span>{choice.solar_panel_qty} modules × {choice.panel_wattage} Wp · {choice.capacity_kw} kWp</span><span>Net payable {money(choice.netPayableAmount)}</span><span className="q-muted">After subsidy {money(choice.netPriceAfterSubsidy)}</span></button>)}</div><div className="q-actions"><button disabled={busy} onClick={() => setChoosing(null)}>Cancel</button><button className="q-primary" disabled={busy || !choosing.picked} onClick={confirmChoice}>Client picked this one</button></div></div></div>}
+        {choosing && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-choose-title"><div className="q-panel"><h2 id="q-choose-title">Which option did the client pick?</h2><p className="q-muted">This older quote has more than one option.</p><div className="q-choices">{choosing.choices.map(choice => <button key={choice.number} type="button" aria-pressed={choosing.picked === choice.number} className={choosing.picked === choice.number ? 'q-choice q-choice-on' : 'q-choice'} onClick={() => setChoosing(c => ({ ...c, picked:choice.number }))}><span className="q-choice-name">Option {choice.number}: {choice.brandName}</span><span>{choice.solar_panel_qty} modules × {choice.panel_wattage} Wp · {choice.capacity_kw} kWp</span><span>Net payable {money(choice.netPayableAmount)}</span><span className="q-muted">After subsidy {money(choice.netPriceAfterSubsidy)}</span></button>)}</div><div className="q-actions"><button disabled={busy} onClick={() => setChoosing(null)}>Cancel</button><button className="q-primary" disabled={busy || !choosing.picked} onClick={confirmChoice}>Yes, add to leads</button></div></div></div>}
         {waChat && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-wa-title"><div className="q-panel"><h2 id="q-wa-title">Share quotation PDF</h2><p className="q-muted">{quoteLabel(waChat.row)} · {waChat.row.customer_name}</p>
             <div className="q-notice" role="status" style={{marginTop:12}}>{waChat.preparing ? <strong>Preparing the PDF…</strong> : <><strong>PDF ready: {waChat.file?.name}</strong><div className="q-actions"><button type="button" onClick={() => generate(waChat.row, 'download')}><Download size={15} /> Save PDF</button></div></>}</div>
             {/* WhatsApp phone, message and chat controls are disabled. Complete original JSX is preserved in docs/parked-quotation-whatsapp/QuotationModule.jsx.disabled. */}
