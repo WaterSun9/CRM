@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { ClipboardList, ShieldCheck, Users } from 'lucide-react';
 import '../index.css';
 import ServiceIssuesView from '../components/ServiceIssuesView';
+import TechnicianPortal from '../components/TechnicianPortal';
 import WarrantyView from '../components/WarrantyView';
 import ServiceSettingsSection from '../components/service/ServiceSettingsSection';
 import PartnerProfile from '../components/service/PartnerProfile';
@@ -39,6 +40,7 @@ const db = {
         issue('i-3', 1003, admin[2], { problem_type: 'Panel cleaning and check', status: 'assigned', assigned_to: TECH.id, assigned_at: ago(26), visit_stage: 'visited', visit_stage_at: ago(3) }),
         issue('i-4', 1004, admin[5], { problem_type: 'Earthing wire loose', status: 'assigned', assigned_to: TECH.id, assigned_at: ago(40), visit_stage: 'second_visit', visit_stage_note: 'MC4 connector to be ordered', visit_stage_at: ago(10) }),
         issue('i-5', 1005, admin[3], { problem_type: 'Meter display blank', status: 'completed', assigned_to: TECH.id, completion_method: 'otp', completed_at: ago(48) }),
+        issue('i-7', 1006, admin[6], { problem_type: 'Inverter not starting', status: 'assigned', assigned_to: TECH.id, assigned_at: ago(4) }),
         issue('i-6', 998, admin[0], { problem_type: 'Inverter tripping at noon', comment: 'Raised by partner: customer sent a video of the error code.', created_by: PARTNER.id, created_at: '2026-08-04T05:30:00Z', status: 'completed', assigned_to: TECH.id, completion_method: 'otp', completed_at: '2026-08-09T11:15:00Z' }),
     ],
     service_issue_events: [
@@ -64,7 +66,8 @@ const db = {
         { id: 'f1', issue_id: 'i-2', kind: 'before', storage_path: 'i-2/u-tech/before-1.jpg', file_name: 'before.jpg', mime_type: 'image/jpeg', uploaded_by: TECH.id, created_at: ago(2) },
         { id: 'f2', issue_id: 'i-2', kind: 'after', storage_path: 'i-2/u-tech/after-1.jpg', file_name: 'after.jpg', mime_type: 'image/jpeg', uploaded_by: TECH.id, created_at: ago(1) },
     ],
-    service_trips: [{ id: 't1', issue_id: 'i-2', technician_id: TECH.id, started_at: ago(3), start_source: 'manual', start_pincode: '384265', reached_at: ago(2), reached_lat: 23.83, reached_lng: 71.6, reached_accuracy_m: 20 }],
+    service_trips: [{ id: 't1', issue_id: 'i-2', technician_id: TECH.id, visit_no: 1, started_at: ago(3), start_source: 'manual', start_pincode: '384265', reached_at: ago(2), reached_lat: 23.83, reached_lng: 71.6, reached_accuracy_m: 20, readings: null, outcome: null, outcome_note: null, outcome_at: null }],
+    service_plan_stops: [],
     service_visits: [{ id: 'v2', issue_id: 'i-6', technician_id: TECH.id, visit_date: '2026-08-05', kilometers: 46, amount_inr: 230, note: 'Found faulty card' }, { id: 'v3', issue_id: 'i-6', technician_id: TECH.id, visit_date: '2026-08-09', kilometers: 46, amount_inr: 230, note: 'Card replaced' }, { id: 'v1', issue_id: 'i-5', technician_id: TECH.id, visit_date: '2026-10-25', kilometers: 62, km_estimate: 62, amount_inr: 310, rate_per_km: 5, round_trip: true, note: '' }],
 };
 
@@ -132,8 +135,13 @@ supabase.rpc = async (name, args = {}) => {
     if (name === 'contact_phones') return { data: [{ partner_phone: db.metadata.find(m => m.label === args.p_partner)?.phone || null, dealer_phone: args.p_dealer === 'Patan Dealer' ? '9898012345' : null }], error: null };
     if (name === 'set_my_partner_phone') { db.metadata[0].phone = args.p_phone; return { data: args.p_phone, error: null }; }
     if (name === 'set_customer_location') { const c = db.admin.find(row => row.id === args.p_customer_id); if (args.p_address) c.full_address = args.p_address; if (args.p_pincode) c.pincode = args.p_pincode; return { data: [{ full_address: c.full_address, pincode: c.pincode }], error: null }; }
-    if (name === 'service_start_trip') { const trip = { id: crypto.randomUUID(), issue_id: args.p_issue_id, technician_id: TECH.id, started_at: new Date().toISOString(), start_source: args.p_source, start_pincode: args.p_pincode, start_lat: args.p_lat, start_lng: args.p_lng, start_accuracy_m: args.p_accuracy, reached_at: null }; db.service_trips.push(trip); return { data: trip.id, error: null }; }
+    if (name === 'service_start_trip') { const last = db.service_trips.filter(t => t.issue_id === args.p_issue_id).sort((a, b) => (b.visit_no || 0) - (a.visit_no || 0))[0]; const trip = { visit_no: !last ? 1 : last.outcome ? last.visit_no + 1 : last.visit_no, readings: null, outcome: null, outcome_note: null, outcome_at: null, id: crypto.randomUUID(), issue_id: args.p_issue_id, technician_id: TECH.id, started_at: new Date().toISOString(), start_source: args.p_source, start_pincode: args.p_pincode, start_lat: args.p_lat, start_lng: args.p_lng, start_accuracy_m: args.p_accuracy, reached_at: null }; db.service_trips.push(trip); return { data: trip.id, error: null }; }
     if (name === 'service_mark_reached') { const trip = db.service_trips.find(t => t.id === args.p_trip_id); if (trip.reached_at) return { data: false, error: null }; Object.assign(trip, { reached_at: new Date().toISOString(), reached_lat: args.p_lat, reached_lng: args.p_lng, reached_accuracy_m: args.p_accuracy }); const job = db.service_issues.find(i => i.id === trip.issue_id); if (job && !job.visit_stage) Object.assign(job, { visit_stage: 'visited', visit_stage_at: trip.reached_at }); return { data: true, error: null }; }
+    if (name === 'service_customer_past') { const job = db.service_issues.find(i => i.id === args.p_issue_id); return { data: db.service_issues.filter(i => i.customer_id === job?.customer_id && i.id !== job.id).map(i => ({ ...i, visits: db.service_trips.filter(t => t.issue_id === i.id).length })), error: null }; }
+    if (name === 'service_add_inverter') { const c = card(args.p_issue_id); if (c.inverter_serial_no) return { data: false, error: null }; Object.assign(c, { inverter_serial_no: args.p_serial, inverter_make: c.inverter_make || args.p_make }); return { data: true, error: null }; }
+    if (name === 'service_save_readings') { Object.assign(db.service_trips.find(t => t.id === args.p_trip_id), { readings: args.p_readings, readings_at: new Date().toISOString() }); return { data: true, error: null }; }
+    if (name === 'service_visit_outcome') { const trip = db.service_trips.find(t => t.id === args.p_trip_id); Object.assign(trip, { outcome: args.p_outcome, outcome_note: args.p_note, outcome_at: new Date().toISOString() }); Object.assign(db.service_issues.find(i => i.id === trip.issue_id), args.p_outcome === 'fixed' ? { visit_stage: 'visited', visit_stage_note: null } : { visit_stage: 'second_visit', visit_stage_note: args.p_note }); return { data: true, error: null }; }
+    if (name === 'service_save_plan') { db.service_plan_stops = db.service_plan_stops.filter(s => s.plan_date !== args.p_date); const kept = []; args.p_issue_ids.forEach(id => { const job = db.service_issues.find(i => i.id === id); if (job.status === 'open') Object.assign(job, { status: 'assigned', assigned_to: TECH.id, assigned_at: new Date().toISOString() }); db.service_plan_stops.push({ technician_id: TECH.id, issue_id: id, plan_date: args.p_date, position: kept.length + 1 }); kept.push(id); }); return { data: kept, error: null }; }
     if (name === 'claim_service_issue') { Object.assign(db.service_issues.find(i => i.id === args.p_issue_id), { status: 'assigned', assigned_to: TECH.id, assigned_at: new Date().toISOString() }); return { data: true, error: null }; }
     return { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
 };
@@ -149,13 +157,13 @@ function Demo() {
     const [, setTick] = useState(0);
     useEffect(() => { const again = () => setTick(n => n + 1); addEventListener('popstate', again); return () => removeEventListener('popstate', again); }, []);
     const nav = [['Warranty & Complaints', ShieldCheck, ['office', 'partner'].includes(view)], ['Operations', Users, view === 'operations']];
+    if (view === 'technician') return <GlobalPopupProvider><TechnicianPortal user={TECH} onLogout={() => {}} /></GlobalPopupProvider>;
     return <GlobalPopupProvider><div className="min-h-screen bg-[#FCFBFA] md:pl-64">
         <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-white p-5 md:block"><strong className="text-lg">Watersun CRM</strong><p className="mt-1 text-xs text-stone-500">Signed in as {user.name}</p>
             <div className="mt-6 space-y-1">{nav.map(([label, Icon, on]) => <p key={label} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold ${on ? 'bg-stone-900 text-white' : 'text-stone-600'}`}><Icon size={16} /> {label}</p>)}</div></aside>
         <main className="p-4 lg:p-8"><h1 className="mb-4 text-2xl font-bold">{views[view]}</h1>
             {view === 'operations' && <ServiceSettingsSection user={OFFICE} />}
             {view === 'profile' && <PartnerProfile user={{ ...PARTNER, email: 'sunenergy@partner.in' }} />}
-            {view === 'technician' && <ServiceIssuesView user={TECH} />}
             {['office', 'partner'].includes(view) && <>
                 <div role="tablist" className="mb-4 flex gap-2">{[['warranty', 'Warranty customers', ShieldCheck], ['complaints', 'Complaints', ClipboardList]].map(([id, label, Icon]) =>
                     <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${tab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}</div>

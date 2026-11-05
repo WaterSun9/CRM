@@ -102,7 +102,7 @@ export const TRIP_GRACE_KM = 5;        // added once per visit, after the x2
 //              (steps: docs/GOOGLE_ROUTES_SETUP.md).
 // The client's live CRM stays 'simple' until the developer has tested 'pro'
 // and the client has its own Google key.
-export const TRIP_DISTANCE_MODE = 'simple'; // 'pro' = real road km from Google Routes (needs GOOGLE_MAPS_API_KEY secret)
+export const TRIP_DISTANCE_MODE = 'pro'; // 'pro' = real road km from Google Routes (needs GOOGLE_MAPS_API_KEY secret)
 export const TRIP_TRAVEL_MODE = 'TWO_WHEELER'; // or 'DRIVE' (car); only used in 'pro'
 
 // Quotation Maker: on for admin and sales (sidebar > Quotation Maker, opens

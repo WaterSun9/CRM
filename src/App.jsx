@@ -52,6 +52,7 @@ const StampPortal = lazyWithRetry(() => import('./components/StampPortal'));
 const TeamChat = lazyWithRetry(() => import('./components/TeamChat'));
 import useChatUnread from './hooks/useChatUnread';
 const ServiceIssuesView = lazyWithRetry(() => import('./components/ServiceIssuesView'));
+const TechnicianPortal = lazyWithRetry(() => import('./components/TechnicianPortal'));
 const DevRoleSwitcher = import.meta.env.DEV
     ? lazyWithRetry(() => import('./components/DevRoleSwitcher'))
     : null;
@@ -349,7 +350,7 @@ export default function App() {
                 ) : isStamp ? (
                     <StampPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isTechnician && TECHNICIAN_FEATURE_ENABLED ? (
-                    <div className="min-h-screen bg-[#FCFBFA]"><header className="flex items-center justify-between border-b bg-white p-4"><strong>Technician jobs</strong><button type="button" onClick={handleLogout} className="min-h-11 rounded-lg border px-4 text-xs font-bold">Logout</button></header><ServiceIssuesView user={user} /></div>
+                    <TechnicianPortal user={user} onLogout={handleLogout} />
                 ) : isTechnician ? (
                     <div className="min-h-screen bg-[#FCFBFA] flex flex-col items-center justify-center gap-4 p-6"><p className="text-sm text-stone-600">This portal is temporarily unavailable.</p><button type="button" onClick={handleLogout} className="rounded-lg border px-4 py-2 text-xs font-bold">Logout</button></div>
                 ) : (

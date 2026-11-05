@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../supabase';
 import { NEAR_PINCODE_KM, nearestPincode, pincodePoint } from '../../utils/tripKm';
-import { formatDateTime, ticketLabel } from './serviceLabels';
+import { ticketLabel, visitLabel } from './serviceLabels';
+import SiteVisitForm from './SiteVisitForm';
 import { nextLegStart, tripChainTrips, tripSummary } from '../../utils/tripChain';
 import { useKmSettings } from './kmSettings';
-import { ROUGH_ACCURACY_M, accuracyText, isPincode, phonePosition, pincodeInText, pincodePoints, roundAccuracy, startText, tripError } from './tripLabels';
+import { ROUGH_ACCURACY_M, accuracyText, isPincode, phonePosition, pincodeInText, pincodePoints, roundAccuracy, tripError } from './tripLabels';
 
 // A trip can still get "Reached site" for 12 hours (same rule as the database).
 // Only "near 385340" when the nearest post office is within NEAR_PINCODE_KM.
@@ -19,6 +20,11 @@ const TRIP_OPEN_MS = 12 * 60 * 60 * 1000;
 // One trip, several houses: after Reached site the technician picks the next of their
 // jobs (otherJobs), whose trip then starts from this house, and onGoNext opens it; or
 // ends the trip. The office links the houses from these start points.
+// Visit columns come with 20261105120000_technician_visits.sql; before it runs the
+// trips are read without them (no readings step then).
+const TRIP_COLUMNS = 'id, started_at, start_source, start_pincode, start_accuracy_m, reached_at, reached_lat, reached_lng, reached_accuracy_m';
+const VISIT_COLUMNS = `${TRIP_COLUMNS}, visit_no, readings, outcome, outcome_note`;
+const missingColumn = failure => failure?.code === '42703' || /column .* does not exist/i.test(failure?.message || '');
 const endedKey = tripId => `trip-ended:${tripId}`;
 const wasEnded = tripId => { try { return localStorage.getItem(endedKey(tripId)) === '1'; } catch { return false; } };
 
@@ -46,10 +52,11 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
     const loadTrips = useCallback(async () => {
-        const { data, error } = await supabase.from('service_trips')
-            .select('id, started_at, start_source, start_pincode, start_accuracy_m, reached_at, reached_lat, reached_lng, reached_accuracy_m')
+        const read = columns => supabase.from('service_trips').select(columns)
             .eq('issue_id', issue.id).eq('technician_id', userId)
             .order('started_at', { ascending: false }).limit(6);
+        let { data, error } = await read(VISIT_COLUMNS);
+        if (missingColumn(error)) ({ data, error } = await read(TRIP_COLUMNS));
         if (!mounted.current) return;
         if (error) { setLoadError(tripError(error)); return; }
         setTrips(data || []); setLoadError('');
@@ -67,10 +74,15 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     const loaded = trips !== null;
     const currentId = current?.id || null;
     const currentReachedAt = current?.reached_at || null;
+    // No visit columns (SQL not run yet): no readings step, the work is never held back.
+    const visitsReady = Boolean(current && 'outcome' in current);
+    const currentOutcome = visitsReady ? current.outcome || null : 'fixed';
+    const currentReadings = visitsReady ? Boolean(current.readings) : true;
     const failed = Boolean(loadError);
     useEffect(() => {
-        onTripState?.({ loaded, failed, current: currentId ? { id: currentId, reached_at: currentReachedAt } : null });
-    }, [onTripState, loaded, failed, currentId, currentReachedAt]);
+        onTripState?.({ loaded, failed, current: currentId ? { id: currentId, reached_at: currentReachedAt, readings: currentReadings, outcome: currentOutcome } : null });
+    }, [onTripState, loaded, failed, currentId, currentReachedAt, currentReadings, currentOutcome]);
+    const visitName = `Visit ${visitLabel(issue, current?.visit_no)}`;
 
     const reset = () => { setFound(null); setManual(false); setPin(''); setUnknownPinOk(''); setHint(''); setPinWarning(''); };
 
@@ -150,7 +162,9 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     const onTripIds = recentTrips.filter(t => Date.now() - Date.parse(t.started_at) < TRIP_OPEN_MS).map(t => t.issue_id);
     const nextJobs = otherJobs.filter(job => !onTripIds.includes(job.id));
     // The journey is over here: ended, or no other job to go on to.
-    const atHouse = Boolean(current && (current.reached_at || reachFailedId === current.id));
+    const arrived = Boolean(current && (current.reached_at || reachFailedId === current.id));
+    // Done at this house once the visit has its outcome (Fixed / Revisit needed).
+    const atHouse = arrived && Boolean(currentOutcome);
     const showSummary = atHouse && !startingAgain && (ended || nextJobs.length === 0);
     useEffect(() => {
         if (!showSummary || points) return undefined;
@@ -164,71 +178,75 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
     try { summary = showSummary && points ? tripSummary({ chain: journey, pincodeOf: pinOf, points, settings }) : null; } catch { summary = null; }
 
     const disabled = busy || Boolean(locating);
-    const big = 'min-h-12 w-full rounded-xl px-4 text-sm font-bold disabled:opacity-50';
-    return <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50 p-3">
-        <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold text-sky-950">Trip</h3>
-            {trips === null && !loadError && <span className="text-xs text-sky-900">Loading…</span>}</div>
-        <p className="text-xs text-sky-900">{current ? 'Km is worked out from this start point to the customer.'
-            : 'Tap Start trip when you leave for this customer, before you begin. Photos and the OTP open after that. Going on from another house? Start the trip there.'}</p>
+    const primary = 'min-h-12 w-full rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-50';
+    const quiet = 'min-h-11 rounded-lg px-1 text-xs font-bold text-stone-500 underline-offset-2 hover:underline disabled:opacity-50';
+    const time = value => new Date(value).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit' });
+    return <section className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">{current?.visit_no ? visitName : 'Trip'}</h3>
+            {trips === null && !loadError && <span className="text-xs text-stone-400">Loading…</span>}
+        </div>
         {loadError && <p role="alert" className="text-xs text-red-700">Could not load your trips: {loadError}</p>}
 
-        {current && <div className="rounded-lg bg-white p-2 text-sm">
-            <p><strong>Started</strong> {formatDateTime(current.started_at)} from {startText(current)}</p>
-            {current.reached_at
-                ? <p className="mt-1"><strong>Reached site</strong> {formatDateTime(current.reached_at)}</p>
-                : <button type="button" disabled={disabled} onClick={markReached} className={`${big} mt-2 bg-sky-700 text-white`}>{locating === 'reach' ? 'Finding your location…' : 'Reached site'}</button>}
-            {!current.reached_at && <p className="mt-1 text-xs text-stone-500">Tap this when you reach the customer, so the km is correct.</p>}
-        </div>}
+        {current && <ol className="space-y-1.5 text-sm">
+            <li className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+                <span className="text-stone-500">Started</span><strong className="whitespace-nowrap">{time(current.started_at)}</strong>
+                <span className="min-w-0 truncate text-xs text-stone-400">{current.start_pincode || (current.start_source === 'gps' ? 'GPS' : '')}</span></li>
+            <li className="flex items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${current.reached_at ? 'bg-emerald-500' : 'bg-stone-300'}`} aria-hidden="true" />
+                <span className="text-stone-500">Reached site</span>{current.reached_at && <strong className="whitespace-nowrap">{time(current.reached_at)}</strong>}</li>
+        </ol>}
+        {current && !current.reached_at && <button type="button" disabled={disabled} onClick={markReached} className={primary}>{locating === 'reach' ? 'Finding your location…' : 'Reached site'}</button>}
 
-        {atHouse && !startingAgain && !ended && nextJobs.length > 0 && <div className="space-y-2 rounded-lg border border-sky-300 bg-white p-2">
-            <p className="text-sm font-bold text-sky-950">Done here? Where next on this trip?</p>
-            <p className="text-xs text-stone-600">Pick the next house. Its trip starts from here, so the km of every house is right.</p>
+        {arrived && visitsReady && !startingAgain && <SiteVisitForm key={current.id} trip={current} busy={busy} run={run} onSaved={loadTrips} />}
+
+        {atHouse && !startingAgain && !ended && nextJobs.length > 0 && <div className="space-y-2 border-t border-stone-100 pt-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-stone-500">Next house</p>
             {nextJobs.map(job => <button key={job.id} type="button" disabled={disabled} onClick={() => goNext(job)}
-                className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border px-3 text-left text-sm disabled:opacity-50">
-                <span className="min-w-0 break-words"><strong>Next: {ticketLabel(job)}</strong> {job.customer_name}</span>
-                <span className="shrink-0 text-xs text-stone-500">{pincodeInText(job.service_address) || 'no pincode'}</span>
+                className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border border-stone-200 px-3 text-left text-sm hover:border-amber-400 disabled:opacity-50">
+                <span className="min-w-0 break-words"><span className="text-stone-400">{ticketLabel(job)}</span> <strong>{job.customer_name}</strong></span>
+                <span className="shrink-0 text-xs text-stone-400">{pincodeInText(job.service_address) || ''} ›</span>
             </button>)}
-            <button type="button" disabled={disabled} onClick={endTrip} className="min-h-11 w-full rounded-xl bg-stone-800 px-3 text-sm font-bold text-white disabled:opacity-50">End trip – no more houses</button>
+            <button type="button" disabled={disabled} onClick={endTrip} className="min-h-11 w-full rounded-xl border border-stone-200 px-3 text-sm font-bold text-stone-700 disabled:opacity-50">End trip</button>
         </div>}
         {showSummary && <TripSummary summary={summary} houses={journey.length} loading={!points} rateKnown={kmStatus === 'ready'} />}
 
-        {current && !startingAgain && <button type="button" disabled={disabled} onClick={() => { reset(); setStartingAgain(true); }} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold disabled:opacity-50">Start a new trip</button>}
+        {hint && <p role="status" className="rounded-xl bg-amber-50 p-2 text-xs text-amber-900">{hint}</p>}
 
-        {hint && <p role="status" className="rounded bg-amber-50 p-2 text-xs text-amber-900">{hint}</p>}
-
-        {choosing && trips !== null && !found && !manual && <button type="button" disabled={disabled} onClick={findStart} className={`${big} bg-sky-700 text-white`}>
+        {choosing && trips !== null && !found && !manual && <button type="button" disabled={disabled} onClick={findStart} className={primary}>
             {locating === 'start' ? 'Finding your location…' : 'Start trip'}</button>}
 
-        {choosing && found && <div className="space-y-2 rounded-lg bg-white p-2">
+        {choosing && found && <div className="space-y-2">
             <p className="text-sm">{found.near && found.near.km <= NEAR_PINCODE_KM
-                ? <>Starting near <strong>{found.near.pincode}</strong> ({Number(found.near.km).toFixed(1)} km)</>
-                : 'Starting from your phone location'}
-                {accuracyText(found.accuracy) && <span className="block text-xs text-stone-500">Location accurate to {accuracyText(found.accuracy)}.</span>}</p>
-            {found.accuracy > ROUGH_ACCURACY_M && <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">The location is rough. If it looks wrong, type your pincode instead.</p>}
-            <button type="button" disabled={disabled} onClick={confirmGps} className={`${big} bg-green-600 text-white`}>Confirm start</button>
-            <button type="button" disabled={disabled} onClick={() => { setFound(null); setManual(true); }} className="min-h-11 w-full rounded-lg border px-3 text-xs font-bold">Type pincode instead</button>
+                ? <>From near <strong>{found.near.pincode}</strong></> : 'From your phone location'}
+                {accuracyText(found.accuracy) && <span className="text-xs text-stone-400"> · {accuracyText(found.accuracy)}</span>}</p>
+            {found.accuracy > ROUGH_ACCURACY_M && <p className="text-xs text-amber-800">Location is rough. Type the pincode if it looks wrong.</p>}
+            <button type="button" disabled={disabled} onClick={confirmGps} className={primary}>Confirm start</button>
+            <button type="button" disabled={disabled} onClick={() => { setFound(null); setManual(true); }} className={quiet}>Type pincode instead</button>
         </div>}
 
-        {choosing && manual && <form onSubmit={startManual} className="space-y-2 rounded-lg bg-white p-2">
-            <label className="block text-xs font-semibold">Pincode you are starting from
+        {choosing && manual && <form onSubmit={startManual} className="space-y-2">
+            <label className="block text-xs font-semibold text-stone-500">Starting pincode
                 <input value={pin} onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setPinWarning(''); }} inputMode="numeric" autoComplete="postal-code" pattern="[1-9][0-9]{5}" maxLength={6} placeholder="385340"
-                    className="mt-1 block w-full min-h-12 rounded-lg border p-2 text-lg font-bold tracking-widest" />
+                    className="mt-1 block w-full min-h-12 rounded-xl border border-stone-200 p-2 text-lg font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-300" />
             </label>
-            {pinWarning && <p role="alert" className="rounded bg-amber-50 p-2 text-xs text-amber-900">{pinWarning}</p>}
-            <button disabled={disabled || pin.length !== 6} className={`${big} bg-green-600 text-white`}>{unknownPinOk && unknownPinOk === pin ? 'Start trip anyway' : 'Start trip'}</button>
-            <button type="button" disabled={disabled} onClick={findStart} className="min-h-11 w-full rounded-lg border px-3 text-xs font-bold">Try phone location again</button>
+            {pinWarning && <p role="alert" className="text-xs text-amber-800">{pinWarning}</p>}
+            <button disabled={disabled || pin.length !== 6} className={primary}>{unknownPinOk && unknownPinOk === pin ? 'Start trip anyway' : 'Start trip'}</button>
+            <button type="button" disabled={disabled} onClick={findStart} className={quiet}>Use phone location</button>
         </form>}
 
-        {startingAgain && <button type="button" disabled={disabled} onClick={() => { reset(); setStartingAgain(false); }} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold">Keep the current trip</button>}
-    </div>;
+        {current && !startingAgain && (current.outcome === 'revisit'
+            ? <button type="button" disabled={disabled} onClick={() => { reset(); setStartingAgain(true); }} className={primary}>Start next visit</button>
+            : <button type="button" disabled={disabled} onClick={() => { reset(); setStartingAgain(true); }} className={quiet}>Restart trip</button>)}
+        {startingAgain && <button type="button" disabled={disabled} onClick={() => { reset(); setStartingAgain(false); }} className={quiet}>Keep the current trip</button>}
+    </section>;
 }
 
 // End of the journey: km and pay worked out with the office's settings (Operations).
 // An estimate: the office saves the visit payment and may change it.
 function TripSummary({ summary, houses, loading, rateKnown }) {
     const row = (label, value) => <div className="flex justify-between gap-3 py-1"><dt className="text-stone-600">{label}</dt><dd className="text-right font-semibold">{value}</dd></div>;
-    return <div className="rounded-lg border border-green-300 bg-white p-3 text-sm">
-        <p className="font-bold text-green-900">Trip ended{houses > 1 ? ` · ${houses} houses` : ''}</p>
+    return <div className="border-t border-stone-100 pt-3 text-sm">
+        <p className="text-xs font-bold uppercase tracking-wider text-stone-500">Trip ended{houses > 1 ? ` · ${houses} houses` : ''}</p>
         {loading ? <p className="text-xs text-stone-500">Working out the km…</p>
             : !summary ? <p className="text-xs text-stone-600">The km could not be worked out here (a start or house pincode is missing). The office will enter it.</p>
                 : <>

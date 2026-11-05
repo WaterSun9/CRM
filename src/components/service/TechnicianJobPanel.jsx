@@ -3,7 +3,6 @@ import { supabase } from '../../supabase';
 import { PHOTOS_NEEDED_TEXT, RESEND_SECONDS, hasCompletionPhotos } from './serviceLabels';
 import { phonePosition, roundAccuracy, tripError } from './tripLabels';
 import TripPanel from './TripPanel';
-import VisitStage from './VisitStage';
 import ComplaintPhotos from './ComplaintPhotos';
 import { confirmFirebaseCode, firebaseErrorText, firebaseReady, sendFirebaseCode } from './firebasePhone';
 
@@ -60,6 +59,15 @@ function verifyMessage(data) {
 // Firebase confirmations, by job: a resend replaces it, a page reload loses it
 // (the technician then presses Send code again).
 const confirmations = new Map();
+
+// Where the technician is on this job: Trip > Readings > Result > OTP.
+const STEPS = ['Trip', 'Readings', 'Result', 'OTP'];
+function StepBar({ at }) {
+    return <ol className="grid grid-cols-4 gap-1.5" aria-label="Job steps">{STEPS.map((step, index) => <li key={step} aria-current={index === at ? 'step' : undefined}>
+        <span className={`block h-1 rounded-full ${index < at ? 'bg-emerald-500' : index === at ? 'bg-amber-500' : 'bg-stone-200'}`} />
+        <span className={`mt-1 block text-[11px] font-bold ${index === at ? 'text-stone-900' : 'text-stone-400'}`}>{step}</span>
+    </li>)}</ol>;
+}
 
 export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed, onReleased, otherJobs = [], onGoNext, jobs = [] }) {
     const mine = issue.assigned_to === userId;
@@ -193,7 +201,7 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     }, 'Job returned to the open queue for reassignment.');
 
     if (issue.status === 'open') {
-        return <button type="button" disabled={busy} onClick={claim} className="min-h-12 w-full rounded-xl bg-amber-500 px-4 text-sm font-bold disabled:opacity-50 sm:w-auto">Claim this job</button>;
+        return <button type="button" disabled={busy} onClick={claim} className="min-h-12 w-full rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-50 sm:w-auto">Claim this job</button>;
     }
     if (!mine || !['assigned', 'completion_pending'].includes(issue.status)) return null;
 
@@ -204,51 +212,54 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     const trip = <TripPanel issue={issue} userId={userId} busy={busy} run={run} onTripState={setTripState} reloadKey={tripReload} otherJobs={otherJobs} onGoNext={onGoNext} jobs={jobs} />;
     // Same key in both places, so the photo list is moved, not loaded again.
     const photos = <ComplaintPhotos key="photos" issue={issue} userId={userId} userType="technician" busy={busy} run={run} onCounts={setPhotoCounts} reloadKey={photoReload} />;
-    const photosHint = !photosReady && <p role="note" className="rounded-lg bg-amber-50 p-2 text-xs font-semibold text-amber-900">{PHOTOS_NEEDED_TEXT}</p>;
+    const photosHint = !photosReady && <p role="note" className="text-center text-xs font-semibold text-amber-700">{PHOTOS_NEEDED_TEXT}</p>;
     const showNudge = !showCodeEntry && nudge && needsReach;
     // The work (photos, Visited, OTP) opens once a trip is started for this job, so
     // every visit has a start point for the km. If the trips cannot be read, nothing
     // is held back.
     const waitingForTrip = !showCodeEntry && !tripState.failed && !openTrip;
+    // The OTP is for a visit marked Fixed (readings first). Revisit needed: no OTP now.
+    const outcome = tripState.failed ? 'fixed' : openTrip?.outcome || null;
+    const canClose = !waitingForTrip && outcome === 'fixed';
+    const step = showCodeEntry || canClose ? 3 : !openTrip || !openTrip.reached_at && !openTrip.readings ? 0 : !openTrip.readings ? 1 : 2;
     return <div className="space-y-3">
         {/* Invisible reCAPTCHA for the Firebase SMS. */}
         <div id={recaptchaId} />
+        {!tripState.failed && <StepBar at={step} />}
         {!showCodeEntry && trip}
-        {waitingForTrip && tripState.loaded && <p role="note" className="rounded-lg bg-sky-100 p-2 text-xs font-semibold text-sky-950">Start the trip first. Photos, Visited and the OTP open after that.</p>}
         {!showCodeEntry && !waitingForTrip && photos}
-        {!showCodeEntry && !waitingForTrip && !showNudge && photosHint}
-        {!showCodeEntry && !waitingForTrip && !showNudge && <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={workDone} className="min-h-14 w-full rounded-xl bg-green-600 px-4 text-base font-bold text-white disabled:opacity-50">
-            {waitSeconds > 0 ? `Completed - send OTP (wait ${waitText})` : 'Completed - send OTP to customer'}
+        {canClose && !showCodeEntry && !showNudge && photosHint}
+        {canClose && !showCodeEntry && !showNudge && <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={workDone} className="min-h-12 w-full rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-40">
+            {waitSeconds > 0 ? `Send OTP (wait ${waitText})` : 'Send OTP to customer'}
         </button>}
-        {showNudge && <div role="alert" className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3">
-            <p className="text-sm font-semibold text-amber-950">You have not tapped Reached site. Tap it now so the km is correct.</p>
-            <button type="button" disabled={busy} onClick={reachThenSend} className="min-h-12 w-full rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:opacity-50">
+        {showNudge && <div role="alert" className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-amber-950">Reached site not tapped yet. Tap it so the km is right.</p>
+            <button type="button" disabled={busy} onClick={reachThenSend} className="min-h-12 w-full rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-50">
                 {reaching ? 'Finding your location…' : 'Reached site now'}</button>
             <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={sendCode} className="min-h-11 w-full rounded-xl border bg-white px-4 text-sm font-bold disabled:opacity-50">
                 {waitSeconds > 0 ? `Send OTP without it (wait ${waitText})` : 'Send OTP without it'}</button>
         </div>}
-        {showCodeEntry && <form onSubmit={verify} className="space-y-3 rounded-xl border border-green-200 bg-green-50 p-3">
-            <p className="text-sm text-green-900">{sent
+        {showCodeEntry && <form onSubmit={verify} className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+            <p className="text-sm text-stone-600">{sent
                 ? <>OTP sent {sent.channel} to <strong>{sent.maskedPhone}</strong>. Ask the customer to read it out and type it below.</>
                 : 'If the customer got the OTP, type it below. If not, press Send OTP again.'}</p>
             {sent?.testMode && <p className="rounded-lg bg-amber-100 p-2 text-xs font-semibold text-amber-900">Test mode: the code went to the test number, not to the customer.</p>}
-            <label className="block text-xs font-semibold">6-digit OTP from the customer
+            <label className="block text-xs font-bold uppercase tracking-wider text-stone-500">Customer OTP
                 <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="------"
                     className="mt-1 block w-full min-h-14 rounded-lg border bg-white p-2 text-center text-2xl font-bold tracking-[0.5em]" />
             </label>
             {photosHint}
-            <button disabled={busy || code.length !== 6 || !photosReady} className="min-h-12 w-full rounded-xl bg-green-600 px-4 text-sm font-bold text-white disabled:opacity-50">Confirm OTP and close job</button>
+            <button disabled={busy || code.length !== 6 || !photosReady} className="min-h-12 w-full rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-40">Confirm OTP and close job</button>
             <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={sendCode} className="min-h-11 w-full rounded-xl border bg-white px-4 text-sm font-bold disabled:opacity-50">
                 {waitSeconds > 0 ? `Send OTP again (${waitText})` : 'Send OTP again'}
             </button>
         </form>}
         {showCodeEntry && photos}
         {showCodeEntry && trip}
-        {!showCodeEntry && !waitingForTrip && <VisitStage issue={issue} busy={busy} run={run} />}
-        <p className="text-xs text-stone-600">No OTP? Call the office and ask them to close this job.</p>
-        <details className="rounded-xl border p-3">
-            <summary className="min-h-11 cursor-pointer py-2 text-sm font-bold">Cannot finish this job?</summary>
-            <div className="mt-2 space-y-2">
+        <details className="group">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center text-xs font-bold text-stone-500">Can't finish this job? <span className="ml-1 group-open:hidden">›</span></summary>
+            <div className="mt-1 space-y-2 rounded-2xl border border-stone-200 p-3">
+                <p className="text-xs text-stone-500">No OTP from the customer? Call the office to close the job.</p>
                 <label className="block text-xs font-semibold">Reason for giving up<textarea maxLength={1000} value={giveUpReason} onChange={e => setGiveUpReason(e.target.value)} className="mt-1 block w-full rounded-lg border p-2 text-sm" /></label>
                 <button type="button" disabled={busy || !giveUpReason.trim()} onClick={giveUp} className="min-h-11 rounded-lg border px-4 text-xs font-bold disabled:opacity-50">Give up and reopen</button>
             </div>
