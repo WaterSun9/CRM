@@ -294,15 +294,28 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         if (busyRef.current) return;
         navigate(`/quotations/new/${crypto.randomUUID()}/${client.latest.id}`);
     };
-    // Client picked this one. An older quote with three options asks which option first.
-    const pick = item => run(async () => {
+    // Client picked this one: confirm the pick, then offer Add to leads. An older quote with
+    // three options asks which option instead (that dialog is the confirmation).
+    const pick = (item,number) => run(async () => {
         const latest = await repo.get(item.id);
         const choices = chosenOptions(fromRow(latest));
         if (!choices.length) { await showAlert('Enter a price for this quote first.',{type:'warning'}); return; }
         if (choices.length > 1) { setChoosing({ row:latest, choices, picked:latest.selected_option || null }); return; }
-        patchPicked(await repo.pick(latest,choices[0].number,user));
-    });
-    const confirmChoice = () => run(async () => { patchPicked(await repo.pick(await repo.get(choosing.row.id),choosing.picked,user)); setChoosing(null); });
+        const c = choices[0];
+        const ok = await showConfirm(`Option ${number}: ${[c.brandName, c.capacity_kw ? `${c.capacity_kw} kW` : '', money(c.netPayableAmount)].filter(Boolean).join(' · ')}\n\nThe client's other options are unticked.`,
+            { title:`${latest.customer_name || 'Client'} picked this option?`, confirmLabel:'Yes, confirm pick', cancelLabel:'Cancel', type:'success' });
+        if (!ok) return;
+        const picked = await repo.pick(latest,c.number,user);
+        patchPicked(picked);
+        return picked;
+    }).then(offerLead);
+    const confirmChoice = () => run(async () => { const picked = await repo.pick(await repo.get(choosing.row.id),choosing.picked,user); patchPicked(picked); setChoosing(null); return picked; }).then(offerLead);
+    // After a pick: Add to leads opens the lead form, already filled from the picked option.
+    const offerLead = async picked => {
+        if (!picked || !onCreateLead) return;
+        if (await showConfirm(`The lead form opens already filled from this option. You can also do it later with Add to leads.`,
+            { title:`Pick confirmed. Add ${picked.customer_name || 'the client'} to leads now?`, confirmLabel:'Add to leads', cancelLabel:'Later', type:'success' })) addToLeads(picked);
+    };
     // Show the pick at once: this quote on, the client's others off. The reload confirms it.
     const patchPicked = picked => {
         const key = clients.find(c => c.quotes.some(q => q.id === picked.id))?.key;
@@ -365,7 +378,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
                 const chosen = client.picked?.id === item.id;
                 return <li key={item.id} className={`q-line${chosen ? ' q-line-picked' : ''}`}>
                     {closed ? <span className={`q-radio q-radio-static${chosen ? ' q-radio-on' : ''}`} aria-hidden="true">{chosen && <Check size={14} />}</span>
-                        : <button className={`q-radio${chosen ? ' q-radio-on' : ''}`} aria-pressed={chosen} aria-label={`Client picked option ${i + 1}`} title={chosen ? 'Picked. Tap to undo.' : 'Client picked this one'} disabled={busy || !online} onClick={() => chosen ? unpick(item) : pick(item)}>{chosen && <Check size={14} />}</button>}
+                        : <button className={`q-radio${chosen ? ' q-radio-on' : ''}`} aria-pressed={chosen} aria-label={`Client picked option ${i + 1}`} title={chosen ? 'Picked. Tap to undo.' : 'Client picked this one'} disabled={busy || !online} onClick={() => chosen ? unpick(item) : pick(item,i + 1)}>{chosen && <Check size={14} />}</button>}
                     <div className="q-line-text"><strong>Option {i + 1}</strong><span className="q-line-what">{quoteSummary(item)}</span><span className="q-line-no">{quoteLabel(item)}{chosen ? (added ? ' · picked, added to leads' : ' · picked') : ''}</span></div>
                     <strong className="q-line-price">{quotePrice(item)}</strong>
                     <button className="q-line-view" onClick={() => navigate(`/quotations/${item.id}/preview`)}>View <ChevronRight size={15} /></button>
