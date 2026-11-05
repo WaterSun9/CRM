@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Check, ChevronRight, Download, FileText, Pencil, Plus, Search, Share2 } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, FileText, Pencil, Plus, Search, Share2 } from 'lucide-react';
 import { supabase } from '../supabase';
 import AddLeadModal from '../components/AddLeadModal';
 import { useGlobalPopup } from '../components/GlobalPopup';
@@ -55,12 +55,12 @@ const showWhen = at => { const d = new Date(at); return Number.isNaN(d.getTime()
 const clientHistory = client => client.quotes.flatMap((q,i) => (q.activity || q.quotation_data?.activity || [])
     .filter(e => e?.at).map(e => ({ ...e, option:i + 1 }))).sort((a,b) => String(b.at).localeCompare(String(a.at)));
 const historyLine = e => `${HISTORY_TEXT[e.type] || e.type}${e.type === 'lost' && (e.reason || e.remark) ? ` · ${[e.reason,e.remark].filter(Boolean).join(' · ')}` : ''}`;
+// Shown only after tapping the arrow on the client's card.
 function ClientHistory({ client,names }) {
     const entries = useMemo(() => clientHistory(client),[client]);
-    if (!entries.length) return null;
-    return <details className="q-history"><summary><span>History</span><span className="q-history-last">{historyLine(entries[0])} · {showWhen(entries[0].at)}</span></summary><ol>{entries.map((e,i) => <li key={i}>
+    return <ol className="q-history" id={`q-history-${client.key}`}>{entries.length ? entries.map((e,i) => <li key={i}>
         <strong>Option {e.option}: {historyLine(e)}</strong>
-        <span>{showWhen(e.at)}{names[e.actor_id] ? ` · ${names[e.actor_id]}` : ''}</span></li>)}</ol></details>;
+        <span>{showWhen(e.at)}{names[e.actor_id] ? ` · ${names[e.actor_id]}` : ''}</span></li>) : <li><span>No history yet.</span></li>}</ol>;
 }
 function Preview({ row,onGenerate,onEdit,onDone,busy }) {
     const scrollRef = useRef(null);
@@ -184,6 +184,9 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     const shown = visible.slice(page * PAGE_SIZE,(page + 1) * PAGE_SIZE);
     // Who did each step in the shown clients' history. Names are a nicety: without them the entry still shows.
     const [names,setNames] = useState({});
+    // Clients whose history is open (closed by default).
+    const [historyOpen,setHistoryOpen] = useState(() => new Set());
+    const toggleHistory = key => setHistoryOpen(open => { const next = new Set(open); if (next.has(key)) next.delete(key); else next.add(key); return next; });
     const actorIds = useMemo(() => [...new Set(shown.flatMap(clientHistory).map(e => e.actor_id).filter(id => uuid.test(id || '')))].sort().join(','),[shown]);
     useEffect(() => {
         const ids = actorIds ? actorIds.split(',').filter(id => !(id in names)) : [];
@@ -375,8 +378,8 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         const added = client.status === 'converted';
         const closed = added || client.status === 'lost';
         return <article className="q-card q-client" key={client.key}>
-            <div className="q-client-head"><div><h3>{client.name || 'Unnamed client'}</h3><p>{[client.phone, client.place].filter(Boolean).join(' · ')}</p></div><span className={`q-status q-status-${client.status}`}>{STATUS_TEXT[client.status]}</span></div>
-            <ClientHistory client={client} names={names} />
+            <div className="q-client-head"><div><h3>{client.name || 'Unnamed client'}</h3><p>{[client.phone, client.place].filter(Boolean).join(' · ')}</p></div><div className="q-client-tools"><span className={`q-status q-status-${client.status}`}>{STATUS_TEXT[client.status]}</span><button className={`q-history-toggle${historyOpen.has(client.key) ? ' q-history-toggle-on' : ''}`} aria-expanded={historyOpen.has(client.key)} aria-controls={`q-history-${client.key}`} aria-label="History" title="History" onClick={() => toggleHistory(client.key)}><ChevronDown size={16} /></button></div></div>
+            {historyOpen.has(client.key) && <ClientHistory client={client} names={names} />}
             {!closed && client.quotes.length > 1 && client.status === 'open' && <p className="q-pick-hint">Tick the option the client picked.</p>}
             <ol className="q-lines">{client.quotes.map((item,i) => {
                 const chosen = client.picked?.id === item.id;

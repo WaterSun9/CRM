@@ -816,12 +816,11 @@
   .q-client-actions { grid-template-columns:1fr; }
   .q-client-actions .q-primary { order:-1; }
 }
-/* A client's history on its overview card: the latest step shows; tap to see all. */
-.q-history { margin:10px 0 0; border:1px solid #e7e5e4; border-radius:10px; padding:0 12px; background:#fcfbfa; }
-.q-history > summary { cursor:pointer; display:flex; gap:8px; align-items:baseline; font-size:12px; padding:8px 0; min-width:0; }
-.q-history > summary > span:first-child { font-weight:800; flex:0 0 auto; }
-.q-history-last { color:#68788b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
-.q-history[open] .q-history-last { display:none; }
-.q-history ol { list-style:none; margin:0 0 10px; padding:0; display:grid; gap:7px; }
+/* A client's history: hidden until the arrow next to the status is tapped. */
+.q-client-tools { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+.q-module button.q-history-toggle { width:30px; height:30px; min-height:0; padding:0; border-radius:99px; color:#68788b; }
+.q-module button.q-history-toggle svg { transition:transform .15s; }
+.q-module button.q-history-toggle-on svg { transform:rotate(180deg); }
+.q-history { list-style:none; margin:10px 0 0; padding:10px 12px; display:grid; gap:7px; border:1px solid #e7e5e4; border-radius:10px; background:#fcfbfa; }
 .q-history li { display:flex; flex-direction:column; font-size:12px; border-left:3px solid #e7e5e4; padding-left:9px; }
 .q-history li span { font-size:11px; color:#68788b; }
