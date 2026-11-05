@@ -66,7 +66,9 @@ const db = {
         { id: 'f1', issue_id: 'i-2', kind: 'before', storage_path: 'i-2/u-tech/before-1.jpg', file_name: 'before.jpg', mime_type: 'image/jpeg', uploaded_by: TECH.id, created_at: ago(2) },
         { id: 'f2', issue_id: 'i-2', kind: 'after', storage_path: 'i-2/u-tech/after-1.jpg', file_name: 'after.jpg', mime_type: 'image/jpeg', uploaded_by: TECH.id, created_at: ago(1) },
     ],
-    service_trips: [{ id: 't1', issue_id: 'i-2', technician_id: TECH.id, visit_no: 1, started_at: ago(3), start_source: 'manual', start_pincode: '384265', reached_at: ago(2), reached_lat: 23.83, reached_lng: 71.6, reached_accuracy_m: 20, readings: null, outcome: null, outcome_note: null, outcome_at: null }],
+    service_trips: [{ id: 't1', issue_id: 'i-2', technician_id: TECH.id, visit_no: 1, started_at: ago(3), start_source: 'manual', start_pincode: '384265', reached_at: ago(2), reached_lat: 23.83, reached_lng: 71.6, reached_accuracy_m: 20, readings: null, outcome: null, outcome_note: null, outcome_at: null },
+        { id: 't2', issue_id: 'i-3', technician_id: TECH.id, visit_no: 1, started_at: ago(30), start_source: 'manual', start_pincode: '384265', reached_at: ago(29), reached_lat: 23.69, reached_lng: 71.83, reached_accuracy_m: 15, readings: { ac_pn: 231, ac_pe: 233, ac_ne: 2, dc_pm: 584, dc_pe: 292, dc_me: 290, floating: false }, outcome: 'revisit', outcome_note: 'Panel cleaning kit needed', outcome_at: ago(28) },
+        { id: 't3', issue_id: 'i-3', technician_id: TECH.id, visit_no: 2, started_at: ago(6), start_source: 'manual', start_pincode: '384265', reached_at: ago(5), reached_lat: 23.69, reached_lng: 71.83, reached_accuracy_m: 12, readings: { ac_pn: 230, ac_pe: 231, ac_ne: 1, dc_pm: 590, dc_pe: 295, dc_me: 293, floating: false }, outcome: 'fixed', outcome_note: null, outcome_at: ago(4) }],
     service_plan_stops: [],
     service_visits: [{ id: 'v2', issue_id: 'i-6', technician_id: TECH.id, visit_date: '2026-08-05', kilometers: 46, amount_inr: 230, note: 'Found faulty card' }, { id: 'v3', issue_id: 'i-6', technician_id: TECH.id, visit_date: '2026-08-09', kilometers: 46, amount_inr: 230, note: 'Card replaced' }, { id: 'v1', issue_id: 'i-5', technician_id: TECH.id, visit_date: '2026-10-25', kilometers: 62, km_estimate: 62, amount_inr: 310, rate_per_km: 5, round_trip: true, note: '' }],
 };
@@ -157,7 +159,8 @@ function Demo() {
     const [, setTick] = useState(0);
     useEffect(() => { const again = () => setTick(n => n + 1); addEventListener('popstate', again); return () => removeEventListener('popstate', again); }, []);
     const nav = [['Warranty & Complaints', ShieldCheck, ['office', 'partner'].includes(view)], ['Operations', Users, view === 'operations']];
-    if (view === 'technician') return <GlobalPopupProvider><TechnicianPortal user={TECH} onLogout={() => {}} /></GlobalPopupProvider>;
+    const params = new URLSearchParams(location.search);
+    if (view === 'technician') return <GlobalPopupProvider><TechnicianPortal user={TECH} onLogout={() => {}} initialView={params.get('page') || 'home'} initialJobId={params.get('job')} /></GlobalPopupProvider>;
     return <GlobalPopupProvider><div className="min-h-screen bg-[#FCFBFA] md:pl-64">
         <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-white p-5 md:block"><strong className="text-lg">Watersun CRM</strong><p className="mt-1 text-xs text-stone-500">Signed in as {user.name}</p>
             <div className="mt-6 space-y-1">{nav.map(([label, Icon, on]) => <p key={label} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold ${on ? 'bg-stone-900 text-white' : 'text-stone-600'}`}><Icon size={16} /> {label}</p>)}</div></aside>
@@ -167,7 +170,7 @@ function Demo() {
             {['office', 'partner'].includes(view) && <>
                 <div role="tablist" className="mb-4 flex gap-2">{[['warranty', 'Warranty customers', ShieldCheck], ['complaints', 'Complaints', ClipboardList]].map(([id, label, Icon]) =>
                     <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${tab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}</div>
-                {tab === 'complaints' ? <ServiceIssuesView user={user} embedded onOpenWarranty={() => setTab('warranty')} /> : <WarrantyView user={user} onSelectCustomer={() => {}} onRaiseServiceIssue={setRaising} isChannelPartnerOffice={view === 'partner'} partnerName="Sun Energy Partners" />}
+                {tab === 'complaints' ? <ServiceIssuesView user={user} embedded initialIssueId={params.get('job')} onOpenWarranty={() => setTab('warranty')} /> : <WarrantyView user={user} onSelectCustomer={() => {}} onRaiseServiceIssue={setRaising} isChannelPartnerOffice={view === 'partner'} partnerName="Sun Energy Partners" />}
             </>}
         </main>
         {raising && <div role="dialog" className="fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3"><div className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl bg-white"><div className="flex justify-end p-2"><button type="button" onClick={() => setRaising(null)} className="min-h-11 rounded-lg border px-3">Close</button></div><ServiceIssuesView user={user} initialCustomer={raising} formOnly /></div></div>}

@@ -195,6 +195,8 @@ export default function ComplaintPhotos({ issue, userId, userType, busy, run, on
         : null;
 
     const label = 'text-xs font-bold uppercase tracking-wider text-stone-500';
+    // Nothing to show and nothing to add (office or partner, no photos yet).
+    if (!canUpload && groups && !files.length && !loadFailed) return null;
     return <section aria-label="Photos" className={canUpload ? 'space-y-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm' : 'space-y-3 border-t pt-3'}>
         <h3 className={label}>Photos</h3>
         {loadFailed && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 p-2 text-xs text-amber-900">

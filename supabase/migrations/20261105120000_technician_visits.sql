@@ -450,6 +450,20 @@ with check (
                   and issue.status in ('assigned', 'completion_pending'))
 );
 
+-- 7b. Road km asked of Google once per trip -----------------------------------------------
+-- The trip-distance function remembers each answer under a SHA-256 of the two points and
+-- the mode (no points stored). Only the function (service role) reads and writes it.
+create table if not exists public.trip_distance_cache (
+    key text primary key check (key ~ '^[0-9a-f]{64}$'),
+    distance_km numeric not null check (distance_km >= 0 and distance_km <= 4000),
+    duration_minutes integer,
+    travel_mode_used text,
+    created_at timestamptz not null default now()
+);
+alter table public.trip_distance_cache enable row level security;
+revoke all on public.trip_distance_cache from public, anon, authenticated;
+grant all on public.trip_distance_cache to service_role;
+
 -- 8. Rights ---------------------------------------------------------------------------------
 revoke all on function public.service_job_visible(uuid) from public, anon;
 revoke all on function public.service_customer_past(uuid) from public, anon;
