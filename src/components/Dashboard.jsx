@@ -21,6 +21,10 @@ import { fuzzyPatterns, mergeSearchResults } from '../utils/fuzzySearch';
 const SubsidyView = lazyWithRetry(() => import('./SubsidyView'));
 const LoanView = lazyWithRetry(() => import('./LoanView'));
 const InstallationView = lazyWithRetry(() => import('./InstallationView'));
+const ServiceIssuesView = lazyWithRetry(() => import('./ServiceIssuesView'));
+const WarrantyView = lazyWithRetry(() => import('./WarrantyView'));
+const PartnerProfile = lazyWithRetry(() => import('./service/PartnerProfile'));
+const PartnerPhoneReminder = lazyWithRetry(() => import('./service/PartnerPhoneReminder'));
 const CustomerDetailModal = lazyWithRetry(() => import('./CustomerDetailModal'));
 const AddLeadModal = lazyWithRetry(() => import('./AddLeadModal'));
 const ActivityLogView = lazyWithRetry(() => import('./ActivityLogView'));
@@ -58,11 +62,11 @@ const getMonthBounds = (monthValue, timestamp = false) => {
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays
+    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldCheck, ClipboardList, UserRound
 } from 'lucide-react';
 
 // ── NavBtn ────────────────────────────────────────────────────────────────────
-const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, selectedStage, setCurrentView, setSelectedStage }) => {
+const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, selectedStage, setCurrentView, setSelectedStage, setSidebarOpen }) => {
     const isActive = view === 'stages'
         ? (currentView === 'stages' && selectedStage === stage)
         : currentView === view;
@@ -71,6 +75,7 @@ const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, 
             onClick={() => {
                 if (view === 'stages') { setCurrentView('stages'); setSelectedStage(stage); }
                 else setCurrentView(view);
+                setSidebarOpen?.(false);
             }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold mb-0.5 transition-colors cursor-pointer ${isActive ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}
         >
@@ -126,6 +131,10 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
     const [globalResults, setGlobalResults] = useState([]);
     const [showGlobalDrop, setShowGlobalDrop] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    // Profile: the login's own phone number and password, from the user box above Logout
+    // (or the round button top right on a phone).
+    const openProfile = () => { setCurrentView('profile'); setSidebarOpen(false); };
+    const initials = user.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'A';
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [showAddLead, setShowAddLead] = useState(false);
     const globalSearchRef = useRef(null);
@@ -209,6 +218,33 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
         };
         restoreOpenedCustomer();
     }, []);
+
+    // "Open customer card" from the Complaints screen: the card opens above it
+    // (cardOverComplaints), and closing it tells the visit form to read the card again.
+    const [cardOverComplaints, setCardOverComplaints] = useState(false);
+    const [focusedComplaintId, setFocusedComplaintId] = useState(null);
+    // Warranty and Complaints share one page: 'warranty' (first, the default) or 'complaints'.
+    const [complaintsTab, setComplaintsTab] = useState('warranty');
+    useEffect(() => {
+        const open = async event => {
+            const id = event.detail?.id;
+            if (!id) return;
+            const { data } = await supabase.from('admin').select('*').eq('id', id).maybeSingle();
+            if (!data) return;
+            setCardOverComplaints(true);
+            setSelectedCustomer(data);
+        };
+        // Opening a complaint (red wrench, history row) shows Complaints above the card.
+        const lower = event => { setCardOverComplaints(false); setFocusedComplaintId(event.detail?.issueId || null); setComplaintsTab('complaints'); setCurrentView('complaints'); setSidebarOpen(false); };
+        window.addEventListener('open-customer-card', open);
+        window.addEventListener('open-complaint', lower);
+        return () => { window.removeEventListener('open-customer-card', open); window.removeEventListener('open-complaint', lower); };
+    }, []);
+    const closeCustomerCard = () => {
+        if (cardOverComplaints && selectedCustomer?.id) window.dispatchEvent(new CustomEvent('customer-card-closed', { detail: { id: selectedCustomer.id } }));
+        setCardOverComplaints(false);
+        setSelectedCustomer(null);
+    };
 
     const PAGE_SIZE = 50;
     const [page, setPage] = useState(0);
@@ -1259,7 +1295,9 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             : currentView === 'subsidy' ? 'Subsidy Tag Tracking'
                 : currentView === 'loan_tags' ? 'Loan Tag Tracking'
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
+                : currentView === 'complaints' ? (onRaiseServiceIssue ? 'Warranty & Complaints' : 'Warranty')
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
+                : currentView === 'profile' ? 'Profile'
                     : currentView === 'installation_payments' ? 'Installation Payments'
                     : currentView === 'activity' ? 'Activity Log'
                         : currentView === 'users' ? 'User Management'
@@ -1299,7 +1337,9 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {PRIMARY_STAGES.map(s => (
                         <NavBtn key={s.id} view="stages" stage={s.id} icon={s.icon} label={s.label} count={stageCounts[s.id] || 0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     ))}
-
+                    {/* Complaints and the Warranty list (completed customers in / out of their 5-year
+                        warranty, and those with no date) on one page. Every role sees Warranty. */}
+                    <NavBtn view="complaints" icon={ShieldCheck} label={onRaiseServiceIssue ? 'Warranty & Complaints' : 'Warranty'} count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                     {/* Office system tools */}
                     {['admin', 'sales'].includes(user.userType) && (
                         <>
@@ -1327,17 +1367,22 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {user.userType === 'office2' && <NavBtn view="availability" icon={CalendarDays} label="Vendor Calendar" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />}
                 </div>
 
-                {/* User + Logout */}
+                {/* User, Profile (own phone number and password) and Logout */}
                 <div className="p-3 border-t border-stone-100 shrink-0 bg-white">
-                    <div className="flex items-center gap-3 px-3 py-2 mb-1">
-                        <div className="w-8 h-8 bg-stone-900 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                            {user.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'A'}
+                    <button type="button" onClick={openProfile} title="Profile"
+                        className={`w-full flex items-center gap-3 px-3 py-2 mb-1 rounded-xl text-left transition-colors cursor-pointer ${currentView === 'profile' ? 'bg-stone-100' : 'hover:bg-stone-50'}`}>
+                        <div className="w-8 h-8 shrink-0 bg-stone-900 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                            {initials}
                         </div>
                         <div className="min-w-0">
                             <p className="text-xs font-semibold text-stone-700 truncate">{user.name}</p>
                             <p className="text-[9px] text-stone-400">{user.role}</p>
                         </div>
-                    </div>
+                    </button>
+                    <button type="button" onClick={openProfile}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-colors mb-0.5 cursor-pointer ${currentView === 'profile' ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
+                        <UserRound className="w-4 h-4" /> Profile
+                    </button>
                     {import.meta.env.DEV && onOpenDevSwitcher && (
                         <button onClick={onOpenDevSwitcher}
                             className="w-full flex items-center gap-2 px-3 py-2 text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-xl text-xs font-bold transition-colors mb-1.5 cursor-pointer border border-amber-200">
@@ -1483,12 +1528,18 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                                 <span className="hidden sm:inline text-xs">Add Lead</span>
                             </button>
                         )}
+                        {/* Phone: Profile top right (the sidebar with it is hidden behind the menu). */}
+                        <button type="button" onClick={openProfile} aria-label="Profile" title="Profile"
+                            className="md:hidden w-9 h-9 shrink-0 bg-stone-900 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                            {initials}
+                        </button>
                     </div>
                 </header>
 
                 {/* View router */}
                 <div className="flex-1 p-4 lg:p-6">
                     <Suspense fallback={<ViewLoader />}>
+                    {['channel_partner_office', 'channel_partner_office_manager', 'office2'].includes(user.userType) && currentView !== 'profile' && <PartnerPhoneReminder onOpenProfile={() => setCurrentView('profile')} />}
                     {currentView === 'dashboard' && <DashboardView metrics={metrics} loading={loading} />}
                     {currentView === 'quotations' && QUOTATION_FEATURE_ENABLED && canUseQuotations(user) && <QuotationModule embedded user={user} meta={meta} channelPartners={uniqueChannelPartners} onCreateLead={handleAddLead} onViewLead={handleGlobalSelect} onClose={() => setCurrentView('dashboard')} />}
                     {currentView === 'delivery_batches' && canSeeDeliveryBatches && (
@@ -1502,7 +1553,15 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
+                    {currentView === 'complaints' && onRaiseServiceIssue && <div role="tablist" aria-label="Warranty and complaints" className="mb-4 flex gap-2">
+                        {[['warranty', 'Warranty customers', ShieldCheck], ['complaints', 'Complaints', ClipboardList]].map(([id, label, Icon]) =>
+                            <button key={id} type="button" role="tab" aria-selected={complaintsTab === id} onClick={() => setComplaintsTab(id)}
+                                className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${complaintsTab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}
+                    </div>}
+                    {currentView === 'complaints' && onRaiseServiceIssue && complaintsTab === 'complaints' && <ServiceIssuesView key={focusedComplaintId || 'complaint-list'} user={user} initialIssueId={focusedComplaintId} embedded onOpenWarranty={() => setComplaintsTab('warranty')} />}
+                    {currentView === 'complaints' && (!onRaiseServiceIssue || complaintsTab === 'warranty') && <WarrantyView user={user} onSelectCustomer={setSelectedCustomer} onRaiseServiceIssue={onRaiseServiceIssue} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
 
+                    {currentView === 'profile' && <PartnerProfile user={user} />}
                     {currentView === 'channel_partner_mgmt' && user.userType === 'admin' && <ChannelPartnerManagementView currentUser={user} />}
                     {currentView === 'installation_payments' && user.userType === 'admin' && <InstallationPaymentsView onSelectCustomer={setSelectedCustomer} currentUser={user} />}
                     {currentView === 'activity' && user.userType === 'admin' && <ActivityLogView />}
@@ -1576,19 +1635,22 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
 
             {/* Modals */}
             {selectedCustomer && (
+                <div className={currentView === 'complaints' && onRaiseServiceIssue && complaintsTab === 'complaints' && !cardOverComplaints ? 'hidden' : cardOverComplaints ? 'relative z-[95]' : undefined}>
                 <Suspense fallback={<ViewLoader />}>
                 <CustomerDetailModal
                     customer={selectedCustomer}
-                    onClose={() => setSelectedCustomer(null)}
+                    onClose={closeCustomerCard}
                     onUpdate={handleUpdateCustomer}
                     onDelete={handleSoftDelete}
-                    onRaiseServiceIssue={onRaiseServiceIssue}
+                    // The raise form opens above the card, so a card lifted over Complaints drops back down.
+                    onRaiseServiceIssue={onRaiseServiceIssue && (customer => { setCardOverComplaints(false); onRaiseServiceIssue(customer); })}
                     user={user}
                     meta={meta}
                     channel_partners={uniqueChannelPartners}
                     defaultTab={currentView === 'subsidy' ? STAGE_IDS.SUBSIDY_STATUS : currentView === 'loan_tags' ? STAGE_IDS.LOAN : currentView === 'installation_tags' ? STAGE_IDS.INSTALLATION_STATUS : currentView === 'stages' ? selectedStage : undefined}
                 />
                 </Suspense>
+                </div>
             )}
             {showAddLead && <Suspense fallback={<ViewLoader />}><AddLeadModal isOpen={showAddLead} onClose={() => setShowAddLead(false)} onSave={handleAddLead} meta={meta} channel_partners={uniqueChannelPartners} user={user} /></Suspense>}
         </div>

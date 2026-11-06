@@ -266,8 +266,10 @@ function CreateUserModal({ onClose, onCreated, currentUser, branchOptions = [] }
         // Branch roles are scoped by channel_partner - every query in the app
         // filters on it - so a blank one creates a user who can see nothing (or
         // everything). A CPO gets theirs filled in automatically; an admin must
-        // supply it.
-        const BRANCH_SCOPED = ['channel_partner_office', 'agent', 'office2', 'agent2'];
+        // supply it. Not 'agent' (Channel Partner): it works under its own name and
+        // the form has no branch field for it, so requiring one blocked every new
+        // Channel Partner ("Branch Name is required", reported 27 Oct 2026).
+        const BRANCH_SCOPED = ['channel_partner_office', 'office2', 'agent2'];
         const resolvedPartner = (isCP ? partnerName : (form.channel_partner || '')).trim();
         if (BRANCH_SCOPED.includes(form.user_type) && !resolvedPartner) {
             setError('Assigned Channel Partner / Branch Name is required for this role.');

@@ -11,6 +11,12 @@ interface Page2Props {
   changedFields?: Set<string>;
   onEditField?: (fieldKey: string) => void;
   onOpenAssetSlot?: (slot: keyof AssetImages) => void;
+  /** Extra content right below the header (the one-page quotation's customer block). */
+  top?: React.ReactNode;
+  /** Extra content after the notes, above the footer (the one-page quotation's terms). */
+  bottom?: React.ReactNode;
+  /** Extra class on the page, e.g. quotation-page-one. */
+  pageClass?: string;
 }
 
 export const Page2: React.FC<Page2Props> = ({
@@ -19,13 +25,16 @@ export const Page2: React.FC<Page2Props> = ({
   changedFields = new Set(),
   onEditField,
   onOpenAssetSlot,
+  top,
+  bottom,
+  pageClass,
 }) => {
   const { company, page1, page2, footer, assets } = data;
 
   const isFieldChanged = (key: string) => changedFields.has(key);
 
   // Format capacity display
-  const displayKw = page1.capacityKw.toLowerCase().includes('kw')
+  const displayKw = page1.capacityKw === 'Panel options' || page1.capacityKw.toLowerCase().includes('kw')
     ? page1.capacityKw
     : `${page1.capacityKw} kw`;
 
@@ -59,12 +68,12 @@ export const Page2: React.FC<Page2Props> = ({
     },
   ];
 
-  const brands = page2.brandOptions && page2.brandOptions.length === 3
+  const brands = page2.brandOptions && page2.brandOptions.length > 0
     ? page2.brandOptions
     : defaultBrands;
 
   return (
-    <div className="a4-page quotation-page-2 bg-white shadow-xl print:shadow-none border border-gray-200 print:border-none mx-auto w-[210mm] min-h-[297mm] p-[12mm_15mm] flex flex-col justify-between text-gray-900 text-sm relative box-border overflow-hidden">
+    <div className={`a4-page quotation-page-2${pageClass ? ` ${pageClass}` : ''} bg-white shadow-xl print:shadow-none border border-gray-200 print:border-none mx-auto w-[210mm] min-h-[297mm] p-[12mm_15mm] flex flex-col justify-between text-gray-900 text-sm relative box-border overflow-hidden`}>
       {/* Top Section */}
       <div>
         <DocumentHeader
@@ -72,6 +81,7 @@ export const Page2: React.FC<Page2Props> = ({
           assets={assets}
           onEditLogo={() => onOpenAssetSlot?.('watersunLogoUrl')}
         />
+        {top}
 
         {/* Title Header (Corporate Blue in proposal) */}
         <div className="quotation-proposal-title text-center my-3">
@@ -108,7 +118,7 @@ export const Page2: React.FC<Page2Props> = ({
             </thead>
             <tbody>
               {/* Brands remain in the comparison columns; these specifications are shared. */}
-              {page2.panelWattage && page2.solarPanelQty && <tr>
+              {brands.length === 1 && page2.panelWattage && page2.solarPanelQty && <tr>
                 <td className="border border-black px-3 py-1.5 font-bold text-gray-900"><span className="quotation-equipment-cell">Solar modules</span></td>
                 <td className="border border-black px-3 py-1.5 text-gray-800 font-medium"><span className="quotation-equipment-cell">{page2.solarPanelQty} modules × {page2.panelWattage} Wp</span></td>
               </tr>}
@@ -153,12 +163,8 @@ export const Page2: React.FC<Page2Props> = ({
         <div className="w-full my-3">
           <table className="quotation-financial-table w-full border-collapse border border-black text-[11px]">
             <colgroup>
-              <col className="w-[4%]" />
-              <col className="w-[34%]" />
-              <col className="w-[11%]" />
-              <col className="w-[17%]" />
-              <col className="w-[17%]" />
-              <col className="w-[17%]" />
+              <col style={{width:'4%'}} /><col style={{width:'34%'}} /><col style={{width:'11%'}} />
+              {brands.map((_, i) => <col key={i} style={{width:`${51 / brands.length}%`}} />)}
             </colgroup>
             <thead>
               <tr className="bg-gray-100/90">
@@ -364,6 +370,7 @@ export const Page2: React.FC<Page2Props> = ({
             })}
           </ul>
         </div>
+        {bottom}
       </div>
 
       {/* Bottom Footer */}

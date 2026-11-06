@@ -1,4 +1,5 @@
 import React from 'react';
+import LeadQuotation from '../../quotations/LeadQuotation';
 import { User, ClipboardList, Edit3, X } from 'lucide-react';
 import { SectionHeader, EditableDetailItem, CheckboxRemarkItem } from './shared';
 import { useGlobalPopup } from '../GlobalPopup';
@@ -135,6 +136,8 @@ export default function LeadsTab({
                     )}
                 </div>
             </section>
+
+            <LeadQuotation customer={editData} user={user} meta={meta} isEditable={isEditable} documents={documents} onFileUpload={handleUpload} onFilePreview={handlePreview} />
 
             {/* Document Checklist */}
             <section id="section-reg_checklist">

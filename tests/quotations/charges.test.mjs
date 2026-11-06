@@ -47,3 +47,11 @@ test('older quotations with the single Excluding choice still print it', () => {
 test('Converted pre-fills the lead with the project type', () => {
     assert.equal(toLead(complete({ project_type: 'Commercial' })).property_type, 'Commercial');
 });
+
+test('Another salesperson name prints on the quotation only; the saved salesperson stays', () => {
+    assert.equal(documentFor(rowOf(complete())).page1.yoursTrulyName, 'Test agent');
+    const row = rowOf(complete({ print_owner_name: 'Ramesh Patel' }));
+    assert.equal(documentFor(row).page1.yoursTrulyName, 'Ramesh Patel');
+    assert.equal(row.owner_name_snapshot, 'Test agent');
+    assert.equal('print_owner_name' in row, false);
+});

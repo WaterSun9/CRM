@@ -113,7 +113,7 @@ export default function InstallationView({ onSelectCustomer, isChannelPartnerOff
                 // Was select('*'): ~90 columns per row for a card that renders a
                 // handful. CUSTOMER_CARD_COLUMNS was already imported here
                 // and unused. The detail modal fetches the full record on open.
-                .select(`${CUSTOMER_CARD_COLUMNS}, installation_date, material_delivery_date`)
+                .select(CUSTOMER_CARD_COLUMNS)   // already includes installation_date and material_delivery_date
                 .is('deleted_at', null)
                 .neq('stage', STAGE_IDS.COMPLETED)
                 .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })

@@ -407,14 +407,15 @@ export default function MaterialIntegrationTab({
             return false;
         }
         try {
-            const { data, error } = await supabase.from('bom').update({ material_loaded_date: date }).eq('id', bom.id).select('id');
+            const { data, error } = await supabase.from('bom').update({ material_loaded_date: date, material_loaded_by: user?.name || materialLoadedBy || null }).eq('id', bom.id).select('id');
             if (error || !data?.length) throw error || new Error('The loading date could not be saved.');
         } catch (error) {
             showAlert(error?.message || 'The loading date could not be saved.', { title: 'Date not saved', type: 'error' });
             return false;
         }
         setMaterialLoadedDate(date);
-        setBom(prev => ({ ...prev, material_loaded_date: date }));
+        setMaterialLoadedBy(user?.name || materialLoadedBy || '');
+        setBom(prev => ({ ...prev, material_loaded_date: date, material_loaded_by: user?.name || materialLoadedBy || null }));
         return true;
     };
     const lastSavedSerialsRef = useRef(null);
@@ -561,7 +562,7 @@ export default function MaterialIntegrationTab({
             const currentType = state.activeType || activeType;
             const prepBy = state.paperPreparedBy || null;
             const prepDate = state.paperPreparedDate || null;
-            const loadBy = state.materialLoadedBy || null;
+            const loadBy = loadedDateOverride ? (user?.name || state.materialLoadedBy || null) : state.materialLoadedBy || null;
             const loadDate = loadedDateOverride || state.materialLoadedDate || null;
             const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             const rawBomId = state.bom?.id;
@@ -598,7 +599,7 @@ export default function MaterialIntegrationTab({
                 paper_prepared_date: prepDate, material_loaded_by: loadBy,
                 material_loaded_date: loadDate
             }));
-            if (loadedDateOverride) setMaterialLoadedDate(loadedDateOverride);
+            if (loadedDateOverride) { setMaterialLoadedDate(loadedDateOverride); setMaterialLoadedBy(loadBy || ''); }
             let savedIndex = 0;
             const savedItems = items.map(item =>
                 item.product_name && item.product_name.trim() !== ''

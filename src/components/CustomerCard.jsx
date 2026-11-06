@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar, Flag } from 'lucide-react';
+import { Zap, User, Building2, Package, FolderOpen, ShieldCheck, Phone, Edit3, Truck, Calendar } from 'lucide-react';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS } from '../constants';
 import { formatCustomerTimestamp } from '../utils/customerActivity';
 import { RedFlagBadge } from './RedFlag';
 
+import ComplaintButton from './service/ComplaintButton';
 const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStage, onRaiseServiceIssue, currentUser }) {
     const [showStageMenu, setShowStageMenu] = useState(false);
     const [menuDirection, setMenuDirection] = useState('down');
@@ -54,13 +55,15 @@ const CustomerCard = memo(function CustomerCard({ customer, onSelect, onMoveStag
                     </h3>
                     <div className="ml-2 flex shrink-0 flex-wrap items-center justify-end gap-2">
                         {tagInfo && <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase whitespace-nowrap border ${tagColors.bg} ${tagColors.text} ${tagColors.border}`}>{tagInfo.label}</span>}
-                        {isCompleted && onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(customer); }}
-                            aria-label={`Raise service issue for ${customer.customer_name || 'customer'}`} title="Raise service issue"
-                            className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800 hover:bg-amber-100">
-                            <Flag size={12} /> Raise issue
-                        </button>}
                     </div>
                 </div>
+                {/* Warranty shows only on Warranty customers (owner, 28 Oct 2026); here just a red /
+                    green wrench when a complaint exists. The row hides itself when empty. */}
+                {isCompleted && (
+                    <div className="mb-3 flex flex-wrap items-center justify-end gap-2 empty:hidden">
+                        {onRaiseServiceIssue && <ComplaintButton customer={customer} statusOnly stopPropagation className="ml-auto" />}
+                    </div>
+                )}
                 <div className="grid grid-cols-2 gap-y-1.5 mb-3">
                     <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
                         <FolderOpen size={11} className="text-stone-300 flex-shrink-0" />

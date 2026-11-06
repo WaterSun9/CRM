@@ -7,7 +7,7 @@ import {
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
     ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
     ShoppingBag, Ruler, IndianRupee, Layers, Save, ClipboardCheck, Upload,
-    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal, Flag
+    Package, PauseCircle, Truck, Wrench, Camera, Send, Printer, FileText, FolderOpen, Terminal, Flag, UserRound, ShieldCheck
 } from 'lucide-react';
 import { logActivity, logFieldChanges, readAdminFields, toIndianCommas, formatInputValue, parseIndianNumber, normalizePhoneForSave, uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, updateDocumentRemark, sanitizeAdminUpdate, normalizeMeterInstallation, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
 import { DEFAULT_LEAD_FORM } from '../models';
@@ -19,6 +19,10 @@ import { canUseQuotations } from '../quotations/model';
 import { FilePreviewModal, CheckboxRemarkItem, isReplacedDocument, isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
+import PartnerProfile from './service/PartnerProfile';
+import WarrantyView from './WarrantyView';
+import { warrantyInfo } from '../utils/warranty';
+import PartnerPhoneReminder from './service/PartnerPhoneReminder';
 import BrandMark from './BrandMark';
 import { newestCustomerFirst } from '../utils/customerActivity';
 import LeadsTab from './modal-tabs/LeadsTab';
@@ -40,6 +44,7 @@ import BomPrintModal from './BomPrintModal';
 import { loadBomForCustomer, getBomTypeForCustomer } from '../utils/bom';
 import { findUnsavedFields, fieldLabel } from '../utils/saveCheck';
 
+import ComplaintButton from './service/ComplaintButton';
 // Documents asked for when the lead is created.
 const LEAD_DOC_TYPES = new Set(['adhaar_card_front', 'adhaar_card_back', 'pan_card', 'index_2', 'house_geo_tag_photo', 'light_bill', 'bank_details', 'extra_docs']);
 
@@ -75,9 +80,10 @@ function DetailRow({ label, value, children }) {
     );
 }
 
-export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpenDevSwitcher }) {
+export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpenComplaints, onOpenDevSwitcher }) {
     const { showAlert, showConfirm } = useGlobalPopup();
     const [view, setView] = useState('menu');
+    const [showProfile, setShowProfile] = useState(false);
     const [activeWorkdeskTab, setActiveWorkdeskTab] = useState(STAGE_IDS.LEADS);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [customers, setCustomers] = useState([]);
@@ -960,12 +966,23 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
 
     return (
         <>
+            {showProfile && <div role="dialog" aria-modal="true" aria-label="Profile" className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-stone-950/50 p-3 sm:items-center sm:p-6" onClick={() => setShowProfile(false)}>
+                <div className="w-full max-w-xl rounded-3xl bg-[#FCFBFA] p-4" onClick={event => event.stopPropagation()}>
+                    <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold">Profile</h2><button type="button" onClick={() => setShowProfile(false)} aria-label="Close profile" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border bg-white"><X size={20} /></button></div>
+                    <PartnerProfile user={user} />
+                </div>
+            </div>}
             {view === 'menu' && (
                 <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans flex flex-col pb-8">
                     <header className="bg-white border-b border-stone-100 px-4 py-3 sticky top-0 z-30 flex items-center justify-between shadow-sm">
                 <BrandMark label={isAgent2 ? 'Dealer Portal' : 'Channel Partner Portal'} />
-                <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-stone-600 truncate max-w-[120px]">{user.name}</span>
+                <div className="flex items-center gap-1">
+                    {/* Profile (own phone number and password), next to Logout. */}
+                    <button type="button" onClick={() => setShowProfile(true)} title="Profile"
+                        className="flex min-h-11 items-center gap-2 rounded-xl px-2 hover:bg-stone-50 cursor-pointer">
+                        <span className="w-8 h-8 shrink-0 rounded-full bg-stone-900 flex items-center justify-center text-white text-xs font-bold">{user.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'P'}</span>
+                        <span className="hidden sm:block text-left leading-tight"><span className="block text-xs font-bold text-stone-700 truncate max-w-[110px]">{user.name}</span><span className="block text-[10px] text-stone-400">Profile</span></span>
+                    </button>
                     <button
                         onClick={async () => { if (await saveBeforeAgentExit('Save & Logout')) onLogout(); }}
                         className="p-2 text-stone-400 hover:text-red-500 transition-colors rounded-xl hover:bg-stone-50 cursor-pointer"
@@ -1005,6 +1022,16 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                     </section>
 
                     {QUOTATION_PARTNER_ENABLED && <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span>{quotationOpenCount > 0 && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}<ChevronRight size={18} /></button>}
+                    <PartnerPhoneReminder key={showProfile ? "profile-open" : "profile-closed"} onOpenProfile={() => setShowProfile(true)} />
+                    {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="w-full flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-sm"><ClipboardList size={24} /><span className="flex-1"><strong className="block text-base">Complaints</strong><span className="text-xs text-stone-500">Track service requests</span></span><ChevronRight size={18} /></button>}
+
+                    {/* Warranty customers on the home page (owner, 28 Oct 2026): their own completed
+                        customers as cards. They raise complaints (in warranty only) and can see
+                        everything, but change only the address and pincode. */}
+                    {onRaiseServiceIssue && <section aria-label="Warranty customers" className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
+                        <h2 className="mb-3 flex items-center gap-2 text-base font-bold"><ShieldCheck size={20} className="text-emerald-600" /> Warranty customers</h2>
+                        <WarrantyView user={user} onRaiseServiceIssue={onRaiseServiceIssue} />
+                    </section>}
 
                     <section className="rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm">
                         <div className="mb-3">
@@ -1191,6 +1218,8 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                             )}
                         </div>
                         <div className="flex items-center gap-1 md:gap-2">
+                            {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-bold text-stone-700">Complaints</button>}
+                            <button type="button" onClick={() => setShowProfile(true)} title="Profile" aria-label="Profile" className="flex items-center gap-1.5 rounded-xl border border-stone-200 px-2.5 py-2 text-xs font-bold text-stone-700"><UserRound size={15} /><span className="hidden md:inline">Profile</span></button>
                             {import.meta.env.DEV && onOpenDevSwitcher && (
                                 <button
                                     type="button"
@@ -1268,11 +1297,6 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                                 <RedFlagBadge customerId={cust.id} user={user} size={13} />
                                             </h4>
                                             <div className="flex items-center gap-1.5">
-                                                {cust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <button type="button" onClick={event => { event.stopPropagation(); onRaiseServiceIssue(cust); }}
-                                                    aria-label={`Raise service issue for ${cust.customer_name || 'customer'}`} title="Raise service issue"
-                                                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2 text-[10px] font-bold text-amber-800 hover:bg-amber-100">
-                                                    <Flag size={12} /> Raise issue
-                                                </button>}
                                                 {getTelephoneHref(cust.phone_number) && (
                                                     <a
                                                         href={getTelephoneHref(cust.phone_number)}
@@ -1290,6 +1314,11 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                             </div>
                                         </div>
                                         
+                                        {cust.stage === STAGE_IDS.COMPLETED && (
+                                            <div className="-mt-1 mb-3 flex flex-wrap items-center justify-end gap-2 empty:hidden">
+                                                {onRaiseServiceIssue && <ComplaintButton customer={cust} statusOnly stopPropagation className="ml-auto" />}
+                                            </div>
+                                        )}
                                         <div className="space-y-1.5 md:space-y-2 text-[11px] md:text-xs text-stone-600">
                                             <div className="flex items-center gap-2">
                                                 <Phone size={11} className="text-stone-400 shrink-0" />
@@ -1368,7 +1397,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                         {/* Detail Header - Name, Phone Number & Consumer No on Top */}
                         <div className="shrink-0 px-5 py-5 border-b border-stone-150 bg-stone-50/90 flex justify-between items-start">
                             <div className="space-y-1">
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-[8px] font-black uppercase text-amber-600 tracking-widest bg-amber-50 border border-amber-200/60 px-1.5 py-0.5 rounded">
                                         {isAgent2 ? 'Dealer Workdesk' : 'Channel Partner Workdesk'}
                                     </span>
@@ -1404,10 +1433,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                             </div>
                             <div className="flex items-center gap-2 ml-3">
                                 <RedFlagToggle customer={selectedCust} user={user} tone="light" className="h-9 w-9 rounded-full" />
-                                {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <button type="button" onClick={() => onRaiseServiceIssue(selectedCust)}
-                                    className="inline-flex h-9 items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 text-[10px] font-bold text-amber-800 hover:bg-amber-100">
-                                    <Flag size={13} /> Raise issue
-                                </button>}
+                                {selectedCust.stage === STAGE_IDS.COMPLETED && onRaiseServiceIssue && <ComplaintButton customer={selectedCust} onRaise={onRaiseServiceIssue} canRaise={warrantyInfo(selectedCust).status === 'in_warranty'} withLabel className="ml-auto" />}
                                 {getTelephoneHref(selectedCust.phone_number) && (
                                     <a
                                         href={getTelephoneHref(selectedCust.phone_number)}

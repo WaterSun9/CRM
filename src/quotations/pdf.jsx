@@ -15,7 +15,7 @@ export async function generateQuotationPdf(row) {
         flushSync(() => root.render(<DocumentPages row={row} exportMode />));
         await waitForQuotationAssets(host);
         const pages = fitQuotationPages(host);
-        if (pages.length !== 3) throw new Error('Expected three quotation pages.');
+        if (pages.length !== 1) throw new Error('Expected one quotation page.');
         const pdf = new jsPDF({ orientation:'portrait',unit:'mm',format:'a4',compress:true });
         for (let i = 0; i < pages.length; i++) {
             const canvas = await html2canvas(pages[i],{

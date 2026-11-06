@@ -1,106 +1,225 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ChevronRight, MessageSquare, Route, UserRound, Wrench } from 'lucide-react';
+import './service/service.css';
 import { supabase } from '../supabase';
+import WarrantyBadge from './WarrantyBadge';
+import IssueForm from './service/IssueForm';
+import TechnicianJobPanel from './service/TechnicianJobPanel';
+import OfficeIssuePanel from './service/OfficeIssuePanel';
+import VisitForm from './service/VisitForm';
+import { announceComplaintsChanged } from './service/complaintStatus';
+import WhatsAppLog from './service/WhatsAppLog';
+import { WHATSAPP_ENABLED } from '../constants';
+import ComplaintPhotos from './service/ComplaintPhotos';
+import ComplaintComments from './service/ComplaintComments';
+import CustomerFacts from './service/CustomerFacts';
+import ComplaintHistory from './service/ComplaintHistory';
+import VisitStage from './service/VisitStage';
+import RaisedBy from './service/RaisedBy';
+import CombinedVisitForm from './service/CombinedVisitForm';
+import PastComplaints from './service/PastComplaints';
+import VisitTimeline from './service/VisitTimeline';
+import DayPlan, { readDayPlan } from './service/DayPlan';
+import {
+    ACTIVE_STATUSES, OFFICE_FILTERS, PARTNER_TYPES, STAGE_LABELS, STAGE_PILL, STATUS_LABELS, TECHNICIAN_FILTERS, WARRANTY_PILL,
+    formatDateTime, isOpenJobFor, issueStage, matchesFilter, money, ticketLabel, todayLocal, warrantyLabel
+} from './service/serviceLabels';
 
-const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
-const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0);
-const acceptedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
-const validFiles = files => files.length <= 5 && files.every(file => file.size <= 10 * 1024 * 1024 && acceptedTypes.has(file.type));
-const issueDraft = (customer, defaultPartner) => ({
-    channel_partner_name: customer?.channel_partner || defaultPartner,
-    consumer_no: String(customer?.consumer_no ?? ''),
-    customer_name: customer?.customer_name || '',
-    customer_phone: String(customer?.phone_number ?? ''),
-    service_address: customer?.full_address || [customer?.villages, customer?.sub_divisions, customer?.district].filter(Boolean).join(', '),
-    problem_type: '',
-    system_company_name: customer?.module_brand || '',
-    system_kw: customer?.system_capacity_kwp ?? '',
-    comment: '',
-    required_date: today()
-});
-async function uploadIssueFiles(issueId, files, userId) {
-    const failed = [];
-    for (const file of files) {
-        const path = `${issueId}/${userId}/${crypto.randomUUID()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-        const uploaded = await supabase.storage.from('service-issues').upload(path, file, { upsert: false, contentType: file.type });
-        if (uploaded.error) { failed.push(file.name); continue; }
-        const recorded = await supabase.from('service_issue_files').insert({ issue_id: issueId, storage_path: path, file_name: file.name, mime_type: file.type, uploaded_by: userId });
-        if (recorded.error) { await supabase.storage.from('service-issues').remove([path]); failed.push(file.name); }
-    }
-    return failed;
+// The tab the complaint is in (Raised, In process, Visited, ...); "Waiting for code" is said too.
+const StatusPill = ({ issue }) => {
+    const stage = issueStage(issue);
+    return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${STAGE_PILL[stage] || 'bg-stone-100 text-stone-700'}`}>{STAGE_LABELS[stage] || STATUS_LABELS[issue.status] || issue.status}{issue.status === 'completion_pending' ? ` · ${STATUS_LABELS.completion_pending}` : ''}</span>;
+};
+const WarrantyPill = ({ status }) => <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${WARRANTY_PILL[status] || WARRANTY_PILL.unknown}`}>{warrantyLabel(status)}</span>;
+
+// Technician portal (phone): the Vendor portal's card shape - name + stage badge,
+// problem, ticket / pincode / needed-by chips, chevron.
+function PhoneJobCard({ issue, onOpen }) {
+    const stage = issueStage(issue);
+    const pin = (issue.service_address || '').match(/[1-9]\d{5}(?!\d)/g)?.pop();
+    const needed = issue.required_date ? new Date(`${issue.required_date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+    const chips = [['Ticket', ticketLabel(issue)], ['Pin', pin], ['Needed', needed]].filter(([, value]) => value);
+    return <button type="button" onClick={onOpen}
+        className="group w-full space-y-1.5 rounded-2xl border border-stone-150 bg-white p-3.5 text-left shadow-sm transition-all hover:border-amber-400 hover:shadow-md active:scale-[0.99]">
+        <span className="flex items-start justify-between gap-2">
+            <span className="min-w-0 flex-1 space-y-1">
+                <span className="flex flex-wrap items-center gap-2">
+                    <span className="truncate text-xs font-bold text-stone-900 group-hover:text-amber-600">{issue.customer_name}</span>
+                    <span className={`whitespace-nowrap rounded-md px-1.5 py-0.5 text-[8px] font-black uppercase ${STAGE_PILL[stage] || 'bg-stone-100 text-stone-700'}`}>{STAGE_LABELS[stage] || issue.status}</span>
+                </span>
+                <span className="block truncate text-[10px] font-medium text-stone-400">{issue.problem_type || 'No problem written'}</span>
+                <span className="flex flex-wrap gap-2 pt-0.5 text-[9px] text-stone-500">{chips.map(([label, value]) => <span key={label}>{label}: <b>{value}</b></span>)}</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 self-center text-stone-300 group-hover:text-stone-700" />
+        </span>
+    </button>;
 }
 
-export default function ServiceIssuesView({ user, initialCustomer = null, formOnly = false }) {
+// One saved visit: km (and the trip estimate when the office changed it), amount, note.
+// In 'pro' mode the pre-filled km can be the Google road km (km_source 'google', or
+// route_km kept when the office changed it).
+function VisitRow({ visit }) {
+    if (visit.trip_group) {
+        const lead = visit.group?.find(row => Number(row.kilometers) > 0 || Number(row.amount_inr) > 0) || visit;
+        const tickets = (visit.group || [visit]).map(row => row.ticket).filter(Boolean).join(', ');
+        return <p className="rounded-lg bg-stone-50 p-2 text-xs">
+            {visit.visit_date} · <strong>Combined trip</strong>{tickets ? ` (${tickets})` : ''} · {lead.kilometers} km · {money(lead.amount_inr)} for the whole trip{lead.km_note ? ` · ${lead.km_note}` : ''}
+        </p>;
+    }
+    const estimate = visit.km_estimate === null || visit.km_estimate === undefined ? null : Number(visit.km_estimate);
+    const changed = estimate !== null && Number(visit.kilometers) !== estimate;
+    const google = visit.km_source === 'google' || (visit.route_km !== null && visit.route_km !== undefined);
+    return <p className="rounded-lg bg-stone-50 p-2 text-xs">
+        {visit.visit_date} · {visit.kilometers} km{estimate !== null && (changed ? ` (${google ? 'Google Maps road km' : 'estimate'} ${estimate} km${visit.km_note ? `: ${visit.km_note}` : ''})` : google ? ' (Google Maps road km)' : ' (trip estimate)')} · {money(visit.amount_inr)}{visit.rate_per_km != null && ` · ${visit.round_trip === false ? 'one way' : 'round trip'}, ₹${Number(visit.rate_per_km)}/km`}{visit.note ? ` · ${visit.note}` : ''}
+    </p>;
+}
+
+// Shows how a closed complaint was closed, or that a code is on its way.
+function ClosureNote({ issue, forTechnician }) {
+    if (issue.status === 'completed') {
+        const how = issue.completion_method === 'otp' ? "Closed with the customer's code" : `Closed by office: ${issue.override_reason || 'no reason given'}`;
+        return <p className="rounded-lg bg-green-50 p-2 text-xs text-green-900"><strong>{how}</strong>{issue.completed_at && <span className="block">Completed {formatDateTime(issue.completed_at)}</span>}</p>;
+    }
+    if (issue.status === 'cancelled') return <p className="rounded-lg bg-stone-100 p-2 text-xs text-stone-700"><strong>Cancelled:</strong> {issue.cancel_reason || 'no reason given'}</p>;
+    if (issue.status === 'completion_pending' && !forTechnician) return <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Completion code sent to the customer{issue.completion_requested_at ? ` on ${formatDateTime(issue.completion_requested_at)}` : ''}. Waiting for the technician to enter it.</p>;
+    return null;
+}
+
+// view / onViewChange: the technician portal's sidebar picks the tab (Open jobs, My jobs,
+// My trip) and the tab pills are hidden; focus ({ id }) opens one job from the portal's Home.
+export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false, embedded = false, onOpenWarranty = null, view = null, onViewChange = null, focus = null }) {
     const isTechnician = user?.userType === 'technician';
     const canManage = ['admin', 'sales'].includes(user?.userType);
+    const isPartner = PARTNER_TYPES.includes(user?.userType);
     const defaultPartner = ['channel_partner_office', 'office2', 'agent', 'agent2'].includes(user?.userType) ? user?.channel_partner || '' : '';
     const [issues, setIssues] = useState([]);
-    const [selectedId, setSelectedId] = useState(null);
+    const [selectedId, setSelectedId] = useState(initialIssueId);
     const [visits, setVisits] = useState([]);
-    const [files, setFiles] = useState([]);
-    const [extraFiles, setExtraFiles] = useState([]);
-    const [attachedFiles, setAttachedFiles] = useState([]);
-    const [newIssue, setNewIssue] = useState(() => issueDraft(initialCustomer, defaultPartner));
-    const [newVisit, setNewVisit] = useState({ visit_date: today(), kilometers: '', amount_inr: '', note: '' });
-    const [giveUpReason, setGiveUpReason] = useState('');
-    const [filter, setFilter] = useState(isTechnician ? 'open' : 'all');
+    const [filter, setFilter] = useState(view || (isTechnician ? 'open' : initialIssueId ? 'all' : 'raised'));
+    const [technicians, setTechnicians] = useState(null);
+    const [techError, setTechError] = useState('');
+    const [loadError, setLoadError] = useState('');
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
+    // Messages from actions on a complaint show next to that complaint, so a
+    // technician on a phone sees "Wrong code" without scrolling to the top.
+    const [messageSpot, setMessageSpot] = useState('top');
     const [busy, setBusy] = useState(false);
+    const filterChosen = useRef(Boolean(view));
+    const detailRef = useRef(null);
 
+    // Loads overlap (the 15 s poll, an action, a slow phone network): only the newest
+    // one may replace the list, so an older, slower answer never wipes newer data.
+    const loadSeq = useRef(0);
     const load = useCallback(async () => {
+        const seq = ++loadSeq.current;
         const rows = [];
-        if (isTechnician) {
-            const { data: queue, error: queueError } = await supabase.rpc('open_service_issue_queue');
-            if (queueError) { setError(queueError.message); return; }
-            rows.push(...(queue || []));
-        }
-        for (let offset = 0; ; offset += 500) {
-            const { data, error: readError } = await supabase.from('service_issues').select('*')
-                .order('required_date', { ascending: true }).range(offset, offset + 499);
-            if (readError) { setError(readError.message); return; }
-            rows.push(...(data || []));
-            if (!data || data.length < 500) break;
-        }
+        const fail = message => { if (seq === loadSeq.current) setLoadError(message); };
+        try {
+            if (isTechnician) {
+                const { data: queue, error: queueError } = await supabase.rpc('open_service_issue_queue');
+                if (queueError) { fail(queueError.message); return; }
+                rows.push(...(queue || []));
+            }
+            for (let offset = 0; ; offset += 500) {
+                const { data, error: readError } = await supabase.from('service_issues').select('*')
+                    .order('required_date', { ascending: true }).range(offset, offset + 499);
+                if (readError) { fail(readError.message); return; }
+                rows.push(...(data || []));
+                if (!data || data.length < 500) break;
+            }
+        } catch (failure) { fail(failure?.message || 'No internet.'); return; }
+        if (seq !== loadSeq.current) return;
         // The technician queue RPC and the table query can return the same
         // open issue. Keep one row per id so counts and actions stay accurate.
         setIssues([...new Map(rows.map(issue => [issue.id, issue])).values()]);
-        setError('');
-    }, [isTechnician]);
+        setLoadError('');
+        // A technician with a job in hand usually opens the app to finish it.
+        if (isTechnician && !filterChosen.current) {
+            filterChosen.current = true;
+            if (rows.some(issue => issue.assigned_to === user?.id && ACTIVE_STATUSES.includes(issue.status))) setFilter('mine');
+        }
+    }, [isTechnician, user?.id]);
     useEffect(() => {
         if (formOnly) return undefined;
         load();
         const timer = setInterval(load, 15000);
         return () => clearInterval(timer);
     }, [load, formOnly]);
+    useEffect(() => {
+        if (!canManage || formOnly) return undefined;
+        let active = true;
+        supabase.rpc('service_technicians').then(({ data, error: readError }) => {
+            if (!active) return;
+            if (readError) setTechError(readError.message); else { setTechnicians(data || []); setTechError(''); }
+        });
+        return () => { active = false; };
+    }, [canManage, formOnly]);
+
+    // Today's "My trip": after each visit only its houses are offered next, in its order
+    // (every own job when there is no plan for today).
+    const [planOrder, setPlanOrder] = useState([]);
+    const [planReload, setPlanReload] = useState(0);
+    useEffect(() => {
+        if (!isTechnician || formOnly || !user?.id) return undefined;
+        let active = true;
+        readDayPlan(user.id, todayLocal()).then(ids => { if (active) setPlanOrder(ids); }, () => {});
+        return () => { active = false; };
+    }, [isTechnician, formOnly, user?.id, planReload]);
 
     const selected = issues.find(issue => issue.id === selectedId);
+    // Technician portal: one job in tabs, like the customer card's stages, instead of one long page.
+    // An open job starts on Customer (read, then claim); an own job on Work.
+    const [jobTab, setJobTab] = useState('work');
+    const selectedOpen = selected?.status === 'open';
+    useEffect(() => { setJobTab(selectedOpen ? 'customer' : 'work'); }, [selectedId, selectedOpen]);
+    const issuesRef = useRef(issues);
+    issuesRef.current = issues;
+    // Opened at one complaint (red wrench, customer history): bring it into view once it has loaded.
+    const focusedOnce = useRef(false);
     useEffect(() => {
-        if (!selectedId) { setVisits([]); return; }
-        let active = true;
-        supabase.from('service_visits').select('*').eq('issue_id', selectedId).order('visit_date', { ascending: false })
-            .then(({ data, error: readError }) => { if (active) { if (readError) setError(readError.message); else setVisits(data || []); } });
-        return () => { active = false; };
-    }, [selectedId, issues]);
+        if (!initialIssueId || focusedOnce.current || !issues.some(issue => issue.id === initialIssueId)) return;
+        focusedOnce.current = true;
+        if (window.matchMedia?.('(max-width: 1023px)').matches) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }, [initialIssueId, issues]);
+    const loadVisits = useCallback(async issueId => {
+        const { data, error: readError } = await supabase.from('service_visits').select('*').eq('issue_id', issueId).order('visit_date', { ascending: false });
+        if (readError) throw readError;
+        const rows = data || [];
+        // A combined trip: the visits of the other houses, for their tickets and the trip's km.
+        const groups = [...new Set(rows.map(row => row.trip_group).filter(Boolean))];
+        if (!groups.length) return rows;
+        const { data: siblings } = await supabase.from('service_visits').select('id, issue_id, trip_group, kilometers, amount_inr, km_note').in('trip_group', groups);
+        const ticketOf = id => ticketLabel(issuesRef.current.find(issue => issue.id === id)) || '';
+        return rows.map(row => (row.trip_group
+            ? { ...row, group: (siblings || []).filter(other => other.trip_group === row.trip_group).map(other => ({ ...other, ticket: ticketOf(other.issue_id) })) }
+            : row));
+    }, []);
     useEffect(() => {
-        if (!selectedId) { setAttachedFiles([]); return; }
+        if (!selectedId || !(canManage || isTechnician)) { setVisits([]); return; }
         let active = true;
-        supabase.from('service_issue_files').select('id,file_name,storage_path').eq('issue_id', selectedId).order('created_at')
-            .then(({ data, error: readError }) => { if (active) { if (readError) setError(readError.message); else setAttachedFiles(data || []); } });
+        loadVisits(selectedId).then(rows => { if (active) setVisits(rows); }, readError => { if (active) setError(readError.message); });
         return () => { active = false; };
-    }, [selectedId, issues]);
+    }, [selectedId, issues, canManage, isTechnician, loadVisits]);
 
-    const run = async (action, successMessage) => {
+    const run = async (action, successMessage, spot = 'top') => {
         if (busy) return;
-        setBusy(true); setError(''); setNotice('');
+        setBusy(true); setError(''); setNotice(''); setMessageSpot(spot);
         try {
             const { data: authData, error: authError } = await supabase.auth.getUser();
             if (authError || !authData?.user) throw new Error('Your login has expired. Sign in again before saving.');
-            if (user?.id !== authData.user.id) throw new Error('This is a role preview, not a login to that account. Sign in as the user to raise or change a service issue.');
+            if (user?.id !== authData.user.id) throw new Error('This is a role preview, not a login to that account. Sign in as the user to raise or change a complaint.');
             const message = await action();
-            setNotice(message || successMessage);
+            setNotice(message ?? successMessage);
+            announceComplaintsChanged();
             if (!formOnly) await load();
         }
-        catch (failure) { setError(failure.message || 'Could not save the change.'); }
+        catch (failure) {
+            setError(failure.message || 'Could not save the change.');
+            // "Not assigned to you any more", "already closed" and similar mean the
+            // list is out of date, so refresh it now instead of at the next poll.
+            if (!formOnly) void load();
+        }
         finally { setBusy(false); }
     };
     const update = async (id, changes, filters = []) => {
@@ -108,118 +227,159 @@ export default function ServiceIssuesView({ user, initialCustomer = null, formOn
         for (const [field, value] of filters) query = query.eq(field, value);
         const { data, error: writeError } = await query.select('id');
         if (writeError) throw writeError;
-        if (!data?.length) throw new Error('This issue changed before your action. Refresh and try again.');
+        if (!data?.length) throw new Error('This complaint changed before your action. Refresh and try again.');
     };
-    const create = event => {
-        event.preventDefault();
-        run(async () => {
-            const { data, error: writeError } = await supabase.from('service_issues')
-                .insert({ ...newIssue, system_kw: newIssue.system_kw === '' ? null : Number(newIssue.system_kw), created_by: user.id }).select('id').single();
-            if (writeError) throw writeError;
-            if (!formOnly) setSelectedId(data.id);
-            setNewIssue(issueDraft(formOnly ? initialCustomer : null, defaultPartner));
-            setFiles([]);
-            const failed = await uploadIssueFiles(data.id, files, user.id);
-            return failed.length ? `Issue raised, but ${failed.length} photo(s) did not upload: ${failed.join(', ')}. Open the issue and add them later.` : 'Issue raised. Technicians can now claim it.';
-        }, 'Issue raised. Technicians can now claim it.');
+    const openIssue = id => {
+        setSelectedId(id); setError(''); setNotice('');
+        // On a phone the details sit below the list; bring them into view.
+        if (window.matchMedia?.('(max-width: 1023px)').matches) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     };
-    const claim = issue => run(async () => {
-        const { data, error: claimError } = await supabase.rpc('claim_service_issue', { p_issue_id: issue.id });
-        if (claimError) throw claimError;
-        if (!data) throw new Error('Another technician has already claimed this issue.');
-        setSelectedId(issue.id); setFilter('mine');
-    }, 'Issue assigned to you.');
-    const giveUp = issue => run(async () => {
-        if (!giveUpReason.trim()) throw new Error('Enter a reason before giving up this issue.');
-        const { data, error: giveUpError } = await supabase.rpc('give_up_service_issue', { p_issue_id: issue.id, p_reason: giveUpReason.trim() });
-        if (giveUpError) throw giveUpError;
-        if (!data) throw new Error('This assignment changed before your action. Refresh and try again.');
-        setGiveUpReason(''); setSelectedId(null);
-    }, 'Issue returned to the open queue for reassignment.');
-    const saveVisit = event => {
-        event.preventDefault();
-        run(async () => {
-            const { error: writeError } = await supabase.from('service_visits').insert({
-                issue_id: selected.id, technician_id: selected.assigned_to, entered_by: user.id,
-                visit_date: newVisit.visit_date, kilometers: Number(newVisit.kilometers),
-                amount_inr: Number(newVisit.amount_inr), note: newVisit.note.trim()
-            });
-            if (writeError) throw writeError;
-            setNewVisit({ visit_date: today(), kilometers: '', amount_inr: '', note: '' });
-            const { data } = await supabase.from('service_visits').select('*').eq('issue_id', selected.id).order('visit_date', { ascending: false });
-            setVisits(data || []);
-        }, 'Visit distance and amount saved.');
-    };
-    const addPhotos = async event => {
-        event.preventDefault();
-        if (!selected || !extraFiles.length || attachedFiles.length + extraFiles.length > 5 || !validFiles(extraFiles)) { setError('An issue can have at most 5 files, each no larger than 10 MB.'); return; }
-        await run(async () => {
-            const failed = await uploadIssueFiles(selected.id, extraFiles, user.id);
-            setExtraFiles([]);
-            const { data } = await supabase.from('service_issue_files').select('id,file_name,storage_path').eq('issue_id', selected.id).order('created_at');
-            setAttachedFiles(data || []);
-            return failed.length ? `${failed.length} file(s) did not upload: ${failed.join(', ')}` : 'Files attached.';
-        }, 'Files attached.');
-    };
-    const openPhoto = async photo => {
-        const { data, error: linkError } = await supabase.storage.from('service-issues').createSignedUrl(photo.storage_path, 120);
-        if (linkError) { setError(linkError.message); return; }
-        window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    const chooseFilter = (key, keepSelection = false) => { filterChosen.current = true; setFilter(key); onViewChange?.(key); if (!keepSelection) { setSelectedId(null); setError(''); setNotice(''); } };
+    // The portal's sidebar changed the tab, or Home opened a job.
+    useEffect(() => { if (view && view !== filter) { setFilter(view); setSelectedId(null); setError(''); setNotice(''); } }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { if (focus?.id) openIssue(focus.id); }, [focus]); // eslint-disable-line react-hooks/exhaustive-deps
+    const reloadVisits = async () => {
+        try { setVisits(await loadVisits(selected.id)); } catch { /* the next poll tries again */ }
     };
 
-    const shown = issues.filter(issue => {
-        if (filter === 'open') return issue.status === 'open';
-        if (filter === 'mine') return issue.assigned_to === user.id;
-        return filter === 'all' || issue.status === filter;
-    });
-
-    return <div className={formOnly ? 'w-full space-y-3' : 'mx-auto w-full max-w-6xl p-3 sm:p-6 space-y-4'}>
-        {!formOnly && <header className="rounded-2xl border bg-white p-4"><h1 className="text-xl font-bold">Field Service Management</h1><p className="text-sm text-stone-500">{isTechnician ? 'Claim an open issue to see its details and manage your assignment.' : canManage ? 'Raise issues, review assignments, and record each visit’s distance and amount.' : 'Raise a service issue and track its status.'}</p></header>}
+    const filters = isTechnician ? TECHNICIAN_FILTERS : OFFICE_FILTERS;
+    const countFor = key => issues.filter(issue => matchesFilter(issue, key, user?.id)).length;
+    // Active complaints first, then closed ones; each group by required date.
+    const closedLast = issue => (ACTIVE_STATUSES.includes(issue.status) ? 0 : 1);
+    const shown = issues.filter(issue => matchesFilter(issue, filter, user?.id))
+        .sort((a, b) => closedLast(a) - closedLast(b) || String(a.required_date).localeCompare(String(b.required_date)));
+    const technicianName = id => technicians?.find(tech => tech.id === id)?.name || (technicians ? 'Technician no longer active' : 'Technician');
+    // Partners see every complaint of their customers (database rules), not only the ones they raised.
+    // Technicians see the full card and history of open jobs too, before claiming.
+    const showDetails = selected && (!isTechnician || selected.assigned_to === user.id || selected.status === 'open');
+    const ownJob = Boolean(isTechnician && selected && selected.assigned_to === user.id);
+    // The technician's own open job shows the photos (with the camera buttons) in the job panel.
+    const photosInJobPanel = isTechnician && isOpenJobFor(selected, user?.id);
+    // A technician sees visits only on a job of their own.
+    const hasVisitColumn = canManage || ownJob;
+    const planned = id => { const at = planOrder.indexOf(id); return at < 0 ? 999 : at; };
+    const showPlan = isTechnician && filter === 'plan';
+    const banners = <>
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {notice && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
-        {!isTechnician && <form onSubmit={create} className="rounded-2xl border bg-white p-4 grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2"><h2 className="font-bold">{formOnly ? `Raise an issue for ${initialCustomer?.customer_name || 'customer'}` : 'Raise an issue'}</h2>{formOnly && <p className="mt-1 text-xs text-stone-500">Customer details are filled from the completed record. Review them and enter the problem details.</p>}</div>
-            <label className="text-xs font-semibold">Channel Partner name<input maxLength={160} value={newIssue.channel_partner_name} onChange={e => setNewIssue(v => ({ ...v, channel_partner_name: e.target.value }))} className="mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm" /></label>
-            <label className="text-xs font-semibold">Consumer Number *<input required maxLength={100} value={newIssue.consumer_no} onChange={e => setNewIssue(v => ({ ...v, consumer_no: e.target.value }))} className="mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm" /></label>
-            <label className="text-xs font-semibold">Customer name<input required maxLength={160} value={newIssue.customer_name} onChange={e => setNewIssue(v => ({ ...v, customer_name: e.target.value }))} className="mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm" /></label>
-            <label className="text-xs font-semibold">Required date<input required type="date" value={newIssue.required_date} onChange={e => setNewIssue(v => ({ ...v, required_date: e.target.value }))} className="mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm" /></label>
-            <label className="text-xs font-semibold">Customer mobile number<input type="tel" value={newIssue.customer_phone} onChange={e => setNewIssue(v => ({ ...v, customer_phone: e.target.value }))} className="mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm" /></label>
-            <label className="text-xs font-semibold">Customer address<input value={newIssue.service_address} onChange={e => setNewIssue(v => ({ ...v, service_address: e.target.value }))} className="mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm" /></label>
-            <label className="text-xs font-semibold">Type of problem<input required autoFocus={formOnly} maxLength={160} value={newIssue.problem_type} onChange={e => setNewIssue(v => ({ ...v, problem_type: e.target.value }))} className="mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm" /></label>
-            <label className="text-xs font-semibold">System company name<input value={newIssue.system_company_name} onChange={e => setNewIssue(v => ({ ...v, system_company_name: e.target.value }))} className="mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm" /></label>
-            <label className="text-xs font-semibold">System kW<input type="number" min="0" step="0.01" value={newIssue.system_kw} onChange={e => setNewIssue(v => ({ ...v, system_kw: e.target.value }))} className="mt-1 block w-full min-h-11 rounded-lg border p-2 text-sm" /></label>
-            <label className="sm:col-span-2 text-xs font-semibold">Comment<textarea maxLength={2000} rows={3} value={newIssue.comment} onChange={e => setNewIssue(v => ({ ...v, comment: e.target.value }))} className="mt-1 block w-full rounded-lg border p-2 text-sm" /></label>
-            <label className="sm:col-span-2 text-xs font-semibold">Photos of the problem (optional, up to 5 files, 10 MB each)<input key={selectedId || 'new'} type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => {
-                const chosen = [...e.target.files];
-                if (!validFiles(chosen)) { setFiles([]); setError('Choose at most 5 JPG, PNG, WebP or PDF files, each no larger than 10 MB.'); e.target.value = ''; return; }
-                setFiles(chosen); setError('');
-            }} className="mt-1 block w-full rounded-lg border p-2 text-sm" />{files.length > 0 && <span className="block mt-1">{files.length} file(s) selected</span>}</label>
-            <button disabled={busy} className="rounded-lg bg-amber-500 px-4 py-3 text-sm font-bold disabled:opacity-50">Raise issue</button>
-        </form>}
-        {!formOnly && <><div className="flex flex-wrap gap-2">{(isTechnician ? [['open','Open jobs'],['mine','My jobs']] : [['all','All'],['open','Open'],['assigned','Assigned'],['completed','Completed']]).map(([key,label]) =>
-            <button key={key} type="button" onClick={() => setFilter(key)} className={`rounded-full px-3 py-2 text-xs font-bold ${filter === key ? 'bg-stone-900 text-white' : 'bg-white border text-stone-700'}`}>{label}</button>)}</div>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-            <div className="space-y-2">{shown.length === 0 && <p className="rounded-2xl border bg-white p-4 text-sm text-stone-500">No issues in this view.</p>}{shown.map(issue =>
-                <button key={issue.id} type="button" onClick={() => setSelectedId(issue.id)} className={`block w-full rounded-2xl border p-4 text-left ${selectedId === issue.id ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
-                    <strong className="block">{issue.customer_name}</strong><span className="text-xs text-stone-500">{issue.consumer_no ? `${issue.consumer_no} · ` : ''}Required {issue.required_date} · {issue.status}</span>
-                    <p className="mt-1 truncate text-sm text-stone-700">{issue.problem_type}</p>
+    </>;
+    const bannersAtTop = formOnly || !selected || messageSpot === 'top';
+
+    // Technician portal: the job as a dark header with stage tabs (Work, Customer, Visits, Notes).
+    // Every tab stays mounted and only the chosen one shows, so a typed OTP or reading is kept.
+    const phoneJob = () => {
+        const tabs = [['work', 'Work', Wrench], ['customer', 'Customer', UserRound], ['visits', 'Visits', Route], ['notes', 'Notes', MessageSquare]];
+        const pane = key => (jobTab === key ? 'space-y-4 p-4' : 'hidden');
+        const nextJobs = issues.filter(row => row.id !== selected.id && row.assigned_to === user.id && row.status === 'assigned'
+            && (!planOrder.length || planOrder.includes(row.id))).sort((a, b) => planned(a.id) - planned(b.id));
+        return <>
+            <div className="bg-stone-900 px-4 pb-0 pt-4 text-white">
+                <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} className="inline-flex min-h-9 items-center gap-1 text-xs font-bold text-stone-400 hover:text-white"><ArrowLeft size={14} /> All jobs</button>
+                <p className="mt-2 text-[11px] font-bold text-stone-400">{ticketLabel(selected)}</p>
+                <h2 className="text-xl font-bold break-words">{selected.customer_name}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5"><StatusPill issue={selected} /><WarrantyPill status={selected.warranty_status || 'unknown'} /></div>
+                <p className="mt-1.5 text-[11px] text-stone-400">{selected.problem_type}{selected.required_date ? ` · needed by ${new Date(`${selected.required_date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}</p>
+                <div role="tablist" className="-mx-4 mt-3 flex gap-5 overflow-x-auto whitespace-nowrap border-t border-white/5 px-4">{tabs.map(([key, label, Icon]) =>
+                    <button key={key} type="button" role="tab" aria-selected={jobTab === key} onClick={() => setJobTab(key)}
+                        className={`flex shrink-0 items-center gap-1.5 border-b-2 py-3 text-[10px] font-bold uppercase tracking-widest transition-all ${jobTab === key ? 'border-amber-400 text-amber-400' : 'border-transparent text-stone-500 hover:text-stone-300'}`}>
+                        <Icon size={12} /> {label}</button>)}</div>
+            </div>
+            {!bannersAtTop && <div className="space-y-2 px-4 pt-4">{banners}</div>}
+            <div className={pane('work')}>
+                {selected.warranty_exception_reason && <p className="rounded-lg border border-orange-200 bg-orange-50 p-2 text-xs text-orange-950"><strong>Raised by admin as a warranty exception:</strong> {selected.warranty_exception_reason}</p>}
+                <ClosureNote issue={selected} forTechnician />
+                {selected.status === 'open'
+                    ? <p className="rounded-2xl border border-dashed border-stone-200 p-6 text-center text-sm text-stone-400">Claim this job to start the trip.</p>
+                    : <TechnicianJobPanel key={selected.id} issue={selected} userId={user.id} busy={busy} run={run}
+                        onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)}
+                        otherJobs={nextJobs} onGoNext={openIssue} jobs={issues} />}
+            </div>
+            <div className={pane('customer')}>
+                <CustomerFacts issue={selected} userType={user?.userType} canAddInverter={ownJob && isOpenJobFor(selected, user?.id)} busy={busy} run={run} />
+                <PastComplaints key={`past:${selected.id}`} issue={selected} />
+                {selected.give_up_reason && <p className="rounded-lg bg-amber-50 p-2 text-xs">Previous give-up reason: {selected.give_up_reason}</p>}
+            </div>
+            <div className={pane('visits')}>
+                {ownJob ? <VisitTimeline issue={selected} /> : <p className="py-6 text-center text-sm text-stone-400">Visits show once you claim the job.</p>}
+                {visits.length > 0 && <div className="space-y-2"><h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">Travel payments</h3>{visits.map(visit => <VisitRow key={visit.id} visit={visit} />)}</div>}
+            </div>
+            <div className={pane('notes')}>
+                {ownJob && <ComplaintComments key={`comments:${selected.id}`} issue={selected} user={user} busy={busy} run={run} />}
+                <ComplaintHistory key={`history:${selected.id}`} issue={selected} />
+            </div>
+            {/* An open job: read it, then claim it - on any tab. */}
+            {selected.status === 'open' && <div className="sticky bottom-0 z-10 border-t border-stone-200 bg-white/95 p-3 backdrop-blur">
+                <TechnicianJobPanel key={`claim:${selected.id}`} issue={selected} userId={user.id} busy={busy} run={run}
+                    onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)} />
+            </div>}
+        </>;
+    };
+
+    return <div className={formOnly ? 'w-full space-y-3' : `service-root ${embedded ? 'service-embedded' : ''} ${view ? 'service-phone' : ''} ${selected ? 'has-selection' : ''}`}>
+        {!formOnly && !view && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? 'Plan the day in My trip, then follow the steps on each job.' : canManage ? 'Assign complaints, follow each step, close them, and record each visit’s distance and amount. Complaints are raised from Warranty customers and show up here. The km rate is set in Operations.' : 'Track the complaints of your customers, step by step, and add comments. Raise a complaint from Warranty customers or the customer’s card.'}</p></header>}
+        {loadError && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700"><span className="flex-1">Could not load complaints: {loadError}</span><button type="button" onClick={() => load()} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold">Try again</button></p>}
+        {bannersAtTop && banners}
+        <div className="service-tools">
+        {/* Complaints are raised on Warranty customers (or the customer card) and show up here (owner, 28 Oct 2026). */}
+        {!isTechnician && !formOnly && onOpenWarranty && <button type="button" onClick={onOpenWarranty} className="inline-flex min-h-11 items-center gap-2 rounded-xl border bg-white px-4 text-sm font-bold text-stone-800 hover:border-amber-400">
+            Raise a complaint: go to Warranty customers <span aria-hidden="true">›</span></button>}
+        {!isTechnician && formOnly && <IssueForm user={user} initialCustomer={initialCustomer} formOnly={formOnly} canManage={canManage} defaultPartner={defaultPartner}
+            busy={busy} run={run} onRaised={setSelectedId} />}</div>
+        {!formOnly && <>{!view && <div className="service-filters flex flex-wrap gap-2">{filters.map(([key, label]) =>
+            <button key={key} type="button" onClick={() => chooseFilter(key)} className={`min-h-11 rounded-full px-4 text-xs font-bold ${filter === key ? 'bg-stone-900 text-white' : 'bg-white border text-stone-700'}`}>{label}{key === 'plan' ? '' : ` (${countFor(key)})`}</button>)}</div>}
+        {showPlan && <DayPlan user={user} issues={issues} busy={busy} run={run} onPlanSaved={() => { setPlanReload(n => n + 1); load(); }}
+            onOpen={id => { chooseFilter('mine', true); openIssue(id); }} />}
+        {!showPlan && <div className={`service-workspace ${selected ? 'has-selection' : ''} ${shown.length <= 1 ? 'single-result' : ''}`}>
+            <div className="service-list space-y-2" aria-label="Complaint list">{shown.length === 0 && <p className="rounded-2xl border bg-white p-4 text-sm text-stone-500">No complaints in this view.</p>}{shown.map(issue =>
+                view ? <PhoneJobCard key={issue.id} issue={issue} onOpen={() => openIssue(issue.id)} />
+                : <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} aria-pressed={selectedId === issue.id} className={`service-list-item block w-full rounded-xl border p-3 text-left ${selectedId === issue.id ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
+                    <span className="flex items-start gap-2"><span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-stone-500">{ticketLabel(issue)}</span><strong className="block break-words">{issue.customer_name}</strong></span><ChevronRight size={16} className="mt-1 shrink-0 text-stone-400" /></span>
+                    <span className="mt-2 flex flex-wrap items-center gap-2"><StatusPill issue={issue} />
+                        {issue.created_at && <span className="text-[11px] text-stone-500">Raised {new Date(issue.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</span>}</span>
                 </button>)}</div>
-            <div className="rounded-2xl border bg-white p-4 space-y-4 min-w-0">
-                {!selected ? <p className="text-sm text-stone-500">Select an issue to see details.</p> : <>
-                    <div><h2 className="font-bold text-lg">{selected.customer_name}</h2><p className="text-xs text-stone-500">Required {selected.required_date} · {selected.status}</p></div>
-                    {(!isTechnician || selected.assigned_to === user.id) && <div className="space-y-1 text-sm break-words"><p><strong>Channel Partner:</strong> {selected.channel_partner_name || '—'}</p><p><strong>Consumer Number:</strong> {selected.consumer_no}</p><p><strong>Phone:</strong> {selected.customer_phone || '—'}</p><p><strong>Address:</strong> {selected.service_address || '—'}</p><p><strong>Type of problem:</strong> {selected.problem_type}</p><p><strong>System company:</strong> {selected.system_company_name || '—'}</p><p><strong>System kW:</strong> {selected.system_kw ?? '—'}</p><p><strong>Comment:</strong> {selected.comment || '—'}</p></div>}
+            <div ref={detailRef} className={`service-detail scroll-mt-4 rounded-2xl border bg-white min-w-0 ${view ? 'overflow-hidden' : 'p-4 sm:p-5 space-y-4'}`}>
+                {!selected ? null : view ? phoneJob() : <>
+                    <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} className="service-back inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-stone-600"><ArrowLeft size={16} /> {isTechnician ? 'All jobs' : 'All complaints'}</button>
+                    <div className="space-y-1">
+                        <h2 className="font-bold text-lg break-words">{selected.ticket_no && <span className="text-stone-500">{ticketLabel(selected)} </span>}{selected.customer_name}</h2>
+                        <div className="flex flex-wrap items-center gap-1.5"><StatusPill issue={selected} />
+                            {selected.warranty_end || !selected.warranty_status || selected.warranty_status === 'unknown'
+                                ? <WarrantyBadge info={{ status: selected.warranty_status || 'unknown', start: selected.warranty_start || null, end: selected.warranty_end || null, source: null }} />
+                                : <WarrantyPill status={selected.warranty_status} />}
+                        </div>
+                        <RaisedBy issue={selected} />
+                        <p className="text-xs text-stone-500">Required {selected.required_date}{canManage && selected.assigned_to ? ` · Assigned to ${technicianName(selected.assigned_to)}` : ''}</p>
+                    </div>
+                    {!bannersAtTop && banners}
+                    {selected.warranty_exception_reason && <p className="rounded-lg border border-orange-200 bg-orange-50 p-2 text-xs text-orange-950"><strong>Raised by admin as a warranty exception:</strong> {selected.warranty_exception_reason}</p>}
+                    <ClosureNote issue={selected} forTechnician={isTechnician} />
+                    {/* The technician's next step comes before the details, so the
+                        code box is on screen without scrolling on a phone. */}
+                    {isTechnician && selected.status !== 'open' && <TechnicianJobPanel key={selected.id} issue={selected} userId={user.id} busy={busy} run={run}
+                        onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)}
+                        otherJobs={issues.filter(row => row.id !== selected.id && row.assigned_to === user.id && row.status === 'assigned'
+                            && (!planOrder.length || planOrder.includes(row.id))).sort((a, b) => planned(a.id) - planned(b.id))} onGoNext={openIssue} jobs={issues} />}
+                    <div className={`service-detail-grid ${hasVisitColumn ? '' : 'no-visit-column'}`}><div className="service-customer-column space-y-4">{showDetails && <CustomerFacts issue={selected} userType={user?.userType} canAddInverter={ownJob && isOpenJobFor(selected, user?.id)} busy={busy} run={run} />}
+                    {showDetails && (canManage || isTechnician) && <PastComplaints key={`past:${selected.id}`} issue={selected} />}
                     {selected.give_up_reason && <p className="rounded-lg bg-amber-50 p-2 text-xs">Previous give-up reason: {selected.give_up_reason}</p>}
-                    {(!isTechnician || selected.assigned_to === user.id) && <div className="border-t pt-3 space-y-2"><h3 className="text-sm font-bold">Problem files ({attachedFiles.length}/5)</h3>{attachedFiles.map(photo => <button key={photo.id} type="button" onClick={() => openPhoto(photo)} className="block text-sm font-semibold text-blue-700 underline break-all">{photo.file_name}</button>)}{!isTechnician && attachedFiles.length < 5 && <form onSubmit={addPhotos} className="space-y-2"><input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => setExtraFiles([...e.target.files])} className="block w-full text-xs" /><button disabled={busy || !extraFiles.length} className="min-h-10 rounded-lg border px-3 text-xs font-bold">Add files</button></form>}</div>}
-                    {isTechnician && selected.status === 'open' && <button type="button" disabled={busy} onClick={() => claim(selected)} className="min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-bold">Claim this job</button>}
-                    {isTechnician && selected.status === 'assigned' && selected.assigned_to === user.id && <div className="space-y-2"><label className="text-xs font-semibold">Reason for giving up<textarea value={giveUpReason} onChange={e => setGiveUpReason(e.target.value)} className="mt-1 block w-full rounded-lg border p-2 text-sm" /></label><button type="button" disabled={busy || !giveUpReason.trim()} onClick={() => giveUp(selected)} className="min-h-11 rounded-lg border px-4 text-xs font-bold">Give up and reopen</button></div>}
-                    {canManage && <div className="flex flex-wrap gap-2">
-                        {selected.status === 'assigned' && <><button type="button" disabled={busy} onClick={() => run(() => update(selected.id, { status: 'open', assigned_to: null, assigned_at: null }, [['status','assigned']]), 'Issue reopened for reassignment.')} className="min-h-10 rounded-lg border px-3 text-xs font-bold">Reopen for reassignment</button><button type="button" disabled={busy} onClick={() => run(() => update(selected.id, { status: 'completed' }, [['status','assigned']]), 'Issue marked completed.')} className="min-h-10 rounded-lg bg-stone-900 px-3 text-xs font-bold text-white">Mark completed</button></>}
-                        {selected.status === 'completed' && <button type="button" disabled={busy} onClick={() => run(() => update(selected.id, { status: 'assigned' }, [['status','completed']]), 'Issue reopened.')} className="min-h-10 rounded-lg border px-3 text-xs font-bold">Reopen issue</button>}
+                    {/* Before / After photos are the technician's; partners do not see the photo section. */}
+                    {showDetails && !photosInJobPanel && !isPartner && (!isTechnician || ownJob) && <ComplaintPhotos key={`photos:${selected.id}`} issue={selected} userId={user?.id} userType={user?.userType} busy={busy} run={run} />}
+                    {canManage && <VisitStage key={`stage:${selected.id}`} issue={selected} busy={busy} run={run} office />}
+                    {canManage && <OfficeIssuePanel key={selected.id} issue={selected} technicians={technicians} techError={techError} busy={busy} run={run} update={update} />}
+                    {showDetails && (!isTechnician || ownJob) && <ComplaintComments key={`comments:${selected.id}`} issue={selected} user={user} busy={busy} run={run} />}
+                    {showDetails && <ComplaintHistory key={`history:${selected.id}`} issue={selected} />}
+                    {/* An open job: read everything first, then claim it at the bottom. */}
+                    {isTechnician && selected.status === 'open' && <div className="sticky bottom-3 z-10 rounded-2xl border border-stone-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+                        <TechnicianJobPanel key={`claim:${selected.id}`} issue={selected} userId={user.id} busy={busy} run={run}
+                            onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)} />
                     </div>}
-                    <div className="border-t pt-3 space-y-2"><h3 className="text-sm font-bold">Visits and travel</h3>{visits.length === 0 && <p className="text-xs text-stone-500">No visits recorded.</p>}{visits.map(visit => <p key={visit.id} className="rounded-lg bg-stone-50 p-2 text-xs">{visit.visit_date} · {visit.kilometers} km · {money(visit.amount_inr)}{visit.note ? ` · ${visit.note}` : ''}</p>)}</div>
-                    {canManage && selected.assigned_to && <form onSubmit={saveVisit} className="grid gap-2 sm:grid-cols-3 border-t pt-3"><h3 className="sm:col-span-3 text-sm font-bold">Record a visit payment</h3><label className="text-xs">Date<input required type="date" value={newVisit.visit_date} onChange={e => setNewVisit(v => ({ ...v, visit_date: e.target.value }))} className="mt-1 block w-full min-h-10 rounded-lg border p-2" /></label><label className="text-xs">Kilometres<input required min="0" step="0.01" type="number" value={newVisit.kilometers} onChange={e => setNewVisit(v => ({ ...v, kilometers: e.target.value }))} className="mt-1 block w-full min-h-10 rounded-lg border p-2" /></label><label className="text-xs">Amount (₹)<input required min="0" step="0.01" type="number" value={newVisit.amount_inr} onChange={e => setNewVisit(v => ({ ...v, amount_inr: e.target.value }))} className="mt-1 block w-full min-h-10 rounded-lg border p-2" /></label><input maxLength={1000} value={newVisit.note} onChange={e => setNewVisit(v => ({ ...v, note: e.target.value }))} placeholder="Visit note (optional)" className="sm:col-span-3 min-h-10 rounded-lg border p-2 text-sm" /><button disabled={busy} className="sm:col-span-3 min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-bold">Save visit</button></form>}
+                    {canManage && WHATSAPP_ENABLED && <WhatsAppLog key={`wa:${selected.id}`} issueId={selected.id} />}
+                    </div>{hasVisitColumn && <div className="service-visit-column space-y-4"><VisitTimeline issue={selected} />
+                    {(canManage || visits.length > 0) && <div className="space-y-2"><h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">Travel payments</h3>{visits.length === 0 && <p className="text-xs text-stone-400">None yet.</p>}{visits.map(visit => <VisitRow key={visit.id} visit={visit} />)}</div>}
+                    {canManage && selected.assigned_to && <VisitForm key={`${selected.id}:${selected.assigned_to}`} issue={selected} user={user} busy={busy} run={run} visits={visits} onSaved={reloadVisits} />}
+                    {canManage && selected.assigned_to && <CombinedVisitForm key={`combined:${selected.id}:${selected.assigned_to}`} issue={selected} issues={issues} user={user} busy={busy} run={run} onSaved={reloadVisits} />}</div>}</div>
                 </>}
             </div>
-        </div></>}
+        </div>}</>}
     </div>;
 }
