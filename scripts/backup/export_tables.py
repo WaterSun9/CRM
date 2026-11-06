@@ -48,6 +48,7 @@ OPTIONAL_TABLES = [
     'crm_chat_messages', 'crm_availability', 'admin_history',
     'service_issues', 'service_visits', 'service_issue_files',
     'customer_payment_review_flags',
+    'serial_number_review', 'serial_number_import',
 ]
 
 
