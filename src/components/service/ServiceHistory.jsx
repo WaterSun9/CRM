@@ -7,7 +7,7 @@ const day = iso => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'nume
 const rupees = value => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 // Complaints and technician visits of one customer, newest first, on the
-// completed customer's card. Each row opens that complaint. Office sees every
+// completed customer's card, each with the notes written on that job. Each row opens that complaint. Office sees every
 // complaint, the visits and the technician; a channel partner sees every complaint
 // of this customer (whoever raised it), without the visits.
 export default function ServiceHistory({ customerId }) {
@@ -32,16 +32,19 @@ export default function ServiceHistory({ customerId }) {
             if (error) { setFailed(true); return; }
             const ids = (issues || []).map(issue => issue.id);
             // Visits and technician names are office-only; anyone else just gets the complaints.
-            const [visits, techs] = ids.length ? await Promise.all([
+            const [visits, techs, notes] = ids.length ? await Promise.all([
                 supabase.from('service_visits').select('issue_id, visit_date, kilometers, amount_inr').in('issue_id', ids),
                 supabase.rpc('service_technicians'),
-            ]) : [{ data: [] }, { data: [] }];
+                // The notes written on each job (technician, office, partner), oldest first.
+                supabase.from('service_issue_comments').select('id, issue_id, author_name, body, created_at').in('issue_id', ids).order('created_at'),
+            ]) : [{ data: [] }, { data: [] }, { data: [] }];
             if (!active) return;
             const names = new Map((techs.data || []).map(tech => [tech.id, tech.name]));
             setRows((issues || []).map(issue => ({
                 ...issue,
                 technician: names.get(issue.assigned_to) || '',
                 visits: (visits.data || []).filter(visit => visit.issue_id === issue.id),
+                notes: (notes.data || []).filter(note => note.issue_id === issue.id),
             })));
             setFailed(false);
         })();
@@ -76,6 +79,12 @@ export default function ServiceHistory({ customerId }) {
                                     issue.visits.length ? `${issue.visits.length} visit${issue.visits.length === 1 ? '' : 's'} · ${km} km · ${rupees(amount)}` : ''].filter(Boolean).join(' · ')}
                             </span>
                         </button>
+                        {issue.notes.length > 0 && <ul aria-label={`Notes on complaint ${issue.ticket_no}`} className="mt-1 space-y-1 border-l-2 border-amber-200 pl-3">
+                            {issue.notes.map(note => <li key={note.id} className="text-xs">
+                                <p className="text-stone-800 whitespace-pre-line break-words">{note.body}</p>
+                                <p className="text-[11px] text-stone-400">{[note.author_name, day(note.created_at)].filter(Boolean).join(' · ')}</p>
+                            </li>)}
+                        </ul>}
                     </li>;
                 })}</ul>}
     </details>;

@@ -80,6 +80,7 @@ export default function ComplaintComments({ issue, user, busy, run }) {
         {canComment(userType) && comments && run && <form onSubmit={post} className="space-y-2">
             <label className="block text-xs font-semibold">Add a comment
                 <textarea value={text} maxLength={COMMENT_MAX} rows={3} onChange={event => setText(event.target.value)}
+                    placeholder="e.g. Checked the DC strings, replaced a burnt MC4 connector, system generating again." 
                     className="mt-1 block w-full rounded-lg border p-2 text-sm" />
             </label>
             <div className="flex items-center justify-between gap-2">

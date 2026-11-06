@@ -112,9 +112,13 @@ export default function ComplaintPhotos({ issue, userId, userType, busy, run, on
     useEffect(() => {
         let active = true;
         (async () => {
-            const { data, error } = await supabase.from('service_issue_files')
-                .select('id, file_name, storage_path, mime_type, uploaded_by, kind, label, created_at')
-                .eq('issue_id', issueId).order('created_at');
+            const columns = 'id, file_name, storage_path, mime_type, uploaded_by, kind, label, created_at';
+            let { data, error } = await supabase.from('service_issue_files')
+                .select(`${columns}, note`).eq('issue_id', issueId).order('created_at');
+            // No note column yet (7 Nov SQL not run): photos without comments.
+            if (error && missingTable(error)) {
+                ({ data, error } = await supabase.from('service_issue_files').select(columns).eq('issue_id', issueId).order('created_at'));
+            }
             if (!active) return;
             // A missing table or kind / label column: the 23 Oct or 5 Nov SQL has not been run yet.
             if (error) { setLoadFailed(missingTable(error) ? 'Photos are not set up yet. Ask the office.' : 'Could not load the photos. Check the internet.'); return; }
@@ -217,7 +221,25 @@ export default function ComplaintPhotos({ issue, userId, userType, busy, run, on
                         <span className="ml-auto text-xs text-stone-400">{photos.length}/{PHOTO_LIMIT}</span>
                     </div>
                     {canUpload && kind === 'before' && !photos.length && <p className="text-xs text-stone-400">Only if something was damaged when you arrived.</p>}
-                    {photos.length > 0 && <ul className="grid grid-cols-4 gap-2">{photos.map((photo, index) => {
+                    {photos.length > 0 && kind === 'after' && <ul className="space-y-2">{photos.map((photo, index) => {
+                        const name = `${kindLabel} photo ${index + 1} of ${photos.length}`;
+                        return <li key={photo.id} className="flex gap-3 rounded-xl border border-stone-100 p-2">
+                            <div className="w-20 shrink-0 space-y-1">
+                                <button type="button" aria-label={`Open ${name}`} onClick={() => setViewing({ path: photo.storage_path, label: [name, photo.note, formatDateTime(photo.created_at)].filter(Boolean).join(' · ') })}
+                                    className="block w-full overflow-hidden rounded-lg bg-stone-100">
+                                    {urls[photo.storage_path]
+                                        ? <img src={urls[photo.storage_path]} alt={name} loading="lazy" decoding="async" className="aspect-square w-full object-cover" />
+                                        : <span className="flex aspect-square w-full items-center justify-center text-[11px] text-stone-400">…</span>}
+                                </button>
+                                {deleteFor(photo)}
+                            </div>
+                            <div className="min-w-0 flex-1 space-y-1">
+                                <p className="text-[11px] text-stone-400">Photo {index + 1} · {formatDateTime(photo.created_at)}</p>
+                                <PhotoNote photo={photo} editable={canUpload && photo.uploaded_by === userId && Boolean(run)} busy={busy} run={run} onSaved={() => setReload(n => n + 1)} />
+                            </div>
+                        </li>;
+                    })}</ul>}
+                    {photos.length > 0 && kind !== 'after' && <ul className="grid grid-cols-4 gap-2">{photos.map((photo, index) => {
                         const name = `${kindLabel} photo ${index + 1} of ${photos.length}`;
                         return <li key={photo.id} className="min-w-0 space-y-1">
                             <button type="button" aria-label={`Open ${name}`} onClick={() => setViewing({ path: photo.storage_path, label: [name, formatDateTime(photo.created_at)].filter(Boolean).join(' · ') })}
@@ -239,7 +261,7 @@ export default function ComplaintPhotos({ issue, userId, userType, busy, run, on
                     </ul>}
                 </div>;
             })}
-            <SitePhotos photos={groups.site} urls={urls} canUpload={canUpload} busy={busy} progress={progress}
+            <SitePhotos photos={groups.site} urls={urls} canUpload={false} busy={busy} progress={progress}
                 onView={setViewing} deleteFor={deleteFor} onAdd={(siteLabel, input) => addSitePhoto(siteLabel, input)} />
             {groups.problem.length > 0 && <div className="space-y-1">
                 <h4 className="text-xs font-bold text-stone-600">Files added when the complaint was raised ({groups.problem.length})</h4>
@@ -255,6 +277,43 @@ export default function ComplaintPhotos({ issue, userId, userType, busy, run, on
         </>}
         {viewing && <PhotoViewer url={urls[viewing.path] || ''} label={viewing.label} onClose={() => setViewing(null)} />}
     </section>;
+}
+
+const NOTE_LIMIT = 300;
+// The comment under one After photo: text for everyone, "+ Add comment" / Edit for the
+// technician who took it while the job is open (service_photo_note checks this again).
+function PhotoNote({ photo, editable, busy, run, onSaved }) {
+    const [open, setOpen] = useState(false);
+    const [text, setText] = useState(photo.note || '');
+    if (!editable) return photo.note ? <p className="text-sm text-stone-800 break-words">{photo.note}</p> : null;
+    if (!open) {
+        return <button type="button" disabled={busy} onClick={() => { setText(photo.note || ''); setOpen(true); }}
+            className="block min-h-10 w-full text-left text-sm disabled:opacity-50">
+            {photo.note
+                ? <><span className="text-stone-800 break-words">{photo.note}</span> <span className="font-bold text-amber-700">Edit</span></>
+                : <span className="font-bold text-amber-700">+ Add comment</span>}
+        </button>;
+    }
+    const save = event => {
+        event.preventDefault();
+        run(async () => {
+            const { error } = await supabase.rpc('service_photo_note', { p_file_id: photo.id, p_note: text });
+            if (error) throw new Error(/could not find the function|PGRST202|42883/i.test(`${error.code} ${error.message}`) ? 'Photo comments are not set up yet. Tell the office.' : photoError(error));
+            setOpen(false);
+            onSaved();
+            return text.trim() ? 'Comment saved.' : 'Comment removed.';
+        }, '', 'issue');
+    };
+    return <form onSubmit={save} className="space-y-1.5">
+        <textarea value={text} onChange={e => setText(e.target.value.slice(0, NOTE_LIMIT))} rows={3} autoFocus maxLength={NOTE_LIMIT}
+            aria-label="Comment on this photo" placeholder="What does this photo show? e.g. Replaced MC4 connector on string 2"
+            className="block w-full rounded-xl border border-stone-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+        <div className="flex items-center gap-2">
+            <span className="text-[11px] text-stone-400">{text.length}/{NOTE_LIMIT}</span>
+            <button type="button" onClick={() => setOpen(false)} className="ml-auto min-h-10 rounded-lg border px-3 text-xs font-bold">Cancel</button>
+            <button disabled={busy} className="min-h-10 rounded-lg bg-stone-900 px-4 text-xs font-bold text-white disabled:opacity-50">Save</button>
+        </div>
+    </form>;
 }
 
 // The installation's named photos: one slot per name (SITE_PHOTO_LABELS), all optional.

@@ -3,6 +3,7 @@
 // operations | technician | partner.
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import ServiceHistory from '../components/service/ServiceHistory';
 import { ClipboardList, ShieldCheck, Users } from 'lucide-react';
 import '../index.css';
 import ServiceIssuesView from '../components/ServiceIssuesView';
@@ -142,6 +143,7 @@ supabase.rpc = async (name, args = {}) => {
     if (name === 'service_customer_past') { const job = db.service_issues.find(i => i.id === args.p_issue_id); return { data: db.service_issues.filter(i => i.customer_id === job?.customer_id && i.id !== job.id).map(i => ({ ...i, visits: db.service_trips.filter(t => t.issue_id === i.id).length })), error: null }; }
     if (name === 'service_add_inverter') { const c = card(args.p_issue_id); if (c.inverter_serial_no) return { data: false, error: null }; Object.assign(c, { inverter_serial_no: args.p_serial, inverter_make: c.inverter_make || args.p_make }); return { data: true, error: null }; }
     if (name === 'service_save_readings') { Object.assign(db.service_trips.find(t => t.id === args.p_trip_id), { readings: args.p_readings, readings_at: new Date().toISOString() }); return { data: true, error: null }; }
+    if (name === 'service_photo_note') { const file = db.service_issue_files.find(f => f.id === args.p_file_id); file.note = String(args.p_note || '').trim().slice(0, 300) || null; return { data: file.note, error: null }; }
     if (name === 'service_visit_outcome') { const trip = db.service_trips.find(t => t.id === args.p_trip_id); Object.assign(trip, { outcome: args.p_outcome, outcome_note: args.p_note, outcome_at: new Date().toISOString() }); Object.assign(db.service_issues.find(i => i.id === trip.issue_id), args.p_outcome === 'fixed' ? { visit_stage: 'visited', visit_stage_note: null } : { visit_stage: 'second_visit', visit_stage_note: args.p_note }); return { data: true, error: null }; }
     if (name === 'service_save_plan') { db.service_plan_stops = db.service_plan_stops.filter(s => s.plan_date !== args.p_date); const kept = []; args.p_issue_ids.forEach(id => { const job = db.service_issues.find(i => i.id === id); if (job.status === 'open') Object.assign(job, { status: 'assigned', assigned_to: TECH.id, assigned_at: new Date().toISOString() }); db.service_plan_stops.push({ technician_id: TECH.id, issue_id: id, plan_date: args.p_date, position: kept.length + 1 }); kept.push(id); }); return { data: kept, error: null }; }
     if (name === 'claim_service_issue') { Object.assign(db.service_issues.find(i => i.id === args.p_issue_id), { status: 'assigned', assigned_to: TECH.id, assigned_at: new Date().toISOString() }); return { data: true, error: null }; }
@@ -160,6 +162,8 @@ function Demo() {
     useEffect(() => { const again = () => setTick(n => n + 1); addEventListener('popstate', again); return () => removeEventListener('popstate', again); }, []);
     const nav = [['Warranty & Complaints', ShieldCheck, ['office', 'partner'].includes(view)], ['Operations', Users, view === 'operations']];
     const params = new URLSearchParams(location.search);
+    // The customer card's "Complaints and visits" (with each job's notes), for one customer.
+    if (view === 'card') return <div className="mx-auto max-w-xl p-4"><ServiceHistory customerId={db.service_issues.find(i => i.id === (params.get('job') || 'i-6'))?.customer_id} /></div>;
     if (view === 'technician') return <GlobalPopupProvider><TechnicianPortal user={TECH} onLogout={() => {}} initialView={params.get('page') || 'home'} initialJobId={params.get('job')} /></GlobalPopupProvider>;
     return <GlobalPopupProvider><div className="min-h-screen bg-[#FCFBFA] md:pl-64">
         <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-white p-5 md:block"><strong className="text-lg">Watersun CRM</strong><p className="mt-1 text-xs text-stone-500">Signed in as {user.name}</p>
