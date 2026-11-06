@@ -216,13 +216,30 @@ export function payload(form, template) {
     return { ...values, starting_price: prices.length ? Math.min(...prices) : null, schema_version: 1,
         quotation_data: { schema_version: 1, template_version: 1, template: clone(template), form: { ...clone(form), options } } };
 }
+// The printed address: the full address, then village, taluka, district and PIN
+// only when they are not already written in it (or in a part before them).
+// Stops "..., PATAN, PIN Code: 384265, PATAN, PATAN, PATAN, 384265".
+export function addressLine(form) {
+    const flat = text => ` ${String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+    const parts = [];
+    let seen = ' ';
+    for (const value of [form.full_address, form.village, form.taluka, form.district, form.pincode]) {
+        const text = String(value ?? '').trim();
+        if (!text) continue;
+        const words = flat(text);
+        if (words.trim() && seen.includes(words)) continue;
+        parts.push(text);
+        seen += words;
+    }
+    return parts.join(', ');
+}
 export function documentFor(row) {
     const form = fromRow(row);
     const data = clone(row.quotation_data?.template || INITIAL_QUOTATION);
     data.page1 = { ...data.page1, customerName: form.customer_name || '', customerPhone: form.customer_phone || '',
         quotationNo: quoteLabel(row), date: form.quotation_date ? form.quotation_date.split('-').reverse().join('-') : '',
         capacityKw: form.options.length === 1 || new Set(form.options.map(o => String(o.capacity_kw))).size === 1 ? `${form.options[0]?.capacity_kw || ''} kWp` : 'Panel options', yoursTrulyName: form.print_owner_name?.trim() || form.owner_name_snapshot || '', yoursTrulyPhone: form.owner_phone_snapshot || '',
-        address: [form.full_address, form.village, form.taluka, form.district, form.pincode].filter(Boolean).join(', '),
+        address: addressLine(form),
         email: form.customer_email || '', validUntil: form.valid_until || '' };
     data.page2 = { ...data.page2, solarPanelMake: form.solar_panel_make || '', solarPanelQty: form.solar_panel_qty || '', panelWattage: form.panel_wattage || '',
         inverterOption: form.inverter_option || '', inverterBrand: form.inverter_brand || '', gebGedaCharge: form.geb_geda_charge || 'Including',
