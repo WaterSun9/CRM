@@ -1297,6 +1297,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                 : currentView === 'loan_tags' ? 'Loan Tag Tracking'
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
                 : currentView === 'complaints' ? (onRaiseServiceIssue ? 'Warranty & Complaints' : 'Warranty')
+                : currentView === 'missing_numbers' ? 'Inverter'
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
                 : currentView === 'profile' ? 'Profile'
                     : currentView === 'installation_payments' ? 'Installation Payments'
