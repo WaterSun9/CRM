@@ -59,15 +59,15 @@ Deno.test('sendWait: 2 min cooldown, then 2 codes per hour', () => {
   assert.equal(sendWait([ago(200), ago(3700)], now), null)
 })
 
-Deno.test('photosReady needs at least one Before and one After photo', () => {
+Deno.test('photosReady needs at least one After photo', () => {
   assert.deepEqual([...PHOTO_KINDS], ['before', 'after'])
   assert.equal(photosReady({ before: 0, after: 0 }), false)
   assert.equal(photosReady({ before: 3, after: 0 }), false)
-  assert.equal(photosReady({ before: 0, after: 2 }), false)
+  assert.equal(photosReady({ before: 0, after: 2 }), true)
   assert.equal(photosReady({ before: 1, after: 1 }), true)
   assert.equal(photosReady({ before: 10, after: 10 }), true)
   // A count that did not come back is never taken as "photos are there".
-  assert.equal(photosReady({ before: null, after: 1 }), false)
+  assert.equal(photosReady({ before: null, after: 1 }), true)
   assert.equal(photosReady({ before: 1, after: undefined }), false)
   assert.deepEqual({ ...PHOTOS_NEEDED }, {
     ok: false, code: 'photos_needed', error: 'Add at least one Before photo and one After photo first.',

@@ -36,7 +36,35 @@ const Call = ({ phone }) => {
 // and partner phone, the system, panel and inverter serial numbers, problem and comment.
 // The card is read again whenever the complaint changes (every list poll), and the
 // complaint's own copy is shown meanwhile, so the details never stay blank.
-export default function CustomerFacts({ issue, userType }) {
+// The technician on the job types the inverter serial when the card has none.
+function AddInverter({ issue, busy, run, onSaved }) {
+    const [open, setOpen] = useState(false);
+    const [serial, setSerial] = useState('');
+    const [make, setMake] = useState('');
+    const save = event => {
+        event.preventDefault();
+        if (!serial.trim()) return;
+        run(async () => {
+            const { data, error } = await supabase.rpc('service_add_inverter', { p_issue_id: issue.id, p_serial: serial.trim(), p_make: make.trim() || null });
+            if (error) throw new Error(missingFunction(error) ? 'Adding the inverter number is not set up yet. Tell the office.' : error.message);
+            setOpen(false); setSerial(''); setMake('');
+            onSaved();
+            return data ? 'Inverter number saved on the customer card.' : 'The customer card already has an inverter number.';
+        }, '', 'issue');
+    };
+    if (!open) return <button type="button" disabled={busy} onClick={() => setOpen(true)} className="min-h-9 text-sm font-bold text-amber-600 hover:text-amber-700 disabled:opacity-50">+ Add</button>;
+    const input = 'block w-full min-h-11 rounded-xl border border-stone-200 px-3 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-amber-300';
+    return <form onSubmit={save} className="space-y-2">
+        <input required maxLength={60} value={serial} onChange={e => setSerial(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="Serial number" aria-label="Inverter serial number" className={`${input} font-mono`} />
+        <input maxLength={60} value={make} onChange={e => setMake(e.target.value)} placeholder="Make (optional)" aria-label="Inverter make" className={input} />
+        <div className="flex gap-2">
+            <button disabled={busy || !serial.trim()} className="min-h-10 flex-1 rounded-xl bg-stone-900 px-3 text-sm font-bold text-white disabled:opacity-40">Save</button>
+            <button type="button" onClick={() => setOpen(false)} className="min-h-10 rounded-xl px-3 text-sm font-bold text-stone-500">Cancel</button>
+        </div>
+    </form>;
+}
+
+export default function CustomerFacts({ issue, userType, canAddInverter = false, busy = false, run = null }) {
     const [card, setCard] = useState(null);
     const [failed, setFailed] = useState('');
     const [attempt, setAttempt] = useState(0);
@@ -89,10 +117,11 @@ export default function CustomerFacts({ issue, userType }) {
         ...(c.sub_channel_partner ? [['Dealer phone', <Call key="dealer" phone={c.dealer_phone} />]] : []),
         ['Problem', issue.problem_type],
         ['System', system],
-        ['Inverter', inverter],
+        ['Inverter', inverter || (canAddInverter && card && run
+            ? <AddInverter key="add-inverter" issue={issue} busy={busy} run={run} onSaved={() => setAttempt(n => n + 1)} /> : '')],
         ['Comment', issue.comment],
     ];
-    const empty = value => value === null || value === undefined || value === '' || (value?.props && !value.props.phone);
+    const empty = value => value === null || value === undefined || value === '' || (value?.props && 'phone' in value.props && !value.props.phone);
     return <div className="space-y-2">
         {failed && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
             <span className="flex-1">Could not load the full customer card ({failed}). Showing the complaint's copy.</span>

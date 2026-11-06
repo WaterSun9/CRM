@@ -30,7 +30,7 @@ export const ACTIVE_STATUSES = ['open', 'assigned', 'completion_pending'];
 // Visited / Second visit needed are the visit stage of a job that is still assigned
 // (service_issues.visit_stage, 20261026120000_complaint_stages_history.sql).
 export const OFFICE_FILTERS = [['raised', 'Raised'], ['in_process', 'In process'], ['visited', 'Visited'], ['second_visit', 'Second visit needed'], ['closed', 'Closed'], ['all', 'All']];
-export const TECHNICIAN_FILTERS = [['open', 'Open jobs'], ['mine', 'My jobs']];
+export const TECHNICIAN_FILTERS = [['open', 'Open jobs'], ['mine', 'My jobs'], ['plan', 'My trip']];
 
 // Where a complaint is now: one of the tab keys above, or 'cancelled' (shown under Closed).
 export function issueStage(issue) {
@@ -65,7 +65,13 @@ export const EVENT_LABELS = {
     cancelled: 'Cancelled',
     reopened: 'Reopened',
     gave_up: 'Technician gave up',
-    returned: 'Back in the open queue'
+    returned: 'Back in the open queue',
+    trip_started: 'Started for the visit',
+    reached: 'Reached site',
+    readings: 'Site readings',
+    fixed: 'Fixed',
+    revisit: 'Revisit needed',
+    inverter_added: 'Inverter number added'
 };
 export const eventLabel = event => EVENT_LABELS[event] || event;
 export const OVERRIDE_REASONS = ['Customer did not get the code', 'Confirmed by phone call', 'No network at site', 'Customer has no mobile', 'Other'];
@@ -82,6 +88,8 @@ export function matchesFilter(issue, filter, userId) {
 }
 
 export const ticketLabel = issue => (issue?.ticket_no ? `#${issue.ticket_no}` : '');
+// One visit of a complaint: #1001-1, #1001-2, ...
+export const visitLabel = (issue, visitNo) => (issue?.ticket_no && visitNo ? `#${issue.ticket_no}-${visitNo}` : ticketLabel(issue));
 
 export const todayLocal = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
 export const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value) || 0);
@@ -111,27 +119,31 @@ export const OFFICE_TYPES = ['admin', 'sales'];
 const OPEN_JOB_STATUSES = ['assigned', 'completion_pending'];
 
 // Photos on a complaint (service_issue_files.kind). Only the technician on the
-// job adds Before / After photos; 'problem' is an older file from the raise form.
-export const PHOTO_KINDS = ['before', 'after'];
+// job adds them: After (needed for the code), Before (optional, e.g. damage found)
+// and named site photos; 'problem' is an older file from the raise form.
+export const PHOTO_KINDS = ['after', 'before'];
 export const PHOTO_LIMIT = 10;
-export const PHOTO_KIND_LABELS = { before: 'Before', after: 'After' };
+export const PHOTO_KIND_LABELS = { before: 'Before', after: 'After', site: 'Site' };
+// The 10 named site photos of the installation (service_issue_files.label).
+export const SITE_PHOTO_LABELS = ['Panels', 'Panel serial sticker', 'Inverter', 'Inverter serial sticker', 'Inverter display',
+    'ACDB', 'DCDB', 'Earthing', 'Meter', 'Structure'];
 export const PHOTO_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 // The storage bucket refuses files over 10 MB.
 export const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 // About 1600 px on the long side keeps a phone photo near 300 KB.
 export const PHOTO_LONG_SIDE = 1600;
-export const PHOTOS_NEEDED_TEXT = 'Add at least one Before and one After photo first.';
+export const PHOTOS_NEEDED_TEXT = 'Add at least one After photo first.';
 
 export function groupIssueFiles(files) {
-    const groups = { before: [], after: [], problem: [] };
+    const groups = { before: [], after: [], site: [], problem: [] };
     for (const file of files || []) (groups[file?.kind] || groups.problem).push(file);
     return groups;
 }
 export function photoCounts(files) {
     const groups = groupIssueFiles(files);
-    return { before: groups.before.length, after: groups.after.length };
+    return { before: groups.before.length, after: groups.after.length, site: groups.site.length };
 }
-export const hasCompletionPhotos = counts => Boolean(counts && counts.before >= 1 && counts.after >= 1);
+export const hasCompletionPhotos = counts => Boolean(counts && counts.after >= 1);
 export const photoCountLabel = (kind, count) => `${PHOTO_KIND_LABELS[kind] || kind} ${count}/${PHOTO_LIMIT}`;
 export const photoSlotsLeft = count => Math.max(0, PHOTO_LIMIT - (Number(count) || 0));
 

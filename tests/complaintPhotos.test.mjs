@@ -16,16 +16,16 @@ test('files are grouped by kind; old files and unknown kinds count as problem fi
     assert.equal(groups.before.length, 1);
     assert.equal(groups.after.length, 2);
     assert.equal(groups.problem.length, 3);
-    assert.deepEqual(groupIssueFiles(null), { before: [], after: [], problem: [] });
+    assert.deepEqual(groupIssueFiles(null), { before: [], after: [], site: [], problem: [] });
 });
 
-test('the code needs at least one Before and one After photo', () => {
-    assert.deepEqual(photoCounts([file('before'), file('problem')]), { before: 1, after: 0 });
+test('the code needs at least one After photo', () => {
+    assert.deepEqual(photoCounts([file('before'), file('problem')]), { before: 1, after: 0, site: 0 });
     assert.equal(hasCompletionPhotos(photoCounts([file('before'), file('problem')])), false);
-    assert.equal(hasCompletionPhotos(photoCounts([file('after')])), false);
+    assert.equal(hasCompletionPhotos(photoCounts([file('after')])), true, 'Before is optional');
     assert.equal(hasCompletionPhotos(photoCounts([file('before'), file('after')])), true);
     assert.equal(hasCompletionPhotos(null), false, 'unknown while the photos load');
-    assert.equal(PHOTOS_NEEDED_TEXT, 'Add at least one Before and one After photo first.');
+    assert.equal(PHOTOS_NEEDED_TEXT, 'Add at least one After photo first.');
 });
 
 test('10 photos of each kind: counts, slots left and skipped picks', () => {

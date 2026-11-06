@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronRight, MessageSquare, Route, UserRound, Wrench } from 'lucide-react';
 import './service/service.css';
 import { supabase } from '../supabase';
 import WarrantyBadge from './WarrantyBadge';
@@ -17,9 +17,12 @@ import ComplaintHistory from './service/ComplaintHistory';
 import VisitStage from './service/VisitStage';
 import RaisedBy from './service/RaisedBy';
 import CombinedVisitForm from './service/CombinedVisitForm';
+import PastComplaints from './service/PastComplaints';
+import VisitTimeline from './service/VisitTimeline';
+import DayPlan, { readDayPlan } from './service/DayPlan';
 import {
     ACTIVE_STATUSES, OFFICE_FILTERS, PARTNER_TYPES, STAGE_LABELS, STAGE_PILL, STATUS_LABELS, TECHNICIAN_FILTERS, WARRANTY_PILL,
-    formatDateTime, isOpenJobFor, issueStage, matchesFilter, money, ticketLabel, warrantyLabel
+    formatDateTime, isOpenJobFor, issueStage, matchesFilter, money, ticketLabel, todayLocal, warrantyLabel
 } from './service/serviceLabels';
 
 // The tab the complaint is in (Raised, In process, Visited, ...); "Waiting for code" is said too.
@@ -28,6 +31,29 @@ const StatusPill = ({ issue }) => {
     return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${STAGE_PILL[stage] || 'bg-stone-100 text-stone-700'}`}>{STAGE_LABELS[stage] || STATUS_LABELS[issue.status] || issue.status}{issue.status === 'completion_pending' ? ` · ${STATUS_LABELS.completion_pending}` : ''}</span>;
 };
 const WarrantyPill = ({ status }) => <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${WARRANTY_PILL[status] || WARRANTY_PILL.unknown}`}>{warrantyLabel(status)}</span>;
+
+// Technician portal (phone): the Vendor portal's card shape - name + stage badge,
+// problem, ticket / pincode / needed-by chips, chevron.
+function PhoneJobCard({ issue, onOpen }) {
+    const stage = issueStage(issue);
+    const pin = (issue.service_address || '').match(/[1-9]\d{5}(?!\d)/g)?.pop();
+    const needed = issue.required_date ? new Date(`${issue.required_date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+    const chips = [['Ticket', ticketLabel(issue)], ['Pin', pin], ['Needed', needed]].filter(([, value]) => value);
+    return <button type="button" onClick={onOpen}
+        className="group w-full space-y-1.5 rounded-2xl border border-stone-150 bg-white p-3.5 text-left shadow-sm transition-all hover:border-amber-400 hover:shadow-md active:scale-[0.99]">
+        <span className="flex items-start justify-between gap-2">
+            <span className="min-w-0 flex-1 space-y-1">
+                <span className="flex flex-wrap items-center gap-2">
+                    <span className="truncate text-xs font-bold text-stone-900 group-hover:text-amber-600">{issue.customer_name}</span>
+                    <span className={`whitespace-nowrap rounded-md px-1.5 py-0.5 text-[8px] font-black uppercase ${STAGE_PILL[stage] || 'bg-stone-100 text-stone-700'}`}>{STAGE_LABELS[stage] || issue.status}</span>
+                </span>
+                <span className="block truncate text-[10px] font-medium text-stone-400">{issue.problem_type || 'No problem written'}</span>
+                <span className="flex flex-wrap gap-2 pt-0.5 text-[9px] text-stone-500">{chips.map(([label, value]) => <span key={label}>{label}: <b>{value}</b></span>)}</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 self-center text-stone-300 group-hover:text-stone-700" />
+        </span>
+    </button>;
+}
 
 // One saved visit: km (and the trip estimate when the office changed it), amount, note.
 // In 'pro' mode the pre-filled km can be the Google road km (km_source 'google', or
@@ -59,7 +85,9 @@ function ClosureNote({ issue, forTechnician }) {
     return null;
 }
 
-export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false, embedded = false, onOpenWarranty = null }) {
+// view / onViewChange: the technician portal's sidebar picks the tab (Open jobs, My jobs,
+// My trip) and the tab pills are hidden; focus ({ id }) opens one job from the portal's Home.
+export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false, embedded = false, onOpenWarranty = null, view = null, onViewChange = null, focus = null }) {
     const isTechnician = user?.userType === 'technician';
     const canManage = ['admin', 'sales'].includes(user?.userType);
     const isPartner = PARTNER_TYPES.includes(user?.userType);
@@ -67,7 +95,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     const [issues, setIssues] = useState([]);
     const [selectedId, setSelectedId] = useState(initialIssueId);
     const [visits, setVisits] = useState([]);
-    const [filter, setFilter] = useState(isTechnician ? 'open' : initialIssueId ? 'all' : 'raised');
+    const [filter, setFilter] = useState(view || (isTechnician ? 'open' : initialIssueId ? 'all' : 'raised'));
     const [technicians, setTechnicians] = useState(null);
     const [techError, setTechError] = useState('');
     const [loadError, setLoadError] = useState('');
@@ -77,7 +105,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     // technician on a phone sees "Wrong code" without scrolling to the top.
     const [messageSpot, setMessageSpot] = useState('top');
     const [busy, setBusy] = useState(false);
-    const filterChosen = useRef(false);
+    const filterChosen = useRef(Boolean(view));
     const detailRef = useRef(null);
 
     // Loads overlap (the 15 s poll, an action, a slow phone network): only the newest
@@ -128,7 +156,23 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
         return () => { active = false; };
     }, [canManage, formOnly]);
 
+    // Today's "My trip": after each visit only its houses are offered next, in its order
+    // (every own job when there is no plan for today).
+    const [planOrder, setPlanOrder] = useState([]);
+    const [planReload, setPlanReload] = useState(0);
+    useEffect(() => {
+        if (!isTechnician || formOnly || !user?.id) return undefined;
+        let active = true;
+        readDayPlan(user.id, todayLocal()).then(ids => { if (active) setPlanOrder(ids); }, () => {});
+        return () => { active = false; };
+    }, [isTechnician, formOnly, user?.id, planReload]);
+
     const selected = issues.find(issue => issue.id === selectedId);
+    // Technician portal: one job in tabs, like the customer card's stages, instead of one long page.
+    // An open job starts on Customer (read, then claim); an own job on Work.
+    const [jobTab, setJobTab] = useState('work');
+    const selectedOpen = selected?.status === 'open';
+    useEffect(() => { setJobTab(selectedOpen ? 'customer' : 'work'); }, [selectedId, selectedOpen]);
     const issuesRef = useRef(issues);
     issuesRef.current = issues;
     // Opened at one complaint (red wrench, customer history): bring it into view once it has loaded.
@@ -190,7 +234,10 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
         // On a phone the details sit below the list; bring them into view.
         if (window.matchMedia?.('(max-width: 1023px)').matches) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     };
-    const chooseFilter = (key, keepSelection = false) => { filterChosen.current = true; setFilter(key); if (!keepSelection) { setSelectedId(null); setError(''); setNotice(''); } };
+    const chooseFilter = (key, keepSelection = false) => { filterChosen.current = true; setFilter(key); onViewChange?.(key); if (!keepSelection) { setSelectedId(null); setError(''); setNotice(''); } };
+    // The portal's sidebar changed the tab, or Home opened a job.
+    useEffect(() => { if (view && view !== filter) { setFilter(view); setSelectedId(null); setError(''); setNotice(''); } }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { if (focus?.id) openIssue(focus.id); }, [focus]); // eslint-disable-line react-hooks/exhaustive-deps
     const reloadVisits = async () => {
         try { setVisits(await loadVisits(selected.id)); } catch { /* the next poll tries again */ }
     };
@@ -203,19 +250,73 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
         .sort((a, b) => closedLast(a) - closedLast(b) || String(a.required_date).localeCompare(String(b.required_date)));
     const technicianName = id => technicians?.find(tech => tech.id === id)?.name || (technicians ? 'Technician no longer active' : 'Technician');
     // Partners see every complaint of their customers (database rules), not only the ones they raised.
-    const showDetails = selected && (!isTechnician || selected.assigned_to === user.id);
+    // Technicians see the full card and history of open jobs too, before claiming.
+    const showDetails = selected && (!isTechnician || selected.assigned_to === user.id || selected.status === 'open');
+    const ownJob = Boolean(isTechnician && selected && selected.assigned_to === user.id);
     // The technician's own open job shows the photos (with the camera buttons) in the job panel.
     const photosInJobPanel = isTechnician && isOpenJobFor(selected, user?.id);
     // A technician sees visits only on a job of their own.
-    const hasVisitColumn = canManage || (isTechnician && Boolean(showDetails));
+    const hasVisitColumn = canManage || ownJob;
+    const planned = id => { const at = planOrder.indexOf(id); return at < 0 ? 999 : at; };
+    const showPlan = isTechnician && filter === 'plan';
     const banners = <>
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {notice && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
     </>;
     const bannersAtTop = formOnly || !selected || messageSpot === 'top';
 
-    return <div className={formOnly ? 'w-full space-y-3' : `service-root ${embedded ? 'service-embedded' : ''} ${selected ? 'has-selection' : ''}`}>
-        {!formOnly && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? "Claim an open job to see the customer's phone and address. When the work is done, tap Completed to send the OTP to the customer and type the OTP they read out." : canManage ? 'Assign complaints, follow each step, close them, and record each visit’s distance and amount. Complaints are raised from Warranty customers and show up here. The km rate is set in Operations.' : 'Track the complaints of your customers, step by step, and add comments. Raise a complaint from Warranty customers or the customer’s card.'}</p></header>}
+    // Technician portal: the job as a dark header with stage tabs (Work, Customer, Visits, Notes).
+    // Every tab stays mounted and only the chosen one shows, so a typed OTP or reading is kept.
+    const phoneJob = () => {
+        const tabs = [['work', 'Work', Wrench], ['customer', 'Customer', UserRound], ['visits', 'Visits', Route], ['notes', 'Notes', MessageSquare]];
+        const pane = key => (jobTab === key ? 'space-y-4 p-4' : 'hidden');
+        const nextJobs = issues.filter(row => row.id !== selected.id && row.assigned_to === user.id && row.status === 'assigned'
+            && (!planOrder.length || planOrder.includes(row.id))).sort((a, b) => planned(a.id) - planned(b.id));
+        return <>
+            <div className="bg-stone-900 px-4 pb-0 pt-4 text-white">
+                <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} className="inline-flex min-h-9 items-center gap-1 text-xs font-bold text-stone-400 hover:text-white"><ArrowLeft size={14} /> All jobs</button>
+                <p className="mt-2 text-[11px] font-bold text-stone-400">{ticketLabel(selected)}</p>
+                <h2 className="text-xl font-bold break-words">{selected.customer_name}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5"><StatusPill issue={selected} /><WarrantyPill status={selected.warranty_status || 'unknown'} /></div>
+                <p className="mt-1.5 text-[11px] text-stone-400">{selected.problem_type}{selected.required_date ? ` · needed by ${new Date(`${selected.required_date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}</p>
+                <div role="tablist" className="-mx-4 mt-3 flex gap-5 overflow-x-auto whitespace-nowrap border-t border-white/5 px-4">{tabs.map(([key, label, Icon]) =>
+                    <button key={key} type="button" role="tab" aria-selected={jobTab === key} onClick={() => setJobTab(key)}
+                        className={`flex shrink-0 items-center gap-1.5 border-b-2 py-3 text-[10px] font-bold uppercase tracking-widest transition-all ${jobTab === key ? 'border-amber-400 text-amber-400' : 'border-transparent text-stone-500 hover:text-stone-300'}`}>
+                        <Icon size={12} /> {label}</button>)}</div>
+            </div>
+            {!bannersAtTop && <div className="space-y-2 px-4 pt-4">{banners}</div>}
+            <div className={pane('work')}>
+                {selected.warranty_exception_reason && <p className="rounded-lg border border-orange-200 bg-orange-50 p-2 text-xs text-orange-950"><strong>Raised by admin as a warranty exception:</strong> {selected.warranty_exception_reason}</p>}
+                <ClosureNote issue={selected} forTechnician />
+                {selected.status === 'open'
+                    ? <p className="rounded-2xl border border-dashed border-stone-200 p-6 text-center text-sm text-stone-400">Claim this job to start the trip.</p>
+                    : <TechnicianJobPanel key={selected.id} issue={selected} userId={user.id} busy={busy} run={run}
+                        onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)}
+                        otherJobs={nextJobs} onGoNext={openIssue} jobs={issues} />}
+            </div>
+            <div className={pane('customer')}>
+                <CustomerFacts issue={selected} userType={user?.userType} canAddInverter={ownJob && isOpenJobFor(selected, user?.id)} busy={busy} run={run} />
+                <PastComplaints key={`past:${selected.id}`} issue={selected} />
+                {selected.give_up_reason && <p className="rounded-lg bg-amber-50 p-2 text-xs">Previous give-up reason: {selected.give_up_reason}</p>}
+            </div>
+            <div className={pane('visits')}>
+                {ownJob ? <VisitTimeline issue={selected} /> : <p className="py-6 text-center text-sm text-stone-400">Visits show once you claim the job.</p>}
+                {visits.length > 0 && <div className="space-y-2"><h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">Travel payments</h3>{visits.map(visit => <VisitRow key={visit.id} visit={visit} />)}</div>}
+            </div>
+            <div className={pane('notes')}>
+                {ownJob && <ComplaintComments key={`comments:${selected.id}`} issue={selected} user={user} busy={busy} run={run} />}
+                <ComplaintHistory key={`history:${selected.id}`} issue={selected} />
+            </div>
+            {/* An open job: read it, then claim it - on any tab. */}
+            {selected.status === 'open' && <div className="sticky bottom-0 z-10 border-t border-stone-200 bg-white/95 p-3 backdrop-blur">
+                <TechnicianJobPanel key={`claim:${selected.id}`} issue={selected} userId={user.id} busy={busy} run={run}
+                    onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)} />
+            </div>}
+        </>;
+    };
+
+    return <div className={formOnly ? 'w-full space-y-3' : `service-root ${embedded ? 'service-embedded' : ''} ${view ? 'service-phone' : ''} ${selected ? 'has-selection' : ''}`}>
+        {!formOnly && !view && <header className="service-heading">{!embedded && <h1 className="text-xl font-bold">Complaints</h1>}<p className="text-sm text-stone-500">{isTechnician ? 'Plan the day in My trip, then follow the steps on each job.' : canManage ? 'Assign complaints, follow each step, close them, and record each visit’s distance and amount. Complaints are raised from Warranty customers and show up here. The km rate is set in Operations.' : 'Track the complaints of your customers, step by step, and add comments. Raise a complaint from Warranty customers or the customer’s card.'}</p></header>}
         {loadError && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700"><span className="flex-1">Could not load complaints: {loadError}</span><button type="button" onClick={() => load()} className="min-h-11 rounded-lg border bg-white px-3 text-xs font-bold">Try again</button></p>}
         {bannersAtTop && banners}
         <div className="service-tools">
@@ -224,18 +325,21 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
             Raise a complaint: go to Warranty customers <span aria-hidden="true">›</span></button>}
         {!isTechnician && formOnly && <IssueForm user={user} initialCustomer={initialCustomer} formOnly={formOnly} canManage={canManage} defaultPartner={defaultPartner}
             busy={busy} run={run} onRaised={setSelectedId} />}</div>
-        {!formOnly && <><div className="service-filters flex flex-wrap gap-2">{filters.map(([key, label]) =>
-            <button key={key} type="button" onClick={() => chooseFilter(key)} className={`min-h-11 rounded-full px-4 text-xs font-bold ${filter === key ? 'bg-stone-900 text-white' : 'bg-white border text-stone-700'}`}>{label} ({countFor(key)})</button>)}</div>
-        <div className={`service-workspace ${selected ? 'has-selection' : ''} ${shown.length <= 1 ? 'single-result' : ''}`}>
+        {!formOnly && <>{!view && <div className="service-filters flex flex-wrap gap-2">{filters.map(([key, label]) =>
+            <button key={key} type="button" onClick={() => chooseFilter(key)} className={`min-h-11 rounded-full px-4 text-xs font-bold ${filter === key ? 'bg-stone-900 text-white' : 'bg-white border text-stone-700'}`}>{label}{key === 'plan' ? '' : ` (${countFor(key)})`}</button>)}</div>}
+        {showPlan && <DayPlan user={user} issues={issues} busy={busy} run={run} onPlanSaved={() => { setPlanReload(n => n + 1); load(); }}
+            onOpen={id => { chooseFilter('mine', true); openIssue(id); }} />}
+        {!showPlan && <div className={`service-workspace ${selected ? 'has-selection' : ''} ${shown.length <= 1 ? 'single-result' : ''}`}>
             <div className="service-list space-y-2" aria-label="Complaint list">{shown.length === 0 && <p className="rounded-2xl border bg-white p-4 text-sm text-stone-500">No complaints in this view.</p>}{shown.map(issue =>
-                <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} aria-pressed={selectedId === issue.id} className={`service-list-item block w-full rounded-xl border p-3 text-left ${selectedId === issue.id ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
+                view ? <PhoneJobCard key={issue.id} issue={issue} onOpen={() => openIssue(issue.id)} />
+                : <button key={issue.id} type="button" onClick={() => openIssue(issue.id)} aria-pressed={selectedId === issue.id} className={`service-list-item block w-full rounded-xl border p-3 text-left ${selectedId === issue.id ? 'border-amber-500 bg-amber-50' : 'bg-white'}`}>
                     <span className="flex items-start gap-2"><span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-stone-500">{ticketLabel(issue)}</span><strong className="block break-words">{issue.customer_name}</strong></span><ChevronRight size={16} className="mt-1 shrink-0 text-stone-400" /></span>
                     <span className="mt-2 flex flex-wrap items-center gap-2"><StatusPill issue={issue} />
                         {issue.created_at && <span className="text-[11px] text-stone-500">Raised {new Date(issue.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</span>}</span>
                 </button>)}</div>
-            <div ref={detailRef} className="service-detail scroll-mt-4 rounded-2xl border bg-white p-4 sm:p-5 space-y-4 min-w-0">
-                {!selected ? null : <>
-                    <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} className="service-back inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-stone-600"><ArrowLeft size={16} /> All complaints</button>
+            <div ref={detailRef} className={`service-detail scroll-mt-4 rounded-2xl border bg-white min-w-0 ${view ? 'overflow-hidden' : 'p-4 sm:p-5 space-y-4'}`}>
+                {!selected ? null : view ? phoneJob() : <>
+                    <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} className="service-back inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-stone-600"><ArrowLeft size={16} /> {isTechnician ? 'All jobs' : 'All complaints'}</button>
                     <div className="space-y-1">
                         <h2 className="font-bold text-lg break-words">{selected.ticket_no && <span className="text-stone-500">{ticketLabel(selected)} </span>}{selected.customer_name}</h2>
                         <div className="flex flex-wrap items-center gap-1.5"><StatusPill issue={selected} />
@@ -251,23 +355,31 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
                     <ClosureNote issue={selected} forTechnician={isTechnician} />
                     {/* The technician's next step comes before the details, so the
                         code box is on screen without scrolling on a phone. */}
-                    {isTechnician && <TechnicianJobPanel key={selected.id} issue={selected} userId={user.id} busy={busy} run={run}
+                    {isTechnician && selected.status !== 'open' && <TechnicianJobPanel key={selected.id} issue={selected} userId={user.id} busy={busy} run={run}
                         onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)}
-                        otherJobs={issues.filter(row => row.id !== selected.id && row.assigned_to === user.id && row.status === 'assigned')} onGoNext={openIssue} jobs={issues} />}
-                    <div className={`service-detail-grid ${hasVisitColumn ? '' : 'no-visit-column'}`}><div className="service-customer-column space-y-4">{showDetails && <CustomerFacts issue={selected} userType={user?.userType} />}
+                        otherJobs={issues.filter(row => row.id !== selected.id && row.assigned_to === user.id && row.status === 'assigned'
+                            && (!planOrder.length || planOrder.includes(row.id))).sort((a, b) => planned(a.id) - planned(b.id))} onGoNext={openIssue} jobs={issues} />}
+                    <div className={`service-detail-grid ${hasVisitColumn ? '' : 'no-visit-column'}`}><div className="service-customer-column space-y-4">{showDetails && <CustomerFacts issue={selected} userType={user?.userType} canAddInverter={ownJob && isOpenJobFor(selected, user?.id)} busy={busy} run={run} />}
+                    {showDetails && (canManage || isTechnician) && <PastComplaints key={`past:${selected.id}`} issue={selected} />}
                     {selected.give_up_reason && <p className="rounded-lg bg-amber-50 p-2 text-xs">Previous give-up reason: {selected.give_up_reason}</p>}
                     {/* Before / After photos are the technician's; partners do not see the photo section. */}
-                    {showDetails && !photosInJobPanel && !isPartner && <ComplaintPhotos key={`photos:${selected.id}`} issue={selected} userId={user?.id} userType={user?.userType} busy={busy} run={run} />}
+                    {showDetails && !photosInJobPanel && !isPartner && (!isTechnician || ownJob) && <ComplaintPhotos key={`photos:${selected.id}`} issue={selected} userId={user?.id} userType={user?.userType} busy={busy} run={run} />}
                     {canManage && <VisitStage key={`stage:${selected.id}`} issue={selected} busy={busy} run={run} office />}
                     {canManage && <OfficeIssuePanel key={selected.id} issue={selected} technicians={technicians} techError={techError} busy={busy} run={run} update={update} />}
-                    {showDetails && <ComplaintComments key={`comments:${selected.id}`} issue={selected} user={user} busy={busy} run={run} />}
+                    {showDetails && (!isTechnician || ownJob) && <ComplaintComments key={`comments:${selected.id}`} issue={selected} user={user} busy={busy} run={run} />}
                     {showDetails && <ComplaintHistory key={`history:${selected.id}`} issue={selected} />}
+                    {/* An open job: read everything first, then claim it at the bottom. */}
+                    {isTechnician && selected.status === 'open' && <div className="sticky bottom-3 z-10 rounded-2xl border border-stone-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+                        <TechnicianJobPanel key={`claim:${selected.id}`} issue={selected} userId={user.id} busy={busy} run={run}
+                            onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)} />
+                    </div>}
                     {canManage && WHATSAPP_ENABLED && <WhatsAppLog key={`wa:${selected.id}`} issueId={selected.id} />}
-                    </div>{hasVisitColumn && <div className="service-visit-column space-y-4"><div className="space-y-2"><h3 className="text-sm font-bold">Visits and travel</h3>{visits.length === 0 && <p className="text-xs text-stone-500">No visits recorded.</p>}{visits.map(visit => <VisitRow key={visit.id} visit={visit} />)}</div>
+                    </div>{hasVisitColumn && <div className="service-visit-column space-y-4"><VisitTimeline issue={selected} />
+                    {(canManage || visits.length > 0) && <div className="space-y-2"><h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">Travel payments</h3>{visits.length === 0 && <p className="text-xs text-stone-400">None yet.</p>}{visits.map(visit => <VisitRow key={visit.id} visit={visit} />)}</div>}
                     {canManage && selected.assigned_to && <VisitForm key={`${selected.id}:${selected.assigned_to}`} issue={selected} user={user} busy={busy} run={run} visits={visits} onSaved={reloadVisits} />}
                     {canManage && selected.assigned_to && <CombinedVisitForm key={`combined:${selected.id}:${selected.assigned_to}`} issue={selected} issues={issues} user={user} busy={busy} run={run} onSaved={reloadVisits} />}</div>}</div>
                 </>}
             </div>
-        </div></>}
+        </div>}</>}
     </div>;
 }

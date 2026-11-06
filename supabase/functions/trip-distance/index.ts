@@ -37,6 +37,12 @@
 //                        Anything that is not localhost is ignored, so the key only goes to Google.
 //                        Never set it on Supabase.
 //
+// Each answer is remembered in public.trip_distance_cache (migration
+// 20261105120000_technician_visits.sql) under a SHA-256 of the two points (rounded to about
+// 10 m) and the travel mode, so the same trip is asked of Google only once. The cache holds
+// the hash and the km only, never the points. A cached answer is not a lookup: it is not
+// logged and does not count against the daily limits.
+//
 // Deploy: supabase functions deploy trip-distance
 // The key is never returned, logged or stored; Google's error text is logged with it masked.
 
@@ -52,6 +58,13 @@ const OFFICE_ROLES = ['admin', 'sales']
 const SERVER_ERROR = 'Road distance is not available right now. Using the estimate.'
 // Rows that never reached Google; they do not use up the daily lookups.
 const NOT_COUNTED = '(limit,not_configured)'
+
+// SHA-256 of both points (4 decimals, about 10 m) and the mode: the same trip, the same key.
+async function cacheKey(origin: Point, destination: Point, mode: TravelMode) {
+  const text = [origin.lat, origin.lng, destination.lat, destination.lng].map(n => Number(n).toFixed(4)).join(',') + `|${mode}`
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
+}
 
 // Secrets pasted into the dashboard often carry a stray space or new line.
 const env = (name: string) => (Deno.env.get(name) || '').trim()
@@ -144,6 +157,16 @@ Deno.serve(async (req) => {
     if (!parsed.ok) return json(req, 400, { ok: false, code: 'bad_input', error: parsed.error })
     const { origin, destination, travelMode } = parsed
 
+    // Asked before: answer from the cache (no Google request, no lookup counted).
+    const hash = await cacheKey(origin, destination, travelMode)
+    const { data: cached, error: cacheError } = await db.from('trip_distance_cache')
+      .select('distance_km, duration_minutes, travel_mode_used').eq('key', hash).maybeSingle()
+    if (cacheError) console.error(`trip-distance: cache not read: ${cacheError.message}`)
+    if (cached) {
+      return json(req, 200, { ok: true, distanceKm: Number(cached.distance_km), durationMinutes: cached.duration_minutes,
+        travelModeUsed: cached.travel_mode_used, cached: true })
+    }
+
     if (!key) {
       // Best effort, so the developer can see "pro" is on without a key. Never blocks the answer.
       const { error } = await db.from('trip_distance_lookups')
@@ -177,6 +200,11 @@ Deno.serve(async (req) => {
     const { body, logCode } = answerFor(outcome, modeUsed)
     if (outcome.kind !== 'ok') console.error(`trip-distance: lookup ${logId} (${modeUsed}) failed: ${redactKey(outcome.detail, key)}`)
     await finishLog(db, logId, { ok: outcome.kind === 'ok', error_code: logCode, travel_mode: modeUsed })
+    if (outcome.kind === 'ok') {
+      const { error: saveError } = await db.from('trip_distance_cache').upsert({ key: hash, distance_km: outcome.distanceKm,
+        duration_minutes: outcome.durationMinutes ?? null, travel_mode_used: modeUsed })
+      if (saveError) console.error(`trip-distance: cache not saved: ${saveError.message}`)
+    }
     return json(req, 200, body)
   } catch (error) {
     // Database wording stays in the logs (key masked); the office gets a plain message.

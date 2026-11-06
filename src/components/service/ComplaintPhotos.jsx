@@ -3,8 +3,8 @@ import { Camera, ImagePlus, X } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { compressImage } from '../../utils';
 import {
-    PHOTO_KINDS, PHOTO_KIND_LABELS, PHOTO_LIMIT, PHOTO_LONG_SIDE, PHOTO_MAX_BYTES,
-    canDeletePhoto, canUploadPhotos, formatDateTime, groupIssueFiles, isPhotoType, missingTable, photoCountLabel,
+    PHOTO_KINDS, PHOTO_KIND_LABELS, PHOTO_LIMIT, SITE_PHOTO_LABELS, PHOTO_LONG_SIDE, PHOTO_MAX_BYTES,
+    canDeletePhoto, canUploadPhotos, formatDateTime, groupIssueFiles, isPhotoType, missingTable,
     photoCounts, photoError, photoPath, pickPhotos, plainError
 } from './serviceLabels';
 
@@ -37,14 +37,14 @@ async function shrink(file) {
 
 // One photo: into storage at {issue}/{me}/{kind}-{id}.jpg, then its row. A row
 // that cannot be saved takes its file back out of storage.
-async function addPhoto(issueId, userId, kind, file) {
+async function addPhoto(issueId, userId, kind, file, label = null) {
     const small = await shrink(file);
     const path = photoPath(issueId, userId, kind, newId(), small.type);
     const uploaded = await supabase.storage.from(BUCKET).upload(path, small, { upsert: false, contentType: small.type, cacheControl: '3600' });
     if (uploaded.error) throw uploaded.error;
     const saved = await supabase.from('service_issue_files').insert({
         issue_id: issueId, storage_path: path, file_name: String(file.name || `${kind}.jpg`).slice(0, 200),
-        mime_type: small.type, uploaded_by: userId, kind
+        mime_type: small.type, uploaded_by: userId, kind, ...(label ? { label } : {})
     });
     if (saved.error) {
         await supabase.storage.from(BUCKET).remove([path]).catch(() => {});
@@ -53,11 +53,11 @@ async function addPhoto(issueId, userId, kind, file) {
 }
 
 // "Take photo" (camera) or "Add from gallery" (several at once): a label around a hidden file input.
-function PickButton({ camera = false, label, disabled, onFiles }) {
+function PickButton({ camera = false, strong = camera, label, disabled, onFiles }) {
     const Icon = camera ? Camera : ImagePlus;
     return <label aria-disabled={disabled || undefined}
-        className={`inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 text-sm font-bold ${camera ? 'border-stone-900 bg-stone-900 text-white' : 'bg-white text-stone-800'} ${disabled ? 'pointer-events-none opacity-50' : ''}`}>
-        <Icon size={18} aria-hidden="true" />{label}
+        className={`inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold ${strong ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-700'} ${disabled ? 'pointer-events-none opacity-50' : ''}`}>
+        <Icon size={16} aria-hidden="true" />{label}
         <input type="file" accept="image/*" {...(camera ? { capture: 'environment' } : { multiple: true })} disabled={disabled}
             onChange={event => onFiles(event.target)} className="sr-only" />
     </label>;
@@ -65,7 +65,7 @@ function PickButton({ camera = false, label, disabled, onFiles }) {
 
 // Delete with an inline "are you sure".
 function DeleteButton({ asking, busy, onAsk, onCancel, onDelete }) {
-    if (!asking) return <button type="button" disabled={busy} onClick={onAsk} className="min-h-11 w-full rounded-lg border border-red-200 px-2 text-xs font-bold text-red-700 disabled:opacity-50">Delete</button>;
+    if (!asking) return <button type="button" disabled={busy} onClick={onAsk} className="min-h-9 w-full rounded-lg text-[11px] font-bold text-stone-400 hover:text-red-700 disabled:opacity-50">Delete</button>;
     return <div className="space-y-1">
         <button type="button" disabled={busy} onClick={onDelete} className="min-h-11 w-full rounded-lg bg-red-600 px-2 text-xs font-bold text-white disabled:opacity-50">Yes, delete</button>
         <button type="button" onClick={onCancel} className="min-h-11 w-full rounded-lg border px-2 text-xs font-bold">Keep</button>
@@ -113,10 +113,10 @@ export default function ComplaintPhotos({ issue, userId, userType, busy, run, on
         let active = true;
         (async () => {
             const { data, error } = await supabase.from('service_issue_files')
-                .select('id, file_name, storage_path, mime_type, uploaded_by, kind, created_at')
+                .select('id, file_name, storage_path, mime_type, uploaded_by, kind, label, created_at')
                 .eq('issue_id', issueId).order('created_at');
             if (!active) return;
-            // A missing table or kind column: the 23 Oct SQL has not been run yet.
+            // A missing table or kind / label column: the 23 Oct or 5 Nov SQL has not been run yet.
             if (error) { setLoadFailed(missingTable(error) ? 'Photos are not set up yet. Ask the office.' : 'Could not load the photos. Check the internet.'); return; }
             setFiles(data || []); setLoadFailed('');
             try {
@@ -164,6 +164,20 @@ export default function ComplaintPhotos({ issue, userId, userType, busy, run, on
         }, '', 'issue');
     };
 
+    // One named site photo (Panels, Inverter, ...): replaces nothing, one per name.
+    const addSitePhoto = (label, input) => {
+        const file = input?.files?.[0];
+        if (input) input.value = '';
+        if (!file || !run) return;
+        run(async () => {
+            setProgress({ kind: 'site', label, done: 0, total: 1 });
+            try { await addPhoto(issueId, userId, 'site', file, label); }
+            catch (failure) { throw new Error(photoError(failure)); }
+            finally { setProgress(null); setReload(n => n + 1); }
+            return `${label} photo added.`;
+        }, '', 'issue');
+    };
+
     const remove = file => run?.(async () => {
         const { data, error } = await supabase.from('service_issue_files').delete().eq('id', file.id).select('id');
         if (error) throw new Error(photoError(error));
@@ -180,52 +194,53 @@ export default function ComplaintPhotos({ issue, userId, userType, busy, run, on
         ? <DeleteButton asking={confirmId === file.id} busy={busy} onAsk={() => setConfirmId(file.id)} onCancel={() => setConfirmId(null)} onDelete={() => remove(file)} />
         : null;
 
-    return <section aria-label="Photos" className="space-y-3 border-t pt-3">
-        <div>
-            <h3 className="text-sm font-bold">Photos</h3>
-            <p className="mt-0.5 text-xs text-stone-500">{canUpload
-                ? 'Take Before photos when you reach the site and After photos when the work is done. You need at least one of each to send the code.'
-                : 'The technician adds Before and After photos at the site.'}</p>
-        </div>
-        {loadFailed && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+    const label = 'text-xs font-bold uppercase tracking-wider text-stone-500';
+    // Nothing to show and nothing to add (office or partner, no photos yet).
+    if (!canUpload && groups && !files.length && !loadFailed) return null;
+    return <section aria-label="Photos" className={canUpload ? 'space-y-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm' : 'space-y-3 border-t pt-3'}>
+        <h3 className={label}>Photos</h3>
+        {loadFailed && <p role="alert" className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 p-2 text-xs text-amber-900">
             {loadFailed}
-            <button type="button" onClick={() => setReload(n => n + 1)} className="min-h-11 rounded-lg border bg-white px-3 font-bold">Try again</button>
+            <button type="button" onClick={() => setReload(n => n + 1)} className="min-h-10 rounded-lg border bg-white px-3 font-bold">Try again</button>
         </p>}
         {!groups ? (!loadFailed && <p className="text-xs text-stone-400">Loading photos…</p>) : <>
             {PHOTO_KINDS.map(kind => {
-                const label = PHOTO_KIND_LABELS[kind];
+                const kindLabel = PHOTO_KIND_LABELS[kind];
                 const photos = groups[kind];
                 const full = photos.length >= PHOTO_LIMIT;
                 const uploading = progress?.kind === kind;
-                return <div key={kind} className="space-y-2 rounded-xl border border-stone-200 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                        <h4 className="text-sm font-bold">{label} photos</h4>
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${photos.length ? 'bg-green-100 text-green-800' : 'bg-stone-100 text-stone-600'}`}>{photoCountLabel(kind, photos.length)}</span>
+                if (!canUpload && !photos.length) return null;
+                return <div key={kind} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold">{kindLabel}</h4>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${kind === 'after' ? 'bg-amber-100 text-amber-900' : 'bg-stone-100 text-stone-500'}`}>{kind === 'after' ? 'Required' : 'Optional'}</span>
+                        <span className="ml-auto text-xs text-stone-400">{photos.length}/{PHOTO_LIMIT}</span>
                     </div>
-                    {photos.length === 0 && <p className="text-xs text-stone-500">No {label} photos yet.</p>}
-                    {photos.length > 0 && <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">{photos.map((photo, index) => {
-                        const name = `${label} photo ${index + 1} of ${photos.length}`;
+                    {canUpload && kind === 'before' && !photos.length && <p className="text-xs text-stone-400">Only if something was damaged when you arrived.</p>}
+                    {photos.length > 0 && <ul className="grid grid-cols-4 gap-2">{photos.map((photo, index) => {
+                        const name = `${kindLabel} photo ${index + 1} of ${photos.length}`;
                         return <li key={photo.id} className="min-w-0 space-y-1">
                             <button type="button" aria-label={`Open ${name}`} onClick={() => setViewing({ path: photo.storage_path, label: [name, formatDateTime(photo.created_at)].filter(Boolean).join(' · ') })}
-                                className="block w-full overflow-hidden rounded-lg border bg-stone-100">
+                                className="block w-full overflow-hidden rounded-xl bg-stone-100">
                                 {urls[photo.storage_path]
                                     ? <img src={urls[photo.storage_path]} alt={name} loading="lazy" decoding="async" className="aspect-square w-full object-cover" />
-                                    : <span className="flex aspect-square w-full items-center justify-center text-[11px] text-stone-400">Loading…</span>}
+                                    : <span className="flex aspect-square w-full items-center justify-center text-[11px] text-stone-400">…</span>}
                             </button>
                             {deleteFor(photo)}
                         </li>;
                     })}</ul>}
-                    {canUpload && <div className="grid gap-2 sm:grid-cols-2">
-                        <PickButton camera label="Take photo" disabled={busy || full} onFiles={input => addPhotos(kind, input)} />
-                        <PickButton label="Add from gallery" disabled={busy || full} onFiles={input => addPhotos(kind, input)} />
+                    {canUpload && !full && <div className="grid grid-cols-2 gap-2">
+                        <PickButton camera strong={kind === 'after'} label="Camera" disabled={busy} onFiles={input => addPhotos(kind, input)} />
+                        <PickButton label="Gallery" disabled={busy} onFiles={input => addPhotos(kind, input)} />
                     </div>}
-                    {canUpload && full && <p className="text-xs text-stone-500">{PHOTO_LIMIT} {label} photos added. Delete one to add another.</p>}
-                    {uploading && <p role="status" className="text-xs font-semibold text-sky-800">Adding {label} photo {progress.done + 1} of {progress.total}…</p>}
-                    {problems[kind]?.length > 0 && <ul role="alert" className="space-y-1 rounded-lg bg-red-50 p-2 text-xs text-red-800">
+                    {uploading && <p role="status" className="text-xs font-semibold text-stone-500">Adding {progress.done + 1} of {progress.total}…</p>}
+                    {problems[kind]?.length > 0 && <ul role="alert" className="space-y-1 rounded-xl bg-red-50 p-2 text-xs text-red-800">
                         {problems[kind].map((problem, index) => <li key={index} className="break-words"><strong>{problem.name}:</strong> {problem.reason}</li>)}
                     </ul>}
                 </div>;
             })}
+            <SitePhotos photos={groups.site} urls={urls} canUpload={canUpload} busy={busy} progress={progress}
+                onView={setViewing} deleteFor={deleteFor} onAdd={(siteLabel, input) => addSitePhoto(siteLabel, input)} />
             {groups.problem.length > 0 && <div className="space-y-1">
                 <h4 className="text-xs font-bold text-stone-600">Files added when the complaint was raised ({groups.problem.length})</h4>
                 <ul className="space-y-1">{groups.problem.map(file => {
@@ -240,4 +255,37 @@ export default function ComplaintPhotos({ issue, userId, userType, busy, run, on
         </>}
         {viewing && <PhotoViewer url={urls[viewing.path] || ''} label={viewing.label} onClose={() => setViewing(null)} />}
     </section>;
+}
+
+// The installation's named photos: one slot per name (SITE_PHOTO_LABELS), all optional.
+function SitePhotos({ photos, urls, canUpload, busy, progress, onView, deleteFor, onAdd }) {
+    const byLabel = new Map(photos.map(photo => [photo.label || 'Other', photo]));
+    const extra = photos.filter(photo => !SITE_PHOTO_LABELS.includes(photo.label));
+    if (!canUpload && !photos.length) return null;
+    return <div className="space-y-2">
+        <div className="flex items-center gap-2">
+            <h4 className="text-sm font-bold">Installation</h4>
+            <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-500">Optional</span>
+            <span className="ml-auto text-xs text-stone-400">{photos.length}/{SITE_PHOTO_LABELS.length}</span>
+        </div>
+        <ul className="grid grid-cols-4 gap-2 sm:grid-cols-5">{[...SITE_PHOTO_LABELS.filter(name => canUpload || byLabel.has(name)), ...extra.map(photo => photo.label || 'Other')].map(name => {
+            const photo = byLabel.get(name);
+            const adding = progress?.kind === 'site' && progress.label === name;
+            return <li key={name} className="min-w-0">
+                {photo
+                    ? <button type="button" aria-label={`Open ${name} photo`} onClick={() => onView({ path: photo.storage_path, label: [name, formatDateTime(photo.created_at)].filter(Boolean).join(' · ') })}
+                        className="block w-full overflow-hidden rounded-xl bg-stone-100">
+                        {urls[photo.storage_path]
+                            ? <img src={urls[photo.storage_path]} alt={name} loading="lazy" decoding="async" className="aspect-square w-full object-cover" />
+                            : <span className="flex aspect-square w-full items-center justify-center text-[11px] text-stone-400">…</span>}
+                    </button>
+                    : <label aria-label={`Take ${name} photo`} aria-disabled={busy || undefined} className={`flex aspect-square w-full cursor-pointer items-center justify-center rounded-xl border border-dashed border-stone-300 text-stone-400 hover:border-amber-400 hover:text-amber-600 ${busy ? 'pointer-events-none opacity-50' : ''}`}>
+                        {adding ? <span className="text-[10px] font-bold">…</span> : <Camera size={18} aria-hidden="true" />}
+                        <input type="file" accept="image/*" capture="environment" disabled={busy} onChange={event => onAdd(name, event.target)} className="sr-only" />
+                    </label>}
+                <p className="mt-1 text-center text-[10px] font-semibold leading-tight text-stone-500 break-words">{name}</p>
+                {photo && deleteFor(photo)}
+            </li>;
+        })}</ul>
+    </div>;
 }
