@@ -156,6 +156,15 @@ export function leadBrand(brandName, known = []) {
 export const chargeAmount = value => (String(value ?? '').trim() === '' ? 0 : round(value));
 export const chargeLabel = value => (chargeAmount(value) > 0 ? chargeAmount(value) : 'Included');
 export const extraCharges = form => round(chargeAmount(form?.geb_charge) + chargeAmount(form?.geda_charge));
+// Sets geb_charge or geda_charge ('' = Included, or an amount) and keeps the older
+// single Including/Excluding choice in step, so an old "Excluding" quote stops printing it once edited.
+export function withCharge(form, key, value) {
+    if (!['geb_charge', 'geda_charge'].includes(key)) throw new Error(`Unknown charge: ${key}`);
+    const next = { ...form, [key]: value };
+    return { ...next, geb_geda_charge: extraCharges(next) > 0 ? 'Excluding' : 'Including' };
+}
+// An older quote saved "Excluding" with no amounts; it still prints "Excluding".
+export const legacyExcluding = form => form?.geb_geda_charge === 'Excluding' && extraCharges(form) === 0;
 export function calculate(options, charges = 0) {
     return options.map(option => {
         const baseValue = round(option.baseValue), discount = round(option.discount), subsidy = round(option.subsidy);
