@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
 import { eventLabel, formatDateTime, missingTable } from './serviceLabels';
+import { useInverterSaved } from './InverterSerial';
 
 // Steps the complaint itself still knows, for a database without the history table yet.
 function stepsFromIssue(issue) {
@@ -14,7 +15,10 @@ function stepsFromIssue(issue) {
 // (service_issue_events, written by the database). Reloads when the complaint changes.
 export default function ComplaintHistory({ issue }) {
     const [events, setEvents] = useState(null);
-    const issueKey = `${issue.id}:${issue.updated_at || ''}`;
+    // An inverter number saved on the job does not change the complaint row: read again then too.
+    const [saved, setSaved] = useState(0);
+    useInverterSaved(issue.id, () => setSaved(n => n + 1));
+    const issueKey = `${issue.id}:${issue.updated_at || ''}:${saved}`;
 
     useEffect(() => {
         let active = true;

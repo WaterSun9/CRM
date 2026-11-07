@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
-import { PHOTOS_NEEDED_TEXT, RESEND_SECONDS, hasCompletionPhotos } from './serviceLabels';
+import { INVERTER_NEEDED_TEXT, PHOTOS_NEEDED_TEXT, RESEND_SECONDS, hasCompletionPhotos } from './serviceLabels';
 import { phonePosition, roundAccuracy, tripError } from './tripLabels';
 import TripPanel from './TripPanel';
 import ComplaintPhotos from './ComplaintPhotos';
+import InverterSerial, { useJobInverter } from './InverterSerial';
 import { confirmFirebaseCode, firebaseErrorText, firebaseReady, sendFirebaseCode } from './firebasePhone';
 
 // Calls the service-otp edge function. Business-rule answers come back as
-// 200 { ok: false, error, code? } (code 'photos_needed': no Before or no After
-// photo yet); a non-2xx reply is read for its { error } text.
+// 200 { ok: false, error, code? } (code 'photos_needed': no After photo yet;
+// 'inverter_needed': no inverter serial on the customer card); a non-2xx reply is read for its { error } text.
 async function callServiceOtp(body) {
     const { data, error } = await supabase.functions.invoke('service-otp', { body });
     if (!error) return data || {};
@@ -52,8 +53,9 @@ function verifyMessage(data) {
 // add Before / After photos, send the completion code to the customer (SMS, or
 // WhatsApp), type the code the customer reads out, or give up.
 // The server sends and checks the code; this screen never sees it.
-// The code cannot be sent or confirmed until the job has at least one Before and
-// one After photo (the server checks again and answers code 'photos_needed').
+// The code cannot be sent or confirmed until the job has at least one After photo and
+// the customer card has an inverter serial number (the server checks again and answers
+// code 'photos_needed' / 'inverter_needed').
 // "Work done" first reminds the technician to tap "Reached site" when the open
 // trip has none (it never blocks: "Send code without it" goes straight on).
 // Firebase confirmations, by job: a resend replaces it, a page reload loses it
@@ -85,6 +87,11 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     const [photoCounts, setPhotoCounts] = useState(null);
     const [photoReload, setPhotoReload] = useState(0);
     const photosReady = hasCompletionPhotos(photoCounts);
+    // The card's inverter serial; a card that could not be read holds nothing back (the server checks).
+    const inverter = useJobInverter(issue);
+    const inverterReady = inverter.loaded && (inverter.failed || (inverter.linked && !inverter.missing));
+    const ready = photosReady && inverterReady;
+    const notReadyText = !photosReady ? PHOTOS_NEEDED_TEXT : INVERTER_NEEDED_TEXT;
 
     // The last code's time also comes from the server, so the countdown
     // survives a page reload. Capped in case the phone clock is off.
@@ -106,10 +113,11 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     }, 'Job assigned to you.', 'issue');
 
     const requestCode = async () => {
-        if (!photosReady) throw new Error(PHOTOS_NEEDED_TEXT);
+        if (!ready) throw new Error(notReadyText);
         const data = await callServiceOtp({ action: 'send', issueId: issue.id });
         if (!data.ok) {
             if (data.code === 'photos_needed') { setPhotoReload(n => n + 1); throw new Error(data.error || PHOTOS_NEEDED_TEXT); }
+            if (data.code === 'inverter_needed') { inverter.reload(); throw new Error(data.error || INVERTER_NEEDED_TEXT); }
             if (data.retryAfterSeconds) holdResend(data.retryAfterSeconds);
             throw new Error(data.error || 'Could not send the code. Try again.');
         }
@@ -135,7 +143,7 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     // An open trip without "Reached site" gets the reminder first.
     const openTrip = tripState.current;
     const needsReach = Boolean(openTrip && !openTrip.reached_at);
-    const workDone = () => { if (!photosReady) return; if (needsReach) setNudge(true); else sendCode(); };
+    const workDone = () => { if (!ready) return; if (needsReach) setNudge(true); else sendCode(); };
 
     // "Reached site now": one GPS reading, save it, then send the code whatever
     // happened (a failed location must not stop the job being closed).
@@ -161,7 +169,7 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
 
     const verify = event => {
         event.preventDefault();
-        if (!/^\d{6}$/.test(code) || !photosReady) return;
+        if (!/^\d{6}$/.test(code) || !ready) return;
         run(async () => {
             const confirmation = confirmations.get(issue.id);
             let body = { action: 'verify', issueId: issue.id, code };
@@ -175,11 +183,11 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
             }
             const data = await callServiceOtp(body);
             if (data.verified || data.reason !== 'wrong_code') confirmations.delete(issue.id);
-            if (data.code === 'photos_needed') {
-                // Google has used up a Firebase code: add the photos, then send a new one.
+            if (data.code === 'photos_needed' || data.code === 'inverter_needed') {
+                // Google has used up a Firebase code: add what is missing, then send a new one.
                 if (confirmation) { setCode(''); setSent(null); }
-                setPhotoReload(n => n + 1);
-                throw new Error(data.error || PHOTOS_NEEDED_TEXT);
+                if (data.code === 'photos_needed') setPhotoReload(n => n + 1); else inverter.reload();
+                throw new Error(data.error || (data.code === 'photos_needed' ? PHOTOS_NEEDED_TEXT : INVERTER_NEEDED_TEXT));
             }
             if (!data.ok) throw new Error(data.error || 'Could not check the code. Try again.');
             if (!data.verified) {
@@ -212,7 +220,11 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
     const trip = <TripPanel issue={issue} userId={userId} busy={busy} run={run} onTripState={setTripState} reloadKey={tripReload} otherJobs={otherJobs} onGoNext={onGoNext} jobs={jobs} />;
     // Same key in both places, so the photo list is moved, not loaded again.
     const photos = <ComplaintPhotos key="photos" issue={issue} userId={userId} userType="technician" busy={busy} run={run} onCounts={setPhotoCounts} reloadKey={photoReload} />;
-    const photosHint = !photosReady && <p role="note" className="text-center text-xs font-semibold text-amber-700">{PHOTOS_NEEDED_TEXT}</p>;
+    const photosHint = inverter.loaded && !ready && <p role="note" className="text-center text-xs font-semibold text-amber-700">{notReadyText}</p>;
+    // Add the serial when the card has none; record a replaced inverter (old number kept in the history).
+    const inverterBox = <InverterSerial issue={issue} make={inverter.make} serial={inverter.serial} linked={inverter.linked}
+        canEdit busy={busy} run={run} />;
+    const showInverter = inverter.loaded && !inverter.failed;
     const showNudge = !showCodeEntry && nudge && needsReach;
     // The work (photos, Visited, OTP) opens once a trip is started for this job, so
     // every visit has a start point for the km. If the trips cannot be read, nothing
@@ -228,15 +240,16 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
         {!tripState.failed && <StepBar at={step} />}
         {!showCodeEntry && trip}
         {!showCodeEntry && !waitingForTrip && photos}
+        {!showCodeEntry && !waitingForTrip && showInverter && inverterBox}
         {canClose && !showCodeEntry && !showNudge && photosHint}
-        {canClose && !showCodeEntry && !showNudge && <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={workDone} className="min-h-12 w-full rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-40">
+        {canClose && !showCodeEntry && !showNudge && <button type="button" disabled={busy || waitSeconds > 0 || !ready} onClick={workDone} className="min-h-12 w-full rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-40">
             {waitSeconds > 0 ? `Send OTP (wait ${waitText})` : 'Send OTP to customer'}
         </button>}
         {showNudge && <div role="alert" className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <p className="text-sm font-semibold text-amber-950">Reached site not tapped yet. Tap it so the km is right.</p>
             <button type="button" disabled={busy} onClick={reachThenSend} className="min-h-12 w-full rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-50">
                 {reaching ? 'Finding your location…' : 'Reached site now'}</button>
-            <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={sendCode} className="min-h-11 w-full rounded-xl border bg-white px-4 text-sm font-bold disabled:opacity-50">
+            <button type="button" disabled={busy || waitSeconds > 0 || !ready} onClick={sendCode} className="min-h-11 w-full rounded-xl border bg-white px-4 text-sm font-bold disabled:opacity-50">
                 {waitSeconds > 0 ? `Send OTP without it (wait ${waitText})` : 'Send OTP without it'}</button>
         </div>}
         {showCodeEntry && <form onSubmit={verify} className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -249,11 +262,12 @@ export default function TechnicianJobPanel({ issue, userId, busy, run, onClaimed
                     className="mt-1 block w-full min-h-14 rounded-lg border bg-white p-2 text-center text-2xl font-bold tracking-[0.5em]" />
             </label>
             {photosHint}
-            <button disabled={busy || code.length !== 6 || !photosReady} className="min-h-12 w-full rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-40">Confirm OTP and close job</button>
-            <button type="button" disabled={busy || waitSeconds > 0 || !photosReady} onClick={sendCode} className="min-h-11 w-full rounded-xl border bg-white px-4 text-sm font-bold disabled:opacity-50">
+            <button disabled={busy || code.length !== 6 || !ready} className="min-h-12 w-full rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-40">Confirm OTP and close job</button>
+            <button type="button" disabled={busy || waitSeconds > 0 || !ready} onClick={sendCode} className="min-h-11 w-full rounded-xl border bg-white px-4 text-sm font-bold disabled:opacity-50">
                 {waitSeconds > 0 ? `Send OTP again (${waitText})` : 'Send OTP again'}
             </button>
         </form>}
+        {showCodeEntry && showInverter && inverterBox}
         {showCodeEntry && photos}
         {showCodeEntry && trip}
         <details className="group">

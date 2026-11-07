@@ -71,7 +71,8 @@ export const EVENT_LABELS = {
     readings: 'Site readings',
     fixed: 'Fixed',
     revisit: 'Revisit needed',
-    inverter_added: 'Inverter number added'
+    inverter_added: 'Inverter number added',
+    inverter_replaced: 'Inverter replaced'
 };
 export const eventLabel = event => EVENT_LABELS[event] || event;
 export const OVERRIDE_REASONS = ['Customer did not get the code', 'Confirmed by phone call', 'No network at site', 'Customer has no mobile', 'Other'];
@@ -143,6 +144,11 @@ export function photoCounts(files) {
     const groups = groupIssueFiles(files);
     return { before: groups.before.length, after: groups.after.length, site: groups.site.length };
 }
+// A job closes by OTP only when the customer card has an inverter serial number (7 Nov 2026).
+// Missing: empty, only dashes / dots / spaces, zeros, NA, N/A, nil, none or null. Same rule as
+// public.inverter_serial_missing and service-otp.
+export const INVERTER_NEEDED_TEXT = 'Add the inverter serial number first.';
+export const inverterSerialMissing = serial => /^(na|nil|none|null|0*)$/.test(String(serial ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase());
 export const hasCompletionPhotos = counts => Boolean(counts && counts.after >= 1);
 export const photoCountLabel = (kind, count) => `${PHOTO_KIND_LABELS[kind] || kind} ${count}/${PHOTO_LIMIT}`;
 export const photoSlotsLeft = count => Math.max(0, PHOTO_LIMIT - (Number(count) || 0));

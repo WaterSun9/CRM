@@ -80,6 +80,13 @@ export const PHOTOS_NEEDED = { ok: false, code: 'photos_needed', error: 'Add at 
 export const photosReady = (counts: { before: number | null | undefined; after: number | null | undefined }) =>
   (Number(counts.after) || 0) >= 1
 
+// The customer card must have an inverter serial number before a code goes out and before a
+// job closes by code (7 Nov 2026). Missing: empty, only dashes / dots / spaces, zeros, NA,
+// N/A, nil, none or null. Same rule as public.inverter_serial_missing and the app.
+export const INVERTER_NEEDED = { ok: false, code: 'inverter_needed', error: 'Add the inverter serial number first.' } as const
+export const inverterSerialMissing = (serial: unknown) =>
+  /^(na|nil|none|null|0*)$/.test(String(serial ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase())
+
 const SEND_FAILED = 'The code could not be sent on WhatsApp. Try again in a minute, or ask the office to close this job.'
 
 // The shared Meta error, worded for a technician standing at the customer's site.
