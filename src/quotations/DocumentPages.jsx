@@ -1,6 +1,9 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Page1 } from './template/components/pages/Page1';
+import { Page2 } from './template/components/pages/Page2';
+import { Page3 } from './template/components/pages/Page3';
 import { OnePage } from './template/components/pages/OnePage';
-import { documentFor } from './model';
+import { documentFor,isFinalQuotation } from './model';
 import './quotation.css';
 
 function drawTableGrid(page) {
@@ -104,7 +107,7 @@ export function fitQuotationPages(root) {
         if (fittedHeight > available + 1) {
             throw new Error('The quotation content does not fit safely on one of the A4 pages. Shorten the address or custom notes.');
         }
-        if (page.classList.contains('quotation-page-one')) drawTableGrid(page);
+        if (page.classList.contains('quotation-page-3') || page.classList.contains('quotation-page-one')) drawTableGrid(page);
     }
     return pages;
 }
@@ -134,6 +137,9 @@ export async function waitForQuotationAssets(root) {
     await new Promise(resolve => window.requestAnimationFrame(resolve));
 }
 
+// Every quote prints in full: cover letter, techno-commercial proposal (one brand),
+// then terms, warranty, BOM, other charges and bank details. Only an old 1-page
+// copy (made before 6 Nov) reprints as the single page it was issued as.
 export default function DocumentPages({ row,highlights = false,exportMode = false }) {
     const data = useMemo(() => documentFor(row),[row]);
     const root = useRef(null);
@@ -149,5 +155,7 @@ export default function DocumentPages({ row,highlights = false,exportMode = fals
         return () => { active = false; };
     },[data]);
     const fields = new Set(['page1.customerName','page1.customerPhone','page1.capacityKw','page1.yoursTrulyName','page1.yoursTrulyPhone','page2.solarPanelMake','page2.solarPanelQty','page2.inverterBrand',...data.page2.brandOptions.flatMap((_,i) => ['brandName','baseValue','discount','subsidy'].map(k => `page2.brandOptions.${i}.${k}`))]);
-    return <div className={`quotation-paper${exportMode ? ' quotation-paper-export' : ''}`} ref={root}>{error && !exportMode && <p role="alert" className="q-error">{error}</p>}<OnePage data={data} highlightChanges={highlights} changedFields={fields} /></div>;
+    return <div className={`quotation-paper${exportMode ? ' quotation-paper-export' : ''}`} ref={root}>{error && !exportMode && <p role="alert" className="q-error">{error}</p>}{isFinalQuotation(row)
+        ? <OnePage data={data} highlightChanges={highlights} changedFields={fields} />
+        : <><Page1 data={data} highlightChanges={highlights} changedFields={fields} /><Page2 data={data} highlightChanges={highlights} changedFields={fields} /><Page3 data={data} /></>}</div>;
 }
