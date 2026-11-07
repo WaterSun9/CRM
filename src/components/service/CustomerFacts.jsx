@@ -3,6 +3,7 @@ import { supabase } from '../../supabase';
 import { PARTNER_TYPES, cleanMobile, serialList } from './serviceLabels';
 import { pincodeInText } from './tripLabels';
 import { contactPhones } from './contactPhones';
+import InverterSerial, { useInverterSaved } from './InverterSerial';
 
 const CARD_COLUMNS = 'customer_name, phone_number, full_address, pincode, villages, district, channel_partner, sub_channel_partner, panel_serial_no, inverter_serial_no, inverter_make, module_brand, module_wp, no_of_modules, system_capacity_kwp';
 const missingFunction = failure => failure?.code === 'PGRST202' || failure?.code === '42883' || /could not find the function/i.test(failure?.message || '');
@@ -36,40 +37,16 @@ const Call = ({ phone }) => {
 // and partner phone, the system, panel and inverter serial numbers, problem and comment.
 // The card is read again whenever the complaint changes (every list poll), and the
 // complaint's own copy is shown meanwhile, so the details never stay blank.
-// The technician on the job types the inverter serial when the card has none.
-function AddInverter({ issue, busy, run, onSaved }) {
-    const [open, setOpen] = useState(false);
-    const [serial, setSerial] = useState('');
-    const [make, setMake] = useState('');
-    const save = event => {
-        event.preventDefault();
-        if (!serial.trim()) return;
-        run(async () => {
-            const { data, error } = await supabase.rpc('service_add_inverter', { p_issue_id: issue.id, p_serial: serial.trim(), p_make: make.trim() || null });
-            if (error) throw new Error(missingFunction(error) ? 'Adding the inverter number is not set up yet. Tell the office.' : error.message);
-            setOpen(false); setSerial(''); setMake('');
-            onSaved();
-            return data ? 'Inverter number saved on the customer card.' : 'The customer card already has an inverter number.';
-        }, '', 'issue');
-    };
-    if (!open) return <button type="button" disabled={busy} onClick={() => setOpen(true)} className="min-h-9 text-sm font-bold text-amber-600 hover:text-amber-700 disabled:opacity-50">+ Add</button>;
-    const input = 'block w-full min-h-11 rounded-xl border border-stone-200 px-3 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-amber-300';
-    return <form onSubmit={save} className="space-y-2">
-        <input required maxLength={60} value={serial} onChange={e => setSerial(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="Serial number" aria-label="Inverter serial number" className={`${input} font-mono`} />
-        <input maxLength={60} value={make} onChange={e => setMake(e.target.value)} placeholder="Make (optional)" aria-label="Inverter make" className={input} />
-        <div className="flex gap-2">
-            <button disabled={busy || !serial.trim()} className="min-h-10 flex-1 rounded-xl bg-stone-900 px-3 text-sm font-bold text-white disabled:opacity-40">Save</button>
-            <button type="button" onClick={() => setOpen(false)} className="min-h-10 rounded-xl px-3 text-sm font-bold text-stone-500">Cancel</button>
-        </div>
-    </form>;
-}
-
+// The technician on the job adds the inverter serial when the card has none, or records
+// a replaced inverter (InverterSerial).
 export default function CustomerFacts({ issue, userType, canAddInverter = false, busy = false, run = null }) {
     const [card, setCard] = useState(null);
     const [failed, setFailed] = useState('');
     const [attempt, setAttempt] = useState(0);
     const linked = Boolean(issue.customer_id);
     const issueKey = `${issue.id}:${issue.updated_at || ''}`;
+    // A number saved on the Work tab shows here too.
+    useInverterSaved(issue.id, () => setAttempt(n => n + 1));
 
     useEffect(() => {
         if (!linked) { setCard(null); return undefined; }
@@ -105,7 +82,6 @@ export default function CustomerFacts({ issue, userType, canAddInverter = false,
     const modules = c.no_of_modules ? `${c.no_of_modules} x ${c.module_wp ? `${c.module_wp} Wp` : 'panels'}` : '';
     const system = [c.module_brand || issue.system_company_name, kw ? `${kw} kW` : '', modules].filter(Boolean).join(' · ');
     const panels = serialList(c.panel_serial_no);
-    const inverter = [c.inverter_make, c.inverter_serial_no].filter(Boolean).join(' · ');
     const rows = [
         ['Customer', c.customer_name || issue.customer_name],
         ['Consumer number', issue.consumer_no],
@@ -117,8 +93,11 @@ export default function CustomerFacts({ issue, userType, canAddInverter = false,
         ...(c.sub_channel_partner ? [['Dealer phone', <Call key="dealer" phone={c.dealer_phone} />]] : []),
         ['Problem', issue.problem_type],
         ['System', system],
-        ['Inverter', inverter || (canAddInverter && card && run
-            ? <AddInverter key="add-inverter" issue={issue} busy={busy} run={run} onSaved={() => setAttempt(n => n + 1)} /> : '')],
+        // Shown even when the card has a make but no serial (the "+ Add" used to hide then).
+        ['Inverter', card || !linked
+            ? <InverterSerial key="inverter" compact issue={issue} make={c.inverter_make} serial={c.inverter_serial_no} linked={linked}
+                canEdit={canAddInverter && Boolean(card)} busy={busy} run={run} />
+            : ''],
         ['Comment', issue.comment],
     ];
     const empty = value => value === null || value === undefined || value === '' || (value?.props && 'phone' in value.props && !value.props.phone);

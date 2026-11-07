@@ -17,12 +17,12 @@
 //           firebase also returns phone ('+919876543210'), the number the browser sends the SMS to
 //   POST { action: 'verify', issueId, idToken }   (firebase)
 //   POST { action: 'discard', issueId }   (firebase: the browser's send failed; frees that code slot)
-//        -> { ok: false, code, error }  code: photos_needed | otp_disabled | wa_disabled | no_phone | cooldown | limit (both + retryAfterSeconds)
+//        -> { ok: false, code, error }  code: photos_needed | inverter_needed | otp_disabled | wa_disabled | no_phone | cooldown | limit (both + retryAfterSeconds)
 //           | not_on_whatsapp | billing | token | send_failed (+ metaCode) | not_assigned | closed
 //   POST { action: 'verify', issueId, code: '482913' }
 //        -> { ok: true, verified: true, noticeSent }
 //        -> { ok: true, verified: false, reason: no_code | expired | locked | wrong_code, message, attemptsLeft? }
-//        -> { ok: false, code: photos_needed | not_assigned | closed, error }
+//        -> { ok: false, code: photos_needed | inverter_needed | not_assigned | closed, error }
 // Business-rule answers are 200 so the app can show `error` / `message` as they are.
 // 400 bad input, 401 not signed in, 403 not a technician, 500 unexpected (plain message;
 // the technical reason goes to the function logs only).
@@ -37,6 +37,12 @@
 // at that very moment; that refusal gets the same answer and the code stays usable:
 //   200 { ok: false, code: 'photos_needed', error: 'Add at least one Before photo and one After photo first.' }
 // The office's "Completed without code" does not come here and needs no photos.
+//
+// Inverter (7 Nov 2026): the same three checks need an inverter serial number on the
+// complaint's customer card (a complaint with no card cannot have one: the office closes it).
+// The database checks once more when the job closes (trigger service_issue_inverter_check,
+// migration 20261107130000_inverter_serial_rules.sql):
+//   200 { ok: false, code: 'inverter_needed', error: 'Add the inverter serial number first.' }
 //
 // SMS: Message Central makes the code and checks it; we keep only its verificationId.
 // WhatsApp: only a salted SHA-256 of our code is kept. Either way the code is never
@@ -85,8 +91,8 @@ import { env, isKnownNotOnWhatsapp, sendTemplate, waEnabled, waReady } from '../
 import { mcCheckOtp, mcReady, mcSendOtp } from '../_shared/messageCentral.ts'
 import { createRemoteJWKSet, jwtVerify } from 'https://esm.sh/jose@5.10.0'
 import {
-  CODE_TTL_SECONDS, MAX_TRIES, PHOTO_KINDS, PHOTOS_NEEDED, RESEND_AFTER_SECONDS, cleanPhone, hashCode, jobFailure, maskPhone,
-  photosReady, randomCode, randomHex, sameHex, sendWait, templateParam, warrantyText,
+  CODE_TTL_SECONDS, INVERTER_NEEDED, MAX_TRIES, PHOTO_KINDS, PHOTOS_NEEDED, RESEND_AFTER_SECONDS, cleanPhone, hashCode, jobFailure, maskPhone,
+  inverterSerialMissing, photosReady, randomCode, randomHex, sameHex, sendWait, templateParam, warrantyText,
 } from './helpers.ts'
 
 const ALLOWED_ORIGINS = ['https://crm.watersunsolar.com', 'https://watersun.deeprootsystems.in', 'https://watersun9.github.io']
@@ -149,6 +155,22 @@ async function hasPhotos(db: Db, issueId: string) {
     return count
   }))
   return photosReady({ before, after })
+}
+
+// The customer card has an inverter serial number (see "Inverter" above). A failed read is an
+// error (500), never "the number is there".
+async function hasInverter(db: Db, issue: Issue) {
+  if (!issue.customer_id) return false
+  const { data, error } = await db.from('admin').select('inverter_serial_no').eq('id', issue.customer_id).maybeSingle()
+  if (error) throw new Error(`could not read the inverter serial number: ${error.message || error.code || 'no detail'}`)
+  return !inverterSerialMissing(data?.inverter_serial_no)
+}
+
+// Photos first, then the inverter: the answer to send back, or null when both are there.
+async function notReady(req: Request, db: Db, issue: Issue) {
+  if (!await hasPhotos(db, issue.id)) return json(req, 200, PHOTOS_NEEDED)
+  if (!await hasInverter(db, issue)) return json(req, 200, INVERTER_NEEDED)
+  return null
 }
 
 // A code row that must not be used: removed so it does not eat into the hourly limit,
@@ -284,8 +306,9 @@ async function discardFailedSend(req: Request, db: Db, userId: string, issueId: 
 }
 
 async function sendCode(req: Request, db: Db, userId: string, issue: Issue) {
-  // Every channel: no photos, no code row, no SMS / WhatsApp, no number for the browser.
-  if (!await hasPhotos(db, issue.id)) return json(req, 200, PHOTOS_NEEDED)
+  // Every channel: no photos or no inverter serial, no code row, no SMS / WhatsApp, no number for the browser.
+  const missing = await notReady(req, db, issue)
+  if (missing) return missing
   const channel = otpChannel()
   if (channel === 'firebase') return await sendFirebaseCode(req, db, userId, issue)
   if (channel === 'sms') return await sendSmsCode(req, db, userId, issue)
@@ -375,7 +398,8 @@ async function closedMeanwhile(req: Request, db: Db, issueId: string, userId: st
 async function closeJob(req: Request, db: Db, userId: string, technicianName: string, issue: Issue, row: { id: string; phone: string }) {
   // Last check before closing (a photo can be deleted while the code is being checked).
   // Nothing is marked used yet, so the job and its code stay open.
-  if (!await hasPhotos(db, issue.id)) return json(req, 200, PHOTOS_NEEDED)
+  const missing = await notReady(req, db, issue)
+  if (missing) return missing
   const now = new Date().toISOString()
   const { error: usedError } = await db.from('service_completion_otps').update({ verified_at: now }).eq('id', row.id).is('verified_at', null)
   if (usedError) throw usedError
@@ -385,10 +409,12 @@ async function closeJob(req: Request, db: Db, userId: string, technicianName: st
   if (closeError) {
     // The database's own check refused: a photo was deleted at this very moment. The job
     // stays open and the code is given back, so it works again once the photo is added.
-    if (String(closeError.message || '').includes(PHOTOS_NEEDED.error)) {
+    // Same for the inverter serial (trigger service_issue_inverter_check).
+    const refused = [PHOTOS_NEEDED, INVERTER_NEEDED].find(answer => String(closeError.message || '').includes(answer.error))
+    if (refused) {
       const { error: backError } = await db.from('service_completion_otps').update({ verified_at: null }).eq('id', row.id).eq('verified_at', now)
       if (backError) console.error(`service-otp: could not give back the code for issue ${issue.id}: ${backError.message}`)
-      return json(req, 200, PHOTOS_NEEDED)
+      return json(req, 200, refused)
     }
     throw closeError
   }
@@ -420,9 +446,10 @@ async function firebasePhoneProof(idToken: string) {
 }
 
 async function verifyCode(req: Request, db: Db, userId: string, technicianName: string, issue: Issue, code: string, idToken: string) {
-  // Photo removed after the code went out: say so before a try is used or the code is
-  // checked with Google / Message Central. The job stays open; closeJob checks once more.
-  if (!await hasPhotos(db, issue.id)) return json(req, 200, PHOTOS_NEEDED)
+  // Photo removed (or inverter serial missing) after the code went out: say so before a try is
+  // used or the code is checked with Google / Message Central. The job stays open; closeJob checks once more.
+  const missing = await notReady(req, db, issue)
+  if (missing) return missing
   // Each round either uses up one try or finds that a parallel request used one, so this ends.
   for (let round = 0; round <= MAX_TRIES; round++) {
     // Codes belong to the technician who asked for them; a reassigned job needs a new code.

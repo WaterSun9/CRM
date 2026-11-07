@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict'
 import {
-  PHOTO_KINDS, PHOTOS_NEEDED, cleanPhone, formatDateShort, hashCode, jobFailure, maskPhone, metaFailure, networkFailure,
+  INVERTER_NEEDED, PHOTO_KINDS, PHOTOS_NEEDED, inverterSerialMissing, cleanPhone, formatDateShort, hashCode, jobFailure, maskPhone, metaFailure, networkFailure,
   photosReady, randomCode, randomHex, sameHex, sendWait, sha256Hex, templateParam, todayIST, warrantyText,
 } from './helpers.ts'
 
@@ -123,4 +123,13 @@ Deno.test('templateParam and warranty text', () => {
   assert.equal(warrantyText('in_warranty', null), 'not recorded')
   // 23:00 UTC on 11 Oct is already 12 Oct in India.
   assert.equal(todayIST(Date.parse('2026-10-11T23:00:00Z')), '2026-10-12')
+})
+
+Deno.test('a code needs an inverter serial number on the card', () => {
+  for (const blank of [null, undefined, '', '  ', '-', '--', '.', '0', '000', 'NA', 'n/a', 'N.A.', 'nil', 'None', 'NULL']) {
+    assert.equal(inverterSerialMissing(blank), true, String(blank))
+  }
+  for (const serial of ['GRW-55K-7781', '53000N3A263L8503', 'A1', '0A']) assert.equal(inverterSerialMissing(serial), false, serial)
+  assert.equal(INVERTER_NEEDED.code, 'inverter_needed')
+  assert.equal(INVERTER_NEEDED.error, 'Add the inverter serial number first.')
 })
