@@ -49,8 +49,11 @@ export function statusOf(row) {
     if (row?.selected_option) return 'picked';
     return 'open';
 }
-// Old 1-page copies made from a 3-page quote. Every quote prints on one page now.
+// Old 1-page copies made from a 3-page quote (before 6 Nov). They reprint as that one page.
 export const isFinalQuotation = row => row?.quotation_data?.kind === 'final' || row?.kind === 'final';
+// Every other quote is the full quotation: cover letter, proposal, then terms/warranty/BOM/bank.
+export const QUOTATION_PAGES = ['Cover letter', 'Techno commercial proposal', 'Terms, warranty, BOM, other charges and bank details'];
+export const quotationPageCount = row => (isFinalQuotation(row) ? 1 : QUOTATION_PAGES.length);
 // Keeps one option of an older quote that had three.
 export function oneOption(form, number) {
     const option = form.options?.[number - 1];

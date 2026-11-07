@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import DocumentPages, { fitQuotationPages, waitForQuotationAssets } from './DocumentPages';
-import { fromRow,pdfName,validate } from './model';
+import { fromRow,pdfName,quotationPageCount,validate } from './model';
 
 export async function generateQuotationPdf(row) {
     const errors = validate(fromRow(row));
@@ -15,7 +15,8 @@ export async function generateQuotationPdf(row) {
         flushSync(() => root.render(<DocumentPages row={row} exportMode />));
         await waitForQuotationAssets(host);
         const pages = fitQuotationPages(host);
-        if (pages.length !== 1) throw new Error('Expected one quotation page.');
+        const expected = quotationPageCount(row);
+        if (pages.length !== expected) throw new Error(`Expected ${expected} quotation pages, got ${pages.length}.`);
         const pdf = new jsPDF({ orientation:'portrait',unit:'mm',format:'a4',compress:true });
         for (let i = 0; i < pages.length; i++) {
             const canvas = await html2canvas(pages[i],{
