@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newForm, payload, freshTemplate, validate, documentFor, toLead } from '../../src/quotations/model.js';
+import { newForm, payload, freshTemplate, validate, documentFor, toLead, withCharge, legacyExcluding, fromRow } from '../../src/quotations/model.js';
 
 const user = { id: '11111111-1111-4111-8111-111111111111', name: 'Test agent', phone: '9876543210', userType: 'admin' };
 const complete = (extra = {}) => ({
@@ -54,4 +54,40 @@ test('Another salesperson name prints on the quotation only; the saved salespers
     assert.equal(documentFor(row).page1.yoursTrulyName, 'Ramesh Patel');
     assert.equal(row.owner_name_snapshot, 'Test agent');
     assert.equal('print_owner_name' in row, false);
+});
+
+test('entering GEB and GEDA amounts in the form flows into Net Payable and after-subsidy price', () => {
+    let form = complete();
+    form = withCharge(form, 'geb_charge', '3000');
+    form = withCharge(form, 'geda_charge', '1500.5');
+    assert.equal(form.geb_geda_charge, 'Excluding');
+    const doc = documentFor(rowOf(form));
+    assert.equal(doc.page2.gebCharge, 3000);
+    assert.equal(doc.page2.gedaCharge, 1500.5);
+    // 189000 - 5000 + 3000 + 1500.5 = 188500.5; minus 78000 subsidy = 110500.5
+    assert.equal(doc.page2.brandOptions[0].netPayableAmount, 188500.5);
+    assert.equal(doc.page2.brandOptions[0].netPriceAfterSubsidy, 110500.5);
+    // Edit reopens with the same amounts.
+    const reopened = fromRow(rowOf(form));
+    assert.equal(reopened.geb_charge, '3000');
+    assert.equal(reopened.geda_charge, '1500.5');
+});
+
+test('setting a charge back to Included removes it from the price', () => {
+    let form = withCharge(complete(), 'geb_charge', '3000');
+    form = withCharge(form, 'geb_charge', '');
+    assert.equal(form.geb_geda_charge, 'Including');
+    const doc = documentFor(rowOf(form));
+    assert.equal(doc.page2.gebCharge, 'Included');
+    assert.equal(doc.page2.brandOptions[0].netPayableAmount, 184000);
+});
+
+test('an older Excluding quote is recognised, and choosing Included or an amount replaces it', () => {
+    const old = complete({ geb_geda_charge: 'Excluding' });
+    assert.equal(legacyExcluding(old), true);
+    assert.equal(legacyExcluding(withCharge(old, 'geda_charge', '800')), false);
+    const included = withCharge(old, 'geb_charge', '');
+    assert.equal(legacyExcluding(included), false);
+    assert.equal(documentFor(rowOf(included)).page2.gebCharge, 'Included');
+    assert.throws(() => withCharge(old, 'subsidy', '1'));
 });

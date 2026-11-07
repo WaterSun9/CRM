@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Save, Trash2 } from 'lucide-react';
-import { calculate, extraCharges, fromRow, money, newForm, nextQuoteForm, oneOption, optionSpecs, validate } from './model';
+import { calculate, chargeAmount, extraCharges, fromRow, legacyExcluding, money, newForm, nextQuoteForm, oneOption, optionSpecs, validate, withCharge } from './model';
 import { brandedTemplate } from './branding';
 import { quotationRepository as repo } from './client';
 import { readRecovery, removeRecovery, writeRecovery } from './recovery';
@@ -36,6 +36,18 @@ function ModuleCountSelect({ value, onChange }) {
         options={[...Array.from({length:200},(_,index) => String(index + 1)), 'Other quantity…']}
         onChange={next => next === 'Other quantity…' ? setCustom(true) : onChange(next)} />;
 }
+// GEB / GEDA: "Included" (stored blank) or an amount in ₹ added to Net Payable.
+function ChargeField({ label, value, excluding, onChange }) {
+    const [amount, setAmount] = useState(() => chargeAmount(value) > 0);
+    const mode = amount ? 'amount' : excluding ? 'excluding' : 'included';
+    return <div className="q-field"><span>{label}</span>
+        <select aria-label={label} value={mode} onChange={e => { setAmount(e.target.value === 'amount'); if (e.target.value === 'included') onChange(''); }}>
+            <option value="included">Included</option><option value="amount">Amount (₹)</option>
+            {excluding && <option value="excluding" disabled>Excluding (older quote)</option>}
+        </select>
+        {amount && <input aria-label={`${label} amount (₹)`} type="number" min="0" step="any" inputMode="decimal" placeholder="Amount in ₹" value={value ?? ''} onChange={e => onChange(e.target.value)} />}
+    </div>;
+}
 // baseRow: "New quote for this client" starts from that client's last quote.
 export default function QuotationForm({ id,initialRow,baseRow = null,user,meta = {},onDirty,onSaved,onPreview,onDraftSaved }) {
     const { showAlert,showConfirm } = useGlobalPopup();
@@ -59,12 +71,13 @@ export default function QuotationForm({ id,initialRow,baseRow = null,user,meta =
     const blocked = useRef(false);
     formRef.current = form; templateRef.current = template;
     const markDirty = () => { changed.current = true; onDirty(true); };
-    const update = (key,value) => {
-        const next = { ...formRef.current,[key]:value };
+    const replaceForm = next => {
         formRef.current = next; setForm(next); markDirty();
         const stored = writeRecovery(user.id,id,{ form:next,template:templateRef.current,base_updated_at:rowRef.current?.updated_at || null });
         setSaveState(stored ? (navigator.onLine ? 'Unsaved changes' : 'Offline — recovery saved on this device') : 'Unsaved — device recovery unavailable');
     };
+    const update = (key,value) => replaceForm({ ...formRef.current,[key]:value });
+    const setCharge = (key,value) => replaceForm(withCharge(formRef.current,key,value));
     async function save() {
         if (saving.current) return saving.current;
         if (blocked.current) throw new Error('Reopen the quotation to resolve the conflicting changes before saving.');
@@ -226,15 +239,14 @@ export default function QuotationForm({ id,initialRow,baseRow = null,user,meta =
                         <Field label="System capacity (kWp)"><input aria-label={`Option ${i + 1} capacity (kWp)`} readOnly value={optionSpecs(form, option).capacity_kw} /></Field>
                         {i === 0 && <OptionSelect label="Inverter brand" placeholder="Select inverter…" value={form.inverter_brand} options={inverterMakes} onChange={v => update('inverter_brand',v)} />}
                         {[['baseValue','Price before discount (₹)'],['discount','Discount (₹)'],['subsidy','Subsidy (₹)']].map(([key,label]) => <Field key={key} label={label} type="number" maxLength={80} value={option[key]} onChange={value => setOption(i,key,value)} />)}
+                        {i === 0 && [['geb_charge','GEB charge'],['geda_charge','GEDA charge']].map(([key,label]) => <ChargeField key={key} label={label} value={form[key]} excluding={legacyExcluding(form)} onChange={value => setCharge(key,value)} />)}
                     </div>
-                    <dl><div><dt>Client pays</dt><dd>{money(totals[i].netPayableAmount)}</dd></div><div><dt>After subsidy</dt><dd>{money(totals[i].netPriceAfterSubsidy)}</dd></div></dl>
+                    {i === 0 && form.options.length > 1 && <p className="q-muted">GEB and GEDA apply to every option.</p>}
+                    <dl>{extraCharges(form) > 0 && <div><dt>GEB + GEDA added</dt><dd>{money(extraCharges(form))}</dd></div>}<div><dt>Client pays</dt><dd>{money(totals[i].netPayableAmount)}</dd></div><div><dt>After subsidy</dt><dd>{money(totals[i].netPriceAfterSubsidy)}</dd></div></dl>
                 </section>)}</div>
-                <details className="q-more"><summary>More: project type, GEB / GEDA, notes</summary>
+                <details className="q-more"><summary>More: project type, notes</summary>
                     <div className="q-grid">
                         <Field label="Project type"><select value={form.project_type} onChange={e => update('project_type',e.target.value)}><option>Residential</option><option>Commercial</option></select></Field>
-                        <Field label="GEB charge (₹)"><input aria-label="GEB charge" type="number" min="0" step="any" inputMode="decimal" placeholder="Included" value={form.geb_charge ?? ''} onChange={e => update('geb_charge',e.target.value)} /></Field>
-                        <Field label="GEDA charge (₹)"><input aria-label="GEDA charge" type="number" min="0" step="any" inputMode="decimal" placeholder="Included" value={form.geda_charge ?? ''} onChange={e => update('geda_charge',e.target.value)} /></Field>
-                        <p className="q-muted">GEB and GEDA: leave blank to show "Included". An amount is added to what the client pays.</p>
                     </div>
                     <h3>Standard notes</h3><ul className="q-standard-notes">{template.page2.notes.map(note => <li key={note}>{note}</li>)}</ul>
                     <h3>Additional notes</h3>{form.custom_notes.map((note,i) => <div key={i} className="q-note"><Field label={`Note ${i + 1}`} type="textarea" maxLength={250} value={note} onChange={v => update('custom_notes',form.custom_notes.map((n,index) => index === i ? v : n))} /><button aria-label={`Remove note ${i + 1}`} onClick={() => update('custom_notes',form.custom_notes.filter((_,index) => index !== i))}><Trash2 size={18} /></button></div>)}
