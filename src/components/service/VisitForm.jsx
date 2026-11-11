@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { beforeSave, isRepeatSave, readSameDayVisits, sameDayKey, sameDayWarning, saveKeyMissing } from './visitSave';
 import { supabase } from '../../supabase';
 import { TRIP_DISTANCE_MODE, TRIP_ROAD_FACTOR, TRIP_TRAVEL_MODE } from '../../constants';
 import { NEAR_PINCODE_KM, estimateTripKm, haversineKm, nearestPincode, pincodePoint } from '../../utils/tripKm';
@@ -20,6 +21,8 @@ const emptyVisit = () => ({ visit_date: todayLocal(), note: '' });
 // leaves them empty. If 'pro' meets a database without them, the visit is saved
 // again without them, and this page load stops sending them.
 let sendKmSource = PRO;
+// Off once the database says save_key is missing (its SQL not run yet).
+let sendSaveKey = true;
 const kmSourceMissing = failure => {
     const message = failure?.message || '';
     return /km_source|route_km/.test(message) && (failure?.code === 'PGRST204' || failure?.code === '42703' || /column/i.test(message));
@@ -73,6 +76,9 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
     const [roundTripChoice, setRoundTripChoice] = useState(null);
     const [typedRate, setTypedRate] = useState(null);
     const [typedAmount, setTypedAmount] = useState(null);
+    // One key per filled form, so a second tap after a lost answer is not a second visit.
+    const [saveKey, setSaveKey] = useState(() => crypto.randomUUID());
+    const [sameDayOk, setSameDayOk] = useState('');
     const { status: kmStatus, settings: kmSettings } = useKmSettings();
     const roundTrip = roundTripChoice ?? kmSettings.round_trip;
     const graceKm = kmSettings.grace_km;
@@ -217,12 +223,25 @@ export default function VisitForm({ issue, user, busy, run, visits, onSaved }) {
             // 'pro' only: where the km came from (Google, the estimate, or typed by the office).
             const source = { km_source: chosen && !kmChanged ? chosen.source : 'manual' };
             if (roadKm) source.route_km = roadKm.routeKm;
-            let { error } = await supabase.from('service_visits').insert(sendKmSource ? { ...row, ...source } : row);
-            if (error && sendKmSource && kmSourceMissing(error)) {
-                sendKmSource = false;
-                ({ error } = await supabase.from('service_visits').insert(row));
+            const dayKey = sameDayKey([issue.id], visit.visit_date);
+            const found = await readSameDayVisits(supabase, [issue.id], visit.visit_date, saveKey);
+            const step = beforeSave(found, sameDayOk === dayKey);
+            if (step === 'ask') { setSameDayOk(dayKey); throw new Error(sameDayWarning(found.others, { dateText: visit.visit_date })); }
+            if (step === 'save') {
+                if (sendSaveKey) row.save_key = saveKey;
+                const insert = body => supabase.from('service_visits').insert(body);
+                let { error } = await insert(sendKmSource ? { ...row, ...source } : row);
+                if (error && sendSaveKey && saveKeyMissing(error)) {
+                    sendSaveKey = false; delete row.save_key;
+                    ({ error } = await insert(sendKmSource ? { ...row, ...source } : row));
+                }
+                if (error && sendKmSource && kmSourceMissing(error)) {
+                    sendKmSource = false;
+                    ({ error } = await insert(row));
+                }
+                if (error && !isRepeatSave(error)) throw new Error(visitError(error));
             }
-            if (error) throw new Error(visitError(error));
+            setSaveKey(crypto.randomUUID()); setSameDayOk('');
             setVisit(emptyVisit()); setTripChoice(null); setTypedKm(null); setKmNote(''); setTypedPin('');
             setRoundTripChoice(null); setTypedRate(null); setTypedAmount(null);
             await onSaved?.();
