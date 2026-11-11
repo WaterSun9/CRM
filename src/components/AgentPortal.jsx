@@ -20,7 +20,7 @@ import { FilePreviewModal, CheckboxRemarkItem, isReplacedDocument, isReturnedDoc
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
 import PartnerProfile from './service/PartnerProfile';
-import { warrantyInfo } from '../utils/warranty';
+import { warrantyInfo, todayIST } from '../utils/warranty';
 import PartnerPhoneReminder from './service/PartnerPhoneReminder';
 import BrandMark from './BrandMark';
 import { newestCustomerFirst } from '../utils/customerActivity';
@@ -44,6 +44,7 @@ import { loadBomForCustomer, getBomTypeForCustomer } from '../utils/bom';
 import { findUnsavedFields, fieldLabel } from '../utils/saveCheck';
 
 import ComplaintButton from './service/ComplaintButton';
+import { liveWhileVisible } from '../utils/liveWhileVisible';
 // Documents asked for when the lead is created.
 const LEAD_DOC_TYPES = new Set(['adhaar_card_front', 'adhaar_card_back', 'pan_card', 'index_2', 'house_geo_tag_photo', 'light_bill', 'bank_details', 'extra_docs']);
 
@@ -186,7 +187,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                 return;
             }
             const buildQuery = () => {
-                let q = supabase.from('admin').select('*').is('deleted_at', null).order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+                let q = supabase.from('admin').select('*').is('deleted_at', null).order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).order('id', { ascending: true });
                 const myName = (user?.name || '').trim();
 
                 if (isAgent2) {
@@ -243,7 +244,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
 
         const myName = (user.name || '').trim().toLowerCase();
         const partnerName = (user.channel_partner || user.name || '').trim().toLowerCase();
-        const channel = supabase.channel(`agent_customers_${user.id}`)
+        const stopLive = liveWhileVisible(supabase, () => supabase.channel(`agent_customers_${user.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
                 const record = payload.new;
                 const custCp = (record?.channel_partner || '').trim().toLowerCase();
@@ -264,7 +265,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                     return previous.map(customer => customer.id === record.id ? record : customer);
                 });
             })
-            .subscribe();
+            .subscribe(), null);
 
         const onFocus = () => {
             if (document.visibilityState === 'visible') {
@@ -275,7 +276,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
         window.addEventListener('focus', onFocus);
 
         return () => {
-            supabase.removeChannel(channel);
+            stopLive();
             document.removeEventListener('visibilitychange', onFocus);
             window.removeEventListener('focus', onFocus);
         };
@@ -946,7 +947,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
         const stampUrl = stampDoc ? await getViewUrl(stampDoc.storage_path) : '';
         const gpaStampUrl = gpaStampDoc ? await getViewUrl(gpaStampDoc.storage_path) : '';
 
-        const rawDate = editData?.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0];
+        const rawDate = editData?.stages_remarks?.discom_agreement_date || todayIST();
         const [y, m, d] = rawDate.split('-');
         const formattedDate = (y && m && d) ? `${d}-${m}-${y}` : rawDate;
 

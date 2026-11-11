@@ -5,6 +5,7 @@
 import { supabase } from './supabase';
 import { fetchDocumentBlob, saveDocumentDownload, validateDocumentBlob } from './utils/documentDownload';
 import { PRIMARY_STAGES, SUBSIDY_TAGS, LOAN_TAGS, ADMIN_COLUMNS, ADMIN_NUMERIC_COLUMNS } from './constants';
+import { todayIST } from './utils/warranty';
 
 // ─── Activity Logging ─────────────────────────────────────────────────────────
 export async function logActivity(
@@ -323,7 +324,7 @@ export function exportAllToCSV(customers) {
         return;
     }
 
-    const currentDateStr = new Date().toISOString().split('T')[0];
+    const currentDateStr = todayIST();
     const currentTimestampStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
     // Sort numerically by File / Folder Number (with unassigned at the end)

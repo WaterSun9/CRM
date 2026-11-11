@@ -8,6 +8,7 @@ import WarrantyBadge from './WarrantyBadge';
 import ComplaintButton from './service/ComplaintButton';
 import WarrantyCustomerPanel from './service/WarrantyCustomerPanel';
 import { fuzzyPatterns, mergeSearchResults } from '../utils/fuzzySearch';
+import { filterValue } from '../utils/filterValue';
 
 // The card also shows the inverter make (not in the usual card columns).
 const WARRANTY_COLUMNS = `${CUSTOMER_CARD_COLUMNS}, inverter_make`;
@@ -97,7 +98,7 @@ export default function WarrantyView({ user, onSelectCustomer, onRaiseServiceIss
                 // name match as the top search ("sandeep" finds SANDIP).
                 const q = debouncedSearch;
                 const exact = await scopedQuery(WARRANTY_COLUMNS)
-                    .or(`customer_name.ilike.%${q}%,consumer_no.ilike.%${q}%,phone_number.ilike.%${q}%`)
+                    .or(`customer_name.ilike.${filterValue(`%${q}%`)},consumer_no.ilike.${filterValue(`%${q}%`)},phone_number.ilike.${filterValue(`%${q}%`)}`)
                     .order('customer_name').limit(SEARCH_LIMIT);
                 ({ data, error } = exact);
                 const patterns = fuzzyPatterns(q);

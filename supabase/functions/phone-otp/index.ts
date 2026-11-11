@@ -2,7 +2,7 @@
 //
 // Phone OTP through Message Central VerifyNow (India, no DLT needed - it uses
 // Message Central's registered route). Two actions, both need a signed-in Admin
-// or Office user (user_type admin / sales / office2, not inactive), so a partner,
+// or Office user (user_type admin / sales, not inactive), so a partner, manager,
 // vendor or technician login cannot spend the SMS credit:
 //   POST { action: 'send',   phone: '9876543210', channel?: 'SMS' | 'WhatsApp' }
 //        -> { ok: true, requestId }
@@ -17,7 +17,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { mcCheckOtp, mcSendOtp } from '../_shared/messageCentral.ts'
 
 const MAX_SENDS_PER_HOUR = 5
-const STAFF_TYPES = ['admin', 'sales', 'office2']
+// Partner managers (office2) are not Watersun staff, so they cannot spend the SMS credit.
+const STAFF_TYPES = ['admin', 'sales']
 const ALLOWED_ORIGINS = ['https://crm.watersunsolar.com', 'https://watersun.deeprootsystems.in', 'https://watersun9.github.io']
 
 function corsHeaders(req: Request) {
@@ -89,12 +90,20 @@ Deno.serve(async (req) => {
       if (row.verified_at) return json(req, 200, { ok: true, verified: true })
       if ((row.attempts ?? 0) >= 5) return json(req, 429, { error: 'Too many wrong tries. Send a new code.' })
 
+      // Count the try BEFORE checking, and only if nobody else counted one in
+      // between: tries sent at the same moment could all read the same count
+      // and get past the limit of 5.
+      const tries = row.attempts ?? 0
+      let claim = admin.from('phone_otp_requests').update({ attempts: tries + 1 }).eq('id', row.id)
+      claim = row.attempts == null ? claim.is('attempts', null) : claim.eq('attempts', tries)
+      const { data: claimed } = await claim.select('id')
+      if (!claimed?.length) return json(req, 429, { error: 'Another try is being checked. Wait a moment and try again.' })
+
       const check = await mcCheckOtp(row.verification_id, code, row.channel === 'WhatsApp' ? 'WhatsApp' : 'SMS')
-      await admin.from('phone_otp_requests').update({
-        attempts: (row.attempts ?? 0) + 1,
-        ...(check.verified ? { verified_at: new Date().toISOString() } : {}),
-      }).eq('id', row.id)
-      if (check.verified) return json(req, 200, { ok: true, verified: true })
+      if (check.verified) {
+        await admin.from('phone_otp_requests').update({ verified_at: new Date().toISOString() }).eq('id', row.id)
+        return json(req, 200, { ok: true, verified: true })
+      }
       if (check.reason === 'limit') return json(req, 200, { ok: true, verified: false, reason: 'limit', message: 'Too many tries. Send a new code.' })
       const reason = check.reason
       const message = reason === 'expired' ? 'This code has expired. Send a new code.'

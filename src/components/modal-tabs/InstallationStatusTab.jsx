@@ -4,6 +4,7 @@ import { ClipboardList, Save, Building2, Mail, AlertTriangle, CheckCircle2, User
 import { CheckboxRemarkItem, fetchVendorNames } from './shared';
 import { INSTALLATION_TAGS, isFinalTagValue } from '../../constants';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
+import { todayIST } from '../../utils/warranty';
 
 export default function InstallationStatusTab({
     customer,
@@ -44,7 +45,7 @@ export default function InstallationStatusTab({
 
     const handleToggleInstallationTag = (tagId) => {
         const newTag = editData.installation_status === tagId ? null : tagId;
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = todayIST();
         // If user is moving away from "Give Up", reset the approval flag
         const wasGiveUp = editData.installation_status === 'Giveup';
         const resetApproval = wasGiveUp && newTag !== 'Giveup';

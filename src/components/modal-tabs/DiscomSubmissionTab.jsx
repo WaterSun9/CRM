@@ -4,6 +4,7 @@ import { ClipboardList, Save, FileText, Printer, RotateCcw, AlertTriangle, Check
 import { Page1 } from '../agreement/Page1';
 import { CheckboxRemarkItem } from './shared';
 import { formatDateToDDMMYYYY } from '../../utils';
+import { todayIST } from '../../utils/warranty';
 
 export default function DiscomSubmissionTab({
     customer,
@@ -29,7 +30,7 @@ export default function DiscomSubmissionTab({
     const storedSubmissionData = editData.discom_submission || {};
     const submissionData = {
         ...storedSubmissionData,
-        date: storedSubmissionData.date || new Date().toISOString().split('T')[0],
+        date: storedSubmissionData.date || todayIST(),
         first_party: storedSubmissionData.first_party || customer.customer_name || '',
         second_party: storedSubmissionData.second_party || 'WATERSUN ELECTRICAL SOLUTIONS PRIVATE LIMITED',
         purchased_party: storedSubmissionData.purchased_party || 'WATERSUN ELECTRICAL SOLUTIONS PRIVATE LIMITED',
@@ -348,7 +349,7 @@ export default function DiscomSubmissionTab({
                         <input
                             type="date"
                             disabled={!isDiscomDetailsEditable}
-                            value={submissionData.date || new Date().toISOString().split('T')[0]}
+                            value={submissionData.date || todayIST()}
                             onChange={e => handleSubmissionFieldChange('date', e.target.value)}
                             className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700 disabled:bg-stone-100 disabled:text-stone-500"
                         />
@@ -849,7 +850,7 @@ export default function DiscomSubmissionTab({
                             <input
                                 type="date"
                                 disabled={!isEditable}
-                                value={editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0]}
+                                value={editData.stages_remarks?.discom_agreement_date || todayIST()}
                                 onChange={(e) => {
                                     const val = e.target.value;
                                     setEditData(prev => {
@@ -875,7 +876,7 @@ export default function DiscomSubmissionTab({
                             <div className="origin-top scale-[0.6] -my-24" style={{ width: '210mm', height: '297mm' }}>
                                 <Page1
                                     data={{
-                                        executionDate: formatDateToDDMMYYYY(editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0]),
+                                        executionDate: formatDateToDDMMYYYY(editData.stages_remarks?.discom_agreement_date || todayIST()),
                                         consumerName: editData.customer_name || '',
                                         consumerNo: editData.consumer_no || '',
                                         village: editData.villages || '',
@@ -902,7 +903,7 @@ export default function DiscomSubmissionTab({
                                     setSaving(true);
                                     const updatedRemarks = {
                                         ...(typeof editData.stages_remarks === 'object' && editData.stages_remarks ? editData.stages_remarks : {}),
-                                        discom_agreement_date: editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0]
+                                        discom_agreement_date: editData.stages_remarks?.discom_agreement_date || todayIST()
                                     };
                                     // A failed save must stop here - otherwise the activity log below
                                     // records a change that never reached the database.

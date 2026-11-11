@@ -13,6 +13,7 @@ import { FilePreviewModal } from "./modal-tabs/shared";
 import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
 import { isReturnedDocument } from './modal-tabs/shared';
+import { liveWhileVisible } from '../utils/liveWhileVisible';
 
 const uploaderCache = {};
 async function fetchUploaderName(userId) {
@@ -516,7 +517,7 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
     useEffect(() => {
         fetchCustomers();
 
-        const channel = supabase.channel(`stamp_customers_${user?.id || 'global'}`)
+        const stopLive = liveWhileVisible(supabase, () => supabase.channel(`stamp_customers_${user?.id || 'global'}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
                 const record = payload.new;
 
@@ -550,9 +551,9 @@ export default function StampPortal({ user, onLogout, onOpenDevSwitcher }) {
                     return prev;
                 });
             })
-            .subscribe();
+            .subscribe(), fetchCustomers);
 
-        return () => supabase.removeChannel(channel);
+        return () => stopLive();
         // user?.name is read inside the handler now (assignment check), so it
         // must be a dependency rather than a stale closure.
     }, [user?.id, user?.name, fetchCustomers]);

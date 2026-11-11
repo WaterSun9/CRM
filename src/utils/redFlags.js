@@ -50,6 +50,7 @@ export function refreshRedFlags() {
             const { data, error } = await supabase.from(RED_FLAG_TABLE)
                 .select('admin_id')
                 .eq('active', true)
+                .order('admin_id', { ascending: true })
                 .range(from, from + 999);
             if (error) {
                 if (!isMissingTable(error)) console.warn('Could not load red flags:', error.message);

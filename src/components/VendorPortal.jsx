@@ -14,6 +14,8 @@ import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
 import AvailabilityCalendar from './AvailabilityCalendar';
 import VendorPaymentsView from './VendorPaymentsView';
+import { todayIST } from '../utils/warranty';
+import { liveWhileVisible } from '../utils/liveWhileVisible';
 
 const parsePanelSerials = (raw) => {
     if (!raw) return [''];
@@ -177,7 +179,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                     .from('admin')
                     .select(VENDOR_LIST_COLUMNS)
                     .in('vendor', searchNames)
-                    .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+                    .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).order('id', { ascending: true })
                     .range(from, from + pageSize - 1);
                 if (error) throw error;
                 if (!page || page.length === 0) break;
@@ -216,7 +218,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
 
         fetchCustomers();
 
-        const channel = supabase.channel(`vendor_customers_${user.id || 'vendor'}`)
+        const stopLive = liveWhileVisible(supabase, () => supabase.channel(`vendor_customers_${user.id || 'vendor'}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'admin' }, payload => {
                 const record = payload.new;
                 const isVisibleToVendor = record && !record.deleted_at &&
@@ -234,10 +236,10 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                     return previous.map(customer => customer.id === record.id ? record : customer);
                 });
             })
-            .subscribe();
+            .subscribe(), fetchCustomers);
 
         return () => {
-            supabase.removeChannel(channel);
+            stopLive();
         };
     }, [user?.id, user?.name, user?.email, fetchCustomers, isRecordAssignedToVendor]);
 
@@ -455,7 +457,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             return false;
         }
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = todayIST();
         const effectiveInstallDate = installationDate || (normalizeInstallationStatus(installationStatus) === 'Yes' ? todayStr : null);
 
         // Build the audit detail from values that genuinely changed. Besides
@@ -1359,7 +1361,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                             } else {
                                                                 setInstallationStatus(tag.id);
                                                                 if (tag.id === 'Installed' && !installationDate) {
-                                                                    setInstallationDate(new Date().toISOString().split('T')[0]);
+                                                                    setInstallationDate(todayIST());
                                                                 }
                                                             }
                                                         }}
