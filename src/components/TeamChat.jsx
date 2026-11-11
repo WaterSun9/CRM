@@ -124,6 +124,9 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
     const messageScroller = useRef(null);
     const followLatest = useRef(true);
     const latestAt = useRef(null);
+    const oldestAt = useRef(null);
+    const [hasOlder, setHasOlder] = useState(false);
+    const [loadingOlder, setLoadingOlder] = useState(false);
     const draftKey = selected || 'unselected';
     const body = drafts[draftKey] || '';
 
@@ -136,9 +139,21 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
         setTypes(prev => ({ ...prev, ...Object.fromEntries((profiles || []).map(p => [p.id, p.user_type])) }));
     }, [isOffice]);
 
-    // First load reads everything (paged). Later polls fetch only messages newer
-    // than the latest one held: messages are never edited or deleted, so the
-    // list can only grow.
+    // One read of chat messages, trying fewer columns while a migration has not run.
+    const readMessages = useCallback(async build => {
+        let data = null;
+        let readError = null;
+        for (const columns of CHAT_COLUMN_FALLBACKS) {
+            ({ data, error: readError } = await build(supabase.from('crm_chat_messages').select(columns)));
+            if (!readError || !isMissingChatColumn(readError)) break;   // a migration has not run yet
+        }
+        return { data: data || [], readError };
+    }, []);
+
+    // First load reads only the newest PAGE messages (it used to read the whole
+    // history on every open); "Load older messages" reads further back. Later
+    // polls fetch only messages newer than the latest one held: messages are
+    // never edited or deleted, so the list can only grow.
     const load = useCallback(async () => {
         if (previewMode) {
             const rows = readPreviewMessages().filter(message => canReadPreviewMessage(message, user));
@@ -148,21 +163,30 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
             setError('');
             return;
         }
+        if (!latestAt.current) {
+            const { data, readError } = await readMessages(query => query
+                .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(PAGE));
+            if (readError) { setError(readError.message); return; }
+            const newest = [...data].reverse();
+            setError('');
+            if (newest.length) {
+                latestAt.current = newest[newest.length - 1].created_at;
+                oldestAt.current = newest[0].created_at;
+            }
+            setHasOlder(data.length === PAGE);
+            setMessages(prev => {
+                const known = new Set(newest.map(m => m.id));
+                return [...newest, ...prev.filter(m => !known.has(m.id))];
+            });
+            rememberNames(newest);
+            return;
+        }
         const fresh = [];
         for (let offset = 0; ; offset += PAGE) {
-            const page = cols => {
-                let query = supabase.from('crm_chat_messages').select(cols);
-                if (latestAt.current) query = query.gte('created_at', latestAt.current);
-                return query.order('created_at', { ascending: true }).order('id').range(offset, offset + PAGE - 1);
-            };
-            let data = null;
-            let readError = null;
-            for (const columns of CHAT_COLUMN_FALLBACKS) {
-                ({ data, error: readError } = await page(columns));
-                if (!readError || !isMissingChatColumn(readError)) break;   // a migration has not run yet
-            }
+            const { data, readError } = await readMessages(query => query.gte('created_at', latestAt.current)
+                .order('created_at', { ascending: true }).order('id').range(offset, offset + PAGE - 1));
             if (readError) { setError(readError.message); return; }
-            fresh.push(...(data || []));
+            fresh.push(...data);
             if (!data || data.length < PAGE) break;
         }
         setError('');
@@ -174,7 +198,31 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
             return added.length ? [...prev, ...added] : prev;
         });
         rememberNames(fresh);
-    }, [previewMode, user, rememberNames]);
+    }, [previewMode, user, rememberNames, readMessages]);
+
+    const loadOlder = useCallback(async () => {
+        if (!oldestAt.current || loadingOlder) return;
+        setLoadingOlder(true);
+        // Keep the reader's place: older messages go above what is on screen.
+        const node = messageScroller.current;
+        const fromBottom = node ? node.scrollHeight - node.scrollTop : 0;
+        const { data, readError } = await readMessages(query => query
+            .lte('created_at', oldestAt.current)
+            .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(PAGE));
+        setLoadingOlder(false);
+        if (readError) { setError(readError.message); return; }
+        const older = [...data].reverse();
+        if (older.length) oldestAt.current = older[0].created_at;
+        setHasOlder(data.length === PAGE);
+        followLatest.current = false;
+        setMessages(prev => {
+            const known = new Set(prev.map(m => m.id));
+            const added = older.filter(m => !known.has(m.id));
+            return added.length ? [...added, ...prev] : prev;
+        });
+        requestAnimationFrame(() => { if (node) node.scrollTop = node.scrollHeight - fromBottom; });
+        rememberNames(older);
+    }, [loadingOlder, readMessages, rememberNames]);
 
     useEffect(() => {
         load();
@@ -434,6 +482,9 @@ export default function TeamChat({ user, onClose, previewMode = false }) {
                     {error && <p role="alert" className="mx-3 mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-700">{error}</p>}
                     <div ref={messageScroller} onScroll={event => { const node = event.currentTarget; followLatest.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80; }}
                         className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3 sm:px-6" aria-live="polite">
+                        {hasOlder && <button type="button" onClick={loadOlder} disabled={loadingOlder}
+                            className="mx-auto mb-2 block min-h-9 rounded-full border border-stone-200 bg-white px-4 text-xs font-semibold text-stone-600 shadow-sm hover:bg-stone-50 disabled:opacity-60">
+                            {loadingOlder ? 'Loading…' : 'Load older messages'}</button>}
                         {visible.length === 0 && <p className="mx-auto mt-6 w-fit rounded-lg bg-white/80 px-3 py-2 text-xs text-stone-600 shadow-sm">{isBroadcastKey(selected) || selected === ANNOUNCE_KEY ? 'No announcements yet.' : singleView ? 'Write to the office team. Any office staff can reply.' : 'No messages yet. Say hello.'}</p>}
                         {visible.map((message, index) => {
                             const mine = message.sender_id === user.id;

@@ -18,6 +18,8 @@ import { newestCustomerFirst } from '../utils/customerActivity';
 import { fuzzyPatterns, mergeSearchResults } from '../utils/fuzzySearch';
 
 // Secondary views and modals with auto-retry on new deployments
+import { monthValueFor, recentMonthOptions } from '../utils/monthFilter';
+import { customerFilePaths } from '../utils/customerFiles';
 const SubsidyView = lazyWithRetry(() => import('./SubsidyView'));
 const LoanView = lazyWithRetry(() => import('./LoanView'));
 const InstallationView = lazyWithRetry(() => import('./InstallationView'));
@@ -44,11 +46,6 @@ import { canUseQuotations } from '../quotations/model';
 
 const ViewLoader = () => <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-stone-900 border-t-transparent rounded-full animate-spin" /></div>;
 
-const MONTH_OPTIONS = [
-    ['01', 'January'], ['02', 'February'], ['03', 'March'], ['04', 'April'],
-    ['05', 'May'], ['06', 'June'], ['07', 'July'], ['08', 'August'],
-    ['09', 'September'], ['10', 'October'], ['11', 'November'], ['12', 'December']
-];
 
 const getMonthBounds = (monthValue, timestamp = false) => {
     if (!/^\d{4}-\d{2}$/.test(monthValue || '')) return null;
@@ -447,11 +444,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                 : '';
         if (selectedStageMonth) {
             const isLeadStage = normalizedStage === STAGE_IDS.LEADS;
-            const now = new Date();
-            const selectedMonth = selectedStageMonth === 'this-month'
-                ? String(now.getMonth() + 1).padStart(2, '0')
-                : selectedStageMonth;
-            const monthValue = `${now.getFullYear()}-${selectedMonth}`;
+            const monthValue = monthValueFor(selectedStageMonth);
             const bounds = getMonthBounds(monthValue, isLeadStage);
             if (bounds) {
                 const field = isLeadStage ? 'created_at' : 'registration_date';
@@ -920,6 +913,10 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
     const handleHardDelete = async (id) => {
         const c = customers.find(x => x.id === id);
 
+        // The customer's files, listed before the row (and its documents rows)
+        // are gone. They used to stay in storage for ever after a hard delete.
+        const files = await customerFilePaths(supabase, id);
+
         // The delete runs FIRST and its row count is checked. This used to write
         // "Permanently deleted" to the activity log before attempting the
         // delete, and the delete itself was unchecked - so a refused delete left
@@ -947,6 +944,13 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             null
         );
         setCustomers(prev => prev.filter(c => c.id !== id));
+
+        if (files.length) {
+            const { error: removeError } = await supabase.storage.from('customer-documents').remove(files);
+            if (removeError) {
+                showAlert(`The customer was deleted, but ${files.length} of their files could not be removed from storage: ${removeError.message}`, { type: 'warning' });
+            }
+        }
     };
 
     const handleMoveStage = async (id, newStage) => {
@@ -1594,7 +1598,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                             >
                                 <option value="">Clear filter</option>
                                 <option value="this-month">This month</option>
-                                {MONTH_OPTIONS.map(([value, label]) => (
+                                {recentMonthOptions().map(([value, label]) => (
                                     <option key={value} value={value}>{label}</option>
                                 ))}
                             </select>
