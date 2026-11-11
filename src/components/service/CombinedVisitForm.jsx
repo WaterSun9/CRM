@@ -6,6 +6,7 @@ import { TripTypeChoice, kmAmount, useKmSettings } from './kmSettings';
 import { combinedVisitRows, ticketLabel, todayLocal } from './serviceLabels';
 import { tripChain } from '../../utils/tripChain';
 import { isPincode, pincodeInText, pincodePoints } from './tripLabels';
+import { beforeSave, isRepeatSave, readSameDayVisits, sameDayKey, sameDayWarning } from './visitSave';
 
 const RECENT_DAYS = 30;
 
@@ -29,6 +30,10 @@ export default function CombinedVisitForm({ issue, issues, user, busy, run, onSa
     const [typedRate, setTypedRate] = useState(null);
     const [typedAmount, setTypedAmount] = useState(null);
     const [note, setNote] = useState('');
+    // One trip_group per filled form: a second tap after a lost answer reuses it,
+    // and the database keeps one row per group and complaint.
+    const [group, setGroup] = useState(() => crypto.randomUUID());
+    const [sameDayOk, setSameDayOk] = useState('');
     const { status: kmStatus, settings } = useKmSettings();
     const roundTrip = roundTripChoice ?? settings.round_trip;
     const rate = typedRate ?? String(settings.rate_per_km || '');
@@ -86,7 +91,14 @@ export default function CombinedVisitForm({ issue, issues, user, busy, run, onSa
             if (!Number.isFinite(rateValue) || rateValue < 0 || rateValue > 1000) throw new Error('Rate per km must be between ₹0 and ₹1000.');
             const amount = Number(shownAmount);
             if (shownAmount === '' || !Number.isFinite(amount) || amount < 0) throw new Error('Enter the amount.');
-            const group = crypto.randomUUID();
+            const ids = route.map(row => row.id);
+            const dayKey = sameDayKey(ids, date);
+            const { data: ours, error: oursError } = await supabase.from('service_visits').select('id').eq('trip_group', group).limit(1);
+            if (oursError) throw new Error(oursError.message);
+            const found = await readSameDayVisits(supabase, ids, date);
+            const step = beforeSave({ mine: Boolean(ours?.length), others: found.others }, sameDayOk === dayKey);
+            const ticketOf = id => ticketLabel(route.find(row => row.id === id));
+            if (step === 'ask') { setSameDayOk(dayKey); throw new Error(sameDayWarning(found.others, { ticketOf, dateText: date })); }
             const tickets = route.map(ticketLabel).filter(Boolean).join(', ');
             const text = [note.trim(), `Combined trip: ${tickets}`].filter(Boolean).join(' · ').slice(0, 1000);
             const rows = combinedVisitRows(route.map(row => row.id), { km, amount }).map((row, i) => ({
@@ -95,12 +107,13 @@ export default function CombinedVisitForm({ issue, issues, user, busy, run, onSa
                 ...(i === 0 && kmChanged ? { km_note: kmNote.trim().slice(0, 300) } : {}),
                 ...(kmStatus === 'ready' ? { round_trip: roundTrip, grace_km: settings.grace_km, rate_per_km: rateValue } : {}),
             }));
-            const { error } = await supabase.from('service_visits').insert(rows);
-            if (error) {
+            const { error } = step === 'save' ? await supabase.from('service_visits').insert(rows) : { error: null };
+            if (error && !isRepeatSave(error)) {
                 if (/trip_group/.test(error.message || '')) throw new Error('Combined visits are not set up yet. Run the 26 Oct database update first.');
                 if (/row-level security/i.test(error.message || '')) throw new Error('One of these complaints is no longer with this technician. Refresh and try again.');
                 throw new Error(error.message || 'Could not save the visit.');
             }
+            setGroup(crypto.randomUUID()); setSameDayOk('');
             setOpen(false); setOrder([issue.id]); setLinked(false); setTypedKm(null); setKmNote(''); setTypedAmount(null); setTypedRate(null); setNote('');
             await onSaved?.();
         }, 'Combined trip saved on every complaint.', 'issue');

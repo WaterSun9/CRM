@@ -123,7 +123,10 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
             }
             for (let offset = 0; ; offset += 500) {
                 const { data, error: readError } = await supabase.from('service_issues').select('*')
-                    .order('required_date', { ascending: true }).range(offset, offset + 499);
+                    // id breaks ties: many complaints share a required_date, and without
+                    // a unique order a page could skip some rows past the first 500.
+                    .order('required_date', { ascending: true }).order('id', { ascending: true })
+                    .range(offset, offset + 499);
                 if (readError) { fail(readError.message); return; }
                 rows.push(...(data || []));
                 if (!data || data.length < 500) break;
@@ -143,8 +146,11 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     useEffect(() => {
         if (formOnly) return undefined;
         load();
-        const timer = setInterval(load, 15000);
-        return () => clearInterval(timer);
+        // No polling while the tab is hidden; coming back to it reads at once.
+        const timer = setInterval(() => { if (document.visibilityState !== 'hidden') load(); }, 15000);
+        const onShow = () => { if (document.visibilityState === 'visible') load(); };
+        document.addEventListener('visibilitychange', onShow);
+        return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onShow); };
     }, [load, formOnly]);
     useEffect(() => {
         if (!canManage || formOnly) return undefined;
@@ -213,9 +219,19 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
         if (busy) return;
         setBusy(true); setError(''); setNotice(''); setMessageSpot(spot);
         try {
-            const { data: authData, error: authError } = await supabase.auth.getUser();
-            if (authError || !authData?.user) throw new Error('Your login has expired. Sign in again before saving.');
-            if (user?.id !== authData.user.id) throw new Error('This is a role preview, not a login to that account. Sign in as the user to raise or change a complaint.');
+            // getSession() reads the saved login on the phone; getUser() asked the
+            // server first, so a weak signal on site came back as "login expired" and
+            // sent technicians to sign in again for nothing. The save itself is still
+            // checked by the database.
+            const { data: authData, error: authError } = await supabase.auth.getSession();
+            const signedIn = authData?.session?.user;
+            if (!signedIn) {
+                const offline = (typeof navigator !== 'undefined' && navigator.onLine === false)
+                    || authError?.name === 'AuthRetryableFetchError' || authError?.status === 0;
+                throw new Error(offline ? 'No internet signal. Nothing was saved - try again when you have signal.'
+                    : 'Your login has expired. Sign in again before saving.');
+            }
+            if (user?.id !== signedIn.id) throw new Error('This is a role preview, not a login to that account. Sign in as the user to raise or change a complaint.');
             const message = await action();
             setNotice(message ?? successMessage);
             announceComplaintsChanged();

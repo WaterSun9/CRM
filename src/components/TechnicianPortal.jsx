@@ -21,23 +21,44 @@ const initials = name => String(name || '').replace(/[^\p{L}\s]/gu, ' ').split(/
 const shortDate = day => (day ? new Date(`${day}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '');
 
 // Jobs this technician can see (open + their own) and today's plan; read again every 30 s.
+// Only open and in-hand jobs are read: a plain .limit(500) over everything kept the
+// oldest 500 (closed ones included), so new jobs fell off the list as history grew.
+const PAGE = 500;
+async function readActiveJobs() {
+    const rows = [];
+    for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase.from('service_issues').select('*')
+            .in('status', ['open', ...ACTIVE])
+            .order('required_date', { ascending: true }).order('id', { ascending: true })
+            .range(from, from + PAGE - 1);
+        if (error) throw error;
+        rows.push(...(data || []));
+        if (!data || data.length < PAGE) return rows;
+    }
+}
+
 function useTechnicianJobs(userId) {
     const [jobs, setJobs] = useState(null);
     const [plan, setPlan] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
+    const [loadError, setLoadError] = useState('');
     const load = useCallback(async () => {
         setRefreshing(true);
-        const { data } = await supabase.from('service_issues').select('*').order('required_date', { ascending: true }).limit(500);
-        setJobs(data || []);
-        try { setPlan(await readDayPlan(userId, todayLocal())); } catch { setPlan([]); }
+        // On a failed read the last list stays on screen with a note, rather than
+        // turning into "No new jobs right now".
+        try { setJobs(await readActiveJobs()); setLoadError(''); }
+        catch { setLoadError('Could not refresh jobs - check the signal. Showing the last list.'); }
+        try { setPlan(await readDayPlan(userId, todayLocal())); } catch { /* keep the last plan */ }
         setRefreshing(false);
     }, [userId]);
     useEffect(() => {
         load();
-        const timer = setInterval(load, 30000);
-        return () => clearInterval(timer);
+        const timer = setInterval(() => { if (document.visibilityState !== 'hidden') load(); }, 30000);
+        const onShow = () => { if (document.visibilityState === 'visible') load(); };
+        document.addEventListener('visibilitychange', onShow);
+        return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onShow); };
     }, [load]);
-    return { jobs, plan, reload: load, refreshing };
+    return { jobs, plan, reload: load, refreshing, loadError };
 }
 
 // Vendor-style stat tile that works as a tab.
@@ -110,7 +131,7 @@ export default function TechnicianPortal({ user, onLogout, initialView = 'home',
     const [view, setView] = useState(initialView);
     const [focus, setFocus] = useState(initialJobId ? { id: initialJobId } : null);
     const [menuOpen, setMenuOpen] = useState(false);
-    const { jobs, plan, reload, refreshing } = useTechnicianJobs(user.id);
+    const { jobs, plan, reload, refreshing, loadError } = useTechnicianJobs(user.id);
     const go = next => { setView(next); setFocus(null); setMenuOpen(false); reload(); };
     const openJob = (id, where = 'mine') => { setView(where); setFocus({ id }); };
     const counts = jobs ? {
@@ -158,6 +179,9 @@ export default function TechnicianPortal({ user, onLogout, initialView = 'home',
                 <button type="button" onClick={onLogout} title="Logout" aria-label="Logout" className="rounded-xl p-2 text-stone-400 transition-colors hover:bg-stone-50 hover:text-red-500"><LogOut className="h-4 w-4" /></button>
             </div>
         </header>
+
+        {loadError && <p role="status" className="mx-3 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-900 sm:mx-auto sm:w-full sm:max-w-md">
+            {jobs === null ? 'Could not load jobs - check the signal and tap refresh.' : loadError}</p>}
 
         {view === 'home'
             ? <TechnicianHome user={user} jobs={jobs} plan={plan} go={go} openJob={openJob} />

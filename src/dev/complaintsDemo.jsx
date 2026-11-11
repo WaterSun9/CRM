@@ -122,6 +122,7 @@ const photo = (label, color) => `data:image/svg+xml,${encodeURIComponent(`<svg x
 let user = OFFICE;
 supabase.from = query;
 supabase.auth.getUser = async () => ({ data: { user: { id: user.id } }, error: null });
+supabase.auth.getSession = async () => ({ data: { session: { user: { id: user.id } } }, error: null });
 supabase.auth.resetPasswordForEmail = async () => ({ data: {}, error: null });
 const fakeStorage = { from: () => ({ createSignedUrls: async paths => ({ data: paths.map(path => ({ path, signedUrl: photo(path.includes('before') ? 'Before' : 'After', path.includes('before') ? '#b45309' : '#15803d') })), error: null }), upload: async () => ({ error: null }), remove: async () => ({ error: null }) }) };
 // supabase.functions and .storage are getters that make a new client each time, so replace the getters.
