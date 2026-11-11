@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ChevronRight, MessageSquare, Route, UserRound, Wrench } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, MessageSquare, Route, UserRound, Wrench } from 'lucide-react';
 import './service/service.css';
 import { supabase } from '../supabase';
 import WarrantyBadge from './WarrantyBadge';
@@ -87,7 +87,7 @@ function ClosureNote({ issue, forTechnician }) {
 
 // view / onViewChange: the technician portal's sidebar picks the tab (Open jobs, My jobs,
 // My trip) and the tab pills are hidden; focus ({ id }) opens one job from the portal's Home.
-export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false, embedded = false, onOpenWarranty = null, view = null, onViewChange = null, focus = null }) {
+export default function ServiceIssuesView({ user, initialCustomer = null, initialIssueId = null, formOnly = false, embedded = false, onOpenWarranty = null, view = null, onViewChange = null, focus = null, backRef = null }) {
     const isTechnician = user?.userType === 'technician';
     const canManage = ['admin', 'sales'].includes(user?.userType);
     const isPartner = PARTNER_TYPES.includes(user?.userType);
@@ -168,6 +168,13 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
     }, [isTechnician, formOnly, user?.id, planReload]);
 
     const selected = issues.find(issue => issue.id === selectedId);
+    // Phone page in App.jsx has one Back at the top: with a complaint open it returns
+    // to the list (so there are never two Back buttons on screen).
+    useEffect(() => {
+        if (!backRef) return undefined;
+        backRef.current = selected ? () => { setSelectedId(null); setError(''); setNotice(''); } : null;
+        return () => { backRef.current = null; };
+    }, [backRef, selected]);
     // Technician portal: one job in tabs, like the customer card's stages, instead of one long page.
     // An open job starts on Customer (read, then claim); an own job on Work.
     const [jobTab, setJobTab] = useState('work');
@@ -337,9 +344,9 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
                     <span className="mt-2 flex flex-wrap items-center gap-2"><StatusPill issue={issue} />
                         {issue.created_at && <span className="text-[11px] text-stone-500">Raised {new Date(issue.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</span>}</span>
                 </button>)}</div>
-            <div ref={detailRef} className={`service-detail scroll-mt-4 rounded-2xl border bg-white min-w-0 ${view ? 'overflow-hidden' : 'p-4 sm:p-5 space-y-4'}`}>
+            <div ref={detailRef} className={`service-detail ${backRef ? 'scroll-mt-32' : 'scroll-mt-4'} rounded-2xl border bg-white min-w-0 ${view ? 'overflow-hidden' : 'p-4 sm:p-5 space-y-4'}`}>
                 {!selected ? null : view ? phoneJob() : <>
-                    <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} className="service-back inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-stone-600"><ArrowLeft size={16} /> {isTechnician ? 'All jobs' : 'All complaints'}</button>
+                    {!backRef && <button type="button" onClick={() => { setSelectedId(null); setError(''); setNotice(''); }} aria-label={isTechnician ? 'Back to all jobs' : 'Back to all complaints'} className="service-back inline-flex min-h-11 items-center gap-1 rounded-xl border border-stone-200 bg-white pl-2 pr-3 text-sm font-bold text-stone-700 hover:border-stone-300"><ChevronLeft size={18} /> {isTechnician ? 'All jobs' : 'Back'}</button>}
                     <div className="space-y-1">
                         <h2 className="font-bold text-lg break-words">{selected.ticket_no && <span className="text-stone-500">{ticketLabel(selected)} </span>}{selected.customer_name}</h2>
                         <div className="flex flex-wrap items-center gap-1.5"><StatusPill issue={selected} />

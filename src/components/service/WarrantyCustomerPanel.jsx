@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Cpu, History, MapPin, Pencil, Plus, ShieldCheck, Store, User, X } from 'lucide-react';
+import { ChevronLeft, Cpu, History, MapPin, Pencil, Plus, ShieldCheck, Store, User, X } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { warrantyInfo, formatWarrantyDate, todayIST } from '../../utils/warranty';
 import { logFieldChanges } from '../../utils';
@@ -320,9 +320,11 @@ export default function WarrantyCustomerPanel({ customer, user, onClose, onOpenC
     }, [onClose]);
     const office = OFFICE_TYPES.includes(user?.userType);
     const info = warrantyInfo(customer);
-    return <div role="dialog" aria-modal="true" aria-label={`${customer.customer_name || 'Customer'} warranty`} className="fixed inset-0 z-[80] flex items-stretch justify-center bg-stone-950/50 backdrop-blur-[2px] sm:items-center sm:p-6" onClick={onClose}>
+    return <div role="dialog" aria-modal="true" aria-label={`${customer.customer_name || 'Customer'} warranty`} className="fixed inset-0 z-[80] !m-0 flex items-stretch justify-center bg-stone-950/50 backdrop-blur-[2px] sm:items-center sm:p-6" onClick={onClose}>
         <div className="flex h-full w-full flex-col overflow-hidden bg-[#FCFBFA] shadow-2xl sm:h-[88vh] sm:max-h-[960px] sm:w-[min(72rem,100%)] sm:rounded-3xl" onClick={event => event.stopPropagation()}>
-            <header className="flex items-start gap-3 bg-stone-900 p-4 text-white sm:p-5">
+            {/* Phone: the panel is the whole screen, so Back sits top-left (the X shows from sm up). */}
+            <div className="bg-stone-900 px-4 pt-3 sm:hidden"><button type="button" onClick={onClose} aria-label="Back to the list" className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-white/20 pl-2 pr-3 text-sm font-bold text-white hover:bg-white/10"><ChevronLeft size={18} /> Back</button></div>
+            <header className="flex items-start gap-3 bg-stone-900 px-4 pb-4 pt-3 text-white sm:p-5">
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-base font-black text-stone-900">{initials(customer.customer_name)}</span>
                 <div className="min-w-0 flex-1">
                     <h2 className="break-words text-lg font-bold">{customer.customer_name || 'Customer'}</h2>
@@ -334,7 +336,7 @@ export default function WarrantyCustomerPanel({ customer, user, onClose, onOpenC
                 {/* Raise a complaint from here too, top right before Close (under the name on a
                     phone): same rule as the card (in warranty, or admin as an exception). */}
                 {onRaise && <div className="hidden shrink-0 sm:block"><ComplaintButton customer={customer} onRaise={onRaise} tone="dark" canRaise={info.status === 'in_warranty' || user?.userType === 'admin'} exception={info.status !== 'in_warranty'} withLabel className="" /></div>}
-                <button type="button" onClick={onClose} aria-label="Close" className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-white/20 hover:bg-white/10"><X size={20} /></button>
+                <button type="button" onClick={onClose} aria-label="Close" className="hidden min-h-11 min-w-11 shrink-0 sm:flex items-center justify-center rounded-xl border border-white/20 hover:bg-white/10"><X size={20} /></button>
             </header>
             <div className="flex-1 overflow-y-auto p-3 sm:p-6"><WarrantyCustomerBody customer={customer} user={user} /></div>
         </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { AgreementPreview } from './agreement/AgreementPreview';
 import {
-    User, Phone, Mail, MapPin, Zap, Building2, Home,
+    User, Phone, Mail, MapPin, Zap, Building2,
     CheckCircle2, ChevronRight, LogOut, Loader2, AlertCircle, AlertTriangle,
     Users, CreditCard, Hash, Folder, Tag, ChevronLeft, Plus, Search, 
     ChevronDown, ChevronUp, ClipboardList, Banknote, ShieldAlert, Paperclip, Eye, Download, X,
@@ -20,7 +20,6 @@ import { FilePreviewModal, CheckboxRemarkItem, isReplacedDocument, isReturnedDoc
 import { useGlobalPopup } from './GlobalPopup';
 import { RedFlagBadge, RedFlagToggle } from './RedFlag';
 import PartnerProfile from './service/PartnerProfile';
-import WarrantyView from './WarrantyView';
 import { warrantyInfo } from '../utils/warranty';
 import PartnerPhoneReminder from './service/PartnerPhoneReminder';
 import BrandMark from './BrandMark';
@@ -80,12 +79,41 @@ function DetailRow({ label, value, children }) {
     );
 }
 
+// Home and Customers screens use the same square-ish boxes (client, 10 Nov 2026:
+// "like the Tata app"): icon in a soft circle, name beside it, optional count.
+// Same card look as the rest of the CRM: white, stone border, amber on hover,
+// icon in a soft square like the number cards below.
+const TILE_TONES = {
+    stone: 'bg-stone-100 text-stone-700', amber: 'bg-amber-50 text-amber-700', blue: 'bg-blue-50 text-blue-700',
+    emerald: 'bg-emerald-50 text-emerald-700',
+};
+function PortalTile({ icon: Icon, label, hint, count, tone = 'stone', onClick }) {
+    return <button type="button" onClick={onClick}
+        className="group relative flex min-h-[96px] w-full flex-col justify-between gap-3 rounded-2xl border border-stone-200/80 bg-white p-4 text-left shadow-sm transition hover:border-amber-300 hover:shadow-md active:scale-[0.98] cursor-pointer">
+        <span className="flex items-start justify-between gap-2">
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${TILE_TONES[tone] || TILE_TONES.stone}`}><Icon size={17} /></span>
+            {count > 0 && <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-black text-stone-600">{count}</span>}
+        </span>
+        <span className="min-w-0">
+            <span className="block text-xs font-black leading-tight text-stone-900">{label}</span>
+            {hint && <span className="mt-0.5 block text-[10px] font-medium leading-snug text-stone-400">{hint}</span>}
+        </span>
+    </button>;
+}
+
+function BackBar({ onBack, title, children }) {
+    return <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-stone-200 bg-white px-4 py-2 shadow-sm">
+        <button type="button" onClick={onBack} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-stone-200 bg-white pl-2 pr-3 text-sm font-bold text-stone-700 shadow-sm hover:bg-stone-50 cursor-pointer"><ChevronLeft size={18} /> Back</button>
+        <h1 className="min-w-0 flex-1 truncate text-sm font-black uppercase tracking-tight text-stone-900">{title}</h1>
+        {children}
+    </header>;
+}
+
 export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpenComplaints, onOpenDevSwitcher }) {
     const { showAlert, showConfirm } = useGlobalPopup();
     const [view, setView] = useState('menu');
     const [showProfile, setShowProfile] = useState(false);
     const [activeWorkdeskTab, setActiveWorkdeskTab] = useState(STAGE_IDS.LEADS);
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [showAddLead, setShowAddLead] = useState(false);
@@ -995,43 +1023,23 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                     {/* Menu View (Clean Action Cards) */}
             
                 <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 animate-in fade-in duration-300">
-                    <section className="relative overflow-hidden rounded-[28px] bg-stone-950 px-5 py-6 text-white shadow-xl shadow-stone-900/10">
-                        <div className="absolute -right-10 -top-12 h-52 w-52 rounded-full bg-amber-400/20 blur-2xl" />
-                        <div className="absolute -bottom-16 right-24 h-40 w-40 rounded-full border-[18px] border-amber-400/10" />
-                        <div className="relative space-y-5">
-                            <div className="max-w-xl">
-                                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">
-                                    {isAgent2 ? 'Dealer workspace' : 'Channel Partner workspace'}
-                                </p>
-                                <h2 className="mt-2 text-2xl font-black tracking-tight">Good to see you, {user.name}.</h2>
-                                <p className="mt-2 max-w-lg text-sm font-medium leading-relaxed text-stone-300">
-                                    {isAgent2 
-                                        ? 'A focused view of your field leads, partner pipeline, and customer work that needs attention today.'
-                                        : 'A focused view of your pipeline, pending hand-offs, and the customer work that needs attention today.'
-                                    }
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => { setActiveWorkdeskTab(priorityWorkdeskTab); setView('workdesk'); }}
-                                className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-400 px-4 py-3 text-xs font-black text-stone-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-300 active:scale-[0.98] cursor-pointer"
-                            >
-                                <Layers size={15} /> Open work queue <ChevronRight size={15} className="transition-transform group-hover:translate-x-0.5" />
-                            </button>
-                        </div>
+                    <div className="px-1">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600">{isAgent2 ? 'Dealer workspace' : 'Channel Partner workspace'}</p>
+                        <h2 className="mt-1 text-xl font-black tracking-tight text-stone-900">Hello, {user.name}</h2>
+                    </div>
+
+                    {/* Home boxes (client, 10 Nov 2026). Warranty & Complaints is one box that opens
+                        one page with two tabs, like the website. */}
+                    <section aria-label="Home" className="grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
+                        <PortalTile icon={Users} label="Customers" hint="All stages" tone="stone" count={customers.length} onClick={() => setView('stages')} />
+                        {QUOTATION_PARTNER_ENABLED && <PortalTile icon={FileText} label="Quotations" hint="Create and share" tone="blue" count={quotationOpenCount} onClick={openQuotations} />}
+                        {onOpenComplaints && (onRaiseServiceIssue
+                            ? <PortalTile icon={ShieldCheck} label="Warranty & Complaints" hint="Customers and service requests" tone="emerald" onClick={() => onOpenComplaints('warranty')} />
+                            : <PortalTile icon={ClipboardList} label="Complaints" hint="Service requests" tone="amber" onClick={() => onOpenComplaints('complaints')} />)}
+                        <PortalTile icon={Plus} label="Add customer" hint="Create a new lead" tone="amber" onClick={() => setShowAddLead(true)} />
+                        <PortalTile icon={Layers} label="Work queue" hint="Needs attention" tone="stone" onClick={() => { setActiveWorkdeskTab(priorityWorkdeskTab); setView('workdesk'); }} />
                     </section>
-
-                    {QUOTATION_PARTNER_ENABLED && <button type="button" onClick={openQuotations} className="w-full flex items-center gap-3 rounded-2xl bg-blue-950 text-white p-5 text-left shadow-sm"><FileText size={24} /><span className="flex-1"><strong className="block text-base">Quotation Maker</strong><span className="text-xs text-blue-200">Create, share and follow up on solar quotations</span></span>{quotationOpenCount > 0 && <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold" title="Open quotations (draft + issued)">{quotationOpenCount}</span>}<ChevronRight size={18} /></button>}
                     <PartnerPhoneReminder key={showProfile ? "profile-open" : "profile-closed"} onOpenProfile={() => setShowProfile(true)} />
-                    {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="w-full flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-sm"><ClipboardList size={24} /><span className="flex-1"><strong className="block text-base">Complaints</strong><span className="text-xs text-stone-500">Track service requests</span></span><ChevronRight size={18} /></button>}
-
-                    {/* Warranty customers on the home page (owner, 28 Oct 2026): their own completed
-                        customers as cards. They raise complaints (in warranty only) and can see
-                        everything, but change only the address and pincode. */}
-                    {onRaiseServiceIssue && <section aria-label="Warranty customers" className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
-                        <h2 className="mb-3 flex items-center gap-2 text-base font-bold"><ShieldCheck size={20} className="text-emerald-600" /> Warranty customers</h2>
-                        <WarrantyView user={user} onRaiseServiceIssue={onRaiseServiceIssue} />
-                    </section>}
 
                     <section className="rounded-2xl border border-stone-200/80 bg-white p-4 shadow-sm">
                         <div className="mb-3">
@@ -1105,103 +1113,44 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                         ))}
                     </section>
 
-                    <section className="space-y-3">
-                        <div className="grid gap-3">
-                            <button onClick={() => setShowAddLead(true)} className="group flex items-center justify-between rounded-2xl bg-amber-500 p-4 text-left text-white shadow-md shadow-amber-500/20 transition hover:bg-amber-600 active:scale-[0.99] cursor-pointer">
-                                <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20"><Plus size={18} /></span><span><span className="block text-xs font-black">Add customer</span><span className="mt-0.5 block text-[10px] font-medium text-amber-100">Create a new lead</span></span></div>
-                                <ChevronRight size={16} className="transition-transform group-hover:translate-x-0.5" />
-                            </button>
-                            <button onClick={() => { setActiveWorkdeskTab(STAGE_IDS.LEADS); setView('workdesk'); }} className="group flex items-center justify-between rounded-2xl border border-stone-200 bg-white p-4 text-left shadow-sm transition hover:border-stone-300 hover:shadow-md active:scale-[0.99] cursor-pointer">
-                                <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-100 text-stone-700"><Search size={17} /></span><span><span className="block text-xs font-black text-stone-900">Customer directory</span><span className="mt-0.5 block text-[10px] font-medium text-stone-400">Search and track all leads</span></span></div>
-                                <ChevronRight size={16} className="text-stone-400 transition-transform group-hover:translate-x-0.5" />
-                            </button>
-                        </div>
-                    </section>
                 </main>
 
                 </div>
             )}
             
-            {view === 'workdesk' && (
-                <div className="flex h-screen bg-stone-100 justify-center text-stone-850 font-sans overflow-hidden"><div className="w-full max-w-md bg-[#FCFBFA] h-full shadow-2xl relative flex flex-col">
-            
-            {/* MOBILE DRAWER */}
-            {isSidebarOpen && (
-                <div className="fixed inset-0 z-[100] flex">
-                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />
-                    <aside className="relative w-[280px] h-full bg-slate-900 flex flex-col shadow-2xl animate-in slide-in-from-left duration-300 z-10">
-                        <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
-                            {/* Dark surface - the white wordmark variant */}
-                            <BrandMark variant="white" />
-                            <button onClick={() => setIsSidebarOpen(false)} className="p-1.5 text-slate-400 hover:text-white rounded-lg">
-                                <X size={16} />
-                            </button>
-                        </div>
-                        
-                        <div className="p-3 border-b border-slate-800 shrink-0">
-                            <button onClick={() => setView('menu')} className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition-colors cursor-pointer group shadow-sm">
-                                <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center text-white group-hover:scale-105 transition-transform shadow-md shadow-amber-500/20">
-                                    <Home size={14} />
-                                </div>
-                                <div className="flex flex-col items-start">
-                                    <span className="text-[11px] font-bold">Home Page</span>
-                                    <span className="text-[9px] text-slate-400 font-medium">Return to dashboard</span>
-                                </div>
-                            </button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-3 space-y-1">
-                            <div className="mb-2 px-1 pt-2">
-                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Pipeline Stages</span>
-                            </div>
-                            {PRIMARY_STAGES.map(stage => {
-                                const count = getCustomersByStage(stage.id).length;
-                                const StageIcon = stage.icon || Folder;
-                                const isActive = activeWorkdeskTab === stage.id;
-                                return (
-                                    <button
-                                        key={stage.id}
-                                        onClick={() => { setActiveWorkdeskTab(stage.id); setIsSidebarOpen(false); }}
-                                        className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all cursor-pointer ${
-                                            isActive 
-                                            ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' 
-                                            : 'hover:bg-slate-800 text-slate-300 hover:text-white'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-2.5">
-                                            <StageIcon size={16} />
-                                            <span className="text-[11px] font-bold tracking-wide">{stage.label}</span>
-                                        </div>
-                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                                            isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                                        }`}>
-                                            {count}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </aside>
+            {view === 'stages' && (
+                <div className="min-h-screen bg-[#FCFBFA] text-stone-850 font-sans pb-8">
+                    <BackBar onBack={() => setView('menu')} title="Customers" />
+                    <main className="mx-auto w-full max-w-md space-y-3 p-4">
+                        <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-stone-400">Pick a stage to see its customers</p>
+                        <section aria-label="Stages" className="grid grid-cols-2 gap-3">
+                            {PRIMARY_STAGES.map(stage => <PortalTile key={stage.id} icon={stage.icon || Folder} label={stage.label}
+                                tone={getCustomersByStage(stage.id).length > 0 ? 'amber' : 'stone'} count={getCustomersByStage(stage.id).length}
+                                onClick={() => { setActiveWorkdeskTab(stage.id); setView('workdesk'); }} />)}
+                        </section>
+                    </main>
                 </div>
             )}
 
-
+            {view === 'workdesk' && (
+                <div className="flex h-screen bg-stone-100 justify-center text-stone-850 font-sans overflow-hidden"><div className="w-full max-w-md bg-[#FCFBFA] h-full shadow-2xl relative flex flex-col">
+            
             {/* MAIN CONTENT */}
             <main className="flex-1 flex flex-col h-screen overflow-hidden bg-stone-50/50 relative">
                 {/* HEADER */}
-                <header className="bg-white border-b border-stone-200 px-4 md:px-6 py-3 md:py-4 shrink-0 flex items-center justify-between shadow-sm z-10">
-                    <div className="flex items-center gap-3">
-                        <button onClick={() => setIsSidebarOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-[10px] uppercase tracking-wide font-black shadow-sm active:scale-95 transition-transform">
-                            <Layers size={14} /> Stages
+                <header className="bg-white border-b border-stone-200 px-2 md:px-6 py-2 md:py-4 shrink-0 flex items-center justify-between gap-2 shadow-sm z-10">
+                    <div className="flex min-w-0 items-center gap-2">
+                        <button type="button" onClick={() => setView('stages')} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-stone-200 bg-white pl-2 pr-3 text-sm font-bold text-stone-700 shadow-sm hover:bg-stone-50 cursor-pointer">
+                            <ChevronLeft size={18} /> Back
                         </button>
-                        <div>
-                            <h2 className="text-sm md:text-lg font-black text-stone-900 uppercase tracking-tight flex items-center gap-2">
+                        <div className="min-w-0">
+                            <h2 className="truncate text-sm md:text-lg font-black text-stone-900 uppercase tracking-tight">
                                 {PRIMARY_STAGES.find(s => s.id === activeWorkdeskTab)?.label || activeWorkdeskTab}
                             </h2>
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-2 md:gap-4">
+                    <div className="flex shrink-0 items-center gap-2 md:gap-4">
                         <div className="hidden">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
                             <input
@@ -1218,7 +1167,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                             )}
                         </div>
                         <div className="flex items-center gap-1 md:gap-2">
-                            {onOpenComplaints && <button type="button" onClick={onOpenComplaints} className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-bold text-stone-700">Complaints</button>}
+                            {onOpenComplaints && <button type="button" onClick={() => onOpenComplaints(onRaiseServiceIssue ? 'warranty' : 'complaints')} aria-label={onRaiseServiceIssue ? 'Warranty & Complaints' : 'Complaints'} title={onRaiseServiceIssue ? 'Warranty & Complaints' : 'Complaints'} className="flex min-h-11 items-center gap-1.5 rounded-xl border border-stone-200 px-2.5 text-xs font-bold text-stone-700">{onRaiseServiceIssue ? <ShieldCheck size={15} /> : <ClipboardList size={15} />}<span className="hidden md:inline">{onRaiseServiceIssue ? 'Warranty & Complaints' : 'Complaints'}</span></button>}
                             <button type="button" onClick={() => setShowProfile(true)} title="Profile" aria-label="Profile" className="flex items-center gap-1.5 rounded-xl border border-stone-200 px-2.5 py-2 text-xs font-bold text-stone-700"><UserRound size={15} /><span className="hidden md:inline">Profile</span></button>
                             {import.meta.env.DEV && onOpenDevSwitcher && (
                                 <button
@@ -1368,7 +1317,7 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                 {/* MOBILE FLOATING ACTION BUTTON */}
                 <button
                     onClick={() => setShowAddLead(true)}
-                    className="sm:hidden fixed bottom-6 right-4 z-40 bg-blue-600 text-white w-12 h-12 rounded-full shadow-lg shadow-blue-500/40 flex items-center justify-center active:scale-95 transition-transform"
+                    aria-label="Add customer" className="sm:hidden fixed bottom-24 right-4 z-40 bg-amber-500 text-white w-12 h-12 rounded-full shadow-lg shadow-amber-500/30 flex items-center justify-center active:scale-95 transition-transform"
                 >
                     <Plus size={22} />
                 </button>
@@ -1397,6 +1346,8 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                         {/* Detail Header - Name, Phone Number & Consumer No on Top */}
                         <div className="shrink-0 px-5 py-5 border-b border-stone-150 bg-stone-50/90 flex justify-between items-start">
                             <div className="space-y-1">
+                                <button type="button" onClick={async () => { if (await saveBeforeAgentExit('Save & Close')) setSelectedCust(null); }}
+                                    className="mb-2 inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-stone-200 bg-white pl-2 pr-3 text-sm font-bold text-stone-700 shadow-sm hover:bg-stone-50 cursor-pointer"><ChevronLeft size={18} /> Back</button>
                                 <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-[8px] font-black uppercase text-amber-600 tracking-widest bg-amber-50 border border-amber-200/60 px-1.5 py-0.5 rounded">
                                         {isAgent2 ? 'Dealer Workdesk' : 'Channel Partner Workdesk'}
@@ -1446,7 +1397,8 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                                 )}
                                 <button
                                     onClick={async () => { if (await saveBeforeAgentExit('Save & Close')) setSelectedCust(null); }}
-                                    className="w-8 h-8 rounded-full bg-stone-200/70 hover:bg-stone-300 flex items-center justify-center text-stone-600 hover:text-stone-900 transition-colors font-bold text-xs cursor-pointer"
+                                    aria-label="Close"
+                                    className="hidden sm:flex w-8 h-8 rounded-full bg-stone-200/70 hover:bg-stone-300 items-center justify-center text-stone-600 hover:text-stone-900 transition-colors font-bold text-xs cursor-pointer"
                                 >
                                     <X size={16} />
                                 </button>

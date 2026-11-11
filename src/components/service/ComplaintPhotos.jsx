@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, ImagePlus, X } from 'lucide-react';
+import { Camera, ChevronLeft, ImagePlus, X } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { compressImage } from '../../utils';
 import {
@@ -80,8 +80,9 @@ function PhotoViewer({ url, label, onClose }) {
     }, [onClose]);
     return <div role="dialog" aria-modal="true" aria-label={label} onClick={onClose} className="fixed inset-0 z-[70] flex flex-col bg-black/90 p-3">
         <div className="flex items-center justify-between gap-2 text-white">
-            <p className="min-w-0 text-sm font-semibold break-words">{label}</p>
-            <button type="button" onClick={onClose} aria-label="Close photo" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/15"><X size={22} /></button>
+            <button type="button" onClick={onClose} aria-label="Back to the complaint" className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl bg-white/15 pl-2 pr-3 text-sm font-bold sm:hidden"><ChevronLeft size={18} /> Back</button>
+            <p className="min-w-0 flex-1 text-sm font-semibold break-words">{label}</p>
+            <button type="button" onClick={onClose} aria-label="Close photo" className="hidden sm:inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/15"><X size={22} /></button>
         </div>
         <div className="flex min-h-0 flex-1 items-center justify-center pt-2">
             {url ? <img src={url} alt={label} onClick={event => event.stopPropagation()} className="max-h-full max-w-full object-contain" />
