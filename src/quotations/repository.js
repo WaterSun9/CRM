@@ -1,4 +1,5 @@
 import { payload, fromRow, validate, revisionInfo, clientKey, groupClients, tallyClients, statusOf, liveQuotes, clientSeqOf, clientNoOf, MAX_QUOTES } from './model.js';
+import { filterValue } from '../utils/filterValue';
 
 export const LIST_COLUMNS = 'id,quotation_no,owner_id,owner_name_snapshot,customer_name,customer_phone,quotation_date,capacity_kw,starting_price,status,source_lead_id,converted_lead_id,issued_at,created_at,updated_at,revision:quotation_data->revision,superseded_by:quotation_data->superseded_by,selected_option,kind:quotation_data->>kind,client_id:quotation_data->>client_id,final_of:quotation_data->>final_of,final_id:quotation_data->>final_id,client_no:quotation_data->>client_no,client_seq:quotation_data->>client_seq,village,district,options:quotation_data->form->options,activity:quotation_data->activity';
 export const STATUSES = ['draft','issued','converted','lost'];
@@ -32,7 +33,7 @@ export function createQuotationRepository(client) {
                 // Quote-3255 or Quote-3255-2 finds all of that client's quotes.
                 const number = term.replace(/^quote-?/i,'').trim().replace(/-\d$/,'');
                 const numberFilter = /^\d{1,15}$/.test(number) ? `,quotation_no.eq.${number},quotation_data->>client_no.eq.${number}` : '';
-                query = query.or(`customer_name.ilike.%${term}%,customer_phone.ilike.%${term}%${numberFilter}`);
+                query = query.or(`customer_name.ilike.${filterValue(`%${term}%`)},customer_phone.ilike.${filterValue(`%${term}%`)}${numberFilter}`);
             }
             const { data,error,count } = await query.range(page * size, (page + 1) * size - 1);
             fail(error); return { rows:data, count };
@@ -48,7 +49,7 @@ export function createQuotationRepository(client) {
         async leads(search, page = 0) {
             let query = client.from('admin').select('id,customer_name,phone_number,email_address,full_address,villages,sub_divisions,district,pincode,system_capacity_kwp,module_brand,no_of_modules,module_wp,stage').is('deleted_at',null).not('customer_name','is',null).neq('customer_name','').neq('customer_name','.').order('created_at',{ascending:false}).order('id',{ascending:false});
             const term = search.replace(/[^\p{L}\p{N}\s+-]/gu,'').trim().slice(0,100);
-            if (term) query = query.or(`customer_name.ilike.%${term}%,phone_number.ilike.%${term}%`);
+            if (term) query = query.or(`customer_name.ilike.${filterValue(`%${term}%`)},phone_number.ilike.${filterValue(`%${term}%`)}`);
             const { data,error } = await query.range(page * PAGE_SIZE,(page + 1) * PAGE_SIZE - 1); fail(error); return data;
         },
         // Clients per status, for the sidebar badge (open = clients still waiting on an outcome).

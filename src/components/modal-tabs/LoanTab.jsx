@@ -5,6 +5,7 @@ import { CheckboxRemarkItem, EditableDetailItem } from './shared';
 import { toIndianCommas, formatInputValue, parseIndianNumber } from '../../utils';
 import { createFeasibilityPdf, getMissingFeasibilityFields, mapFeasibilityReport } from '../../feasibilityReport';
 import { useGlobalPopup } from '../GlobalPopup';
+import { todayIST } from '../../utils/warranty';
 
 const LOAN_STATUS_OPTIONS = ['Processed', 'Sanctioned', 'Rejected', 'Returned', '1st Payment', '2nd Payment'];
 
@@ -30,7 +31,7 @@ export default function LoanTab({
 }) {
     const { showAlert } = useGlobalPopup();
     const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayIST();
     const [loanDraftStatus, setLoanDraftStatus] = useState('Sanctioned');
     const [loanDraftDate, setLoanDraftDate] = useState(today);
     const [loanDraftRemark, setLoanDraftRemark] = useState('');

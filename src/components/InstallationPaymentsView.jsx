@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useGlobalPopup } from './GlobalPopup';
 import { buildPayoutLedgerWorkbook } from '../utils/vendorPaymentsWorkbook';
+import { todayIST } from '../utils/warranty';
 
 // Only the columns this ledger renders. created_at is the last-resort payout
 // date for records with no delivery or installation date; without it the
@@ -41,7 +42,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
 
     // Helper to compute payout details (1st of month M+1)
     const getPayoutDetails = (dateStr, fallbackDateStr) => {
-        const targetDateStr = dateStr || fallbackDateStr || new Date().toISOString().split('T')[0];
+        const targetDateStr = dateStr || fallbackDateStr || todayIST();
         
         // Parse UTC date safely
         const parts = targetDateStr.split('-');
@@ -93,18 +94,26 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                 setInstallations(data);
             } else {
                 console.error("Error fetching completed installations for ledger:", error);
-                // Fallback: try fetching where installation_status is not null and filter in memory
-                const { data: allData } = await supabase
-                    .from('admin')
-                    // Only the columns this ledger renders. It was select('*'), pulling
-                // ~90 columns for every installed customer - now 3,278 rows since
-                // the installation_status filter was fixed.
-                .select(LEDGER_COLUMNS)
-                    .is('deleted_at', null)
-                    .not('vendor', 'is', null)
-                    .neq('vendor', '')
-                    .not('installation_status', 'is', null);
-                if (allData) {
+                // Fallback: try fetching where installation_status is not null and
+                // filter in memory. Paged like the main read - one request stops at
+                // 1,000 rows, which made every total short with no warning.
+                let allData = [];
+                let fallbackError = null;
+                for (let from = 0; ; from += 1000) {
+                    const page = await supabase
+                        .from('admin')
+                        .select(LEDGER_COLUMNS)
+                        .is('deleted_at', null)
+                        .not('vendor', 'is', null)
+                        .neq('vendor', '')
+                        .not('installation_status', 'is', null)
+                        .order('id', { ascending: true })
+                        .range(from, from + 999);
+                    if (page.error) { fallbackError = page.error; break; }
+                    allData = allData.concat(page.data || []);
+                    if (!page.data || page.data.length < 1000) break;
+                }
+                if (!fallbackError) {
                     const matched = allData.filter(c =>
                         normalizeInstallationStatus(c.installation_status) === 'Yes' ||
                         ['yes', 'installed'].includes(String(c.installation_status || '').trim().toLowerCase())
@@ -112,6 +121,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
                     setInstallations(matched);
                 } else {
                     setInstallations([]);
+                    showAlert('Could not load the installation payments, so the totals are not shown. Refresh the page to try again. (' + fallbackError.message + ')', { type: 'error' });
                 }
             }
         } catch (err) {
@@ -120,7 +130,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [showAlert]);
 
     useEffect(() => {
         fetchInstallations();
@@ -219,7 +229,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         if (currentUser?.userType !== 'admin') return;
         
         const isPaid = nextStatus === 'Paid';
-        const paidDate = isPaid ? new Date().toISOString().split('T')[0] : null;
+        const paidDate = isPaid ? todayIST() : null;
         const paidBy = isPaid ? currentUser.name : null;
         
         setUpdatingId(customerRecord.id);
@@ -301,7 +311,7 @@ export default function InstallationPaymentsView({ onSelectCustomer, currentUser
         }
 
         setPayingAll(true);
-        const today = new Date().toISOString().split('T')[0];
+        const today = todayIST();
         const paidBy = currentUser.name || 'Admin';
         const unpaidIds = unpaidRecords.map(r => r.id);
 

@@ -97,6 +97,7 @@ export default function ChannelPartnerManagementView({ customers = [], currentUs
                 .from('admin')
                 .select('channel_partner')
                 .is('deleted_at', null)
+                .order('id', { ascending: true })
                 .range(from, from + pageSize - 1);
             if (error) throw error;
             if (!data || data.length === 0) break;

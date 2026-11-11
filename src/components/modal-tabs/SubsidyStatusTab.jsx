@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { History } from 'lucide-react';
 import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, isFinalTagValue } from '../../constants';
 import { CheckboxRemarkItem } from './shared';
+import { todayIST } from '../../utils/warranty';
 
 export default function SubsidyStatusTab({
     customer,
@@ -18,7 +19,7 @@ export default function SubsidyStatusTab({
     onFilePreview,
     onUpdateRemark
 }) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayIST();
     const [draftStatus, setDraftStatus] = useState('Approved');
     const [draftDate, setDraftDate] = useState(today);
     const [draftRemark, setDraftRemark] = useState('');
@@ -34,7 +35,7 @@ export default function SubsidyStatusTab({
 
     const handleSaveSubsidyTag = async () => {
         const newTag = editData.subsidy_tag;
-        const entryDate = new Date().toISOString().split('T')[0];
+        const entryDate = todayIST();
         let updatedHistory = editData.subsidy_history || [];
         
         if (newTag) {
@@ -226,7 +227,7 @@ export default function SubsidyStatusTab({
                             <div className="flex justify-end gap-2 pt-1.5">
                                 <button
                                     onClick={async () => {
-                                        const entryDate = draftDate || new Date().toISOString().split('T')[0];
+                                        const entryDate = draftDate || todayIST();
                                         const newEntry = {
                                             status: draftStatus,
                                             date: entryDate,

@@ -3,6 +3,7 @@ import { Tag, Search, RefreshCw, ChevronDown } from 'lucide-react';
 import { SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, CUSTOMER_CARD_COLUMNS, STAGE_IDS } from '../constants';
 import { normalizeSubsidyTag } from '../utils';
 import { supabase } from '../supabase';
+import { filterValue } from '../utils/filterValue';
 
 const PAGE_SIZE = 50;
 
@@ -97,7 +98,7 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
                 // and unused. The detail modal fetches the full record on open.
                 .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
-                .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+                .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).order('id', { ascending: true })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 
             if (targetPartner) {
@@ -113,7 +114,7 @@ export default function SubsidyView({ onSelectCustomer, isChannelPartnerOffice, 
 
             // Direct Backend Search across name, phone, consumer_no
             if (debouncedSearch) {
-                query = query.or(`customer_name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%,consumer_no.ilike.%${debouncedSearch}%`);
+                query = query.or(`customer_name.ilike.${filterValue(`%${debouncedSearch}%`)},phone_number.ilike.${filterValue(`%${debouncedSearch}%`)},consumer_no.ilike.${filterValue(`%${debouncedSearch}%`)}`);
             }
 
             const { data, error } = await query;

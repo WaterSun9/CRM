@@ -3,6 +3,7 @@ import { IndianRupee, Search, RefreshCw, ChevronDown } from 'lucide-react';
 import { LOAN_TAGS, LOAN_TAG_COLORS, CUSTOMER_CARD_COLUMNS, STAGE_IDS } from '../constants';
 import { normalizeLoanTag } from '../utils';
 import { supabase } from '../supabase';
+import { filterValue } from '../utils/filterValue';
 
 const PAGE_SIZE = 50;
 
@@ -110,7 +111,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
                 .select(CUSTOMER_CARD_COLUMNS)
                 .is('deleted_at', null)
                 .neq('stage', STAGE_IDS.COMPLETED)
-                .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+                .order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).order('id', { ascending: true })
                 .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
 
             if (targetPartner) {
@@ -126,7 +127,7 @@ export default function LoanView({ onSelectCustomer, isChannelPartnerOffice, par
 
             // Direct Backend Search across name, phone, consumer_no
             if (debouncedSearch) {
-                query = query.or(`customer_name.ilike.%${debouncedSearch}%,phone_number.ilike.%${debouncedSearch}%,consumer_no.ilike.%${debouncedSearch}%`);
+                query = query.or(`customer_name.ilike.${filterValue(`%${debouncedSearch}%`)},phone_number.ilike.${filterValue(`%${debouncedSearch}%`)},consumer_no.ilike.${filterValue(`%${debouncedSearch}%`)}`);
             }
 
             const { data, error } = await query;

@@ -13,6 +13,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { Plus, Trash2 } from 'lucide-react';
+import { todayIST } from '../utils/warranty';
 
 const DEFAULT_COLORS = {
     Approved:   'bg-emerald-100 text-emerald-700',
@@ -37,7 +38,7 @@ export default function HistoryEntryEditor({
 }) {
     const allColors = { ...DEFAULT_COLORS, ...statusColors };
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayIST();
     const addEntry = () => onChange([
         ...entries,
         { status: statusOptions[0], date: today, remark: '', created_at: new Date().toISOString(), isNew: true },

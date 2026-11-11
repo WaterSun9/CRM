@@ -35,19 +35,41 @@ async function shrink(file) {
     return small;
 }
 
-// One photo: into storage at {issue}/{me}/{kind}-{id}.jpg, then its row. A row
-// that cannot be saved takes its file back out of storage.
+// A dropped connection (common on site) is worth another try; a refusal is not.
+const isNetworkFailure = failure => {
+    const text = `${failure?.name || ''} ${failure?.message || ''}`;
+    const status = Number(failure?.statusCode ?? failure?.status);
+    return /fetch|network|timed? ?out|load failed|connection/i.test(text) || status === 0 || status >= 500;
+};
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Up to 3 tries, 1 s then 3 s apart, while the failure is the network.
+async function withRetry(step) {
+    let result;
+    for (const wait of [0, 1000, 3000]) {
+        if (wait) await pause(wait);
+        try { result = await step(); } catch (failure) { result = { error: failure }; }
+        if (!result?.error || !isNetworkFailure(result.error)) return result;
+    }
+    return result;
+}
+
+// One photo: into storage at {issue}/{me}/{kind}-{id}.jpg, then its row. Both
+// steps are retried on a bad signal; a row that still cannot be saved takes its
+// file back out of storage, so no photo is left behind without a row.
 async function addPhoto(issueId, userId, kind, file, label = null) {
     const small = await shrink(file);
     const path = photoPath(issueId, userId, kind, newId(), small.type);
-    const uploaded = await supabase.storage.from(BUCKET).upload(path, small, { upsert: false, contentType: small.type, cacheControl: '3600' });
-    if (uploaded.error) throw uploaded.error;
-    const saved = await supabase.from('service_issue_files').insert({
+    const uploaded = await withRetry(() => supabase.storage.from(BUCKET).upload(path, small, { upsert: false, contentType: small.type, cacheControl: '3600' }));
+    // "Already exists" after a retry means an earlier try did arrive.
+    if (uploaded.error && !/already exists|duplicate/i.test(uploaded.error.message || '')) throw uploaded.error;
+    const saved = await withRetry(() => supabase.from('service_issue_files').insert({
         issue_id: issueId, storage_path: path, file_name: String(file.name || `${kind}.jpg`).slice(0, 200),
         mime_type: small.type, uploaded_by: userId, kind, ...(label ? { label } : {})
-    });
-    if (saved.error) {
-        await supabase.storage.from(BUCKET).remove([path]).catch(() => {});
+    }));
+    // storage_path is unique: "duplicate" after a retry means the row is saved.
+    if (saved.error && saved.error.code !== '23505') {
+        await withRetry(() => supabase.storage.from(BUCKET).remove([path])).catch(() => {});
         throw saved.error;
     }
 }

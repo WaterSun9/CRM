@@ -1,6 +1,7 @@
 import React from 'react';
 import { PauseCircle, AlertTriangle, CheckCircle2, MessageSquare, CornerUpLeft, Save, Sparkles } from 'lucide-react';
 import { PRIMARY_STAGES, HOLD_STATUS_TAGS } from '../../constants';
+import { todayIST } from '../../utils/warranty';
 
 export default function HoldProcurementTab({
     customer,
@@ -14,7 +15,7 @@ export default function HoldProcurementTab({
     saving,
     setSaving
 }) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayIST();
 
     // Normalize hold_procurement object safely from editData or customer
     const getHoldState = () => {

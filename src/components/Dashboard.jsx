@@ -20,6 +20,7 @@ import { fuzzyPatterns, mergeSearchResults } from '../utils/fuzzySearch';
 // Secondary views and modals with auto-retry on new deployments
 import { monthValueFor, recentMonthOptions } from '../utils/monthFilter';
 import { customerFilePaths } from '../utils/customerFiles';
+import { filterValue } from '../utils/filterValue';
 const SubsidyView = lazyWithRetry(() => import('./SubsidyView'));
 const LoanView = lazyWithRetry(() => import('./LoanView'));
 const InstallationView = lazyWithRetry(() => import('./InstallationView'));
@@ -62,6 +63,8 @@ import {
     LayoutDashboard, Activity, UserCog, Menu, X,
     Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldCheck, ClipboardList, UserRound, Hash
 } from 'lucide-react';
+import { todayIST } from '../utils/warranty';
+import { liveWhileVisible } from '../utils/liveWhileVisible';
 
 // ── NavBtn ────────────────────────────────────────────────────────────────────
 const NavBtn = ({ view, stage, icon: Icon, label, count, redBadge, currentView, selectedStage, setCurrentView, setSelectedStage, setSidebarOpen }) => {
@@ -297,6 +300,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     .is('deleted_at', null)
                     .order('updated_at', { ascending: false, nullsFirst: false })
                     .order('created_at', { ascending: false })
+                    .order('id', { ascending: true })
                     .range(from, from + CHUNK_SIZE - 1);
 
                 if (isChannelPartnerOffice) {
@@ -425,6 +429,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             .eq('stage', normalizedStage)
             .order('updated_at', { ascending: false, nullsFirst: false })
             .order('created_at', { ascending: false })
+            .order('id', { ascending: true })
             .range(pageNum * 50, (pageNum + 1) * 50 - 1);
             
         if (isChannelPartnerOffice) {
@@ -513,7 +518,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
     }, [selectedStage, channelPartnerFilter, dealerFilter, leadMonthFilter, registrationMonthFilter, isChannelPartnerOffice, partnerName]);
 
     useEffect(() => {
-        const channel = supabase.channel('admin_changes')
+        const stopLive = liveWhileVisible(supabase, () => supabase.channel('admin_changes')
             .on('postgres_changes', { 
                 event: '*', 
                 schema: 'public', 
@@ -571,11 +576,11 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     setCustomers(prev => prev.filter(c => c.id !== (payload.old?.id || payload.new?.id)));
                 }
             })
-            .subscribe();
+            .subscribe(), null);
 
         return () => {
             if (metricsRefreshTimer.current) clearTimeout(metricsRefreshTimer.current);
-            supabase.removeChannel(channel);
+            stopLive();
         };
         // user identity is stable for a session, but it is now read inside the
         // handler (isVisibleToMe), so it belongs in the deps rather than being
@@ -647,10 +652,10 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                 return query;
             };
 
-            let orString = `customer_name.ilike.%${q}%`;
+            let orString = `customer_name.ilike.${filterValue(`%${q}%`)}`;
             if (!isNaN(q) && q.length > 0) {
                 // If the user types a number, search it exactly in the numeric columns
-                orString += `,phone_number.eq.${q},consumer_no.eq.${q}`;
+                orString += `,phone_number.eq.${filterValue(q)},consumer_no.eq.${filterValue(q)}`;
             }
             const { data, error } = await scoped(8).or(orString);
             if (error) console.error("Search error:", error);
@@ -1081,20 +1086,28 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             // stored value first - merging into {} erased earlier hold status
             // and comments.
             let raw = customer.hold_procurement;
+            let readFailed = false;
             if (raw === undefined) {
-                const { data: current } = await supabase.from('admin').select('hold_procurement').eq('id', id).maybeSingle();
+                const { data: current, error: holdReadError } = await supabase.from('admin').select('hold_procurement').eq('id', id).maybeSingle();
+                // A failed read must not be merged as {}: that wrote over the
+                // stored hold status and comments. Leave them as they are.
+                if (holdReadError) readFailed = true;
                 raw = current?.hold_procurement;
             }
-            if (raw) {
-                try {
-                    existing = typeof raw === 'string' ? (JSON.parse(raw) || {}) : (raw || {});
-                } catch { existing = {}; }
+            if (readFailed) {
+                showAlert('Moved to Lost Project, but the stage it came from could not be noted (no connection). Its earlier hold comments are kept.', { type: 'warning' });
+            } else {
+                if (raw) {
+                    try {
+                        existing = typeof raw === 'string' ? (JSON.parse(raw) || {}) : (raw || {});
+                    } catch { existing = {}; }
+                }
+                followUp.hold_procurement = {
+                    ...existing,
+                    previous_stage: oldStage,
+                    hold_date: todayIST(),
+                };
             }
-            followUp.hold_procurement = {
-                ...existing,
-                previous_stage: oldStage,
-                hold_date: new Date().toISOString().split('T')[0],
-            };
         }
 
         const followUpRes = await runWrite(

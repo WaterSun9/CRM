@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldAlert, Zap } from 'lucide-react';
 import { normalizeMeterInstallation } from '../../utils';
+import { todayIST } from '../../utils/warranty';
 
 export default function MeterInstallationTab({
     customer,
@@ -69,7 +70,7 @@ export default function MeterInstallationTab({
                                     type="button"
                                     disabled={!canEditMeter}
                                     onClick={() => {
-                                        const todayStr = new Date().toISOString().split('T')[0];
+                                        const todayStr = todayIST();
                                         const saved = customer || {};
                                         const savedMeter = normalizeMeterInstallation(saved.meter_installation) || 'No';
                                         setEditData(prev => ({

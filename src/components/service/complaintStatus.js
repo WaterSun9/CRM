@@ -25,13 +25,20 @@ async function load() {
     if (loading) return loading;
     loading = (async () => {
         const since = new Date(Date.now() - FIXED_GREEN_DAYS * 86400000).toISOString();
-        const { data, error } = await supabase.from('service_issues')
-            .select('id, customer_id, ticket_no, status, completed_at')
-            .not('customer_id', 'is', null)
-            .or(`status.in.(${OPEN_STATUSES.join(',')}),and(status.eq.completed,completed_at.gte."${since}")`)
-            .order('created_at', { ascending: false })
-            .limit(2000);
-        if (error) return;   // keep the last known colours; the next refresh tries again
+        // Paged: one request returns at most 1,000 rows (.limit(2000) still
+        // stopped at 1,000), so wrench colours went missing past that.
+        const data = [];
+        for (let from = 0; ; from += 1000) {
+            const page = await supabase.from('service_issues')
+                .select('id, customer_id, ticket_no, status, completed_at')
+                .not('customer_id', 'is', null)
+                .or(`status.in.(${OPEN_STATUSES.join(',')}),and(status.eq.completed,completed_at.gte."${since}")`)
+                .order('created_at', { ascending: false }).order('id', { ascending: true })
+                .range(from, from + 999);
+            if (page.error) return;   // keep the last known colours; the next refresh tries again
+            data.push(...(page.data || []));
+            if (!page.data || page.data.length < 1000) break;
+        }
         const next = new Map();
         for (const row of data || []) {
             const current = next.get(row.customer_id);

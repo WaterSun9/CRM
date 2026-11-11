@@ -3,6 +3,7 @@ import { Building2, Mail, Zap, Trash2, Plus, Copy, Check, ClipboardPaste, Layers
 import { SectionHeader, EditableDetailItem, fetchVendorNames } from './shared';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
 import { formatInputValue } from '../../utils';
+import { todayIST } from '../../utils/warranty';
 
 export default function MaterialDeliveryTab({
     customer,
@@ -282,7 +283,7 @@ export default function MaterialDeliveryTab({
                                     setEditData(prev => ({
                                         ...prev,
                                         vendor_payment_status: isPaid ? 'Paid' : 'Pending',
-                                        vendor_paid_date: isPaid ? new Date().toISOString().split('T')[0] : null,
+                                        vendor_paid_date: isPaid ? todayIST() : null,
                                         vendor_paid_by: isPaid ? (user?.name || 'Admin') : null,
                                     }));
                                 }}

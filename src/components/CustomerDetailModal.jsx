@@ -62,7 +62,7 @@ import { formatCustomerTimestamp } from '../utils/customerActivity';
 import ComplaintButton from './service/ComplaintButton';
 import ServiceHistory from './service/ServiceHistory';
 import { WarrantyCustomerBody } from './service/WarrantyCustomerPanel';
-import { warrantyInfo } from '../utils/warranty';
+import { warrantyInfo, todayIST } from '../utils/warranty';
 // ─── formatDateTime: helper to format date as "04 Aug, 11:01 PM" ──────────────
 const formatDateTime = (date) => {
     if (!date) return '–';
@@ -526,7 +526,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
 
     useEffect(() => {
         if (showAgreementPopup) {
-            const rawDate = editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0];
+            const rawDate = editData.stages_remarks?.discom_agreement_date || todayIST();
             const formattedDate = formatDateToDDMMYYYY(rawDate);
 
             // Find signature and stamp documents
@@ -620,7 +620,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             ['Village', editData.villages, 'Leads'],
             ['Taluka / Sub Division', editData.sub_divisions, 'Leads'],
             ['District', editData.district, 'Leads'],
-            ['Agreement Execution Date', editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0], 'DISCOM Submission'],
+            ['Agreement Execution Date', editData.stages_remarks?.discom_agreement_date || todayIST(), 'DISCOM Submission'],
         ];
         const missing = requiredFields.filter(([, value]) => !String(value || '').trim());
         if (missing.length) {
@@ -658,7 +658,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         if (stampDoc && stampUrl) urlCacheRef.current[stampDoc.storage_path] = stampUrl;
         if (gpaStampDoc && gpaStampUrl) urlCacheRef.current[gpaStampDoc.storage_path] = gpaStampUrl;
 
-        const rawDate = editData.stages_remarks?.discom_agreement_date || new Date().toISOString().split('T')[0];
+        const rawDate = editData.stages_remarks?.discom_agreement_date || todayIST();
         const formattedDate = formatDateToDDMMYYYY(rawDate);
 
         setAgreementData({
@@ -1368,7 +1368,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             updates.hold_procurement = {
                 ...prevHold,
                 previous_stage: (oldStage !== STAGE_IDS.LOST_PROJECT) ? oldStage : (prevHold.previous_stage || STAGE_IDS.LEADS),
-                hold_date: new Date().toISOString().split('T')[0]
+                hold_date: todayIST()
             };
         }
 
@@ -1540,7 +1540,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         const payload = {
             ...existing,
             previous_stage: originStage,
-            hold_date: new Date().toISOString().split('T')[0],
+            hold_date: todayIST(),
         };
 
         lastSelfWriteRef.current = Date.now();
