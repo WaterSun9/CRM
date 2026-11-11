@@ -8,7 +8,7 @@ import {
     Upload, FileText, Image as ImageIcon, Loader2, Banknote, AlertTriangle, Calendar
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
-import { PROPERTY_TYPES, needsFullLeadDocs } from '../constants';
+import { PROPERTY_TYPES, needsFullLeadDocs, SOCIAL_CATEGORIES } from '../constants';
 import { FilePreviewModal } from './modal-tabs/shared';
 import CropPhotoModal from './CropPhotoModal';
 import { fetchAgent2SubAgents, sanitizePhoneNumber, downloadFileWithSaveAs } from '../utils';
@@ -604,8 +604,8 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">Pincode <span className="normal-case text-stone-400">(optional)</span></label>
-                                <input type="text" inputMode="numeric" maxLength={6} value={formData.pincode || ''}
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">Pincode <span className="text-red-500 font-bold">*</span></label>
+                                <input type="text" inputMode="numeric" maxLength={6} required value={formData.pincode || ''}
                                     {...lockProps('pincode')}
                                     onChange={e => handleChange('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
@@ -853,6 +853,19 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 {String(formData.property_type || '').toLowerCase() === 'commercial' && String(formData.payment_type || '').trim().toLowerCase() === 'cash' && (
                                     <p className="text-[10px] font-semibold text-amber-700">Commercial: the full document set is needed even for cash.</p>
                                 )}
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">Category</label>
+                                <select
+                                    value={formData.social_category || ''}
+                                    {...lockProps('social_category')}
+                                    onChange={(e) => handleChange('social_category', e.target.value)}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 font-semibold text-stone-800 transition-all"
+                                >
+                                    <option value="">Select category</option>
+                                    {SOCIAL_CATEGORIES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
                             </div>
 
                             {String(formData.payment_type || '').trim().toLowerCase() === 'loan' && (

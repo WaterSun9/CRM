@@ -106,7 +106,7 @@ function Details({ card, partnerPhone, dealerPhone, canEdit, canEditLocation, sa
                         hint: 'The completion OTP goes to this number.' }} />
             </Section>
             <Section icon={MapPin} title="Location">
-                <Fact label="Address" value={card.full_address || [card.villages, card.district].filter(Boolean).join(', ')} canEdit={canEditLocation} addOnly={locationAddOnly}
+                <Fact label="Address" value={card.full_address || [card.villages, card.district].filter(Boolean).join(', ')} canEdit={canEditLocation}
                     edit={{ placeholder: 'House, street, village', save: text => { if (!text.trim()) throw new Error('Enter the address.'); return saveLocation({ full_address: text.trim() }); } }} />
                 <Fact label="Pincode" value={pincode} canEdit={canEditLocation} addOnly={locationAddOnly}
                     edit={{ inputMode: 'numeric', placeholder: '385340', save: text => { const pin = text.replace(/\D/g, ''); if (!isPincode(pin)) throw new Error('Enter the 6-digit pincode.'); return saveLocation({ pincode: pin }); } }} />
@@ -200,7 +200,7 @@ export function WarrantyCustomerBody({ customer, user, onCardChanged }) {
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState(null);
     // Office (admin / staff) edits the details here. Everyone else only sees them, except that
-    // they can add a missing address or pincode (set_customer_location,
+    // they can change the address and add a missing pincode (set_customer_location,
     // 20261028130000_partner_customer_location.sql); the full customer card stays office-only.
     const canEdit = OFFICE_TYPES.includes(user?.userType);
     const canEditLocation = canEdit || PARTNER_TYPES.includes(user?.userType);

@@ -4,7 +4,7 @@ import { User, ClipboardList, Edit3, X } from 'lucide-react';
 import { SectionHeader, EditableDetailItem, CheckboxRemarkItem } from './shared';
 import { useGlobalPopup } from '../GlobalPopup';
 import { calculateSystemCapacityKwp } from '../../utils/capacity';
-import { PROPERTY_TYPES, needsFullLeadDocs } from '../../constants';
+import { PROPERTY_TYPES, needsFullLeadDocs, SOCIAL_CATEGORIES } from '../../constants';
 
 export default function LeadsTab({
     editData,
@@ -188,6 +188,19 @@ export default function LeadsTab({
                                 </select>
                         ) : (
                             <p className="text-xs font-bold text-stone-700">{editData.property_type || 'Residential'}</p>
+                        )}
+                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1 mt-3">Category</label>
+                        {isEditable ? (
+                            <select
+                                    value={editData.social_category || ''}
+                                    onChange={(e) => handleChange('social_category', e.target.value || null)}
+                                    className="w-full md:w-1/3 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-300 font-semibold text-stone-700"
+                                >
+                                    <option value="">Not set</option>
+                                    {SOCIAL_CATEGORIES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                        ) : (
+                            <p className="text-xs font-bold text-stone-700">{editData.social_category || 'Not set'}</p>
                         )}
                     </div>
 
