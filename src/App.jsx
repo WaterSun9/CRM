@@ -16,9 +16,9 @@
 //   src/components/LoginScreen.jsx
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { supabase } from './supabase';
-import { Sun, MessageCircle, X } from 'lucide-react';
+import { Sun, MessageCircle, X, ChevronLeft, ShieldCheck, ClipboardList } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import Dashboard from './components/Dashboard';
 import SetPasswordPage from './components/SetPassword';
@@ -52,6 +52,7 @@ const StampPortal = lazyWithRetry(() => import('./components/StampPortal'));
 const TeamChat = lazyWithRetry(() => import('./components/TeamChat'));
 import useChatUnread from './hooks/useChatUnread';
 const ServiceIssuesView = lazyWithRetry(() => import('./components/ServiceIssuesView'));
+const WarrantyView = lazyWithRetry(() => import('./components/WarrantyView'));
 const TechnicianPortal = lazyWithRetry(() => import('./components/TechnicianPortal'));
 const DevRoleSwitcher = import.meta.env.DEV
     ? lazyWithRetry(() => import('./components/DevRoleSwitcher'))
@@ -74,12 +75,18 @@ export default function App() {
     const [showTeamChat, setShowTeamChat] = useState(false);
     const [showServiceIssues, setShowServiceIssues] = useState(false);
     const [issueCustomer, setIssueCustomer] = useState(null);
+    // The Complaints screen (showServiceIssues) has two tabs. The raise-complaint
+    // form (issueCustomer) opens on top of it, so closing the form returns there.
+    const [serviceTab, setServiceTab] = useState('complaints');
+    const complaintBackRef = useRef(null);
+    // Bumped when the form closes so the complaint list behind it reloads.
+    const [serviceListVersion, setServiceListVersion] = useState(0);
     // A red wrench (complaint open) opens Complaints at that complaint.
     const [focusIssueId, setFocusIssueId] = useState(null);
     useEffect(() => {
         const open = event => {
             if (!event.detail?.issueId) return;
-            setIssueCustomer(null); setFocusIssueId(event.detail.issueId); setShowServiceIssues(['agent','agent2'].includes(user?.userType)); setShowTeamChat(false);
+            setIssueCustomer(null); setServiceTab('complaints'); setFocusIssueId(event.detail.issueId); setShowServiceIssues(['agent','agent2'].includes(user?.userType)); setShowTeamChat(false);
         };
         window.addEventListener('open-complaint', open);
         return () => window.removeEventListener('open-complaint', open);
@@ -306,6 +313,46 @@ export default function App() {
         document.title = chatUnread > 0 ? `(${chatUnread > 99 ? '99+' : chatUnread}) ${base}` : base;
     }, [chatUnread]);
 
+    // Phone back button: each open layer (Complaints screen, raise form) gets a
+    // history entry with the same URL, so Back closes the top layer instead of
+    // leaving the app. Same-URL entries never fire hashchange, so the
+    // #/quotations routing is not disturbed.
+    const canRaiseServiceIssue = TECHNICIAN_FEATURE_ENABLED && user && ['admin', 'sales', 'channel_partner_office', 'channel_partner_office_manager', 'office2', 'agent', 'agent2'].includes(user.userType);
+    const serviceLayers = canRaiseServiceIssue ? (showServiceIssues ? 1 : 0) + (issueCustomer ? 1 : 0) : 0;
+    const serviceHistoryDepth = useRef(0);
+    const skipServicePop = useRef(0);
+    useEffect(() => {
+        if (typeof window === 'undefined' || !window.history?.pushState) return;
+        while (serviceHistoryDepth.current < serviceLayers) {
+            serviceHistoryDepth.current += 1;
+            window.history.pushState({ ...(window.history.state || {}), serviceLayer: serviceHistoryDepth.current }, '', window.location.href);
+        }
+        if (serviceHistoryDepth.current > serviceLayers) {
+            // Closed with an on-screen button: drop the entries we added.
+            const extra = serviceHistoryDepth.current - serviceLayers;
+            serviceHistoryDepth.current = serviceLayers;
+            skipServicePop.current += 1;
+            window.history.go(-extra);
+        }
+    }, [serviceLayers]);
+    useEffect(() => {
+        const pop = () => {
+            if (skipServicePop.current > 0) { skipServicePop.current -= 1; return; }
+            if (serviceHistoryDepth.current === 0) return;
+            serviceHistoryDepth.current -= 1;
+            if (issueCustomer) { setIssueCustomer(null); setServiceListVersion(v => v + 1); }
+            else if (serviceTab === 'complaints' && complaintBackRef.current) {
+                // An open complaint goes back to the list; the page itself stays open.
+                complaintBackRef.current();
+                serviceHistoryDepth.current += 1;
+                window.history.pushState({ ...(window.history.state || {}), serviceLayer: serviceHistoryDepth.current }, '', window.location.href);
+            }
+            else setShowServiceIssues(false);
+        };
+        window.addEventListener('popstate', pop);
+        return () => window.removeEventListener('popstate', pop);
+    }, [issueCustomer, serviceTab]);
+
     if (loading) return <ScreenLoader />;
 
     if (isPasswordRecovery) {
@@ -316,7 +363,15 @@ export default function App() {
     const isVendor = user && (user.userType === 'vendor');
     const isStamp = user && (user.userType === 'stamp');
     const isTechnician = user && user.userType === 'technician';
-    const canRaiseServiceIssue = TECHNICIAN_FEATURE_ENABLED && user && ['admin', 'sales', 'channel_partner_office', 'channel_partner_office_manager', 'office2', 'agent', 'agent2'].includes(user.userType);
+    // Raise a complaint for one customer. Only the form opens; if the Complaints
+    // screen is already open it stays behind, so closing the form returns to it.
+    const raiseServiceIssue = customer => { setIssueCustomer(customer); setShowTeamChat(false); };
+    const closeIssueForm = () => { setIssueCustomer(null); setServiceListVersion(v => v + 1); };
+    // tab: 'warranty' or 'complaints' (default). A click event passed straight
+    // through counts as the default.
+    const openComplaints = tab => { setServiceTab(tab === 'warranty' ? 'warranty' : 'complaints'); setIssueCustomer(null); setFocusIssueId(null); setShowServiceIssues(true); setShowTeamChat(false); };
+    // One page with two tabs, named as on the website's menu.
+    const serviceTitle = 'Warranty & Complaints';
 
     const handleLogout = async () => {
         setAuthError('');
@@ -344,7 +399,7 @@ export default function App() {
                 {!user ? (
                     <LoginScreen onLogin={(userData) => { setAuthError(''); setUser(userData); }} initialError={authError} />
                 ) : isAgent ? (
-                    <AgentPortal user={user} onOpenComplaints={() => {setIssueCustomer(null);setFocusIssueId(null);setShowServiceIssues(true);setShowTeamChat(false);}} onLogout={handleLogout} onRaiseServiceIssue={canRaiseServiceIssue ? customer => { setIssueCustomer(customer); setShowServiceIssues(true); setShowTeamChat(false); } : undefined} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
+                    <AgentPortal user={user} onOpenComplaints={openComplaints} onLogout={handleLogout} onRaiseServiceIssue={canRaiseServiceIssue ? raiseServiceIssue : undefined} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isVendor ? (
                     <VendorPortal user={user} onLogout={handleLogout} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 ) : isStamp ? (
@@ -354,15 +409,43 @@ export default function App() {
                 ) : isTechnician ? (
                     <div className="min-h-screen bg-[#FCFBFA] flex flex-col items-center justify-center gap-4 p-6"><p className="text-sm text-stone-600">This portal is temporarily unavailable.</p><button type="button" onClick={handleLogout} className="rounded-lg border px-4 py-2 text-xs font-bold">Logout</button></div>
                 ) : (
-                    <Dashboard user={user} onLogout={handleLogout} onRaiseServiceIssue={canRaiseServiceIssue ? customer => { setIssueCustomer(customer); setShowServiceIssues(true); setShowTeamChat(false); } : undefined} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
+                    <Dashboard user={user} onLogout={handleLogout} onRaiseServiceIssue={canRaiseServiceIssue ? raiseServiceIssue : undefined} onOpenDevSwitcher={import.meta.env.DEV ? () => setDevSwitcherOpen(true) : undefined} />
                 )}
             </Suspense>
 
             {canRaiseServiceIssue && <>
-                {showServiceIssues && <div role="dialog" aria-label={issueCustomer ? 'Raise a complaint' : 'Complaints'} aria-modal="true" className={issueCustomer ? 'fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3 sm:p-6' : 'fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/50 p-3 sm:p-6'}>
-                    <div className={issueCustomer ? 'w-full max-w-3xl max-h-[92dvh] overflow-y-auto rounded-2xl bg-white p-3 shadow-2xl sm:p-5' : 'w-full max-w-[1500px] max-h-[94dvh] overflow-y-auto rounded-2xl bg-[#FCFBFA] shadow-2xl'}>
-                        <div className="sticky top-0 z-10 flex justify-end border-b bg-white p-2"><button type="button" onClick={() => { setShowServiceIssues(false); setIssueCustomer(null); }} aria-label="Close complaints" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border"><X size={20} /></button></div>
-                        <Suspense fallback={<ScreenLoader />}><ServiceIssuesView key={issueCustomer?.id || `all-issues:${focusIssueId || ''}`} user={user} initialCustomer={issueCustomer} initialIssueId={focusIssueId} formOnly={Boolean(issueCustomer)} /></Suspense>
+                {/* Complaints screen: full page on phones, centred dialog from sm up. */}
+                {showServiceIssues && <div role="dialog" aria-label={serviceTitle} aria-modal="true" className="fixed inset-0 z-[60] overflow-y-auto bg-[#FCFBFA] sm:flex sm:items-center sm:justify-center sm:overflow-hidden sm:bg-stone-950/50 sm:p-6">
+                    <div className="min-h-full w-full bg-[#FCFBFA] sm:min-h-0 sm:max-h-[94dvh] sm:max-w-[1500px] sm:overflow-y-auto sm:rounded-2xl sm:shadow-2xl">
+                        <div className="sticky top-0 z-10 border-b bg-white">
+                            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 p-2">
+                                <button type="button" onClick={() => { if (serviceTab === 'complaints' && complaintBackRef.current) complaintBackRef.current(); else setShowServiceIssues(false); }} aria-label="Back" className="justify-self-start inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-stone-200 bg-white pl-2 pr-3 text-sm font-bold text-stone-700 shadow-sm hover:bg-stone-50 cursor-pointer"><ChevronLeft size={18} /> Back</button>
+                                <h2 className="truncate text-center text-sm font-black uppercase tracking-tight text-stone-900">{serviceTitle}</h2>
+                                <button type="button" onClick={() => setShowServiceIssues(false)} aria-label="Close complaints" className="hidden min-h-11 min-w-11 items-center justify-center justify-self-end rounded-lg border sm:flex"><X size={20} /></button>
+                            </div>
+                            <div role="tablist" aria-label="Warranty and complaints" className="flex gap-2 px-3 pb-3 sm:px-4">
+                                {[['warranty', 'Warranty customers', ShieldCheck], ['complaints', 'Complaints', ClipboardList]].map(([id, label, Icon]) =>
+                                    <button key={id} type="button" role="tab" aria-selected={serviceTab === id} onClick={() => setServiceTab(id)}
+                                        className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold ${serviceTab === id ? 'bg-stone-900 text-white' : 'border bg-white text-stone-700'}`}><Icon size={14} /> {label}</button>)}
+                            </div>
+                        </div>
+                        <div className="p-3 sm:p-4">
+                            <Suspense fallback={<ScreenLoader />}>
+                                {serviceTab === 'warranty'
+                                    ? <WarrantyView user={user} onRaiseServiceIssue={raiseServiceIssue} />
+                                    : <ServiceIssuesView key={`all-issues:${focusIssueId || ''}:${serviceListVersion}`} user={user} initialIssueId={focusIssueId} embedded backRef={complaintBackRef} onOpenWarranty={() => setServiceTab('warranty')} />}
+                            </Suspense>
+                        </div>
+                    </div>
+                </div>}
+                {/* Raise-complaint form, on top of the Complaints screen when that is open. */}
+                {issueCustomer && <div role="dialog" aria-label="Raise a complaint" aria-modal="true" className="fixed inset-0 z-[90] flex items-center justify-center bg-stone-950/60 p-3 sm:p-6">
+                    <div className="w-full max-w-3xl max-h-[92dvh] overflow-y-auto rounded-2xl bg-white p-3 shadow-2xl sm:p-5">
+                        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white p-2">
+                            <button type="button" onClick={closeIssueForm} aria-label="Back" className="justify-self-start inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl border border-stone-200 bg-white pl-2 pr-3 text-sm font-bold text-stone-700 shadow-sm hover:bg-stone-50 cursor-pointer"><ChevronLeft size={18} /> Back</button>
+                            <button type="button" onClick={closeIssueForm} aria-label="Close complaint form" className="hidden min-h-11 min-w-11 items-center justify-center rounded-lg border sm:flex"><X size={20} /></button>
+                        </div>
+                        <Suspense fallback={<ScreenLoader />}><ServiceIssuesView key={issueCustomer.id || 'raise-form'} user={user} initialCustomer={issueCustomer} formOnly /></Suspense>
                     </div>
                 </div>}
             </>}

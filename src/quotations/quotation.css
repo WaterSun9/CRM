@@ -536,7 +536,8 @@
 .q-list-heading { display:flex; align-items:center; gap:10px; min-width:0; }
 .q-list-heading h2 { color:#292524; font-size:18px; font-weight:800; letter-spacing:-.25px; }
 .q-list-heading p { color:#a8a29e; font-size:12px; font-weight:600; }
-.q-module .q-list-back { width:42px; min-width:42px; padding:0; border-color:#e7e5e4; color:#57534e; }
+.q-module .q-back { flex:0 0 auto; min-height:44px; padding:0 12px 0 8px; gap:4px; border-color:#e7e5e4; color:#44403c; font-weight:700; }
+.q-module .q-list-back { width:auto; min-width:0; }
 .q-module .q-create { flex:0 0 auto; background:#1c1917; border-color:#1c1917; color:white; box-shadow:0 4px 12px #1c19171a; }
 .q-module .q-create:hover { background:#292524; }
 .q-subnav { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 16px; padding-bottom:14px; border-bottom:1px solid #e7e5e4; }
@@ -599,12 +600,16 @@
 .q-module-partner .q-content { width:100%; max-width:28rem; margin-inline:auto; }
 .q-module-partner.q-module-embedded { min-height:100dvh; padding:16px; background:#fcfbfa; }
 .q-module-partner .q-content { padding:0 0 max(92px,calc(76px + env(safe-area-inset-bottom))); }
+/* Partner portal opens it full screen: keep the same 16px edge as the portal pages. */
+.q-module-partner:not(.q-module-embedded) .q-content { padding-top:12px; padding-inline:16px; }
 .q-module-partner .q-cards,
 .q-module-partner .q-grid { grid-template-columns:1fr; }
 .q-module-partner .q-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
 .q-module-partner .q-search { min-width:0; width:100%; }
-.q-module-partner .q-filters { flex-wrap:nowrap; gap:4px; }
-.q-module-partner .q-filters button { flex:1 1 0; min-width:0; padding:9px 5px; font-size:11px; }
+.q-module-partner .q-filters { flex-wrap:nowrap; gap:6px; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+.q-module-partner .q-filters::-webkit-scrollbar { display:none; }
+/* Swipe sideways instead of squeezing the names onto three lines (client, 11 Nov 2026). */
+.q-module-partner .q-filters button { flex:0 0 auto; min-width:0; white-space:nowrap; padding:10px 14px; font-size:12px; }
 .q-module-partner .q-card dl { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .q-module-partner .q-card dl>div:last-child { text-align:right; }
 .q-module-partner .q-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -622,8 +627,9 @@
   .q-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
   .q-search { min-width:0; width:100%; }
   .q-toolbar button { padding-inline:12px; }
-  .q-filters { flex-wrap:nowrap; gap:4px; width:100%; }
-  .q-filters button { flex:1 1 0; min-width:0; padding:9px 5px; font-size:11px; }
+  .q-filters { flex-wrap:nowrap; gap:6px; width:100%; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+  .q-filters::-webkit-scrollbar { display:none; }
+  .q-filters button { flex:0 0 auto; min-width:0; white-space:nowrap; padding:10px 14px; font-size:12px; }
   .q-card,.q-panel { padding:18px; }
   .q-card dl { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
   .q-card dl>div { min-width:0; }
@@ -653,7 +659,6 @@
   .q-list-heading { gap:7px; }
   .q-list-heading p { display:none; }
   .q-module .q-create { padding-inline:9px; font-size:12px; }
-  .q-filters button { font-size:10px; padding-inline:3px; }
   .q-editor-actions { margin-inline:-12px; padding-inline:12px; }
   .q-editor-actions button { font-size:11px; padding-inline:6px; }
 }
