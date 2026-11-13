@@ -969,6 +969,18 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         onFileRemove={handleFileRemove}
                                         onPreview={handlePreviewFile}
                                     />
+
+                                    {/* The customer's quotation (PDF or photo), kept with the lead documents as
+                                        Final Quotation. No tick-box column: the attached file is the record. */}
+                                    <AddLeadChecklistItem
+                                        label="Quotation"
+                                        field="lead_quotation"
+                                        checked={Boolean(pendingFiles['lead_quotation'])}
+                                        pendingFile={pendingFiles['lead_quotation']}
+                                        onFileAttach={handleFileAttach}
+                                        onFileRemove={handleFileRemove}
+                                        onPreview={handlePreviewFile}
+                                    />
                                 </div>
                             )}
                         </div>

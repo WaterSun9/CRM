@@ -206,6 +206,8 @@ export default function LeadsTab({
                             <CheckboxRemarkItem label="Light Bill" field="light_bill" value={editData.light_bill} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                             <CheckboxRemarkItem label="Bank Details" field="bank_details" value={editData.bank_details} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                             <CheckboxRemarkItem label="Extra Documents" field="extra_docs" value={editData.extra_docs} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
+                            {/* The customer's quotation, also saved here by Add to leads and by the Quotation box above. */}
+                            <CheckboxRemarkItem label="Quotation" field="lead_quotation" isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                         </div>
                     )}
 
