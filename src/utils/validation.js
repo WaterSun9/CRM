@@ -98,11 +98,10 @@ export const leadSchema = z.object({
         (val) => {
             if (val === null || val === undefined || String(val).trim() === '') return undefined;
             const s = String(val).trim().toUpperCase();
-            return s === 'LOAN' ? 'Loan' : s === 'UNDECIDED' ? 'Undecided' : 'Cash';
+            return s === 'LOAN' ? 'Loan' : s === 'CASH' ? 'Cash' : undefined;
         },
-        z.enum(['Undecided', 'Cash', 'Loan'], {
-            error: () => "Payment Type is required - choose Undecided, Cash or Loan"
-        })
+        // Optional on a lead; it is chosen in the Payment Type stage.
+        z.enum(['Cash', 'Loan']).optional()
     ),
 }).passthrough();
 

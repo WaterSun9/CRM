@@ -1202,17 +1202,18 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(editData.system_capacity_kwp, 'System Capacity');
                 requireField(editData.sub_divisions?.trim(), 'Tehsil / Sub Division');
                 requireField(editData.district?.trim(), 'District');
-                requireField(editData.payment_type?.trim(), 'Payment Type');
                 break;
             case STAGE_IDS.REGISTRATION:
-                // The next stage is Loan or Cash, so an Undecided payment type must be settled.
-                requireField(!isPaymentUndecided(editData.payment_type), 'Payment Type (choose Cash or Loan)');
                 requireField(editData.registration_date, 'Registration Date');
                 requireField(editData.registration_by?.trim(), 'Registration By');
                 requireField(editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim(), 'Feasibility No');
                 requireField(hasFeasibilityDoc, 'Feasibility Document');
                 requireField(hasSubsidyTokenDoc, 'Subsidy Token Photo');
                 requireField(hasApplicationAcknowledgment, 'Application Acknowledgment');
+                break;
+            case STAGE_IDS.PAYMENT_TYPE:
+                // The next stage is Loan or Cash, so the customer's choice must be made here.
+                requireField(!isPaymentUndecided(editData.payment_type), 'Payment Type (choose PM Surya Ghar loan, Private finance or Cash)');
                 break;
             case STAGE_IDS.LOAN:
                 // Private finance does not use the JanSamarth portal.
@@ -2377,7 +2378,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                                 disabled={saving}
                                 className="flex-1 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {saving ? 'Saving & Moving...' : `Save & Move to ${nextStageLabel}`}
+                                {saving ? 'Saving & Moving...' : (editData.stage === STAGE_IDS.PAYMENT_TYPE && isPaymentUndecided(editData.payment_type)) ? 'Save & Move on' : `Save & Move to ${nextStageLabel}`}
                             </button>
                         )}
                     </div>

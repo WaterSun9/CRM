@@ -149,7 +149,7 @@ export default function LeadsTab({
                 <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm space-y-4">
                     {/* Payment Type Selection at the top */}
                     <div className="pb-3 border-b border-stone-100">
-                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Payment Type Selection <span className="text-red-500">*</span></label>
+                        <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Payment Type <span className="normal-case text-stone-400">(optional)</span></label>
                         {isEditable ? (
                             (() => {
                                 // Stored values are title-cased ('Cash'/'Loan') but these
@@ -191,8 +191,8 @@ export default function LeadsTab({
                         )}
                     </div>
 
-                    {/* Checklist items only visible if payment_type is selected */}
-                    {editData.payment_type ? (
+                    {/* Documents can be added before the payment type is chosen (12 Nov 2026). */}
+                    {(
                         <div className="flex flex-col gap-2">
                             {needsFullLeadDocs(editData.payment_type, editData.property_type) && (
                                 <>
@@ -207,8 +207,6 @@ export default function LeadsTab({
                             <CheckboxRemarkItem label="Bank Details" field="bank_details" value={editData.bank_details} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                             <CheckboxRemarkItem label="Extra Documents" field="extra_docs" value={editData.extra_docs} onChange={handleChange} isEditing={isEditable} documents={documents} onUpload={handleUpload} onDelete={handleDelete} onPreview={handlePreview} onUpdateRemark={onUpdateRemark} canDelete={canDeleteDocs} />
                         </div>
-                    ) : (
-                        <p className="text-xs text-stone-400 italic">Please select a Payment Type above to display the Document Checklist.</p>
                     )}
 
                     {isEditable && isRegChecklistDirty && (

@@ -5,7 +5,7 @@ export const DEFAULT_LEAD_FORM = {
     customer_name: '',
     phone_number: '',
     email_address: '',
-    payment_type: 'Undecided',
+    payment_type: '',
     property_type: 'Residential',
     bank_name: '',
     bank_branch: '',

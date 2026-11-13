@@ -5,6 +5,8 @@
 const STAGE_RANK = {
     'LEADS': 1,
     'REGISTRATION': 2,
+    // Between Registration and Loan/Cash; a half step keeps every later rank as it was.
+    'PAYMENT TYPE': 2.5,
     'LOAN': 3,
     'CASH': 3,
     'MATERIAL ORDER': 4,
@@ -43,8 +45,8 @@ export const missingDetailsForMove = (oldStage, newStage, record = {}) => {
     const to = stageRank(newStage);
     if (from === null || to === null || to <= from) return [];
     const missing = [];
-    // Past Registration the customer goes to Loan or Cash, so Undecided must be settled.
-    if (from <= 2 && to > 2 && ['', 'undecided'].includes(String(record.payment_type ?? '').trim().toLowerCase())) {
+    // Leaving the Payment Type stage the customer goes to Loan or Cash, so that must be chosen.
+    if (from <= 2.5 && to > 2.5 && !['cash', 'loan'].includes(String(record.payment_type ?? '').trim().toLowerCase())) {
         missing.push('Payment type (choose Cash or Loan)');
     }
     if (from <= 5 && to > 5) {
