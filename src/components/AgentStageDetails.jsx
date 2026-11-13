@@ -15,6 +15,9 @@ const STAGE_FIELDS = {
         ['Application Acknowledgment', 'application_acknowledgment'], ['Feasibility Document', 'feasibilty_document'],
         ['Subsidy Token Photo', 'subsidy_token_photo'],
     ],
+    [STAGE_IDS.PAYMENT_TYPE]: [
+        ['Payment Type', 'payment_type'], ['Financed by', 'finance_type'],
+    ],
     [STAGE_IDS.LOAN]: [
         ['Jansamarth Application No.', 'jansamarth_application_no'], ['Loan Status', 'loan_tag'],
         ['Vendor Feasibility', 'vendor_feasibility'], ['Site Feasibility', 'site_feasibility'],

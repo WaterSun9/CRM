@@ -31,7 +31,8 @@ test('a complete customer, backward moves, Lost Project and later stages are not
 });
 
 test('Leads to Discom Submission (multi-stage skip) lists everything missing', () => {
-    assert.equal(missingDetailsForMove('LEADS', 'DISCOM SUBMISSION', {}).length, 8);
+    // 3 inverter/panel + 5 delivery + the Cash-or-Loan choice.
+    assert.equal(missingDetailsForMove('LEADS', 'DISCOM SUBMISSION', {}).length, 9);
     assert.equal(stageRank('cash'), stageRank('LOAN'));
     assert.equal(stageRank('LOST PROJECT'), null);
 });

@@ -5,7 +5,7 @@
 import {
     Users, ClipboardList, IndianRupee, Package, PauseCircle, Truck,
     Wrench, Camera, Send, Gauge, Zap, Activity, ClipboardCheck, CheckCircle2,
-    Clock, AlertTriangle, Banknote, Tag, ShoppingBag
+    Clock, AlertTriangle, Banknote, Tag, ShoppingBag, Wallet
 } from 'lucide-react';
 
 // Deferred to the October R&D session. Keep the draft UI code inactive until
@@ -15,6 +15,8 @@ export const CUSTOMER_RED_FLAGS_ENABLED = true;
 export const PRIMARY_STAGES = [
     { id: 'LEADS', label: 'Leads', icon: Users },
     { id: 'REGISTRATION', label: 'Registration', icon: ClipboardList },
+    // Customers wait here until they choose PM Surya Ghar loan, private finance or cash (12 Nov 2026).
+    { id: 'PAYMENT TYPE', label: 'Payment Type', icon: Wallet },
     { id: 'LOAN', label: 'Loan', icon: IndianRupee },
     { id: 'CASH', label: 'Cash', icon: Banknote },
     { id: 'MATERIAL ORDER', label: 'Material Order', icon: ShoppingBag },
@@ -451,6 +453,14 @@ export const OPERATIONAL_CHECKLIST_FIELDS = [
 export const PROPERTY_TYPES = ['Residential', 'Commercial'];
 // Customer's social category on the lead (client request, 11 Nov 2026).
 export const SOCIAL_CATEGORIES = ['General', 'SC', 'ST'];
+// Payment Type is Cash or Loan. It may be left empty on a lead; it is chosen in the
+// Payment Type stage (after Registration) before the customer moves to Loan or Cash.
+export const isPaymentUndecided = value => !['cash', 'loan'].includes(String(value ?? '').trim().toLowerCase());
+// The metadata list (Cash, Loan) without any old Undecided entry.
+export const paymentTypeOptions = (metaList) =>
+    (metaList && metaList.length ? metaList : ['CASH', 'LOAN']).filter(o => String(o).trim().toLowerCase() !== 'undecided');
+// Who finances a Loan customer (client request, 12 Nov 2026).
+export const FINANCE_TYPES = ['PM Surya Ghar loan', 'Private finance'];
 // Loan leads, and commercial leads even when paid in cash, need the full
 // document set (Aadhaar front/back, PAN, Index-2, house photo).
 export const needsFullLeadDocs = (paymentType, propertyType) =>
@@ -513,6 +523,7 @@ export const ADMIN_COLUMNS = new Set([
     'light_bill',
     'loan_history',
     'loan_by',
+    'finance_type',
     'loan_registration_date',
     'loan_tag',
     'material_delivery_date',
