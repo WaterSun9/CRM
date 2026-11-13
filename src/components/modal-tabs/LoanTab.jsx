@@ -30,7 +30,9 @@ export default function LoanTab({
     onFilePreview,
     onUpdateRemark
 }) {
-    const { showAlert } = useGlobalPopup();
+    const { showAlert, showConfirm } = useGlobalPopup();
+    // Private finance does not go through the JanSamarth portal, so its number is locked then.
+    const privateFinance = editData.finance_type === 'Private finance';
     const canDeleteDocs = user?.userType === "admin" || user?.userType === "sales" || user?.userType === "office";
     const today = todayIST();
     const [loanDraftStatus, setLoanDraftStatus] = useState('Sanctioned');
@@ -293,6 +295,14 @@ export default function LoanTab({
                             <div className="md:w-1/2">
                                 <FinanceToggle value={editData.finance_type || ''} onChange={async (nextValue) => {
                                     if (nextValue === editData.finance_type) return;
+                                    const toPrivate = nextValue === 'Private finance';
+                                    const ok = await showConfirm(
+                                        toPrivate
+                                            ? `Change ${customer.customer_name} to Private finance?\n\nThe JanSamarth application number will be locked, as it is only for the PM Surya Ghar loan.${editData.jansamarth_application_no ? ' The number already entered is kept.' : ''}`
+                                            : `Change ${customer.customer_name} to PM Surya Ghar loan?\n\nThe JanSamarth application number can be edited again, and it is needed to move on from the Loan stage.`,
+                                        { title: 'Change who finances the loan?', confirmLabel: toPrivate ? 'Yes, private finance' : 'Yes, PM Surya Ghar loan', cancelLabel: 'Cancel', type: 'warning' }
+                                    );
+                                    if (!ok) return;
                                     handleLocalChange('finance_type', nextValue);
                                     if (await onUpdate(customer.id, { finance_type: nextValue }) === false) return;
                                     await logActivity(user.id, 'update', `${customer.customer_name}: Financed by ${nextValue}`, '', customer.id);
@@ -368,8 +378,13 @@ export default function LoanTab({
                                 )}
                             </div>
                             <div className="p-1">
-                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold">Jansamarth Application No <span className="text-red-500 font-bold">*</span></p>
-                                {isEditingAppDetails ? (
+                                <p className="text-[9px] text-stone-400 uppercase tracking-wide mb-1.5 font-bold flex items-center gap-1">Jansamarth Application No {privateFinance ? <Lock size={10} className="text-stone-400" aria-label="Locked" /> : <span className="text-red-500 font-bold">*</span>}</p>
+                                {privateFinance ? (
+                                    <div className="rounded-lg border border-dashed border-stone-200 bg-stone-50 px-2.5 py-1.5">
+                                        <p className="text-xs font-bold text-stone-400 break-words">{editData.jansamarth_application_no || 'Not needed'}</p>
+                                        <p className="text-[10px] font-semibold text-stone-400">Locked: private finance</p>
+                                    </div>
+                                ) : isEditingAppDetails ? (
                                     <input 
                                         type="text" 
                                         placeholder="Enter number..."

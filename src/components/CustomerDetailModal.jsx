@@ -1215,7 +1215,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(hasApplicationAcknowledgment, 'Application Acknowledgment');
                 break;
             case STAGE_IDS.LOAN:
-                requireField(editData.jansamarth_application_no?.toString().trim(), 'Jansamarth Application No');
+                // Private finance does not use the JanSamarth portal.
+                if (editData.finance_type !== 'Private finance') requireField(editData.jansamarth_application_no?.toString().trim(), 'Jansamarth Application No');
                 requireField(hasVendorFeasibility, 'Vendor Feasibility');
                 requireField(hasSiteFeasibility, 'Site Feasibility');
                 break;
