@@ -114,6 +114,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     const [baseRow,setBaseRow] = useState(null);
     const [profile,setProfile] = useState(user);
     const [busy,setBusy] = useState(false);
+    const [pdfSaving,setPdfSaving] = useState(false);
     const [waChat,setWaChat] = useState(null);
     const busyRef = useRef(false);
     // Lost applies to a client: every one of their quotes.
@@ -338,14 +339,26 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         setLeadPrefill(toLead(form, choice, meta?.module_brand || [])); setConversion(latest); dirty.current = true;
     });
     // The picked quote's PDF goes into the new lead's documents; the lead's first page lists the quote too.
+    // Made right after the lead is saved, which takes a few seconds on a phone: it shows while
+    // it runs, retries on a weak signal, and says clearly whether it was saved (12 Nov 2026).
     const attachToLead = async quote => {
+        setPdfSaving(true);
+        let lastError = null;
         try {
-            const linked = await repo.get(quote.id);
-            if (!linked.source_lead_id) return;
-            await saveLeadQuotationPdf(linked,await generateQuotationPdf(linked),user);
-        } catch (err) {
-            showAlert(`The lead was added, but the quote PDF was not saved to its documents: ${err.message}. Open the lead and use Download & save.`,{title:'Quote PDF not saved',type:'warning'});
-        }
+            for (const wait of [0, 2000, 5000]) {
+                if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+                try {
+                    const linked = await repo.get(quote.id);
+                    if (!linked.source_lead_id) return;
+                    await saveLeadQuotationPdf(linked,await generateQuotationPdf(linked),user);
+                    showAlert('The quote PDF is saved in the lead\'s documents.',{title:'Quote PDF saved',type:'success'});
+                    return;
+                } catch (err) { lastError = err; }
+            }
+        } finally { setPdfSaving(false); }
+        const again = await showConfirm(`The lead was added, but the quote PDF could not be saved to its documents: ${lastError?.message || 'no connection'}.`,{title:'Quote PDF not saved',confirmLabel:'Try again',cancelLabel:'Later',type:'warning'});
+        if (again) await attachToLead(quote);
+        else showAlert('You can save it later: open the lead and use Download & save on its quotation.',{title:'Quote PDF not saved',type:'warning'});
     };
     const reopenClient = client => run(async () => {
         for (const item of client.quotes.filter(q => statusOf(q) === 'lost')) patchRow(await repo.markOpen(await repo.get(item.id),user));
@@ -404,6 +417,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         {!embedded && <header className="q-header"><button className="q-back" aria-label={mode === 'list' ? 'Back to home' : 'Back to quotations'} onClick={() => mode === 'list' ? leaveModule() : navigate('/quotations')}><ChevronLeft size={18} /> Back</button><div style={{flex:1}}><h1>Quotation Maker</h1><p>{mode === 'list' ? 'WATERSUN · SOLAR ENERGY' : heading}</p></div><FileText size={22} /></header>}
         <main className="q-content">
             {embedded && mode !== 'list' && <div className="q-subnav"><button className="q-back" aria-label="Back to quotations" onClick={() => navigate('/quotations')}><ChevronLeft size={18} /> Back</button><span>{heading}</span></div>}
+            {pdfSaving && <div className="q-notice" role="status"><strong>Saving the quote PDF to the lead…</strong> Please stay on this screen for a few seconds.</div>}
             {!online && <div className="q-notice" role="status">You’re offline. Draft edits can be recovered on this device. Downloads and outcomes need a connection.</div>}
             {error && <div className="q-error" role="alert">{error}<div><button onClick={() => setRefresh(n => n + 1)}>Retry / reload</button></div></div>}
             {mode === 'list' && <>
