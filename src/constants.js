@@ -449,6 +449,8 @@ export const OPERATIONAL_CHECKLIST_FIELDS = [
 // writes to it are dropped (a console warning is logged when that happens).
 // Residential / Commercial (migration 20261005150000). Blank = Residential.
 export const PROPERTY_TYPES = ['Residential', 'Commercial'];
+// Customer's social category on the lead (client request, 11 Nov 2026).
+export const SOCIAL_CATEGORIES = ['General', 'SC', 'ST'];
 // Loan leads, and commercial leads even when paid in cash, need the full
 // document set (Aadhaar front/back, PAN, Index-2, house photo).
 export const needsFullLeadDocs = (paymentType, propertyType) =>
@@ -526,6 +528,7 @@ export const ADMIN_COLUMNS = new Set([
     'panel_serial_no',
     'payment_type',
     'property_type',
+    'social_category',
     'plant_commissioning_report',
     'phone_number',
     'pincode',

@@ -48,9 +48,10 @@ export const leadSchema = z.object({
     .trim(),
 
     full_address: z.string().trim().optional().or(z.literal('')),
-    pincode: z.string().trim().refine(value => value === '' || /^\d{6}$/.test(value), {
-        message: 'Pincode must contain exactly 6 digits'
-    }).optional(),
+    // Required for new leads (client request, 11 Nov 2026).
+    pincode: z.string({ error: 'Pincode is required' }).trim()
+        .refine(value => value !== '', { message: 'Pincode is required' })
+        .refine(value => value === '' || /^\d{6}$/.test(value), { message: 'Pincode must contain exactly 6 digits' }),
 
     channel_partner: z.string({
         error: "Channel Partner Name is required",
