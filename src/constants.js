@@ -449,6 +449,18 @@ export const OPERATIONAL_CHECKLIST_FIELDS = [
 // writes to it are dropped (a console warning is logged when that happens).
 // Residential / Commercial (migration 20261005150000). Blank = Residential.
 export const PROPERTY_TYPES = ['Residential', 'Commercial'];
+// Payment Type starts as Undecided on new leads (client request, 12 Nov 2026):
+// documents can be added before the customer picks Cash or Loan, and the choice
+// is needed before the customer moves past Registration.
+export const PAYMENT_UNDECIDED = 'Undecided';
+export const isPaymentUndecided = value => ['', 'undecided'].includes(String(value ?? '').trim().toLowerCase());
+// The metadata list (Cash, Loan) with Undecided first, without duplicates.
+export const paymentTypeOptions = (metaList) => {
+    const list = (metaList && metaList.length ? metaList : ['CASH', 'LOAN']).filter(o => String(o).trim().toLowerCase() !== 'undecided');
+    return [PAYMENT_UNDECIDED, ...list];
+};
+// Who finances a Loan customer (client request, 12 Nov 2026).
+export const FINANCE_TYPES = ['PM Surya Ghar loan', 'Private finance'];
 // Loan leads, and commercial leads even when paid in cash, need the full
 // document set (Aadhaar front/back, PAN, Index-2, house photo).
 export const needsFullLeadDocs = (paymentType, propertyType) =>
@@ -511,6 +523,7 @@ export const ADMIN_COLUMNS = new Set([
     'light_bill',
     'loan_history',
     'loan_by',
+    'finance_type',
     'loan_registration_date',
     'loan_tag',
     'material_delivery_date',

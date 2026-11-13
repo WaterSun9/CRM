@@ -8,12 +8,13 @@ import {
     Upload, FileText, Image as ImageIcon, Loader2, Banknote, AlertTriangle, Calendar
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
-import { PROPERTY_TYPES, needsFullLeadDocs } from '../constants';
+import { PROPERTY_TYPES, needsFullLeadDocs, paymentTypeOptions, FINANCE_TYPES } from '../constants';
 import { FilePreviewModal } from './modal-tabs/shared';
 import CropPhotoModal from './CropPhotoModal';
 import { fetchAgent2SubAgents, sanitizePhoneNumber, downloadFileWithSaveAs } from '../utils';
 import { useGlobalPopup } from './GlobalPopup';
 import { calculateSystemCapacityKwp } from '../utils/capacity';
+import FinanceToggle from './FinanceToggle';
 
 // Dropdown component for metadata fields (clean single outline)
 function AddLeadMetaSelect({ label, field, value, onChange, options = [] }) {
@@ -379,6 +380,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         
         const finalData = {
             ...formData,
+            finance_type: String(formData.payment_type || '').trim().toLowerCase() === 'loan' ? (formData.finance_type || null) : null,
             channel_partner: isAgent2 ? (user?.channel_partner || partnerName || '') : ((isAgent || isChannelPartnerOffice) ? partnerName : (formData.channel_partner || '').trim()),
             sub_channel_partner: isPortalAgent ? user?.name : (formData.sub_channel_partner || '').trim() || null
         };
@@ -813,7 +815,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     like it had disappeared. Match case-insensitively, and
                                     keep any unrecognised stored value visible. */}
                                 {(() => {
-                                    const ptOptions = meta['payment_type'] || ['CASH', 'LOAN'];
+                                    const ptOptions = paymentTypeOptions(meta['payment_type']);
                                     const stored = String(formData.payment_type || '').trim();
                                     const matched = ptOptions.find(o => String(o).trim().toLowerCase() === stored.toLowerCase());
                                     return (
@@ -822,6 +824,8 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     onChange={(e) => {
                                         const val = e.target.value;
                                         handleChange('payment_type', val);
+                                        // A loan is the PM Surya Ghar scheme loan unless they switch it.
+                                        if (String(val).trim().toLowerCase() === 'loan' && !formData.finance_type) handleChange('finance_type', FINANCE_TYPES[0]);
                                     }}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 font-semibold text-stone-800 transition-all"
                                     required
@@ -857,6 +861,9 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
 
                             {String(formData.payment_type || '').trim().toLowerCase() === 'loan' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
+                                    <div className="sm:col-span-2">
+                                        <FinanceToggle value={formData.finance_type} onChange={value => handleChange('finance_type', value)} />
+                                    </div>
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">Bank Name</label>
                                         <input

@@ -16,7 +16,7 @@ import {
     User, Zap, IndianRupee, Building2, FolderOpen, MapPin,
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
     Eye, Search, Image as ImageIcon, MessageSquare, Calendar } from 'lucide-react';
-import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN } from '../constants';
+import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN, isPaymentUndecided } from '../constants';
 import { logActivity, formatDateToDDMMYYYY, parseIndianNumber, fetchAgent2SubAgents, normalizeMeterInstallation, sanitizePhoneNumber, logFieldChanges, readAdminFields } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
@@ -1205,6 +1205,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(editData.payment_type?.trim(), 'Payment Type');
                 break;
             case STAGE_IDS.REGISTRATION:
+                // The next stage is Loan or Cash, so an Undecided payment type must be settled.
+                requireField(!isPaymentUndecided(editData.payment_type), 'Payment Type (choose Cash or Loan)');
                 requireField(editData.registration_date, 'Registration Date');
                 requireField(editData.registration_by?.trim(), 'Registration By');
                 requireField(editData.registration_no?.toString().trim() || editData.feasibility_no?.toString().trim(), 'Feasibility No');

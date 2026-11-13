@@ -98,10 +98,10 @@ export const leadSchema = z.object({
         (val) => {
             if (val === null || val === undefined || String(val).trim() === '') return undefined;
             const s = String(val).trim().toUpperCase();
-            return s === 'LOAN' ? 'Loan' : 'Cash';
+            return s === 'LOAN' ? 'Loan' : s === 'UNDECIDED' ? 'Undecided' : 'Cash';
         },
-        z.enum(['Cash', 'Loan'], {
-            error: () => "Payment Type is required - choose Cash or Loan"
+        z.enum(['Undecided', 'Cash', 'Loan'], {
+            error: () => "Payment Type is required - choose Undecided, Cash or Loan"
         })
     ),
 }).passthrough();

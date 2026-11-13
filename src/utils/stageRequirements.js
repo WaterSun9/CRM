@@ -33,6 +33,7 @@ const isBlank = (value) => {
 export const STAGE_REQUIREMENT_COLUMNS = [
     'inverter_make', 'inverter_serial_no', 'panel_serial_no',
     'vendor', 'invoice_no', 'material_delivery_date', 'driver_name', 'driver_phone_number',
+    'payment_type',
 ];
 
 // Labels of the details missing for a move from oldStage to newStage.
@@ -42,6 +43,10 @@ export const missingDetailsForMove = (oldStage, newStage, record = {}) => {
     const to = stageRank(newStage);
     if (from === null || to === null || to <= from) return [];
     const missing = [];
+    // Past Registration the customer goes to Loan or Cash, so Undecided must be settled.
+    if (from <= 2 && to > 2 && ['', 'undecided'].includes(String(record.payment_type ?? '').trim().toLowerCase())) {
+        missing.push('Payment type (choose Cash or Loan)');
+    }
     if (from <= 5 && to > 5) {
         if (isBlank(record.inverter_make)) missing.push('Inverter make');
         if (isBlank(record.inverter_serial_no)) missing.push('Inverter serial number');
