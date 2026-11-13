@@ -8,7 +8,7 @@ import {
     Upload, FileText, Image as ImageIcon, Loader2, Banknote, AlertTriangle, Calendar
 } from 'lucide-react';
 import { DEFAULT_LEAD_FORM } from '../models';
-import { PROPERTY_TYPES, needsFullLeadDocs } from '../constants';
+import { PROPERTY_TYPES, needsFullLeadDocs, SOCIAL_CATEGORIES, paymentTypeOptions } from '../constants';
 import { FilePreviewModal } from './modal-tabs/shared';
 import CropPhotoModal from './CropPhotoModal';
 import { fetchAgent2SubAgents, sanitizePhoneNumber, downloadFileWithSaveAs } from '../utils';
@@ -604,8 +604,8 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">Pincode <span className="normal-case text-stone-400">(optional)</span></label>
-                                <input type="text" inputMode="numeric" maxLength={6} value={formData.pincode || ''}
+                                <label className="text-[10px] text-stone-500 uppercase tracking-wide font-bold block">Pincode <span className="text-red-500 font-bold">*</span></label>
+                                <input type="text" inputMode="numeric" maxLength={6} required value={formData.pincode || ''}
                                     {...lockProps('pincode')}
                                     onChange={e => handleChange('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
@@ -804,7 +804,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                             {/* Payment Type Selection at the top */}
                             <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-                                    Payment Type Selection <span className="text-red-500 font-bold">*</span>
+                                    Payment Type <span className="normal-case text-stone-400">(optional - decided in the Payment Type stage)</span>
                                 </label>
                                 {/* The saved value is title-cased by the Zod schema ('Cash'
                                     / 'Loan') while these options come from metadata, which
@@ -813,7 +813,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                     like it had disappeared. Match case-insensitively, and
                                     keep any unrecognised stored value visible. */}
                                 {(() => {
-                                    const ptOptions = meta['payment_type'] || ['CASH', 'LOAN'];
+                                    const ptOptions = paymentTypeOptions(meta['payment_type']);
                                     const stored = String(formData.payment_type || '').trim();
                                     const matched = ptOptions.find(o => String(o).trim().toLowerCase() === stored.toLowerCase());
                                     return (
@@ -824,7 +824,6 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         handleChange('payment_type', val);
                                     }}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 font-semibold text-stone-800 transition-all"
-                                    required
                                 >
                                     <option value="">Select Payment Type...</option>
                                     {stored && !matched && (
@@ -855,6 +854,19 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 )}
                             </div>
 
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">Category</label>
+                                <select
+                                    value={formData.social_category || ''}
+                                    {...lockProps('social_category')}
+                                    onChange={(e) => handleChange('social_category', e.target.value)}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 font-semibold text-stone-800 transition-all"
+                                >
+                                    <option value="">Select category</option>
+                                    {SOCIAL_CATEGORIES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                            </div>
+
                             {String(formData.payment_type || '').trim().toLowerCase() === 'loan' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
                                     <div className="space-y-1">
@@ -880,8 +892,8 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                 </div>
                             )}
 
-                            {/* Checklist items only visible if payment_type is selected */}
-                            {formData.payment_type ? (
+                            {/* Documents can be added before the payment type is chosen (12 Nov 2026). */}
+                            {(
                                 <div className="space-y-1 divide-y divide-stone-100">
                                     {needsFullLeadDocs(formData.payment_type, formData.property_type) && (
                                         <>
@@ -970,11 +982,19 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         onFileRemove={handleFileRemove}
                                         onPreview={handlePreviewFile}
                                     />
+
+                                    {/* The customer's quotation (PDF or photo), kept with the lead documents as
+                                        Final Quotation. No tick-box column: the attached file is the record. */}
+                                    <AddLeadChecklistItem
+                                        label="Quotation"
+                                        field="lead_quotation"
+                                        checked={Boolean(pendingFiles['lead_quotation'])}
+                                        pendingFile={pendingFiles['lead_quotation']}
+                                        onFileAttach={handleFileAttach}
+                                        onFileRemove={handleFileRemove}
+                                        onPreview={handlePreviewFile}
+                                    />
                                 </div>
-                            ) : (
-                                <p className="text-xs text-stone-400 italic py-2">
-                                    Please select a Payment Type above to display the Document Checklist.
-                                </p>
                             )}
                         </div>
                     </section>

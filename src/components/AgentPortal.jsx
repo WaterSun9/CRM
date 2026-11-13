@@ -1032,8 +1032,8 @@ export default function AgentPortal({ user, onLogout, onRaiseServiceIssue, onOpe
                     {/* Home boxes (client, 10 Nov 2026). Warranty & Complaints is one box that opens
                         one page with two tabs, like the website. */}
                     <section aria-label="Home" className="grid grid-cols-2 gap-3 [&>*:last-child:nth-child(odd)]:col-span-2">
-                        <PortalTile icon={Users} label="Customers" hint="All stages" tone="stone" count={customers.length} onClick={() => setView('stages')} />
                         {QUOTATION_PARTNER_ENABLED && <PortalTile icon={FileText} label="Quotations" hint="Create and share" tone="blue" count={quotationOpenCount} onClick={openQuotations} />}
+                        <PortalTile icon={Users} label="Customers" hint="All stages" tone="stone" count={customers.length} onClick={() => setView('stages')} />
                         {onOpenComplaints && (onRaiseServiceIssue
                             ? <PortalTile icon={ShieldCheck} label="Warranty & Complaints" hint="Customers and service requests" tone="emerald" onClick={() => onOpenComplaints('warranty')} />
                             : <PortalTile icon={ClipboardList} label="Complaints" hint="Service requests" tone="amber" onClick={() => onOpenComplaints('complaints')} />)}

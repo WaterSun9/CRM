@@ -7,7 +7,6 @@ import { useGlobalPopup } from '../components/GlobalPopup';
 import { canUseQuotations,chosenOptions,fromRow,money,toLead,validate,quoteLabel,quoteBrand,quoteFigures,statusOf,groupClients,tallyClients,CLIENT_TABS,MAX_QUOTES } from './model';
 import { quotationRepository as repo } from './client';
 import { PAGE_SIZE } from './repository';
-import { recoveries } from './recovery';
 import QuotationForm from './QuotationForm';
 import DocumentPages from './DocumentPages';
 import { downloadQuotationFile, generateQuotationPdf, shareQuotationFile } from './pdf';
@@ -114,6 +113,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     const [baseRow,setBaseRow] = useState(null);
     const [profile,setProfile] = useState(user);
     const [busy,setBusy] = useState(false);
+    const [pdfSaving,setPdfSaving] = useState(false);
     const [waChat,setWaChat] = useState(null);
     const busyRef = useRef(false);
     // Lost applies to a client: every one of their quotes.
@@ -338,14 +338,26 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         setLeadPrefill(toLead(form, choice, meta?.module_brand || [])); setConversion(latest); dirty.current = true;
     });
     // The picked quote's PDF goes into the new lead's documents; the lead's first page lists the quote too.
+    // Made right after the lead is saved, which takes a few seconds on a phone: it shows while
+    // it runs, retries on a weak signal, and says clearly whether it was saved (12 Nov 2026).
     const attachToLead = async quote => {
+        setPdfSaving(true);
+        let lastError = null;
         try {
-            const linked = await repo.get(quote.id);
-            if (!linked.source_lead_id) return;
-            await saveLeadQuotationPdf(linked,await generateQuotationPdf(linked),user);
-        } catch (err) {
-            showAlert(`The lead was added, but the quote PDF was not saved to its documents: ${err.message}. Open the lead and use Download & save.`,{title:'Quote PDF not saved',type:'warning'});
-        }
+            for (const wait of [0, 2000, 5000]) {
+                if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+                try {
+                    const linked = await repo.get(quote.id);
+                    if (!linked.source_lead_id) return;
+                    await saveLeadQuotationPdf(linked,await generateQuotationPdf(linked),user);
+                    showAlert('The quote PDF is saved in the lead\'s documents.',{title:'Quote PDF saved',type:'success'});
+                    return;
+                } catch (err) { lastError = err; }
+            }
+        } finally { setPdfSaving(false); }
+        const again = await showConfirm(`The lead was added, but the quote PDF could not be saved to its documents: ${lastError?.message || 'no connection'}.`,{title:'Quote PDF not saved',confirmLabel:'Try again',cancelLabel:'Later',type:'warning'});
+        if (again) await attachToLead(quote);
+        else showAlert('You can save it later: open the lead and use Download & save on its quotation.',{title:'Quote PDF not saved',type:'warning'});
     };
     const reopenClient = client => run(async () => {
         for (const item of client.quotes.filter(q => statusOf(q) === 'lost')) patchRow(await repo.markOpen(await repo.get(item.id),user));
@@ -370,7 +382,6 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     };
     if (!open) return null;
     if (!allowed) return <div className={`q-module${embedded ? ' q-module-embedded' : ''}`}><div className="q-content q-error">Quotation Maker is unavailable for your role.<button className="q-back" onClick={leaveModule}><ChevronLeft size={18} /> Back</button></div></div>;
-    const localCopies = mode === 'list' ? recoveries(user.id) : [];
     const isPartnerPortal = ['agent','agent2'].includes(user?.userType);
     const heading = validId && row ? `${quoteLabel(row)} · ${row.customer_name || ''}` : mode === 'new' ? (baseRow ? `Another brand quote for ${baseRow.customer_name}` : 'New quote') : 'Quotation';
     // Overview: the client in short, then one line per quote (option) with View; the circle marks the pick.
@@ -404,12 +415,12 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         {!embedded && <header className="q-header"><button className="q-back" aria-label={mode === 'list' ? 'Back to home' : 'Back to quotations'} onClick={() => mode === 'list' ? leaveModule() : navigate('/quotations')}><ChevronLeft size={18} /> Back</button><div style={{flex:1}}><h1>Quotation Maker</h1><p>{mode === 'list' ? 'WATERSUN · SOLAR ENERGY' : heading}</p></div><FileText size={22} /></header>}
         <main className="q-content">
             {embedded && mode !== 'list' && <div className="q-subnav"><button className="q-back" aria-label="Back to quotations" onClick={() => navigate('/quotations')}><ChevronLeft size={18} /> Back</button><span>{heading}</span></div>}
-            {!online && <div className="q-notice" role="status">You’re offline. Draft edits can be recovered on this device. Downloads and outcomes need a connection.</div>}
+            {pdfSaving && <div className="q-notice" role="status"><strong>Saving the quote PDF to the lead…</strong> Please stay on this screen for a few seconds.</div>}
+            {!online && <div className="q-notice" role="status">You’re offline. Saving, downloads and outcomes need a connection.</div>}
             {error && <div className="q-error" role="alert">{error}<div><button onClick={() => setRefresh(n => n + 1)}>Retry / reload</button></div></div>}
             {mode === 'list' && <>
                 <section className="q-list-head" aria-label="Quotation actions"><div className="q-list-heading">{embedded && isPartnerPortal && <button className="q-back q-list-back" aria-label="Back to portal" onClick={leaveModule}><ChevronLeft size={18} /> Back</button>}<div><h2>Quotations</h2><p>{loading && !allRows.length ? 'Loading quotations…' : `${count} ${count === 1 ? 'client' : 'clients'}`}</p></div></div><button className="q-create" onClick={start}><Plus size={17} /> New quote</button></section>
                 <p className="q-howto">New quote → client details → brand &amp; price. Add up to {MAX_QUOTES} brand options per client, tick the one they pick, then Add to leads.</p>
-                {!!localCopies.length && <div className="q-notice"><strong>Draft recovery on this device</strong>{localCopies.map(copy => <div key={copy.id}><button onClick={() => navigate(`/quotations/new/${copy.id}`)}>Recover {copy.form?.customer_name || 'unnamed quotation'}</button></div>)}</div>}
                 <div className="q-toolbar"><input className="q-search" aria-label="Search quotations" placeholder="Search client name, phone or quote number" value={search} onChange={e => {setSearch(e.target.value);setPage(0);}} /><button aria-label="Refresh quotations" onClick={() => setRefresh(n => n + 1)}><Search size={17} /> Refresh</button></div>
                 <div className="q-filters" role="group" aria-label="Show clients">{CLIENT_TABS.map(tab => <button key={tab} aria-pressed={status === tab} onClick={() => {setStatus(tab);setPage(0);}}>{TAB_TEXT[tab]}<span className="q-count"> {counts[tab]}</span></button>)}</div>
                 {loading && !allRows.length ? <div className="q-empty" role="status">Loading quotations…</div> : !shown.length && !error ? <div className="q-empty"><h2>No quotes found</h2><p className="q-muted">Make a new quote or try another search.</p><button onClick={start}><Plus size={16} /> New quote</button></div> : <div className="q-cards">{shown.map(clientCard)}</div>}

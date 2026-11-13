@@ -2,6 +2,7 @@ import React from 'react';
 import { STAGE_IDS } from "../constants";
 import LeadsTab from './modal-tabs/LeadsTab';
 import RegistrationTab from './modal-tabs/RegistrationTab';
+import PaymentTypeTab from './modal-tabs/PaymentTypeTab';
 import LoanTab from './modal-tabs/LoanTab';
 import CashTab from './modal-tabs/CashTab';
 import MaterialOrderTab from './modal-tabs/MaterialOrderTab';
@@ -23,6 +24,7 @@ export default function CustomerModalTabsRouter(props) {
         <>
             {activeTab === STAGE_IDS.LEADS && <LeadsTab {...props} />}
             {activeTab === STAGE_IDS.REGISTRATION && <RegistrationTab {...props} />}
+            {activeTab === STAGE_IDS.PAYMENT_TYPE && <PaymentTypeTab {...props} />}
             {activeTab === STAGE_IDS.LOAN && <LoanTab {...props} />}
             {activeTab === STAGE_IDS.CASH && <CashTab {...props} />}
             {activeTab === STAGE_IDS.MATERIAL_ORDER && <MaterialOrderTab {...props} />}

@@ -175,6 +175,11 @@ export function calculate(options, charges = 0) {
         return { ...option, brandName: option.brandName, baseValue, discount, subsidy, netPayableAmount, netPriceAfterSubsidy: round(netPayableAmount - subsidy) };
     });
 }
+// A real client name: at least two letters ("." or "a" is not a name).
+// Letters and vowel signs both count, so a short Gujarati or Hindi name passes.
+// Checked when a quote is saved (QuotationForm), not when an old one is printed.
+export const hasClientName = name => (String(name ?? '').match(/[\p{L}\p{M}]/gu) || []).length >= 2;
+
 export function validate(form) {
     const errors = [];
     const required = (key, title, step) => { if (!String(form[key] ?? '').trim()) errors.push(`${STEPS[step]}: ${title} is required`); };
