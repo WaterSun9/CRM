@@ -1213,7 +1213,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 break;
             case STAGE_IDS.PAYMENT_TYPE:
                 // The next stage is Loan or Cash, so the customer's choice must be made here.
-                requireField(!isPaymentUndecided(editData.payment_type), 'Payment Type (choose PM Surya Ghar loan, Private finance or Cash)');
+                requireField(!isPaymentUndecided(editData.payment_type), 'Payment Type (choose Loan or Cash)');
                 break;
             case STAGE_IDS.LOAN:
                 // Private finance does not use the JanSamarth portal.

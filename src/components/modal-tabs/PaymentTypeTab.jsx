@@ -1,20 +1,17 @@
 import { useState } from 'react';
-import { Banknote, CheckCircle2, IndianRupee, Landmark } from 'lucide-react';
+import { Banknote, CheckCircle2, Landmark } from 'lucide-react';
 import { useGlobalPopup } from '../GlobalPopup';
 
-// Payment Type stage (12 Nov 2026): the customer waits here until they choose how
-// they pay. The choice decides the next stage - Loan for either loan, Cash for cash.
+// Payment Type stage (12 Nov 2026): the customer waits here until they choose Loan
+// or Cash, which decides the next stage. Who finances a loan is set on the Loan tab.
 const CHOICES = [
-    { key: 'pm', label: 'PM Surya Ghar loan', hint: 'Scheme loan through the JanSamarth portal', payment_type: 'Loan', finance_type: 'PM Surya Ghar loan', icon: Landmark },
-    { key: 'private', label: 'Private finance', hint: 'Any other bank, NBFC or finance company', payment_type: 'Loan', finance_type: 'Private finance', icon: IndianRupee },
-    { key: 'cash', label: 'Cash', hint: 'The customer pays without a loan', payment_type: 'Cash', finance_type: null, icon: Banknote },
+    { key: 'loan', label: 'Loan', hint: 'PM Surya Ghar loan or private finance - chosen on the Loan tab', payment_type: 'Loan', icon: Landmark },
+    { key: 'cash', label: 'Cash', hint: 'The customer pays without a loan', payment_type: 'Cash', icon: Banknote },
 ];
 
 const paymentChoiceOf = record => {
     const payment = String(record?.payment_type ?? '').trim().toLowerCase();
-    if (payment === 'cash') return 'cash';
-    if (payment === 'loan') return record?.finance_type === 'Private finance' ? 'private' : 'pm';
-    return null;
+    return payment === 'cash' || payment === 'loan' ? payment : null;
 };
 
 export default function PaymentTypeTab({ customer, editData, setEditData, handleChange, isEditable, onUpdate, logActivity, fetchLogs, user }) {
@@ -27,15 +24,16 @@ export default function PaymentTypeTab({ customer, editData, setEditData, handle
         if (!isEditable || saving || choice.key === current) return;
         const next = choice.payment_type === 'Cash' ? 'Cash' : 'Loan';
         const ok = await showConfirm(
-            `Set ${customer.customer_name} to ${choice.label}?\n\nWhen you move on, the customer goes to the ${next} stage.${choice.key === 'private' ? ' The JanSamarth application number will not be needed.' : ''}`,
+            `Set ${customer.customer_name} to ${choice.label}?\n\nWhen you move on, the customer goes to the ${next} stage.${choice.key === 'loan' ? ' Who finances the loan is chosen on the Loan tab.' : ''}`,
             { title: 'Choose the payment type?', confirmLabel: `Yes, ${choice.label}`, cancelLabel: 'Cancel', type: 'warning' }
         );
         if (!ok) return;
         setSaving(true);
         try {
-            if (await onUpdate(customer.id, { payment_type: choice.payment_type, finance_type: choice.finance_type }) === false) return;
-            set('payment_type', choice.payment_type);
-            set('finance_type', choice.finance_type);
+            // Cash has no financer; a loan keeps whatever the Loan tab has.
+            const changes = choice.key === 'cash' && editData.finance_type ? { payment_type: 'Cash', finance_type: null } : { payment_type: choice.payment_type };
+            if (await onUpdate(customer.id, changes) === false) return;
+            Object.entries(changes).forEach(([field, value]) => set(field, value));
             await logActivity?.(user?.id, 'update', `${customer.customer_name}: Payment type set to ${choice.label}`, '', customer.id);
             fetchLogs?.();
         } finally {
@@ -50,7 +48,7 @@ export default function PaymentTypeTab({ customer, editData, setEditData, handle
                 <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">How will the customer pay?</h4>
                 <p className="mt-1 text-xs text-stone-500">The customer stays in this stage until this is decided.</p>
             </div>
-            <div role="radiogroup" aria-label="Payment type" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div role="radiogroup" aria-label="Payment type" className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {CHOICES.map(choice => {
                     const on = choice.key === current;
                     const Icon = choice.icon;
