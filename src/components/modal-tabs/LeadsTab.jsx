@@ -91,7 +91,7 @@ export default function LeadsTab({
                     <div className="col-span-2 md:col-span-3">
                         <EditableDetailItem label="Full Address" field="full_address" value={editData.full_address} onChange={handleChange} type="textarea" isEditing={editingSection === 'cus'} />
                     </div>
-                    <EditableDetailItem label="Pincode" field="pincode" value={editData.pincode} onChange={(field, value) => handleChange(field, String(value || '').replace(/\D/g, '').slice(0, 6))} isEditing={editingSection === 'cus'} />
+                    <EditableDetailItem label="Pincode *" field="pincode" value={editData.pincode} onChange={(field, value) => handleChange(field, String(value || '').replace(/\D/g, '').slice(0, 6))} isEditing={editingSection === 'cus'} />
                     <EditableDetailItem label="Tehsil / Sub Division *" field="sub_divisions" value={editData.sub_divisions} onChange={handleChange} isEditing={editingSection === 'cus'} />
                     <EditableDetailItem label="District *" field="district" value={editData.district} onChange={handleChange} isEditing={editingSection === 'cus'} />
                     {String(editData.payment_type || '').trim().toLowerCase() === 'loan' && (

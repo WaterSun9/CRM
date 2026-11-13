@@ -1202,6 +1202,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 requireField(editData.system_capacity_kwp, 'System Capacity');
                 requireField(editData.sub_divisions?.trim(), 'Tehsil / Sub Division');
                 requireField(editData.district?.trim(), 'District');
+                requireField(/^[1-9]\d{5}$/.test(String(editData.pincode ?? '').trim()), 'Pincode (6 digits)');
                 break;
             case STAGE_IDS.REGISTRATION:
                 requireField(editData.registration_date, 'Registration Date');

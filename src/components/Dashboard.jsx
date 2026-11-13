@@ -988,6 +988,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
             need(customer.system_capacity_kwp, 'System Capacity');
             need(customer.sub_divisions?.trim(), 'Sub Division');
             need(customer.district?.trim(), 'District');
+            need(/^[1-9]\d{5}$/.test(String(customer.pincode ?? '').trim()), 'Pincode (6 digits)');
 
             if (missing.length > 0) {
                 showAlert(
