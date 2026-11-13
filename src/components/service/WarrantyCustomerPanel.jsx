@@ -89,7 +89,6 @@ const Section = ({ icon: Icon, title, children }) => <section className="rounded
 </section>;
 
 function Details({ card, partnerPhone, dealerPhone, canEdit, canEditLocation, saveCard, saveLocation, savePartnerPhone }) {
-    const locationAddOnly = !canEdit;
     const panels = serialList(card.panel_serial_no);
     const modules = card.no_of_modules ? `${card.no_of_modules} x ${card.module_wp ? `${card.module_wp} Wp` : 'panels'}` : '';
     const pincode = String(card.pincode ?? '').replace(/\D/g, '') || pincodeInText(card.full_address);
@@ -108,7 +107,7 @@ function Details({ card, partnerPhone, dealerPhone, canEdit, canEditLocation, sa
             <Section icon={MapPin} title="Location">
                 <Fact label="Address" value={card.full_address || [card.villages, card.district].filter(Boolean).join(', ')} canEdit={canEditLocation}
                     edit={{ placeholder: 'House, street, village', save: text => { if (!text.trim()) throw new Error('Enter the address.'); return saveLocation({ full_address: text.trim() }); } }} />
-                <Fact label="Pincode" value={pincode} canEdit={canEditLocation} addOnly={locationAddOnly}
+                <Fact label="Pincode" value={pincode} canEdit={canEditLocation}
                     edit={{ inputMode: 'numeric', placeholder: '385340', save: text => { const pin = text.replace(/\D/g, ''); if (!isPincode(pin)) throw new Error('Enter the 6-digit pincode.'); return saveLocation({ pincode: pin }); } }} />
             </Section>
             <Section icon={Store} title="Channel partner">
@@ -200,7 +199,7 @@ export function WarrantyCustomerBody({ customer, user, onCardChanged }) {
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState(null);
     // Office (admin / staff) edits the details here. Everyone else only sees them, except that
-    // they can change the address and add a missing pincode (set_customer_location,
+    // they can change the address and the pincode (set_customer_location,
     // 20261028130000_partner_customer_location.sql); the full customer card stays office-only.
     const canEdit = OFFICE_TYPES.includes(user?.userType);
     const canEditLocation = canEdit || PARTNER_TYPES.includes(user?.userType);
@@ -272,10 +271,9 @@ export function WarrantyCustomerBody({ customer, user, onCardChanged }) {
             if (canEdit && /could not find the function|PGRST202/i.test(`${error.code} ${error.message}`)) return saveCard(patch);
             throw new Error(error.message);
         }
-        const before = Object.fromEntries(Object.keys(patch).map(key => [key, card[key] ?? null]));
+        // The database writes the activity log entry in the same step (set_customer_location).
         const next = { ...card, ...(data?.[0] || patch) };
         setCard(next);
-        void logFieldChanges(user?.id, card.id, card.customer_name, before, patch, 'Warranty details');
         onCardChanged?.(next);
     };
     const savePartnerPhone = async text => {
