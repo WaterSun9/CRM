@@ -5,7 +5,6 @@ import { SectionHeader, EditableDetailItem, CheckboxRemarkItem } from './shared'
 import { useGlobalPopup } from '../GlobalPopup';
 import { calculateSystemCapacityKwp } from '../../utils/capacity';
 import { PROPERTY_TYPES, needsFullLeadDocs, paymentTypeOptions } from '../../constants';
-import FinanceToggle from '../FinanceToggle';
 
 export default function LeadsTab({
     editData,
@@ -177,13 +176,6 @@ export default function LeadsTab({
                             })()
                         ) : (
                             <p className="text-xs font-bold text-stone-700">{editData.payment_type || "Not Specified"}</p>
-                        )}
-                        {String(editData.payment_type || '').trim().toLowerCase() === 'loan' && (
-                            <div className="mt-3 w-full md:w-1/2">
-                                {isEditable
-                                    ? <FinanceToggle value={editData.finance_type || ''} onChange={value => handleChange('finance_type', value)} />
-                                    : <><span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Financed by</span><p className="text-xs font-bold text-stone-700">{editData.finance_type || 'Not set'}</p></>}
-                            </div>
                         )}
                         <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1 mt-3">Property Type</label>
                         {isEditable ? (

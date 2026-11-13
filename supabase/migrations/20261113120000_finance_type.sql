@@ -1,6 +1,7 @@
 -- Who finances a Loan customer, 13 Nov 2026 (client request of 12 Nov).
--- RUN THIS BEFORE the app update that goes with it: the new lead form sends
--- finance_type, and saving a lead fails while the column does not exist.
+-- Set on the customer card's Loan tab. Run this before (or with) the app update:
+-- until it runs, choosing who finances a loan there fails to save. Nothing else
+-- depends on it.
 --
 -- 'PM Surya Ghar loan' (the scheme's bank loan) or 'Private finance' (any other
 -- bank, NBFC or finance company). Empty for Cash and Undecided customers.
