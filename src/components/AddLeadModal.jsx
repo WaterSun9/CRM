@@ -824,7 +824,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                                         handleChange('payment_type', val);
                                     }}
                                     className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 font-semibold text-stone-800 transition-all"
-                                                                    >
+                                >
                                     <option value="">Select Payment Type...</option>
                                     {stored && !matched && (
                                         <option value={stored}>{stored}</option>

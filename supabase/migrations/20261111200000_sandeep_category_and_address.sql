@@ -1,6 +1,6 @@
 -- Sandeep's requests, 11 Nov 2026. Safe to run more than once.
--- RUN THIS BEFORE the app update that goes with it: the new lead form sends the
--- Category, and saving a lead fails while the column does not exist.
+-- Run this before the app update that goes with it (Category column, warranty
+-- address/pincode rule and its activity log).
 --
 -- 1. Category (SC / ST / General) on the customer.
 -- 2. Channel partners and dealers may CHANGE the address and the pincode on the
@@ -75,6 +75,18 @@ end;
 $$;
 revoke all on function public.set_customer_location(uuid, text, text) from public, anon;
 grant execute on function public.set_customer_location(uuid, text, text) to authenticated;
+
+-- Customer field limits (watch mode): whoever may change Payment Type may change
+-- the Category too, so normal use is not flagged. Skipped where that table is not there.
+do $guard$
+begin
+    if to_regclass('public.admin_field_rules') is not null then
+        insert into public.admin_field_rules (user_type, field, note)
+        select user_type, 'social_category', 'with payment_type, 13 Nov'
+        from public.admin_field_rules where field = 'payment_type'
+        on conflict do nothing;
+    end if;
+end $guard$;
 
 commit;
 

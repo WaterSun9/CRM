@@ -184,11 +184,13 @@ export default function QuotationForm({ id,initialRow,baseRow = null,user,meta =
         formRef.current = recovery.form; setForm(recovery.form); markDirty(); setRecovery(null);
     };
     // Step 1: the client's details are checked and saved before the brand and price.
+    // A quote needs a real client name (12 Nov 2026); older quotes still print as they are.
+    const nameIssue = () => (String(formRef.current.customer_name ?? '').trim() && !hasClientName(formRef.current.customer_name) ? ["Customer: Enter the customer's name"] : []);
     const saveAndNext = async () => {
         if (busy) return;
         setBusy(true);
         try {
-            const issues = validate(formRef.current).filter(issue => issue.startsWith('Customer:'));
+            const issues = [...nameIssue(), ...validate(formRef.current).filter(issue => issue.startsWith('Customer:'))];
             if (issues.length) throw new Error(issues.join('\n'));
             await save();
             setStep(1); window.scrollTo?.(0,0);
@@ -203,7 +205,7 @@ export default function QuotationForm({ id,initialRow,baseRow = null,user,meta =
         if (busy) return;
         setBusy(true);
         try {
-            const issues = validate(formRef.current);
+            const issues = [...nameIssue(), ...validate(formRef.current)];
             if (issues.length) throw new Error(issues.join('\n'));
             const savedRow = await save();
             onPreview(savedRow);

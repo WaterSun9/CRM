@@ -303,9 +303,10 @@ export default function LoanTab({
                                         { title: 'Change who finances the loan?', confirmLabel: toPrivate ? 'Yes, private finance' : 'Yes, PM Surya Ghar loan', cancelLabel: 'Cancel', type: 'warning' }
                                     );
                                     if (!ok) return;
-                                    handleLocalChange('finance_type', nextValue);
+                                    // Shown only once saved (a failed save leaves the old choice);
+                                    // the save itself writes the activity log entry.
                                     if (await onUpdate(customer.id, { finance_type: nextValue }) === false) return;
-                                    await logActivity(user.id, 'update', `${customer.customer_name}: Financed by ${nextValue}`, '', customer.id);
+                                    handleLocalChange('finance_type', nextValue);
                                     fetchLogs();
                                 }} />
                             </div>

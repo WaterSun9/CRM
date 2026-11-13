@@ -4,8 +4,7 @@
 -- depends on it.
 --
 -- 'PM Surya Ghar loan' (the scheme's bank loan) or 'Private finance' (any other
--- bank, NBFC or finance company). Empty for Cash and Undecided customers.
--- Payment type 'Undecided' needs no database change (payment_type is free text).
+-- bank, NBFC or finance company). Empty for Cash customers and until chosen.
 -- Safe to run more than once.
 --
 -- To undo (only if no customer has it set yet):
@@ -20,10 +19,16 @@ alter table public.admin add constraint admin_finance_type_check
 
 -- The customer field limits (watch mode): whoever may change Payment Type may
 -- change this too, so normal use is not flagged.
-insert into public.admin_field_rules (user_type, field, note)
-select user_type, 'finance_type', 'with payment_type, 13 Nov'
-from public.admin_field_rules where field = 'payment_type'
-on conflict do nothing;
+-- Skipped (not failed) where the field-limits table is not there.
+do $guard$
+begin
+    if to_regclass('public.admin_field_rules') is not null then
+        insert into public.admin_field_rules (user_type, field, note)
+        select user_type, 'finance_type', 'with payment_type, 13 Nov'
+        from public.admin_field_rules where field = 'payment_type'
+        on conflict do nothing;
+    end if;
+end $guard$;
 
 commit;
 

@@ -7,7 +7,6 @@ export const DEFAULT_LEAD_FORM = {
     email_address: '',
     payment_type: '',
     property_type: 'Residential',
-    social_category: '',
     bank_name: '',
     bank_branch: '',
     villages: '',

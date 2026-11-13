@@ -31,7 +31,7 @@ test('the payment choice is needed only when leaving the Payment Type stage', ()
 });
 
 test('a quotation needs a real client name', () => {
-    for (const n of ['Ramesh Patel', 'Ab', 'રમેશ', 'राम']) assert.equal(hasClientName(n), true, n);
+    for (const n of ['Ramesh Patel', 'Ab', 'રમેશ', 'राम', 'રા', 'रा']) assert.equal(hasClientName(n), true, n);
     for (const n of ['', ' ', '.', 'a', '1234', '- .']) assert.equal(hasClientName(n), false, n);
 });
 
@@ -40,4 +40,10 @@ test('Payment Type sits between Registration and Loan/Cash', async () => {
     const ids = PRIMARY_STAGES.map(s => s.id);
     assert.equal(ids.indexOf('PAYMENT TYPE'), ids.indexOf('REGISTRATION') + 1);
     assert.equal(ids.indexOf('LOAN'), ids.indexOf('PAYMENT TYPE') + 1);
+});
+
+test('the name rule is not part of validate, so old quotes still print', async () => {
+    const { validate, newForm } = await import('../src/quotations/model.js');
+    const form = { ...newForm?.() , customer_name: '.' };
+    assert.ok(!validate(form).some(issue => /customer's name/.test(issue)));
 });

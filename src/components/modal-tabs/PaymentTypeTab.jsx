@@ -14,7 +14,7 @@ const paymentChoiceOf = record => {
     return payment === 'cash' || payment === 'loan' ? payment : null;
 };
 
-export default function PaymentTypeTab({ customer, editData, setEditData, handleChange, isEditable, onUpdate, logActivity, fetchLogs, user }) {
+export default function PaymentTypeTab({ customer, editData, setEditData, handleChange, isEditable, onUpdate, fetchLogs }) {
     const { showConfirm } = useGlobalPopup();
     const [saving, setSaving] = useState(false);
     const current = paymentChoiceOf(editData);
@@ -34,7 +34,7 @@ export default function PaymentTypeTab({ customer, editData, setEditData, handle
             const changes = choice.key === 'cash' && editData.finance_type ? { payment_type: 'Cash', finance_type: null } : { payment_type: choice.payment_type };
             if (await onUpdate(customer.id, changes) === false) return;
             Object.entries(changes).forEach(([field, value]) => set(field, value));
-            await logActivity?.(user?.id, 'update', `${customer.customer_name}: Payment type set to ${choice.label}`, '', customer.id);
+            // The save itself writes the activity log entry (handleSectionUpdate).
             fetchLogs?.();
         } finally {
             setSaving(false);

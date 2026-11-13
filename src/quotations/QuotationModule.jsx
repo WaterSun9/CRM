@@ -416,7 +416,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         <main className="q-content">
             {embedded && mode !== 'list' && <div className="q-subnav"><button className="q-back" aria-label="Back to quotations" onClick={() => navigate('/quotations')}><ChevronLeft size={18} /> Back</button><span>{heading}</span></div>}
             {pdfSaving && <div className="q-notice" role="status"><strong>Saving the quote PDF to the lead…</strong> Please stay on this screen for a few seconds.</div>}
-            {!online && <div className="q-notice" role="status">You’re offline. Draft edits can be recovered on this device. Downloads and outcomes need a connection.</div>}
+            {!online && <div className="q-notice" role="status">You’re offline. Saving, downloads and outcomes need a connection.</div>}
             {error && <div className="q-error" role="alert">{error}<div><button onClick={() => setRefresh(n => n + 1)}>Retry / reload</button></div></div>}
             {mode === 'list' && <>
                 <section className="q-list-head" aria-label="Quotation actions"><div className="q-list-heading">{embedded && isPartnerPortal && <button className="q-back q-list-back" aria-label="Back to portal" onClick={leaveModule}><ChevronLeft size={18} /> Back</button>}<div><h2>Quotations</h2><p>{loading && !allRows.length ? 'Loading quotations…' : `${count} ${count === 1 ? 'client' : 'clients'}`}</p></div></div><button className="q-create" onClick={start}><Plus size={17} /> New quote</button></section>

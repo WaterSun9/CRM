@@ -176,11 +176,12 @@ export function calculate(options, charges = 0) {
     });
 }
 // A real client name: at least two letters ("." or "a" is not a name).
-export const hasClientName = name => (String(name ?? '').match(/\p{L}/gu) || []).length >= 2;
+// Letters and vowel signs both count, so a short Gujarati or Hindi name passes.
+// Checked when a quote is saved (QuotationForm), not when an old one is printed.
+export const hasClientName = name => (String(name ?? '').match(/[\p{L}\p{M}]/gu) || []).length >= 2;
 
 export function validate(form) {
     const errors = [];
-    if (String(form.customer_name ?? '').trim() && !hasClientName(form.customer_name)) errors.push(`${STEPS[0]}: Enter the customer's name`);
     const required = (key, title, step) => { if (!String(form[key] ?? '').trim()) errors.push(`${STEPS[step]}: ${title} is required`); };
     [['customer_name','Customer name'],['quotation_date','Quotation date'],['owner_name_snapshot','Salesperson name']].forEach(([key,title]) => required(key,title,0));
     const validPhone = value => /^(?:91)?[6-9]\d{9}$/.test(String(value || '').replace(/[\s()+-]/g,''));
