@@ -754,6 +754,50 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
         }
     }, [customer?.id]);
 
+    // Geo tag photo uploaded on a customer at Geo Tag Photo: status Proceed, then the
+    // stage moves to Discom Submission (each step confirmed, logged like Save & Move).
+    // Any other stage: nothing moves. A failure leaves the photo saved and says so.
+    const moveOnAfterGeoTagPhoto = async () => {
+        const savedStage = String(savedDataRef.current?.stage || customer.stage || '').toUpperCase().trim();
+        if (savedStage !== STAGE_IDS.GEO_TAG_PHOTO) return;
+        const destStageId = STAGE_IDS.DISCOM_SUBMISSION;
+        let remarks = savedDataRef.current?.stages_remarks;
+        if (typeof remarks === 'string') { try { remarks = JSON.parse(remarks); } catch { remarks = {}; } }
+        const stagePart = { stage: destStageId, stages_remarks: { ...(remarks && typeof remarks === 'object' ? remarks : {}), [STAGE_IDS.GEO_TAG_PHOTO]: '' } };
+        lastSelfWriteRef.current = Date.now();
+        invalidatePendingReloads();
+        try {
+            const statusOk = await writeRecord(customer.id, { geo_tag_status: 'Proceed' });
+            if (statusOk === false) throw new Error('The geo tag status was not saved.');
+            savedDataRef.current = { ...savedDataRef.current, geo_tag_image: true, geo_tag_status: 'Proceed' };
+            setEditData(prev => ({ ...prev, geo_tag_image: true, geo_tag_status: 'Proceed' }));
+            const ok = await writeRecord(customer.id, stagePart);
+            if (ok === false) throw new Error('The database did not accept the stage change.');
+            const afterStage = await readAdminFields(customer.id, ['stage']);
+            if (!afterStage || findUnsavedFields({ stage: destStageId }, afterStage).length > 0) {
+                throw new Error('The database did not store the new stage.');
+            }
+            savedDataRef.current = { ...savedDataRef.current, ...stagePart };
+            setEditData(prev => {
+                const next = { ...prev, ...stagePart, geo_tag_image: true, geo_tag_status: 'Proceed' };
+                setIsFormDirty(getChangedFields(next, savedDataRef.current).size > 0);
+                return next;
+            });
+            setActiveTab(destStageId);
+            void logActivity(
+                user.id,
+                'stage_change',
+                `${customer.customer_name}: Stage changed (geo tag photo uploaded)`,
+                `Stage: ${STAGE_IDS.GEO_TAG_PHOTO} → ${destStageId}`,
+                customer.id
+            );
+            showAlert('Geo tag photo uploaded. The customer moved to Discom Submission.', { title: 'Moved to Discom Submission', type: 'success' });
+        } catch (err) {
+            console.error('Geo tag auto move failed:', err);
+            showAlert(`The geo tag photo is saved, but the customer did not move to Discom Submission.\n\n${err.message || 'Unknown error'}\n\nSet the status to Proceed and press Save & Move.`, { title: 'Stage not moved', type: 'warning' });
+        }
+    };
+
     const handleFileUpload = async (e, docType = null, replacingDocId = null, strictReplacement = false) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -821,6 +865,11 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                             { [flagColumn]: true },
                             `Document upload (${DOC_TYPE_LABELS[docType] || docType})`
                         );
+                    }
+                    // 14 Nov 2026 (client): the geo tag photo moves the customer on by itself,
+                    // Geo Tag Photo -> Discom Submission, status Proceed.
+                    if (flagOk !== false && docType === 'geo_tag_image') {
+                        await moveOnAfterGeoTagPhoto();
                     }
                     if (flagOk === false) {
                         setEditData(prev => ({ ...prev, [flagColumn]: false }));

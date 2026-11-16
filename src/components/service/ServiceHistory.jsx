@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { History } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { STATUS_LABELS, STATUS_PILL } from './serviceLabels';
+import OemPastRecords from './OemPastRecords';
 
 const day = iso => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '');
 const rupees = value => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -87,5 +88,6 @@ export default function ServiceHistory({ customerId }) {
                         </ul>}
                     </li>;
                 })}</ul>}
+        <OemPastRecords customerId={customerId} className="mt-3" />
     </details>;
 }

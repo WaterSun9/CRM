@@ -4,6 +4,7 @@ import { supabase } from '../../supabase';
 import { compressImage } from '../../utils';
 import {
     PHOTO_KINDS, PHOTO_KIND_LABELS, PHOTO_LIMIT, SITE_PHOTO_LABELS, PHOTO_LONG_SIDE, PHOTO_MAX_BYTES,
+    READING_PHOTO_LONG_SIDE, READING_PHOTO_QUALITY,
     canDeletePhoto, canUploadPhotos, formatDateTime, groupIssueFiles, isPhotoType, missingTable,
     photoCounts, photoError, photoPath, pickPhotos, plainError
 } from './serviceLabels';
@@ -16,7 +17,7 @@ const newId = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUI
 // Signed links (10 min) by storage path, reused until 2 minutes before they run
 // out, so the 15-second complaint reload does not download every photo again.
 const links = new Map();
-async function signedLinks(paths) {
+export async function signedLinks(paths) {
     const now = Date.now();
     const stale = paths.filter(path => !(links.get(path)?.until > now + 120000));
     if (stale.length) {
@@ -33,6 +34,42 @@ async function shrink(file) {
     if (!isPhotoType(small?.type)) throw plainError('Only JPG, PNG or WebP photos can be added. Use Take photo instead.');
     if (small.size > PHOTO_MAX_BYTES) throw plainError('The photo is too large.');
     return small;
+}
+
+// Reading photo: as small as a meter can still be read. Always redrawn at about
+// 800 px; WebP where the phone can make it (smaller), else JPEG.
+async function shrinkTiny(file) {
+    if (!file?.type?.startsWith('image/')) throw plainError('Only photos can be added. Use Take photo.');
+    let bitmap;
+    try {
+        bitmap = await createImageBitmap(file);
+    } catch {
+        // Older phones: fall back to the normal shrink.
+        return shrink(file);
+    }
+    const scale = Math.min(1, READING_PHOTO_LONG_SIDE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d', { alpha: false }).drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const encode = type => new Promise(resolve => canvas.toBlob(resolve, type, READING_PHOTO_QUALITY));
+    let blob = await encode('image/webp');
+    if (!blob || blob.type !== 'image/webp') blob = await encode('image/jpeg');
+    if (!blob || !isPhotoType(blob.type)) return shrink(file);
+    const name = String(file.name || 'reading').replace(/\.[^/.]+$/, '') + (blob.type === 'image/webp' ? '.webp' : '.jpg');
+    return new File([blob], name, { type: blob.type, lastModified: Date.now() });
+}
+
+// One reading photo for one visit; a retake replaces the old one.
+export async function saveReadingPhoto({ issueId, userId, tripId, key, file, old }) {
+    if (old) {
+        const { error } = await supabase.from('service_issue_files').delete().eq('id', old.id);
+        if (error) throw error;
+        await supabase.storage.from(BUCKET).remove([old.storage_path]).catch(() => {});
+        links.delete(old.storage_path);
+    }
+    await addPhoto(issueId, userId, 'reading', file, key, { tripId, tiny: true });
 }
 
 // A dropped connection (common on site) is worth another try; a refusal is not.
@@ -57,15 +94,15 @@ async function withRetry(step) {
 // One photo: into storage at {issue}/{me}/{kind}-{id}.jpg, then its row. Both
 // steps are retried on a bad signal; a row that still cannot be saved takes its
 // file back out of storage, so no photo is left behind without a row.
-async function addPhoto(issueId, userId, kind, file, label = null) {
-    const small = await shrink(file);
+async function addPhoto(issueId, userId, kind, file, label = null, { tripId = null, tiny = false } = {}) {
+    const small = tiny ? await shrinkTiny(file) : await shrink(file);
     const path = photoPath(issueId, userId, kind, newId(), small.type);
     const uploaded = await withRetry(() => supabase.storage.from(BUCKET).upload(path, small, { upsert: false, contentType: small.type, cacheControl: '3600' }));
     // "Already exists" after a retry means an earlier try did arrive.
     if (uploaded.error && !/already exists|duplicate/i.test(uploaded.error.message || '')) throw uploaded.error;
     const saved = await withRetry(() => supabase.from('service_issue_files').insert({
         issue_id: issueId, storage_path: path, file_name: String(file.name || `${kind}.jpg`).slice(0, 200),
-        mime_type: small.type, uploaded_by: userId, kind, ...(label ? { label } : {})
+        mime_type: small.type, uploaded_by: userId, kind, ...(label ? { label } : {}), ...(tripId ? { trip_id: tripId } : {})
     }));
     // storage_path is unique: "duplicate" after a retry means the row is saved.
     if (saved.error && saved.error.code !== '23505') {
@@ -94,7 +131,7 @@ function DeleteButton({ asking, busy, onAsk, onCancel, onDelete }) {
     </div>;
 }
 
-function PhotoViewer({ url, label, onClose }) {
+export function PhotoViewer({ url, label, onClose }) {
     useEffect(() => {
         const key = event => { if (event.key === 'Escape') onClose(); };
         window.addEventListener('keydown', key);

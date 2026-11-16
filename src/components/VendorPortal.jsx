@@ -353,15 +353,28 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             setDocuments(prev => [newDoc, ...(prev || [])]);
 
             if (newDoc) {
-                const nextGeoStatus = geoTagStatus === 'Pending' ? 'Proceed' : geoTagStatus;
+                // 14 Nov 2026 (client): the geo tag photo moves the customer on by itself:
+                // status Proceed and, from Geo Tag Photo, the stage to Discom Submission.
+                const nextGeoStatus = 'Proceed';
+                const moveOn = String(selectedCust.stage || '').toUpperCase().trim() === STAGE_IDS.GEO_TAG_PHOTO;
+                const geoPayload = { geo_tag_image: true, geo_tag_status: nextGeoStatus, ...(moveOn ? { stage: STAGE_IDS.DISCOM_SUBMISSION } : {}) };
                 // Unchecked before: the photo uploaded but the flag/status did
                 // not save, and a missing geo_tag_image blocks the move to
                 // Discom Submission - so the vendor was stuck with no reason given.
-                const { ok: geoOk, error: geoErr } = await updateAdminRecord(selectedCust.id, {
-                    geo_tag_image: true,
-                    geo_tag_status: nextGeoStatus
-                });
+                const { ok: geoOk, error: geoErr } = await updateAdminRecord(selectedCust.id, geoPayload);
                 if (!geoOk) throw geoErr;
+                setCustomers(prev => prev.map(customer => customer.id === selectedCust.id ? { ...customer, ...geoPayload } : customer));
+                setSelectedCust(prev => ({ ...prev, ...geoPayload }));
+                if (moveOn) {
+                    setStageMoveError('');
+                    setSaveSuccess(true);
+                    if (user?.id) {
+                        void logActivity(user.id, 'stage_change', `${selectedCust.customer_name}: Stage changed (geo tag photo uploaded)`,
+                            `Stage: ${STAGE_IDS.GEO_TAG_PHOTO} → ${STAGE_IDS.DISCOM_SUBMISSION}`, selectedCust.id);
+                    }
+                    showAlert('Geo tag photo uploaded. The customer moved to Discom Submission.', { title: 'Moved to Discom Submission', type: 'success' });
+                    setTimeout(() => setView('list'), 1200);
+                }
 
                 const existingGeo = (documents || []).filter(d =>
                     (d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag') && d.id !== newDoc.id);
@@ -379,9 +392,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 ]);
                 setGeoTagImage(true);
 
-                if (geoTagStatus === 'Pending') {
-                    setGeoTagStatus('Proceed');
-                }
+                setGeoTagStatus('Proceed');
                 
                 if (user?.id) {
                     void logActivity(
