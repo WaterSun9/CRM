@@ -19,6 +19,7 @@ const db = {
         { id: 'p6', name: 'RAVI DEALER', user_type: 'agent2', channel_partner: 'GUJARAT SOLAR HUB' },
         { id: 'p7', name: 'MANOJ SOLAR', email: 'manoj@example.com', user_type: 'agent2', channel_partner: 'SUN ENERGY', created_at: '2026-09-02T10:00:00Z' },
         { id: 'p8', name: 'VIPUL KHODA', email: 'vipul@example.com', user_type: 'agent', created_at: '2026-08-20T10:00:00Z' },
+        { id: 'p9', name: 'DHRUV', user_type: 'sales' },
     ],
     admin: [
         card('MAHESH PATEL', 'SUN ENERGY', 'KISHORBHAI'),
@@ -35,6 +36,8 @@ const db = {
         card('RAKESH MODI', 'SUN ENERGY', 'JAYANTI', 'COMPLETED'),
         card('NILESH DESAI', 'KALPESH', '', 'SUBSIDY STATUS'),
         card('PARUL SHAH', 'KALPESH', '', 'LOAN'),
+        card('MEENA PATEL', 'SUN ENERGY', 'Dhruv', 'REGISTRATION'),
+        card('ASHOK RANA', '', 'JAYANTI', 'LEADS'),
     ],
     activity_log: [],
 };

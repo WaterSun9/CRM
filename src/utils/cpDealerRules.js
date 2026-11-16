@@ -32,6 +32,8 @@ export const RULES = [
         rule: 'Nobody has a CP or CPO login with this name. Leave it, change it to an existing login, or move these customers to DEBOARDED.' },
     { id: 'dealer_no_login', title: 'Dealer with no login', grouped: true,
         rule: 'No dealer login with this name under the CPO. Leave it, change it to one of the CPO\'s dealers, empty the Dealer box, or move these customers to DEBOARDED.' },
+    { id: 'misc', title: 'Miscellaneous',
+        rule: 'Other cases that need a person to decide: an empty CP box, an office staff name in the Dealer box, a CPO\'s name in the Dealer box. Nothing changes unless you pick.' },
 ];
 
 // The most used spelling of each name, by key.
@@ -71,7 +73,10 @@ export function loginIndex(profiles) {
         }
         dealers.set(dKey, under);
     }
-    return { cps, branches, dealers, dealersOf };
+    // Office staff (admin, office) names, and CPO login names: never a dealer.
+    const staff = spellings(active.filter(p => ['admin', 'sales'].includes(p.user_type)).map(p => p.name));
+    const cpoNames = spellings(active.filter(p => p.user_type === 'channel_partner_office').map(p => p.name));
+    return { cps, branches, dealers, dealersOf, staff, cpoNames };
 }
 
 const isDeboarded = card => /deboard/i.test(`${card.channel_partner || ''} ${card.sub_channel_partner || ''} ${card.stage || ''}`);
@@ -93,10 +98,17 @@ export function findingFor(card, index) {
 
     // 1. The Dealer box holds an independent CP (and not also a dealer of this CPO).
     if (dealerKey && index.cps.has(dealerKey) && !(dealerUnder && dealerUnder.has(cpKey))) return { rule: 'cp_as_dealer', cpName: index.cps.get(dealerKey) };
-    // 2. A CP name nobody has a login for (empty CP is left for the Data Review page).
+    // Misc: an empty CP box.
+    if (!cpKey) return { rule: 'misc', kind: 'empty_cp', problem: 'Empty CP box' };
+    // 2. A CP name nobody has a login for.
     if (cpKey && !cpIsIndependent && !cpIsBranch) return { rule: 'cp_no_login', key: cpKey, name: cp };
     // 3. An independent CP with something in the Dealer box.
     if (cpIsIndependent && !cpIsBranch && dealerKey) return { rule: 'dealer_under_cp' };
+    // Misc: an office staff name, or a CPO's own name, in the Dealer box (and not also a dealer login here).
+    if (cpIsBranch && dealerKey && !(dealerUnder && dealerUnder.has(cpKey))) {
+        if (index.staff.has(dealerKey)) return { rule: 'misc', kind: 'staff_as_dealer', problem: `Office staff ${index.staff.get(dealerKey)} as dealer` };
+        if (index.branches.has(dealerKey) || index.cpoNames.has(dealerKey)) return { rule: 'misc', kind: 'cpo_as_dealer', problem: 'A CPO\'s name as dealer' };
+    }
     // 4. A CPO customer whose dealer is a login under another CPO only.
     if (cpIsBranch && dealerUnder && !dealerUnder.has(cpKey)) {
         const otherKey = [...dealerUnder.keys()][0];
@@ -137,6 +149,11 @@ export function checkCards(cards, profiles) {
             if (f.otherBranch) options.push(option('move', `Move to ${f.otherBranch}, keep dealer ${f.otherDealer}`, { channel_partner: f.otherBranch, sub_channel_partner: f.otherDealer }));
             options.push(noChange());
             one(options, 'empty');
+        } else if (f.rule === 'misc') {
+            const options = [noChange()];
+            if (f.kind === 'empty_cp') options.push(...loginNames.map(name => option(`login:${name}`, `Set CP to ${name}`, { channel_partner: name })));
+            else options.push(option('empty', 'Empty the Dealer box', { sub_channel_partner: null }));
+            byRule.misc.push({ id: `misc:${card.id}`, rule: 'misc', title: card.customer_name, problem: f.problem, cards: [card], options, choice: NO_CHANGE });
         } else if (f.rule === 'spelling') {
             one([option('same', `Same person: ${[f.to.channel_partner, f.to.sub_channel_partner].filter(Boolean).join(' / ')}`, f.to), noChange('Different people: no change')], 'same');
         } else {

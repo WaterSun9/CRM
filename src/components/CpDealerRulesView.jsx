@@ -24,7 +24,12 @@ const SET_ALL = {
     cp_no_login: [[NO_CHANGE, 'No change'], ['deboard', 'Move to DEBOARDED']],
     dealer_no_login: [[NO_CHANGE, 'No change'], ['empty', 'Empty the Dealer box'], ['deboard', 'Move to DEBOARDED']],
     unused_login: [[NO_CHANGE, 'Keep'], ['deactivate', 'Deactivate']],
+    misc: [[NO_CHANGE, 'No change']],
 };
+
+// Short tab names; the full title shows above the list.
+const TAB_NAMES = { cp_as_dealer: 'CP as dealer', dealer_under_cp: 'Dealer under a CP', dealer_other_cpo: 'Dealer of another CPO', spelling: 'Spelling',
+    cp_no_login: 'CP / CPO no login', dealer_no_login: 'Dealer no login', unused_login: 'Logins with no customers', misc: 'Miscellaneous' };
 
 async function loadAll(build) {
     let rows = [];
@@ -46,7 +51,7 @@ const selectClass = 'min-h-10 w-full rounded-lg border border-stone-300 bg-white
 export default function CpDealerRulesView({ user, onSelectCustomer }) {
     const [state, setState] = useState({ loading: true, error: '', byRule: null, unused: [], cards: 0, logins: 0, at: null });
     const [choices, setChoices] = useState({});
-    const [open, setOpen] = useState({});
+    const [tab, setTab] = useState(RULES[0].id);
     const [openRow, setOpenRow] = useState({});
     const [confirming, setConfirming] = useState(false);
     const [progress, setProgress] = useState(null);
@@ -162,31 +167,6 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
     };
 
     const busy = state.loading || Boolean(progress);
-    const ruleBlock = (rule, rows, body) => {
-        const changing = rule.id === 'unused_login' ? plan.logins.length : plan.edits.filter(e => e.rule.id === rule.id).length;
-        const isOpen = open[rule.id] ?? false;
-        return <section key={rule.id} className="rounded-2xl border border-stone-200 bg-white">
-            <div className="flex flex-wrap items-center gap-3 p-4">
-                <button type="button" onClick={() => setOpen(current => ({ ...current, [rule.id]: !isOpen }))} disabled={!rows.length} aria-expanded={isOpen}
-                    className="flex min-w-0 flex-1 items-start gap-2 text-left disabled:cursor-default">
-                    {rows.length ? (isOpen ? <ChevronDown size={18} className="mt-0.5 shrink-0" /> : <ChevronRight size={18} className="mt-0.5 shrink-0" />) : <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-600" />}
-                    <span className="min-w-0">
-                        <span className="block text-sm font-bold text-stone-900">{rule.title}
-                            <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${rows.length ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'}`}>
-                                {rows.length ? `${rows.length} ${rule.grouped ? 'name' : rule.id === 'unused_login' ? 'login' : 'customer'}${rows.length === 1 ? '' : 's'} · ${changing} to change` : 'All fine'}</span></span>
-                        <span className="block text-xs text-stone-500">{rule.rule}</span>
-                    </span>
-                </button>
-                {rows.length > 0 && <label className="w-56 text-[10px] font-bold uppercase tracking-wider text-stone-500">Set all to
-                    <select value="" onChange={e => e.target.value && setAll(rule.id, e.target.value)} className={`${selectClass} mt-1 normal-case tracking-normal`}>
-                        <option value="">Choose…</option>
-                        {SET_ALL[rule.id].map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-                    </select></label>}
-            </div>
-            {isOpen && rows.length > 0 && <div className="max-h-[32rem] overflow-auto border-t border-stone-100">{body}</div>}
-        </section>;
-    };
-
     const unusedRule = { id: 'unused_login', title: 'Logins with no customers', rule: 'Active CP, CPO and dealer logins that no customer card uses. Keep them (new partners start with none), or deactivate them; a deactivated login can be switched on again in User Management.' };
     return <div className="mx-auto max-w-6xl space-y-4 p-4 pb-32 sm:p-6 sm:pb-32">
         <div className="flex items-start justify-between gap-3">
@@ -207,58 +187,89 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
         </div>}
 
         {state.loading && !state.byRule ? <p className="flex items-center gap-2 text-sm text-stone-400"><Loader2 size={16} className="animate-spin" /> Checking every customer…</p>
-            : state.byRule && <div className="space-y-3">
-                {RULES.map(rule => {
-                    const rows = state.byRule[rule.id];
-                    return ruleBlock(rule, rows, <table className="w-full text-left text-xs">
-                        <thead className="sticky top-0 z-10 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-500"><tr>
-                            <th className="p-2">{rule.grouped ? 'Name' : 'Customer'}</th><th className="p-2">CP</th><th className="p-2">Dealer</th><th className="w-72 p-2">Choice</th>
-                        </tr></thead>
-                        <tbody className="divide-y divide-stone-100">{rows.map(row => {
-                            const choice = choiceOf(row);
-                            const first = row.cards[0];
-                            const after = changesFor(row, first, choice);
-                            const expanded = openRow[row.id];
-                            return <tr key={row.id} className={`align-top ${choice === NO_CHANGE ? 'bg-white' : 'bg-emerald-50/40'}`}>
-                                <td className="p-2">
-                                    {rule.grouped
-                                        ? <><span className="block font-bold text-stone-900">{row.title}</span>
-                                            <button type="button" onClick={() => setOpenRow(current => ({ ...current, [row.id]: !expanded }))} className="text-[11px] font-semibold text-stone-500 underline-offset-2 hover:underline">
-                                                {row.cards.length} customer{row.cards.length === 1 ? '' : 's'} {expanded ? '▲' : '▼'}</button>
-                                            {expanded && <ul className="mt-1 space-y-0.5 text-[11px] text-stone-600">{row.cards.map(c => <li key={c.id}>{c.folder_no ? `${c.folder_no} · ` : ''}{onSelectCustomer
-                                                ? <button type="button" onClick={() => onSelectCustomer(c)} className="underline-offset-2 hover:underline">{c.customer_name}</button> : c.customer_name} <span className="text-stone-400">{c.stage}</span></li>)}</ul>}</>
-                                        : <>{onSelectCustomer ? <button type="button" onClick={() => onSelectCustomer(first)} className="text-left font-semibold text-stone-900 underline-offset-2 hover:underline">{first.customer_name}</button> : <span className="font-semibold">{first.customer_name}</span>}
-                                            <span className="block text-[10px] text-stone-400">{[first.folder_no, first.stage].filter(Boolean).join(' · ')}</span></>}
-                                </td>
-                                <td className="p-2"><Change from={first.channel_partner} to={after.channel_partner} /></td>
-                                <td className="p-2"><Change from={first.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} /></td>
-                                <td className="p-2"><select value={choice} onChange={e => setChoices(current => ({ ...current, [row.id]: e.target.value }))} aria-label={`Choice for ${row.title}`} className={selectClass}>
-                                    {row.options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                                </select></td>
-                            </tr>;
-                        })}</tbody>
-                    </table>);
-                })}
-                {ruleBlock(unusedRule, state.unused, <table className="w-full text-left text-xs">
-                    <thead className="sticky top-0 z-10 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-500"><tr>
-                        <th className="p-2">Login</th><th className="p-2">Type</th><th className="p-2">CPO branch</th><th className="p-2">Created</th><th className="w-44 p-2">Choice</th>
-                    </tr></thead>
-                    <tbody className="divide-y divide-stone-100">{state.unused.map(({ login, kind }) => {
-                        const id = `login:${login.id}`;
-                        const choice = choices[id] ?? NO_CHANGE;
-                        return <tr key={id} className={choice === NO_CHANGE ? '' : 'bg-red-50/50'}>
-                            <td className="p-2"><span className="font-semibold text-stone-900">{login.name}</span><span className="block text-[10px] text-stone-400">{login.email}</span></td>
-                            <td className="p-2">{kind}</td>
-                            <td className="p-2">{login.user_type === 'agent' ? '–' : login.channel_partner || '–'}</td>
-                            <td className="p-2 whitespace-nowrap">{day(login.created_at)}</td>
-                            <td className="p-2"><select value={choice} onChange={e => setChoices(current => ({ ...current, [id]: e.target.value }))} aria-label={`Choice for login ${login.name}`} className={selectClass}>
-                                <option value={NO_CHANGE}>Keep</option><option value="deactivate">Deactivate</option>
-                            </select></td>
-                        </tr>;
-                    })}</tbody>
-                </table>)}
-                <p className="text-xs text-stone-500">Left alone: deleted and DEBOARDED customers, customers with an empty CP box, and names that only look alike (e.g. DASHRATH and DASHRATH MALI show under "Dealer with no login", where you can pick the right dealer).</p>
-            </div>}
+            : state.byRule && (() => {
+                // One tab per topic; logins with no customers, then Miscellaneous last.
+                const topics = [...RULES.filter(r => r.id !== 'misc'), unusedRule, RULES.find(r => r.id === 'misc')];
+                const rowsOf = id => (id === 'unused_login' ? state.unused : state.byRule[id]);
+                const changingOf = id => (id === 'unused_login' ? plan.logins.length : plan.edits.filter(e => e.rule.id === id).length);
+                const current = topics.find(t => t.id === tab) || topics[0];
+                const rows = rowsOf(current.id);
+                return <div className="space-y-3">
+                    <div role="tablist" aria-label="Topics" className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">{topics.map(t => {
+                        const count = rowsOf(t.id).length, changing = changingOf(t.id);
+                        return <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+                            className={`rounded-xl px-3 py-2 text-left text-xs font-bold ${tab === t.id ? 'bg-stone-900 text-white' : 'border border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}>
+                            <span className="block">{TAB_NAMES[t.id] || t.title}</span>
+                            <span className={`block text-[10px] font-semibold ${tab === t.id ? 'text-white/70' : count ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                {count ? `${count} found · ${changing} to change` : 'All fine'}</span>
+                        </button>;
+                    })}</div>
+
+                    <section role="tabpanel" aria-label={current.title} className="rounded-2xl border border-stone-200 bg-white">
+                        <div className="flex flex-wrap items-end gap-3 border-b border-stone-100 p-4">
+                            <div className="min-w-0 flex-1">
+                                <h2 className="text-base font-bold text-stone-900">{current.title}</h2>
+                                <p className="text-xs text-stone-500">{current.rule}</p>
+                            </div>
+                            {rows.length > 0 && SET_ALL[current.id].length > 1 && <label className="w-60 text-[10px] font-bold uppercase tracking-wider text-stone-500">Set all to
+                                <select value="" onChange={e => e.target.value && setAll(current.id, e.target.value)} className={`${selectClass} mt-1 normal-case tracking-normal`}>
+                                    <option value="">Choose…</option>
+                                    {SET_ALL[current.id].map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                                </select></label>}
+                        </div>
+                        {!rows.length ? <p className="flex items-center gap-2 p-6 text-sm font-semibold text-emerald-700"><CheckCircle2 size={18} /> Nothing to fix here.</p>
+                            : <div className="max-h-[60vh] overflow-auto">{current.id === 'unused_login'
+                                ? <table className="w-full text-left text-xs">
+                                    <thead className="sticky top-0 z-10 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-500"><tr>
+                                        <th className="p-2">Login</th><th className="p-2">Type</th><th className="p-2">CPO branch</th><th className="p-2">Created</th><th className="w-44 p-2">Choice</th>
+                                    </tr></thead>
+                                    <tbody className="divide-y divide-stone-100">{state.unused.map(({ login, kind }) => {
+                                        const id = `login:${login.id}`;
+                                        const choice = choices[id] ?? NO_CHANGE;
+                                        return <tr key={id} className={choice === NO_CHANGE ? '' : 'bg-red-50/50'}>
+                                            <td className="p-2"><span className="font-semibold text-stone-900">{login.name}</span><span className="block text-[10px] text-stone-400">{login.email}</span></td>
+                                            <td className="p-2">{kind}</td>
+                                            <td className="p-2">{login.user_type === 'agent' ? '–' : login.channel_partner || '–'}</td>
+                                            <td className="whitespace-nowrap p-2">{day(login.created_at)}</td>
+                                            <td className="p-2"><select value={choice} onChange={e => setChoices(cur => ({ ...cur, [id]: e.target.value }))} aria-label={`Choice for login ${login.name}`} className={selectClass}>
+                                                <option value={NO_CHANGE}>Keep</option><option value="deactivate">Deactivate</option>
+                                            </select></td>
+                                        </tr>;
+                                    })}</tbody>
+                                </table>
+                                : <table className="w-full text-left text-xs">
+                                    <thead className="sticky top-0 z-10 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-500"><tr>
+                                        <th className="p-2">{current.grouped ? 'Name' : 'Customer'}</th>{current.id === 'misc' && <th className="p-2">Problem</th>}<th className="p-2">CP</th><th className="p-2">Dealer</th><th className="w-72 p-2">Choice</th>
+                                    </tr></thead>
+                                    <tbody className="divide-y divide-stone-100">{rows.map(row => {
+                                        const choice = choiceOf(row);
+                                        const first = row.cards[0];
+                                        const after = changesFor(row, first, choice);
+                                        const expanded = openRow[row.id];
+                                        return <tr key={row.id} className={`align-top ${choice === NO_CHANGE ? 'bg-white' : 'bg-emerald-50/40'}`}>
+                                            <td className="p-2">
+                                                {current.grouped
+                                                    ? <><span className="block font-bold text-stone-900">{row.title}</span>
+                                                        <button type="button" onClick={() => setOpenRow(cur => ({ ...cur, [row.id]: !expanded }))} className="text-[11px] font-semibold text-stone-500 underline-offset-2 hover:underline">
+                                                            {row.cards.length} customer{row.cards.length === 1 ? '' : 's'} {expanded ? '▲' : '▼'}</button>
+                                                        {expanded && <ul className="mt-1 space-y-0.5 text-[11px] text-stone-600">{row.cards.map(c => <li key={c.id}>{c.folder_no ? `${c.folder_no} · ` : ''}{onSelectCustomer
+                                                            ? <button type="button" onClick={() => onSelectCustomer(c)} className="underline-offset-2 hover:underline">{c.customer_name}</button> : c.customer_name} <span className="text-stone-400">{c.stage}</span></li>)}</ul>}</>
+                                                    : <>{onSelectCustomer ? <button type="button" onClick={() => onSelectCustomer(first)} className="text-left font-semibold text-stone-900 underline-offset-2 hover:underline">{first.customer_name}</button> : <span className="font-semibold">{first.customer_name}</span>}
+                                                        <span className="block text-[10px] text-stone-400">{[first.folder_no, first.stage].filter(Boolean).join(' · ')}</span></>}
+                                            </td>
+                                            {current.id === 'misc' && <td className="p-2 font-semibold text-stone-700">{row.problem}</td>}
+                                            <td className="p-2"><Change from={first.channel_partner} to={after.channel_partner} /></td>
+                                            <td className="p-2"><Change from={first.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} /></td>
+                                            <td className="p-2"><select value={choice} onChange={e => setChoices(cur => ({ ...cur, [row.id]: e.target.value }))} aria-label={`Choice for ${row.title}`} className={selectClass}>
+                                                {row.options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                                            </select></td>
+                                        </tr>;
+                                    })}</tbody>
+                                </table>}</div>}
+                    </section>
+                    <p className="text-xs text-stone-500">Left alone: deleted and DEBOARDED customers. Names that only look alike (e.g. DASHRATH and DASHRATH MALI) show under "Dealer with no login", where you can pick the right dealer.</p>
+                </div>;
+            })()}
 
         {state.byRule && <div className="fixed inset-x-0 bottom-0 z-20 border-t border-stone-200 bg-white/95 p-3 backdrop-blur">
             <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3">

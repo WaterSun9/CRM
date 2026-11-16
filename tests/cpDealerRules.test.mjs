@@ -11,6 +11,7 @@ const profiles = [
     { id: 'p6', name: 'RAVI DEALER', user_type: 'agent2', channel_partner: 'GUJARAT SOLAR HUB' },
     { id: 'p7', name: 'OLD CP', user_type: 'agent', status: 'inactive' },
     { id: 'p8', name: 'NEW DEALER', user_type: 'agent2', channel_partner: 'SUN ENERGY', created_at: '2026-11-10' },
+    { id: 'p9', name: 'DHRUV', user_type: 'sales' },
 ];
 const index = loginIndex(profiles);
 let n = 0;
@@ -70,7 +71,6 @@ test('correct, look-alike, deleted, DEBOARDED and empty-CP cards are left alone'
     assert.equal(findingFor(card('SUN ENERGY', 'DASHRATH MALI'), index), null);
     assert.equal(findingFor(card('SUN ENERGY', 'KISHORBHAI', { deleted_at: '2026-01-01' }), index), null);
     assert.equal(findingFor(card('DEBOARDED', 'KISHORBHAI'), index), null);
-    assert.equal(findingFor(card('', ''), index), null);
     assert.equal(findingFor(card('SUN ENERGY', 'DASHRATH'), index).rule, 'dealer_no_login');   // look-alike is not fixed as spelling
 });
 
@@ -78,4 +78,14 @@ test('logins with no customers', () => {
     const cards = [card('SUN ENERGY', 'DASHRATH MALI'), card('KISHORBHAI', '')];
     const unused = unusedLogins(cards, profiles).map(u => u.login.name);
     assert.deepEqual(unused.sort(), ['Bharat Unja', 'Hub Office', 'NEW DEALER', 'RAVI DEALER']);
+});
+
+test('miscellaneous: empty CP, staff as dealer, CPO name as dealer; no change by default', () => {
+    assert.equal(findingFor(card('', ''), index).kind, 'empty_cp');
+    assert.equal(findingFor(card('SUN ENERGY', 'dhruv'), index).kind, 'staff_as_dealer');
+    assert.equal(findingFor(card('SUN ENERGY', 'Gujarat Solar Hub'), index).kind, 'cpo_as_dealer');
+    const c = card('SUN ENERGY', 'DHRUV');
+    const row = checkCards([c], profiles).misc[0];
+    assert.equal(row.choice, NO_CHANGE);
+    assert.deepEqual(changesFor(row, c, 'empty'), { sub_channel_partner: null });
 });
