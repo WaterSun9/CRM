@@ -72,7 +72,11 @@ export const EVENT_LABELS = {
     fixed: 'Fixed',
     revisit: 'Revisit needed',
     inverter_added: 'Inverter number added',
-    inverter_replaced: 'Inverter replaced'
+    inverter_replaced: 'Inverter replaced',
+    oem_claim: 'OEM claim started',
+    oem_pdf_sent: 'OEM data PDF sent',
+    oem_ticket: 'OEM ticket no.',
+    oem_part_received: 'New part received from OEM'
 };
 export const eventLabel = event => EVENT_LABELS[event] || event;
 export const OVERRIDE_REASONS = ['Customer did not get the code', 'Confirmed by phone call', 'No network at site', 'Customer has no mobile', 'Other'];
