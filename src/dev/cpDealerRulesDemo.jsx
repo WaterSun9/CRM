@@ -17,6 +17,8 @@ const db = {
         { id: 'p4', name: 'Hub Office', user_type: 'channel_partner_office', channel_partner: 'GUJARAT SOLAR HUB' },
         { id: 'p5', name: 'DASHRATH MALI', user_type: 'agent2', channel_partner: 'SUN ENERGY' },
         { id: 'p6', name: 'RAVI DEALER', user_type: 'agent2', channel_partner: 'GUJARAT SOLAR HUB' },
+        { id: 'p7', name: 'MANOJ SOLAR', email: 'manoj@example.com', user_type: 'agent2', channel_partner: 'SUN ENERGY', created_at: '2026-09-02T10:00:00Z' },
+        { id: 'p8', name: 'VIPUL KHODA', email: 'vipul@example.com', user_type: 'agent', created_at: '2026-08-20T10:00:00Z' },
     ],
     admin: [
         card('MAHESH PATEL', 'SUN ENERGY', 'KISHORBHAI'),
@@ -29,6 +31,10 @@ const db = {
         card('AMIT JOSHI', 'SUN ENERGY', 'DASHRATH MALI'),
         card('DIPAK VAGHELA', 'SUN ENERGY', 'DASHRATH'),
         card('GITA PRAJAPATI', 'DEBOARDED', 'KISHORBHAI'),
+        card('HARSH JOSHI', 'SUN ENERGY', 'JAYANTI'),
+        card('RAKESH MODI', 'SUN ENERGY', 'JAYANTI', 'COMPLETED'),
+        card('NILESH DESAI', 'KALPESH', '', 'SUBSIDY STATUS'),
+        card('PARUL SHAH', 'KALPESH', '', 'LOAN'),
     ],
     activity_log: [],
 };
@@ -54,6 +60,8 @@ function query(table) {
 }
 supabase.from = query;
 supabase.rpc = async () => ({ data: null, error: null });
+// supabase.functions is a getter that makes a new client each time, so replace the getter.
+Object.defineProperty(supabase, 'functions', { configurable: true, get: () => ({ invoke: async () => ({ data: {}, error: null }) }) });
 supabase.auth.getUser = async () => ({ data: { user: { id: USER.id } }, error: null });
 supabase.auth.getSession = async () => ({ data: { session: { user: { id: USER.id } } }, error: null });
 createRoot(document.getElementById('root')).render(<GlobalPopupProvider><div className="min-h-screen bg-[#FCFBFA]"><CpDealerRulesView user={USER} /></div></GlobalPopupProvider>);

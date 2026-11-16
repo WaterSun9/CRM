@@ -8,34 +8,30 @@
 //   Dealer  user_type 'agent2'                  name = name, works under the CPO branch channel_partner
 // A customer card: channel_partner (the "CP" box) and sub_channel_partner (the "Dealer" box).
 //
-// Each customer gets at most one fix per check: the first rule (in RULES order) that applies.
-// Customers that are deleted, or DEBOARDED (rule 9), are left alone.
+// Each finding is a row with choices; one choice is the default. "No change" is always a
+// choice. Rows of the same name with no login are grouped (one choice for all their customers).
+// Each customer is in at most one row per check (the first rule that applies). Deleted and
+// DEBOARDED customers are left alone (rule 9). Moving to DEBOARDED puts DEBOARDED in the CP
+// box and keeps the old name in the Dealer box, for history.
 
-// Same name if letters and digits match, ignoring capitals, spaces and dots ("Sun Energy." = "SUN ENERGY").
 export const nameKey = value => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
+export const DEBOARDED = 'DEBOARDED';
+export const NO_CHANGE = 'none';
 
 export const RULES = [
-    {
-        id: 'cp_as_dealer',
-        title: 'CP written as dealer',
-        rule: 'The name in the Dealer box is an independent CP with its own CP login. Put them in the CP box and empty the Dealer box (rules 2 and 6).',
-    },
-    {
-        id: 'dealer_under_cp',
-        title: 'Dealer filled in under an independent CP',
-        rule: 'An independent CP works alone, so the Dealer box stays empty (rule 6).',
-    },
-    {
-        id: 'dealer_other_cpo',
-        title: 'Dealer belongs to another CPO',
-        rule: 'The dealer has a login under a different CPO. Empty the Dealer box; the customer stays under its own CPO (rule 7).',
-    },
-    {
-        id: 'spelling',
-        title: 'Name spelled differently from the login',
-        rule: 'Same name, but capitals, spaces or dots differ from the login. Use the login\'s spelling (rule 10).',
-    },
+    { id: 'cp_as_dealer', title: 'CP written as dealer',
+        rule: 'The name in the Dealer box is an independent CP with its own CP login. Put them in the CP box and empty the Dealer box (rules 2 and 6).' },
+    { id: 'dealer_under_cp', title: 'Dealer filled in under an independent CP',
+        rule: 'An independent CP works alone, so the Dealer box stays empty (rule 6).' },
+    { id: 'dealer_other_cpo', title: 'Dealer belongs to another CPO',
+        rule: 'The dealer has a login under a different CPO. Empty the Dealer box (the customer stays with its CPO, rule 7), or move the customer to the dealer\'s CPO.' },
+    { id: 'spelling', title: 'Name spelled differently from the login',
+        rule: 'Same letters, but capitals, spaces or dots differ from the login. Same person: use the login\'s spelling (rule 10). Different people: leave it.' },
+    { id: 'cp_no_login', title: 'CP / CPO with no login', grouped: true,
+        rule: 'Nobody has a CP or CPO login with this name. Leave it, change it to an existing login, or move these customers to DEBOARDED.' },
+    { id: 'dealer_no_login', title: 'Dealer with no login', grouped: true,
+        rule: 'No dealer login with this name under the CPO. Leave it, change it to one of the CPO\'s dealers, empty the Dealer box, or move these customers to DEBOARDED.' },
 ];
 
 // The most used spelling of each name, by key.
@@ -54,28 +50,41 @@ function spellings(names) {
     return best;
 }
 
+const isActive = p => String(p?.status || 'active').toLowerCase() !== 'inactive';
+
 // Logins in the shape the rules need.
 export function loginIndex(profiles) {
-    const active = (profiles || []).filter(p => String(p?.status || 'active').toLowerCase() !== 'inactive');
+    const active = (profiles || []).filter(isActive);
     const cps = spellings(active.filter(p => p.user_type === 'agent').map(p => p.name));
     const branches = spellings(active.filter(p => p.user_type === 'channel_partner_office').map(p => p.channel_partner));
     // dealer key -> Map(branch key -> exact dealer name)
     const dealers = new Map();
+    // branch key -> [exact dealer names]
+    const dealersOf = new Map();
     for (const p of active.filter(p => p.user_type === 'agent2')) {
         const dKey = nameKey(p.name), bKey = nameKey(p.channel_partner);
         if (!dKey) continue;
         const under = dealers.get(dKey) || new Map();
-        if (!under.has(bKey)) under.set(bKey, clean(p.name));
+        if (!under.has(bKey)) {
+            under.set(bKey, clean(p.name));
+            dealersOf.set(bKey, [...(dealersOf.get(bKey) || []), clean(p.name)]);
+        }
         dealers.set(dKey, under);
     }
-    return { cps, branches, dealers };
+    return { cps, branches, dealers, dealersOf };
 }
 
-const deboarded = card => /deboard/i.test(`${card.channel_partner || ''} ${card.sub_channel_partner || ''} ${card.stage || ''}`);
+const isDeboarded = card => /deboard/i.test(`${card.channel_partner || ''} ${card.sub_channel_partner || ''} ${card.stage || ''}`);
+const patch = (card, to) => {
+    const changes = {};
+    if ('channel_partner' in to && (to.channel_partner ?? null) !== (card.channel_partner ?? null)) changes.channel_partner = to.channel_partner ?? null;
+    if ('sub_channel_partner' in to && (to.sub_channel_partner || null) !== (card.sub_channel_partner || null)) changes.sub_channel_partner = to.sub_channel_partner || null;
+    return changes;
+};
 
-// The one fix for a card, or null. Returns { rule, to: { channel_partner, sub_channel_partner } }.
-export function fixFor(card, index) {
-    if (!card || card.deleted_at || deboarded(card)) return null;
+// What is wrong with one card: { rule, key (group), ... } or null.
+export function findingFor(card, index) {
+    if (!card || card.deleted_at || isDeboarded(card)) return null;
     const cp = clean(card.channel_partner), dealer = clean(card.sub_channel_partner);
     const cpKey = nameKey(cp), dealerKey = nameKey(dealer);
     const cpIsIndependent = index.cps.has(cpKey);
@@ -83,40 +92,93 @@ export function fixFor(card, index) {
     const dealerUnder = dealerKey ? index.dealers.get(dealerKey) : null;
 
     // 1. The Dealer box holds an independent CP (and not also a dealer of this CPO).
-    if (dealerKey && index.cps.has(dealerKey) && !(dealerUnder && dealerUnder.has(cpKey))) {
-        return { rule: 'cp_as_dealer', to: { channel_partner: index.cps.get(dealerKey), sub_channel_partner: null } };
-    }
-    // 2. An independent CP with something in the Dealer box.
-    if (cpIsIndependent && !cpIsBranch && dealerKey) {
-        return { rule: 'dealer_under_cp', to: { channel_partner: cp, sub_channel_partner: null } };
-    }
-    // 3. A CPO customer whose dealer is a login under another CPO only.
+    if (dealerKey && index.cps.has(dealerKey) && !(dealerUnder && dealerUnder.has(cpKey))) return { rule: 'cp_as_dealer', cpName: index.cps.get(dealerKey) };
+    // 2. A CP name nobody has a login for (empty CP is left for the Data Review page).
+    if (cpKey && !cpIsIndependent && !cpIsBranch) return { rule: 'cp_no_login', key: cpKey, name: cp };
+    // 3. An independent CP with something in the Dealer box.
+    if (cpIsIndependent && !cpIsBranch && dealerKey) return { rule: 'dealer_under_cp' };
+    // 4. A CPO customer whose dealer is a login under another CPO only.
     if (cpIsBranch && dealerUnder && !dealerUnder.has(cpKey)) {
-        return { rule: 'dealer_other_cpo', to: { channel_partner: cp, sub_channel_partner: null } };
+        const otherKey = [...dealerUnder.keys()][0];
+        return { rule: 'dealer_other_cpo', otherBranch: index.branches.get(otherKey) || null, otherDealer: dealerUnder.get(otherKey) };
     }
-    // 4. Spelling: the CP box and / or the Dealer box differ only in capitals, spaces or dots.
+    // 5. Spelling: the CP box and / or the Dealer box differ only in capitals, spaces or dots.
     const exactCp = cpIsBranch ? index.branches.get(cpKey) : cpIsIndependent ? index.cps.get(cpKey) : null;
     const exactDealer = cpIsBranch && dealerUnder?.has(cpKey) ? dealerUnder.get(cpKey) : null;
     const newCp = exactCp && exactCp !== String(card.channel_partner ?? '') ? exactCp : null;
     const newDealer = exactDealer && exactDealer !== String(card.sub_channel_partner ?? '') ? exactDealer : null;
-    if (newCp || newDealer) {
-        return { rule: 'spelling', to: { channel_partner: newCp || card.channel_partner, sub_channel_partner: newDealer || card.sub_channel_partner } };
-    }
+    if (newCp || newDealer) return { rule: 'spelling', to: { channel_partner: newCp || card.channel_partner, sub_channel_partner: newDealer || card.sub_channel_partner } };
+    // 6. A CPO customer whose dealer has no login anywhere.
+    if (cpIsBranch && dealerKey && !dealerUnder) return { rule: 'dealer_no_login', key: `${cpKey}|${dealerKey}`, name: dealer, branch: exactCp };
     return null;
 }
 
-// Every card that breaks a rule, grouped by rule: { [ruleId]: [{ card, to, changes }] }.
-// changes = only the fields that change, ready to save.
+const option = (id, label, to) => ({ id, label, to });
+const noChange = (label = 'No change') => option(NO_CHANGE, label, null);
+
+// Every finding as rows with choices: { [ruleId]: [row] }.
+// row = { id, rule, title, cards: [card], options: [{ id, label, to }], choice }
+// Use changesFor(row, card, choice) to get what to save for one card.
 export function checkCards(cards, profiles) {
     const index = loginIndex(profiles);
+    const loginNames = [...new Set([...index.branches.values(), ...index.cps.values()])].sort((a, b) => a.localeCompare(b));
     const byRule = Object.fromEntries(RULES.map(r => [r.id, []]));
+    const groups = new Map();
     for (const card of cards || []) {
-        const fix = fixFor(card, index);
-        if (!fix) continue;
-        const changes = {};
-        if ((fix.to.channel_partner ?? null) !== (card.channel_partner ?? null)) changes.channel_partner = fix.to.channel_partner ?? null;
-        if ((fix.to.sub_channel_partner || null) !== (card.sub_channel_partner || null)) changes.sub_channel_partner = fix.to.sub_channel_partner || null;
-        if (Object.keys(changes).length) byRule[fix.rule].push({ card, to: fix.to, changes });
+        const f = findingFor(card, index);
+        if (!f) continue;
+        const one = (options, choice, title = card.customer_name) => byRule[f.rule].push({ id: `${f.rule}:${card.id}`, rule: f.rule, title, cards: [card], options, choice });
+        if (f.rule === 'cp_as_dealer') {
+            one([option('fix', `Move to CP ${f.cpName}, empty dealer`, { channel_partner: f.cpName, sub_channel_partner: null }), noChange()], 'fix');
+        } else if (f.rule === 'dealer_under_cp') {
+            one([option('fix', 'Empty the Dealer box', { sub_channel_partner: null }), noChange()], 'fix');
+        } else if (f.rule === 'dealer_other_cpo') {
+            const options = [option('empty', `Stay with ${clean(card.channel_partner)}, empty dealer`, { sub_channel_partner: null })];
+            if (f.otherBranch) options.push(option('move', `Move to ${f.otherBranch}, keep dealer ${f.otherDealer}`, { channel_partner: f.otherBranch, sub_channel_partner: f.otherDealer }));
+            options.push(noChange());
+            one(options, 'empty');
+        } else if (f.rule === 'spelling') {
+            one([option('same', `Same person: ${[f.to.channel_partner, f.to.sub_channel_partner].filter(Boolean).join(' / ')}`, f.to), noChange('Different people: no change')], 'same');
+        } else {
+            const group = groups.get(`${f.rule}:${f.key}`);
+            if (group) { group.cards.push(card); continue; }
+            let options;
+            if (f.rule === 'cp_no_login') {
+                options = [noChange(),
+                    option('deboard', `Move to ${DEBOARDED}, keep ${f.name} as dealer`, { channel_partner: DEBOARDED, sub_channel_partner: f.name }),
+                    ...loginNames.map(name => option(`login:${name}`, `Change CP to ${name}`, { channel_partner: name }))];
+            } else {
+                const dealersHere = (index.dealersOf.get(nameKey(f.branch)) || []).slice().sort((a, b) => a.localeCompare(b));
+                options = [noChange(),
+                    option('empty', 'Empty the Dealer box', { sub_channel_partner: null }),
+                    option('deboard', `Move to ${DEBOARDED}, keep ${f.name} as dealer`, { channel_partner: DEBOARDED, sub_channel_partner: f.name }),
+                    ...dealersHere.map(name => option(`login:${name}`, `Change dealer to ${name}`, { sub_channel_partner: name }))];
+            }
+            const row = { id: `${f.rule}:${f.key}`, rule: f.rule, title: f.rule === 'cp_no_login' ? f.name : `${f.name} (under ${f.branch})`, cards: [card], options, choice: NO_CHANGE };
+            groups.set(row.id, row);
+            byRule[f.rule].push(row);
+        }
     }
+    for (const rule of RULES.filter(r => r.grouped)) byRule[rule.id].sort((a, b) => b.cards.length - a.cards.length || a.title.localeCompare(b.title));
     return byRule;
+}
+
+// What to save for one card of a row under a choice ({} = nothing).
+export function changesFor(row, card, choice = row.choice) {
+    const picked = row.options.find(o => o.id === choice);
+    return picked?.to ? patch(card, picked.to) : {};
+}
+
+// Active CP, CPO and dealer logins with no live customer: [{ login, kind }], oldest first.
+export function unusedLogins(cards, profiles) {
+    const live = (cards || []).filter(c => !c.deleted_at);
+    const cpKeys = new Set(live.map(c => nameKey(c.channel_partner)));
+    const dealerPairs = new Set(live.map(c => `${nameKey(c.channel_partner)}|${nameKey(c.sub_channel_partner)}`));
+    const kinds = { channel_partner_office: 'CPO', agent: 'CP', agent2: 'Dealer' };
+    return (profiles || []).filter(p => isActive(p) && kinds[p.user_type]).filter(p => {
+        if (p.user_type === 'channel_partner_office') return !cpKeys.has(nameKey(p.channel_partner));
+        if (p.user_type === 'agent') return !cpKeys.has(nameKey(p.name));
+        return !dealerPairs.has(`${nameKey(p.channel_partner)}|${nameKey(p.name)}`);
+    }).map(p => ({ login: p, kind: kinds[p.user_type] }))
+        .sort((a, b) => String(a.login.created_at || '').localeCompare(String(b.login.created_at || '')));
 }
