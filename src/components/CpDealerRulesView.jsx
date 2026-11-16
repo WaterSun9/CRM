@@ -27,6 +27,13 @@ const SET_ALL = {
     misc: [[NO_CHANGE, 'No change']],
 };
 
+// Take 1 (2026-11-16): only these 4 topics are shown and fixed. The others (CP / CPO with no login,
+// dealer with no login, logins with no customers, Miscellaneous) are built but hidden: Task 2,
+// later (docs/cp-dealer-rules-2026-11-16/README.md). Add their ids here to switch them on.
+const SHOWN = ['cp_as_dealer', 'dealer_under_cp', 'dealer_other_cpo', 'spelling'];
+const SHOW_UNUSED_LOGINS = false;
+const SHOWN_RULES = RULES.filter(rule => SHOWN.includes(rule.id));
+
 // Short tab names; the full title shows above the list.
 const TAB_NAMES = { cp_as_dealer: 'CP as dealer', dealer_under_cp: 'Dealer under a CP', dealer_other_cpo: 'Dealer of another CPO', spelling: 'Spelling',
     cp_no_login: 'CP / CPO no login', dealer_no_login: 'Dealer no login', unused_login: 'Logins with no customers', misc: 'Miscellaneous' };
@@ -85,7 +92,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
     const plan = useMemo(() => {
         if (!state.byRule) return { edits: [], logins: [] };
         const edits = [];
-        for (const rule of RULES) for (const row of state.byRule[rule.id]) {
+        for (const rule of SHOWN_RULES) for (const row of state.byRule[rule.id]) {
             const choice = choiceOf(row);
             if (choice === NO_CHANGE) continue;
             const option = row.options.find(o => o.id === choice);
@@ -94,7 +101,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                 if (Object.keys(changes).length) edits.push({ rule, row, option, card, changes });
             }
         }
-        const logins = state.unused.filter(u => (choices[`login:${u.login.id}`] ?? NO_CHANGE) === 'deactivate');
+        const logins = !SHOW_UNUSED_LOGINS ? [] : state.unused.filter(u => (choices[`login:${u.login.id}`] ?? NO_CHANGE) === 'deactivate');
         return { edits, logins };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [state.byRule, state.unused, choices]);
@@ -158,7 +165,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
             tick();
         }
         if (user?.id && done.fixed.length) {
-            const perRule = RULES.map(rule => [rule.title, done.fixed.filter(i => i.rule.id === rule.id).length]).filter(([, count]) => count).map(([t, count]) => `${t}: ${count}`).join(' · ');
+            const perRule = SHOWN_RULES.map(rule => [rule.title, done.fixed.filter(i => i.rule.id === rule.id).length]).filter(([, count]) => count).map(([t, count]) => `${t}: ${count}`).join(' · ');
             void logActivity(user.id, 'update', `CP/dealer rules: fixed ${done.fixed.length} customer card${done.fixed.length === 1 ? '' : 's'}`, perRule, null);
         }
         setProgress(null);
@@ -172,7 +179,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
         <div className="flex items-start justify-between gap-3">
             <div>
                 <h1 className="flex items-center gap-2 text-xl font-bold text-stone-900"><ShieldCheck size={20} /> CP / dealer rules</h1>
-                <p className="mt-1 max-w-3xl text-sm text-stone-500">Checks every customer card against the CP / CPO / dealer rules and today's logins. Each row has a choice; the clear cases are already set, names with no login start at No change. Press Review and fix; nothing changes until you confirm.</p>
+                <p className="mt-1 max-w-3xl text-sm text-stone-500">Checks every customer card against the CP / CPO / dealer rules and today's logins. Each row has a choice, already set to the usual fix; change it or pick No change. Press Review and fix; nothing changes until you confirm.</p>
                 {state.at && <p className="mt-1 text-xs text-stone-400">Checked {state.cards.toLocaleString('en-IN')} customers and {state.logins} logins at {state.at.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}.</p>}
             </div>
             <button type="button" disabled={busy} onClick={check} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 text-sm font-bold text-stone-700 disabled:opacity-50">
@@ -189,7 +196,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
         {state.loading && !state.byRule ? <p className="flex items-center gap-2 text-sm text-stone-400"><Loader2 size={16} className="animate-spin" /> Checking every customer…</p>
             : state.byRule && (() => {
                 // One tab per topic; logins with no customers, then Miscellaneous last.
-                const topics = [...RULES.filter(r => r.id !== 'misc'), unusedRule, RULES.find(r => r.id === 'misc')];
+                const topics = [...SHOWN_RULES.filter(r => r.id !== 'misc'), ...(SHOW_UNUSED_LOGINS ? [unusedRule] : []), ...SHOWN_RULES.filter(r => r.id === 'misc')];
                 const rowsOf = id => (id === 'unused_login' ? state.unused : state.byRule[id]);
                 const changingOf = id => (id === 'unused_login' ? plan.logins.length : plan.edits.filter(e => e.rule.id === id).length);
                 const current = topics.find(t => t.id === tab) || topics[0];
@@ -267,7 +274,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                     })}</tbody>
                                 </table>}</div>}
                     </section>
-                    <p className="text-xs text-stone-500">Left alone: deleted and DEBOARDED customers. Names that only look alike (e.g. DASHRATH and DASHRATH MALI) show under "Dealer with no login", where you can pick the right dealer.</p>
+                    <p className="text-xs text-stone-500">Left alone for now: deleted and DEBOARDED customers, names with no login, names that only look alike (e.g. DASHRATH and DASHRATH MALI), empty CP boxes and unused logins. Those come later.</p>
                 </div>;
             })()}
 
@@ -284,7 +291,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
             <div className="w-full max-w-md space-y-4 rounded-2xl bg-white p-5 shadow-xl">
                 <h2 className="text-lg font-bold text-stone-900">Make these {total} change{total === 1 ? '' : 's'}?</h2>
                 <ul className="space-y-1 text-sm">
-                    {RULES.map(rule => [rule, plan.edits.filter(e => e.rule.id === rule.id).length]).filter(([, count]) => count).map(([rule, count]) =>
+                    {SHOWN_RULES.map(rule => [rule, plan.edits.filter(e => e.rule.id === rule.id).length]).filter(([, count]) => count).map(([rule, count]) =>
                         <li key={rule.id} className="flex justify-between gap-3"><span className="text-stone-600">{rule.title}</span><b>{count} customer{count === 1 ? '' : 's'}</b></li>)}
                     {plan.logins.length > 0 && <li className="flex justify-between gap-3 text-red-700"><span>Deactivate logins with no customers</span><b>{plan.logins.length}</b></li>}
                 </ul>
