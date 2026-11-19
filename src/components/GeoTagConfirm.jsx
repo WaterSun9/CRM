@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Camera, Check, FileText, X } from 'lucide-react';
+import { Check, FileText, Upload, X } from 'lucide-react';
 
 // Geo tag photo check before anything is saved (D-042, 2026-11-19). The picked photo is shown
 // big with one question. Yes = upload it; the caller then moves the stage as before (D-034).
-// No, retake = the photo is thrown away (never uploaded) and the phone's picker opens again.
+// No, upload another = the photo is thrown away (never uploaded) and the gallery / file picker
+// opens again (staff pick a photo already taken with a geo tag camera app; no capture attribute).
 // Cancel = thrown away, nothing changes. So an unconfirmed photo never reaches the database
 // and can never move the stage.
 //
-// Props: file (picked, not uploaded), onYes(file) -> Promise, onRetake(newFile), onCancel().
+// Props: file (picked, not uploaded), onYes(file) -> Promise, onPickAnother(newFile), onCancel(),
+// accept (file types for the picker, default images).
 
 export const GEO_TAG_QUESTION = 'Can you see the geo tag (location, date, time) clearly on this photo?';
 
-export default function GeoTagConfirm({ file, onYes, onRetake, onCancel }) {
+export default function GeoTagConfirm({ file, onYes, onPickAnother, onCancel, accept = 'image/*' }) {
     const [src, setSrc] = useState('');
     const [saving, setSaving] = useState(false);
     const isImage = /^image\//i.test(file?.type || '');
@@ -34,10 +36,10 @@ export default function GeoTagConfirm({ file, onYes, onRetake, onCancel }) {
         setSaving(true);
         try { await onYes(file); } finally { setSaving(false); }
     };
-    const retake = input => {
+    const pickAnother = input => {
         const next = input.files?.[0];
         input.value = '';
-        if (next) onRetake(next);
+        if (next) onPickAnother(next);
     };
 
     return <div role="dialog" aria-modal="true" aria-label="Check the geo tag photo" className="fixed inset-0 z-[300] flex flex-col bg-stone-950">
@@ -57,8 +59,8 @@ export default function GeoTagConfirm({ file, onYes, onRetake, onCancel }) {
             <div className="grid grid-cols-2 gap-2">
                 <label aria-disabled={saving || undefined}
                     className={`flex min-h-14 cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-stone-300 bg-white text-sm font-bold text-stone-800 ${saving ? 'pointer-events-none opacity-40' : ''}`}>
-                    <Camera size={18} aria-hidden="true" /> No, retake
-                    <input type="file" accept="image/*" disabled={saving} onChange={event => retake(event.target)} className="sr-only" aria-label="No, retake: pick or take another photo" />
+                    <Upload size={18} aria-hidden="true" /> No, upload another
+                    <input type="file" accept={accept} disabled={saving} onChange={event => pickAnother(event.target)} className="sr-only" aria-label="No, upload another photo" />
                 </label>
                 <button type="button" onClick={yes} disabled={saving}
                     className="flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-sm font-bold text-white disabled:opacity-60">

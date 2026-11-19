@@ -690,7 +690,8 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
                 <GeoTagConfirm
                     file={geoFile}
                     onYes={async picked => { if (await uploadPicked(picked)) setGeoFile(null); }}
-                    onRetake={setGeoFile}
+                    onPickAnother={setGeoFile}
+                    accept="image/png,image/jpeg,image/jpg,application/pdf,.png,.jpg,.jpeg,.pdf"
                     onCancel={() => { setGeoFile(null); setReplacingDocId(null); }}
                 />
             )}

@@ -1598,7 +1598,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 <GeoTagConfirm
                     file={pendingGeoFile}
                     onYes={confirmGeoPhoto}
-                    onRetake={setPendingGeoFile}
+                    onPickAnother={setPendingGeoFile}
                     onCancel={() => setPendingGeoFile(null)}
                 />
             )}
