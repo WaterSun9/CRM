@@ -11,7 +11,7 @@ import { FilePreviewModal } from './modal-tabs/shared';
 import { STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, VENDOR_LIST_COLUMNS, isFinalTagValue } from '../constants';
 import InstallationPhotos from './InstallationPhotos';
 import GeoTagConfirm from './GeoTagConfirm';
-import { INSTALL_PHOTO_LABELS } from '../utils/installPhotos';
+import { INSTALL_PHOTO_LABELS, requiredInstallPhotoProblems } from '../utils/installPhotos';
 import { isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
@@ -547,6 +547,8 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             if (!effectiveInstallDate) {
                 missingItems.push('Installation Date must be selected.');
             }
+            // D-043: the inverter serial number photo is required (the other 16 photos stay optional).
+            missingItems.push(...requiredInstallPhotoProblems(documents).map(line => `Upload ${line}.`));
 
             if (missingItems.length > 0) {
                 const message = `To move forward to Geo Tag Photo, please complete:\n• ${missingItems.join('\n• ')}`;

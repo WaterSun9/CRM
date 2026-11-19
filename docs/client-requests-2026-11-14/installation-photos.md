@@ -22,6 +22,7 @@ Sandeep sent this list on 2026-11-19. There are 17 photos (we expected 10). The 
 
 In the app: one photo slot per name on the customer card (Installation Status) and in the vendor portal (Installation tab). Code: `src/utils/installPhotos.js`.
 
+Required or optional (Mahvish, 2026-11-19): #17 Inverter serial number photo is required before the customer moves from Installation Status to Geo Tag Photo (D-043). The other 16 are optional (D-041). None of them moves the stage.
+
 Open questions for Mahvish / Sandeep:
-- Must all 17 be uploaded before the customer moves on from Installation Status? **(uncertain)** For now the app shows what is missing and does not block.
 - Is "Plant Photo" or "System no dur thi photo" the same as the geo tag photo (stage Geo Tag Photo)? **(uncertain)** For now they are separate.

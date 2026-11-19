@@ -17,6 +17,7 @@ import {
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
     Eye, Search, Image as ImageIcon, MessageSquare, Calendar } from 'lucide-react';
 import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN, isPaymentUndecided } from '../constants';
+import { requiredInstallPhotoProblems } from '../utils/installPhotos';
 import { logActivity, formatDateToDDMMYYYY, parseIndianNumber, fetchAgent2SubAgents, normalizeMeterInstallation, sanitizePhoneNumber, logFieldChanges, readAdminFields } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
@@ -1300,6 +1301,8 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 // Exact match blocked records the vendor had set to the legacy
                 // value 'Yes' - the admin could not advance them at all.
                 requireField(normalizeInstallationStatus(editData.installation_status) === 'Yes', 'Installation Status must be Installed');
+                // D-043: the inverter serial number photo must be uploaded first (the other 16 stay optional).
+                issues.push(...requiredInstallPhotoProblems(documents));
                 break;
             case STAGE_IDS.GEO_TAG_PHOTO:
                 requireField(editData.geo_tag_status === 'Proceed', 'Geo Tag Photo Status must be Proceed');

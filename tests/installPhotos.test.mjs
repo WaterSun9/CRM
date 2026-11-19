@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { INSTALL_PHOTOS, INSTALL_PHOTO_LABELS, installPhotoStatus, isInstallPhotoType } from '../src/utils/installPhotos.js';
+import { INSTALL_PHOTOS, INSTALL_PHOTO_LABELS, REQUIRED_INSTALL_PHOTOS, installPhotoStatus, isInstallPhotoType, requiredInstallPhotoProblems } from '../src/utils/installPhotos.js';
 
 test('the 17 photos keep the client names exactly, Gujarati included', () => {
     assert.equal(INSTALL_PHOTOS.length, 17);
@@ -40,4 +40,14 @@ test('all 17 uploaded: nothing missing', () => {
     const s = installPhotoStatus(INSTALL_PHOTOS.map((p, i) => ({ id: String(i), doc_type: p.docType })));
     assert.equal(s.done, 17);
     assert.deepEqual(s.missing, []);
+});
+
+test('D-043: only #17 Inverter serial number photo is required', () => {
+    assert.deepEqual(REQUIRED_INSTALL_PHOTOS.map(p => p.docType), ['install_inverter_serial']);
+    assert.deepEqual(installPhotoStatus([]).requiredMissing.map(m => m.number), [17]);
+    assert.deepEqual(requiredInstallPhotoProblems([]), ['Installation photo 17: Inverter serial number photo (required)']);
+    // 16 optional photos without #17 still blocks; #17 alone does not.
+    const sixteen = INSTALL_PHOTOS.filter(p => !p.required).map((p, i) => ({ id: String(i), doc_type: p.docType }));
+    assert.equal(requiredInstallPhotoProblems(sixteen).length, 1);
+    assert.deepEqual(requiredInstallPhotoProblems([{ id: 'x', doc_type: 'install_inverter_serial' }]), []);
 });

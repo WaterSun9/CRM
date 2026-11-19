@@ -6,7 +6,9 @@ import { installPhotoStatus } from '../utils/installPhotos';
 // with a count (12/17) and the missing names. Used on the customer card (Installation Status)
 // and in the vendor portal (Installation tab). Each photo is a customer document whose
 // doc_type is the slot (src/utils/installPhotos.js); a retake replaces the slot's photo.
-// D-041: the 17 are optional and never block or move the stage; only the geo tag photo does.
+// D-041: the 17 are optional and never move the stage; only the geo tag photo does.
+// D-043: #17 (Inverter serial number photo) is required: shown with a red * and "Required", and
+// the Installation stage cannot be left without it (checked where the stage is moved).
 //
 // Props:
 //   documents   the customer's documents
@@ -87,7 +89,7 @@ export default function InstallationPhotos({ documents = [], canUpload = false, 
             <div className="flex items-end justify-between gap-3">
                 <div>
                     <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-stone-700"><Camera className="h-4 w-4 text-amber-500" aria-hidden="true" /> Installation photos</h4>
-                    <p className="mt-0.5 text-[11px] font-medium text-stone-500">{canUpload ? 'Tap a box to take that photo.' : 'Photos taken by the installer.'}</p>
+                    <p className="mt-0.5 text-[11px] font-medium text-stone-500">{canUpload ? 'Tap a box to take that photo.' : 'Photos taken by the installer.'} <span className="text-red-600">*</span> = required to finish installation.</p>
                 </div>
                 <p className={`text-2xl font-black tabular-nums ${allDone ? 'text-emerald-600' : 'text-stone-900'}`} aria-label={`${status.done} of ${status.total} photos taken`}>
                     {status.done}<span className="text-base font-bold text-stone-400">/{status.total}</span>
@@ -96,6 +98,9 @@ export default function InstallationPhotos({ documents = [], canUpload = false, 
             <div className="h-2 overflow-hidden rounded-full bg-stone-100" role="progressbar" aria-valuemin={0} aria-valuemax={status.total} aria-valuenow={status.done}>
                 <div className={`h-full rounded-full ${allDone ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${percent}%` }} />
             </div>
+            {status.requiredMissing.length > 0 && <p className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-bold text-red-700">
+                Required: {status.requiredMissing.map(slot => `${slot.number}. ${slot.name}`).join(', ')}. The customer cannot leave Installation without it.
+            </p>}
             {status.done === 0
                 ? <p className="text-xs font-bold text-stone-600">No photos yet: {status.total} to take.</p>
                 : allDone
@@ -104,7 +109,7 @@ export default function InstallationPhotos({ documents = [], canUpload = false, 
                     <p className="mb-1.5 text-[11px] font-bold text-stone-600">Missing ({status.missing.length}):</p>
                     <ul className="flex flex-wrap gap-1.5">
                         {status.missing.map(slot => <li key={slot.docType}>
-                            <button type="button" onClick={() => jump(slot.docType)} className="min-h-8 rounded-full border border-amber-200 bg-amber-50 px-2.5 text-[11px] font-bold text-amber-900">{slot.number}. {slot.name}</button>
+                            <button type="button" onClick={() => jump(slot.docType)} className={`min-h-8 rounded-full border px-2.5 text-[11px] font-bold ${slot.required ? 'border-red-300 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>{slot.number}. {slot.name}{slot.required && <><span aria-hidden="true"> *</span><span className="sr-only"> (required)</span></>}</button>
                         </li>)}
                     </ul>
                 </div>}
@@ -116,14 +121,17 @@ export default function InstallationPhotos({ documents = [], canUpload = false, 
                 const busy = adding === slot.docType;
                 const url = slot.doc ? urls[slot.doc.storage_path] : '';
                 const picker = <input type="file" accept="image/*" disabled={Boolean(adding)} onChange={event => take(slot, event.target)} className="sr-only"
-                    aria-label={`${slot.doc ? 'Retake' : 'Take'} photo: ${slot.number}. ${slot.name}`} />;
+                    aria-label={`${slot.doc ? 'Retake' : 'Take'} photo: ${slot.number}. ${slot.name}${slot.required ? ' (required)' : ''}`} />;
                 const caption = <div className="flex items-start gap-1.5 p-2">
                     <span className={`mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-black ${slot.doc ? 'bg-emerald-600 text-white' : 'bg-stone-200 text-stone-700'}`}>{slot.number}</span>
-                    <span className="text-[13px] font-bold leading-snug text-stone-900 break-words">{slot.name}</span>
+                    <span className="text-[13px] font-bold leading-snug text-stone-900 break-words">
+                        {slot.name}{slot.required && <span className="text-red-600" aria-hidden="true"> *</span>}
+                        {slot.required && <span className="ml-1 inline-block rounded-full bg-red-100 px-1.5 py-0.5 align-middle text-[10px] font-black uppercase tracking-wide text-red-700">Required</span>}
+                    </span>
                 </div>;
                 const frame = 'flex aspect-[4/3] w-full items-center justify-center overflow-hidden bg-stone-100';
                 return <li key={slot.docType} id={`install-photo-${slot.docType}`}
-                    className={`flex flex-col overflow-hidden rounded-2xl border-2 ${slot.doc ? 'border-emerald-300 bg-emerald-50/40' : 'border-dashed border-stone-300 bg-white'} ${adding && !busy ? 'opacity-60' : ''}`}>
+                    className={`flex flex-col overflow-hidden rounded-2xl border-2 ${slot.doc ? 'border-emerald-300 bg-emerald-50/40' : slot.required ? 'border-dashed border-red-400 bg-white' : 'border-dashed border-stone-300 bg-white'} ${adding && !busy ? 'opacity-60' : ''}`}>
                     {slot.doc
                         ? <button type="button" onClick={() => onPreview?.(slot.doc)} className={`${frame} relative`} aria-label={`Open photo: ${slot.number}. ${slot.name}`}>
                             {url ? <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <CheckCircle2 size={32} className="text-emerald-500" aria-hidden="true" />}

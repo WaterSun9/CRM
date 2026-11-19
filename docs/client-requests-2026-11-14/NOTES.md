@@ -5,7 +5,7 @@
 ## 2026-11-19: Tata form and installation photo list received
 Sandeep sent both. Saved as `installation-photos.md` (17 photos) and `tata-oem-form/` (blank form). Built on `claude/nov14-tata-install-photos-13fa44`, not deployed.
 
-- **Installation photos:** 17 photo boxes on the customer card (Installation Status) and in the vendor portal (Installation tab), with a count and the missing names. Screenshots in `installation-photos/`. Optional for now (D-041): nothing is blocked and the stage never moves on these photos; the geo tag photo stays compulsory and separate.
+- **Installation photos:** 17 photo boxes on the customer card (Installation Status) and in the vendor portal (Installation tab), with a count and the missing names. Screenshots in `installation-photos/`. Optional for now (D-041), except #17 "Inverter serial number photo", which is required to move from Installation Status to Geo Tag Photo (D-043). The stage never moves on these photos; the geo tag photo stays compulsory and separate.
 - **Tata claim:** in the OEM replacement box on a complaint, a Tata claim downloads/shares Tata's Field Service Report, filled in, followed by the usual claim pages with every photo. Sample: `tata-oem-form/sample-tata-field-service-report.pdf` (form page only, fake data; remake it with `node scripts/tata-service-report-sample.mjs`). Screenshots in `tata-oem-form/`.
 
 What goes in each box of the Tata form:

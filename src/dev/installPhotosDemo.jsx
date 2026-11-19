@@ -2,19 +2,20 @@
 // Fake customer, fake photos drawn in the browser, no login and no network.
 // ?done=0 | 12 | 17 (how many photos are already taken), ?view=vendor | office (read only)
 // | geo (the geo tag photo on the customer card, with the D-042 "is the geo tag clear?" check).
+// The vendor view has a "Move to Geo Tag Photo" button with the D-043 check (#17 required).
 import { useCallback, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../index.css';
 import InstallationPhotos from '../components/InstallationPhotos';
-import { INSTALL_PHOTOS } from '../utils/installPhotos';
+import { INSTALL_PHOTOS, requiredInstallPhotoProblems } from '../utils/installPhotos';
 import { CheckboxRemarkItem } from '../components/modal-tabs/shared';
-import { GlobalPopupProvider } from '../components/GlobalPopup';
+import { GlobalPopupProvider, useGlobalPopup } from '../components/GlobalPopup';
 
 const params = new URLSearchParams(location.search);
 const done = Math.min(17, Math.max(0, Number(params.get('done') ?? 12)));
 const readOnly = params.get('view') === 'office';
-// Taken photos: a spread so the missing ones are not all at the end.
-const order = [0, 1, 2, 3, 5, 6, 7, 9, 10, 12, 14, 16, 4, 8, 11, 13, 15];
+// Taken photos: a spread so the missing ones are not all at the end; #17 (required) is taken last.
+const order = [0, 1, 2, 3, 5, 6, 7, 9, 10, 12, 14, 4, 8, 11, 13, 15, 16];
 const taken = new Set(order.slice(0, done));
 
 // A made-up "photo": a coloured tile with the slot number.
@@ -36,6 +37,17 @@ function Demo() {
         ? [{ id: `d${i}`, doc_type: p.docType, storage_path: `demo/${i + 1}`, file_name: `photo-${i + 1}.jpg`, uploaded_at: new Date(Date.now() - (20 - i) * 60000).toISOString() }]
         : []));
     const [open, setOpen] = useState(null);
+    const [stage, setStage] = useState('Installation Status');
+    const { showAlert } = useGlobalPopup();
+    // Same check and message as the vendor portal's move to Geo Tag Photo (D-043).
+    const moveOn = () => {
+        const missing = requiredInstallPhotoProblems(docs).map(line => `Upload ${line}.`);
+        if (missing.length) {
+            showAlert(`To move forward to Geo Tag Photo, please complete:\n• ${missing.join('\n• ')}`, { title: 'Installation Incomplete', type: 'warning' });
+            return;
+        }
+        setStage('Geo Tag Photo');
+    };
     const getUrl = useCallback(doc => fakePhoto(Number(String(doc.storage_path).split('/').pop())), []);
     const upload = async (file, docType) => {
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -48,9 +60,11 @@ function Demo() {
             <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">{readOnly ? 'Customer card · Installation Status' : 'Vendor portal · Installation'}</p>
                 <p className="text-base font-black text-stone-900">Demo Customer (fake)</p>
-                <p className="text-xs text-stone-500">3.27 kW · Demo Village · Installation Status</p>
+                <p className="text-xs text-stone-500">3.27 kW · Demo Village · Stage: <span className={`font-bold ${stage === 'Geo Tag Photo' ? 'text-emerald-700' : 'text-stone-800'}`}>{stage}</span></p>
             </div>
             <InstallationPhotos documents={docs} canUpload={!readOnly} onUpload={upload} onPreview={doc => setOpen(doc)} getUrl={getUrl} />
+            {!readOnly && stage === 'Installation Status' && <button type="button" onClick={moveOn}
+                className="min-h-12 w-full rounded-2xl bg-amber-500 text-sm font-bold text-white">Save &amp; move to Geo Tag Photo</button>}
         </div>
         {open && <button type="button" onClick={() => setOpen(null)} className="fixed inset-0 flex items-center justify-center bg-black/80 p-4" aria-label="Close photo">
             <img src={getUrl(open)} alt="" className="max-h-full max-w-full rounded-xl" />
@@ -84,4 +98,4 @@ function GeoDemo() {
     </div>;
 }
 
-createRoot(document.getElementById('root')).render(params.get('view') === 'geo' ? <GlobalPopupProvider><GeoDemo /></GlobalPopupProvider> : <Demo />);
+createRoot(document.getElementById('root')).render(<GlobalPopupProvider>{params.get('view') === 'geo' ? <GeoDemo /> : <Demo />}</GlobalPopupProvider>);

@@ -242,3 +242,10 @@ No prices or billing here: this repo is the client's. Commercial decisions live 
 - Decision: B. After a geo tag photo is picked it is shown big with "Can you see the geo tag (location, date, time) clearly on this photo?". Yes = upload it and move the stage as before. No, upload another = the photo is discarded (never uploaded) and the gallery / file picker opens again straight away (staff upload a photo already taken with a geo tag camera app, not the in-app camera); the X discards it too. An unconfirmed photo never reaches the database, so it can never move the stage. Applies everywhere a geo tag photo is uploaded: the customer card (every checklist row for the geo tag photo) and the vendor portal. On the customer card the geo tag photo now skips the crop step, which could cut off the geo tag. No SQL.
 - Why: a bad photo shouldn't move the stage.
 - Status: Built on `claude/nov14-tata-install-photos-13fa44`, not deployed
+
+## D-043 · 2026-11-19 · Installation photos: the inverter serial number photo is required
+- Context: D-041 made all 17 installation photos optional. Mahvish (2026-11-19): photo #17 "Inverter serial number photo" must be there before installation is finished.
+- Options: A) all 17 optional (D-041 as built), B) inverter serial number photo required, the other 16 optional.
+- Decision: B. The customer cannot leave the Installation Status stage for Geo Tag Photo until photo #17 is uploaded: on the customer card ("Move to next stage" lists "Installation photo 17: Inverter serial number photo (required)") and in the vendor portal (the move to Geo Tag Photo shows the same line). In both photo lists #17 has a red * and a "Required" tag, and a red line says it is still needed. It never moves the stage by itself; only the geo tag photo does (D-041, D-042). Marking the status "Installed" without moving the stage is not blocked **(uncertain)**. The quick stage picker on the dashboard card does not check it, the same as it does not check the geo tag photo **(uncertain)**. No SQL.
+- Why: Mahvish's rule (2026-11-19). The other 16 still start gently (D-041).
+- Status: Built on `claude/nov14-tata-install-photos-13fa44`, not deployed
