@@ -24,5 +24,4 @@ In the app: one photo slot per name on the customer card (Installation Status) a
 
 Required or optional (Mahvish, 2026-11-19): #17 Inverter serial number photo is required before the customer moves from Installation Status to Geo Tag Photo (D-043). The other 16 are optional (D-041). None of them moves the stage.
 
-Open questions for Mahvish / Sandeep:
-- Is "Plant Photo" or "System no dur thi photo" the same as the geo tag photo (stage Geo Tag Photo)? **(uncertain)** For now they are separate.
+#1 Plant Photo and #10 System no dur thi photo stay separate from the geo tag photo (Mahvish, 2026-11-19, D-044).

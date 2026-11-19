@@ -33,7 +33,6 @@ What goes in each box of the Tata form:
 The 2026-11-19 work adds **no SQL**: installation photos are customer documents (`documents.doc_type` is free text), and the Tata report uses the `service_oem_claims` table from file 3.
 
 ### Open questions (2026-11-19)
-- Is "Plant Photo" or "System no dur thi photo" the same picture as the geo tag photo? Today: separate.
 - Battery boxes on the Tata form: leave blank (today) or print "N/A" (on-grid rooftop has no battery)?
 - "Type of system: On-grid rooftop" is printed for every Tata claim. Are any Watersun systems hybrid or off-grid?
 - Should the Tata PDF keep the extra claim pages (readings, photos) after Tata's form, or be Tata's single page only?

@@ -249,3 +249,10 @@ No prices or billing here: this repo is the client's. Commercial decisions live 
 - Decision: B. The customer cannot leave the Installation Status stage for Geo Tag Photo until photo #17 is uploaded: on the customer card ("Move to next stage" lists "Installation photo 17: Inverter serial number photo (required)") and in the vendor portal (the move to Geo Tag Photo shows the same line). In both photo lists #17 has a red * and a "Required" tag, and a red line says it is still needed. It never moves the stage by itself; only the geo tag photo does (D-041, D-042). Marking the status "Installed" without moving the stage is not blocked **(uncertain)**. The quick stage picker on the dashboard card does not check it, the same as it does not check the geo tag photo **(uncertain)**. No SQL.
 - Why: Mahvish's rule (2026-11-19). The other 16 still start gently (D-041).
 - Status: Built on `claude/nov14-tata-install-photos-13fa44`, not deployed
+
+## D-044 · 2026-11-19 · Plant Photo and "System no dur thi photo" stay separate from the geo tag photo
+- Context: open question from the 17-photo list: is #1 "Plant Photo" or #10 "System no dur thi photo" the same picture as the geo tag photo (stage Geo Tag Photo)?
+- Options: A) keep them separate, B) reuse the geo tag photo for #1, C) reuse it for #10, D) ask Sandeep.
+- Decision: A (Mahvish, 2026-11-19). #1 and #10 are their own installation photo slots; the geo tag photo stays its own document and its own stage step. No code change; this is how it was built.
+- Why: Mahvish's answer.
+- Status: Built on `claude/nov14-tata-install-photos-13fa44` (no change needed), not deployed
