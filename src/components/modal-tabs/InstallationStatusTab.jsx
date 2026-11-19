@@ -96,7 +96,7 @@ export default function InstallationStatusTab({
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
-            {/* The 17 installation photos (client list, 2026-11-19). Not required to move on yet. */}
+            {/* The 17 installation photos (client list, 2026-11-19). Optional, never move the stage (D-041). */}
             <InstallationPhotos
                 documents={documents}
                 canUpload={Boolean(onFileUpload) && (isEditable || isSfdcEditable)}

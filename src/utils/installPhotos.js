@@ -3,8 +3,8 @@
 // like the geo tag photo, so no database change is needed. The names are the client's own words
 // (Gujarati included); do not "correct" them. List: docs/client-requests-2026-11-14/installation-photos.md
 //
-// Whether all 17 are required before the stage moves is not decided yet (asked 2026-11-19):
-// the app only shows what is missing and does not block.
+// D-041: the 17 are optional records. They never block, move the stage or set a status; the
+// app only shows what is missing. Only the geo tag photo is required, and only it moves the stage.
 
 export const INSTALL_PHOTOS = [
     { docType: 'install_plant_photo', name: 'Plant Photo' },

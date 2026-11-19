@@ -6,7 +6,7 @@ import { installPhotoStatus } from '../utils/installPhotos';
 // with a count (12/17) and the missing names. Used on the customer card (Installation Status)
 // and in the vendor portal (Installation tab). Each photo is a customer document whose
 // doc_type is the slot (src/utils/installPhotos.js); a retake replaces the slot's photo.
-// Nothing is blocked yet: whether all 17 are needed before the stage moves is still open.
+// D-041: the 17 are optional and never block or move the stage; only the geo tag photo does.
 //
 // Props:
 //   documents   the customer's documents

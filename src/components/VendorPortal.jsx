@@ -1433,7 +1433,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         </div>
                                     </div>
 
-                                    {/* The 17 installation photos. Not required to move on yet (asked 2026-11-19). */}
+                                    {/* The 17 installation photos. Optional, never move the stage (D-041). */}
                                     <InstallationPhotos
                                         documents={documents}
                                         canUpload={canEditInstallation}
