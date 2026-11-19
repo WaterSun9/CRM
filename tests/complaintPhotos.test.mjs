@@ -16,7 +16,8 @@ test('files are grouped by kind; old files and unknown kinds count as problem fi
     assert.equal(groups.before.length, 1);
     assert.equal(groups.after.length, 2);
     assert.equal(groups.problem.length, 3);
-    assert.deepEqual(groupIssueFiles(null), { before: [], after: [], site: [], problem: [] });
+    // Reading photos (14 Nov 2026) have their own group.
+    assert.deepEqual(groupIssueFiles(null), { before: [], after: [], site: [], reading: [], problem: [] });
 });
 
 test('the code needs at least one After photo', () => {

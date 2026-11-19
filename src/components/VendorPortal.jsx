@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
 import { STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, VENDOR_LIST_COLUMNS, isFinalTagValue } from '../constants';
+import InstallationPhotos from './InstallationPhotos';
+import { INSTALL_PHOTO_LABELS } from '../utils/installPhotos';
 import { isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
@@ -35,6 +37,8 @@ const parsePanelSerials = (raw) => {
     }
     return [raw.trim()];
 };
+
+const vendorInstallPhotoUrl = doc => getViewUrl(doc.storage_path);
 
 export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     const { showAlert, showConfirm } = useGlobalPopup();
@@ -334,6 +338,29 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             console.error('Failed to fetch documents for customer:', err);
             setDocuments([]);
         }
+    };
+
+    // One of the 17 installation photos (client list, 2026-11-19). A retake replaces the
+    // slot's photo; if the old copy cannot be removed, the newest one still counts.
+    const handleInstallPhotoUpload = async (file, docType) => {
+        if (!file || !selectedCust) return false;
+        const newDoc = await uploadDocument(file, selectedCust.id, docType, user?.id);
+        if (!newDoc) return false;
+        const older = (documents || []).filter(d => d.doc_type === docType && d.id !== newDoc.id);
+        const removed = new Set();
+        for (const old of older) {
+            try {
+                const result = await deleteDocument(old.id, old.storage_path);
+                if (result?.ok !== false) removed.add(old.id);
+            } catch (err) {
+                console.warn('Installation photo saved, but the old copy was not removed:', err);
+            }
+        }
+        setDocuments(prev => [newDoc, ...(prev || []).filter(d => !removed.has(d.id))]);
+        if (user?.id) {
+            void logActivity(user.id, 'upload', `${selectedCust.customer_name}: Installation photo uploaded (${INSTALL_PHOTO_LABELS[docType] || docType})`, '', selectedCust.id);
+        }
+        return true;
     };
 
     // Upload geo tag photo handler
@@ -1405,6 +1432,16 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                             />
                                         </div>
                                     </div>
+
+                                    {/* The 17 installation photos. Not required to move on yet (asked 2026-11-19). */}
+                                    <InstallationPhotos
+                                        documents={documents}
+                                        canUpload={canEditInstallation}
+                                        onUpload={handleInstallPhotoUpload}
+                                        onPreview={handlePhotoPreview}
+                                        getUrl={vendorInstallPhotoUrl}
+                                        className="!p-3 sm:!p-4"
+                                    />
 
                                     {/* When marked Yes: Installation Date */}
                                     {normalizeInstallationStatus(installationStatus) === 'Yes' && (

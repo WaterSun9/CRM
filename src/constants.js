@@ -7,6 +7,7 @@ import {
     Wrench, Camera, Send, Gauge, Zap, Activity, ClipboardCheck, CheckCircle2,
     Clock, AlertTriangle, Banknote, Tag, ShoppingBag, Wallet
 } from 'lucide-react';
+import { INSTALL_PHOTO_LABELS } from './utils/installPhotos.js';
 
 // Deferred to the October R&D session. Keep the draft UI code inactive until
 // the customer red-flag SQL has been reviewed and applied to the CRM project.
@@ -343,7 +344,9 @@ export const DOC_TYPE_LABELS = {
     feasibility_document: 'Feasibility Document',
     subsidy_token_photo: 'Subsidy Token Photo',
     digital_certificate: 'Digital Certificate',
-    discom_agreement: 'PM Surya Ghar Model Agreement'
+    discom_agreement: 'PM Surya Ghar Model Agreement',
+    // The 17 installation photos (client list, 2026-11-19). No checklist column: not in DOC_TYPE_FLAG_COLUMN.
+    ...INSTALL_PHOTO_LABELS
 };
 
 // Which doc_type actually corresponds to a real boolean column on `admin`.

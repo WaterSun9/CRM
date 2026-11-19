@@ -2,7 +2,10 @@
 // site, the system and warranty, the latest site readings, the complaint, and every complaint
 // photo (shrunk to JPEG), all in one file. The office downloads it, or shares it straight to
 // WhatsApp / email from a phone, and sends it to the OEM.
+// Tata (2026-11-19): Tata's own "Field Service Report for SPV products" comes first, filled in
+// (tataServiceReport.js), then the same pages as for the other OEMs.
 // Text uses only characters the built-in PDF font has (no ₹ or arrows).
+import tataTemplateUrl from '../../assets/tata-field-service-report.pdf?url';
 import { supabase } from '../../supabase';
 import { warrantyInfo, formatWarrantyDate } from '../../utils/warranty';
 import { READING_GROUPS } from './SiteVisitForm';
@@ -39,12 +42,14 @@ async function photoData(url) {
     }
 }
 
-// Reads everything and builds "OEM claim <ticket>-<OEM>.pdf": { pdf, blob, name }.
+export const isTataClaim = claim => /^\s*tata/i.test(String(claim?.oem || ''));
+
+// Reads everything and builds "OEM claim <ticket>-<OEM>.pdf": { pdf, blob, name, card, trips }.
 async function buildOemClaimPdf({ issue, claim }) {
     const [{ jsPDF }, card, trips, files] = await Promise.all([
         import('jspdf'),
         issue.customer_id ? supabase.from('admin').select(CARD).eq('id', issue.customer_id).maybeSingle().then(r => r.data || null) : null,
-        supabase.from('service_trips').select('id, visit_no, readings, reached_at, started_at').eq('issue_id', issue.id).order('started_at', { ascending: false }).limit(20).then(r => r.data || []),
+        supabase.from('service_trips').select('id, visit_no, readings, reached_at, started_at, outcome, outcome_note').eq('issue_id', issue.id).order('started_at', { ascending: false }).limit(20).then(r => r.data || []),
         supabase.from('service_issue_files').select('kind, label, trip_id, storage_path, mime_type, created_at').eq('issue_id', issue.id).order('created_at').then(r => r.data || []),
     ]);
     const photos = files.filter(f => /^image\//.test(f.mime_type || 'image/'));
@@ -127,13 +132,52 @@ async function buildOemClaimPdf({ issue, claim }) {
     }
 
     const name = `${safe(`OEM claim ${issue.ticket_no ?? ''}-${claim.oem}`).replace(/[^\w .-]+/g, '').trim() || 'OEM claim'}.pdf`;
-    return { pdf, blob: pdf.output('blob'), name };
+    return { pdf, blob: pdf.output('blob'), name, card, trips };
+}
+
+// Tata: Tata's Field Service Report (filled, Tata's layout) as page 1, then the claim pages
+// above (claim, customer, readings, every photo). Fields we do not store stay blank.
+async function buildTataClaimPdf({ issue, claim, technicianName }) {
+    const pack = await buildOemClaimPdf({ issue, claim });
+    const [{ PDFDocument }, { fillTataReport, tataReportValues }, template] = await Promise.all([
+        import('pdf-lib'),
+        import('./tataServiceReport'),
+        fetch(tataTemplateUrl).then(response => {
+            if (!response.ok) throw new Error('The Tata form could not be loaded. Check the connection and try again.');
+            return response.arrayBuffer();
+        }),
+    ]);
+    const visit = pack.trips.find(trip => trip.readings) || pack.trips[0] || null;
+    const doc = await fillTataReport(template, tataReportValues({ issue, claim, card: pack.card, visit, technicianName }));
+    const extra = await PDFDocument.load(await pack.blob.arrayBuffer());
+    for (const page of await doc.copyPages(extra, extra.getPageIndices())) doc.addPage(page);
+    const bytes = await doc.save();
+    const name = `${safe(`Tata field service report ${issue.ticket_no ?? ''}`).replace(/[^\w .-]+/g, '').trim() || 'Tata field service report'}.pdf`;
+    return { blob: new Blob([bytes], { type: 'application/pdf' }), name };
+}
+
+// The file for one claim: Tata's form for Tata, the Watersun claim PDF for every other OEM.
+async function buildClaimFile({ issue, claim, technicianName = '' }) {
+    if (isTataClaim(claim)) return buildTataClaimPdf({ issue, claim, technicianName });
+    const { blob, name } = await buildOemClaimPdf({ issue, claim });
+    return { blob, name };
+}
+
+function saveFile(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 // Saves the PDF on this device.
-export async function downloadOemClaimPdf({ issue, claim }) {
-    const { pdf, name } = await buildOemClaimPdf({ issue, claim });
-    pdf.save(name);
+export async function downloadOemClaimPdf({ issue, claim, technicianName }) {
+    const { blob, name } = await buildClaimFile({ issue, claim, technicianName });
+    saveFile(blob, name);
 }
 
 // Phones (and some computers) can hand a file to WhatsApp, email and so on.
@@ -142,12 +186,13 @@ export const canShareFiles = () => typeof navigator !== 'undefined' && typeof na
 
 // Opens the phone's share sheet with the one PDF; where that is not possible, downloads it.
 // Returns false when the person closed the share sheet.
-export async function shareOemClaimPdf({ issue, claim }) {
-    const { pdf, blob, name } = await buildOemClaimPdf({ issue, claim });
+export async function shareOemClaimPdf({ issue, claim, technicianName }) {
+    const { blob, name } = await buildClaimFile({ issue, claim, technicianName });
     const file = new File([blob], name, { type: 'application/pdf' });
-    if (!canShareFiles() || !navigator.canShare({ files: [file] })) { pdf.save(name); return true; }
+    if (!canShareFiles() || !navigator.canShare({ files: [file] })) { saveFile(blob, name); return true; }
     try {
-        await navigator.share({ files: [file], title: name.replace(/\.pdf$/, ''), text: `OEM warranty claim: ${claim.part}, ${claim.oem}${claim.faulty_serial ? `, faulty serial ${claim.faulty_serial}` : ''}` });
+        const what = isTataClaim(claim) ? 'Tata field service report' : 'OEM warranty claim';
+        await navigator.share({ files: [file], title: name.replace(/\.pdf$/, ''), text: `${what}: ${claim.part}, ${claim.oem}${claim.faulty_serial ? `, faulty serial ${claim.faulty_serial}` : ''}` });
         return true;
     } catch (failure) {
         if (failure?.name === 'AbortError') return false;

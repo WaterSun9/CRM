@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, FileDown, PackageCheck, Send, Share2, Trash2 } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { useGlobalPopup } from '../GlobalPopup';
-import { canShareFiles, downloadOemClaimPdf, shareOemClaimPdf } from './oemClaimPdf';
+import { canShareFiles, downloadOemClaimPdf, isTataClaim, shareOemClaimPdf } from './oemClaimPdf';
 import { OEM_NAMES } from './OemPastRecords';
 
-// OEM replacement claims on one complaint (client meeting 2026-11-14, D-033; all OEMs except
-// Tata, which comes once Sandeep sends Tata's form). Steps:
+// OEM replacement claims on one complaint (client meeting 2026-11-14, D-033, D-038). For Tata
+// (form from Sandeep, 2026-11-19) the PDF starts with Tata's own Field Service Report, filled in;
+// the steps are the same for every OEM. Steps:
 //   1 Claim started (office: OEM, part, faulty serial)  2 OEM data PDF sent  3 OEM ticket no.
 //   4 New part received -> the technician fixes it on the second visit.
 // Office (admin, sales) does every step; the technician on the open job sees the claim and can
@@ -21,7 +22,8 @@ const label = 'mb-1 block text-[10px] font-bold uppercase tracking-wider text-st
 
 // Where the claim is, in words.
 export const claimStep = claim => (claim.part_received_at ? 'Part received – fix on the next visit'
-    : claim.ticket_no ? 'Waiting for the new part' : claim.pdf_sent_at ? 'Waiting for the OEM ticket no.' : 'Send the OEM data PDF');
+    : claim.ticket_no ? 'Waiting for the new part' : claim.pdf_sent_at ? `Waiting for the ${isTataClaim(claim) ? 'Tata complaint' : 'OEM ticket'} no.`
+        : isTataClaim(claim) ? 'Send the Tata service report' : 'Send the OEM data PDF');
 
 function StartForm({ issue, busy, onSave, onCancel }) {
     const [form, setForm] = useState({ oem: '', part: 'Inverter', faulty_serial: '', notes: '' });
@@ -39,7 +41,7 @@ function StartForm({ issue, busy, onSave, onCancel }) {
         <div className="grid gap-3">
             <label><span className={label}>OEM (maker) *</span>
                 <input required list="oem-claim-names" maxLength={80} value={form.oem} onChange={e => set('oem', e.target.value)} placeholder="e.g. Adani, Growatt" className={input} />
-                <datalist id="oem-claim-names">{OEM_NAMES.filter(name => name !== 'Tata Power').map(name => <option key={name} value={name} />)}</datalist></label>
+                <datalist id="oem-claim-names">{OEM_NAMES.map(name => <option key={name} value={name} />)}</datalist></label>
             <div><span className={label}>Faulty part *</span>
                 <div className="grid grid-cols-3 rounded-xl bg-stone-100 p-1" role="group" aria-label="Faulty part">
                     {PARTS.map(part => <button key={part} type="button" aria-pressed={form.part === part} onClick={() => set('part', part)}
@@ -51,7 +53,7 @@ function StartForm({ issue, busy, onSave, onCancel }) {
         <label className="block"><span className={label}>What is wrong (goes in the PDF)</span>
             <textarea rows={2} maxLength={500} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="e.g. Inverter shows error 117, no output"
                 className="w-full rounded-xl border border-stone-200 bg-white p-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" /></label>
-        {/^tata/i.test(form.oem.trim()) && <p className="rounded-lg bg-amber-100 p-2 text-xs font-semibold text-amber-900">Tata claims (CSN / CRN, Rs 800 per site) get their own steps once Tata's form arrives. You can still record it here for now.</p>}
+        {isTataClaim(form) && <p className="rounded-lg bg-amber-100 p-2 text-xs font-semibold text-amber-900">Tata: the PDF is Tata's Field Service Report, filled in from this complaint and the customer card. Boxes we do not keep (sales order no., battery checks, customer's remarks) and both signatures are left blank to fill by hand.</p>}
         <div className="flex gap-2">
             <button disabled={busy || !form.oem.trim()} className="min-h-11 flex-1 rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-40">Start OEM claim</button>
             <button type="button" onClick={onCancel} className="min-h-11 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600">Cancel</button>
@@ -62,7 +64,7 @@ function StartForm({ issue, busy, onSave, onCancel }) {
 function TicketForm({ claim, busy, onSave }) {
     const [ticket, setTicket] = useState('');
     return <form onSubmit={event => { event.preventDefault(); if (ticket.trim()) onSave(claim, ticket.trim()); }} className="flex gap-2">
-        <input maxLength={80} value={ticket} onChange={e => setTicket(e.target.value)} placeholder="OEM ticket no." aria-label={`OEM ticket no. for the ${claim.oem} claim`}
+        <input maxLength={80} value={ticket} onChange={e => setTicket(e.target.value)} placeholder={isTataClaim(claim) ? 'Tata complaint no.' : 'OEM ticket no.'} aria-label={`OEM ticket no. for the ${claim.oem} claim`}
             className={`${input} min-w-0 flex-1`} />
         <button disabled={busy || !ticket.trim()} className="min-h-11 rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-40">Save</button>
     </form>;
@@ -77,7 +79,7 @@ function Steps({ claim }) {
     </li>)}</ol>;
 }
 
-export default function OemClaims({ issue, office = false, technicianOnJob = false, busy, run }) {
+export default function OemClaims({ issue, office = false, technicianOnJob = false, technicianName = '', busy, run }) {
     const { showConfirm } = useGlobalPopup();
     const [claims, setClaims] = useState(null);
     const [ready, setReady] = useState(true);
@@ -124,9 +126,12 @@ export default function OemClaims({ issue, office = false, technicianOnJob = fal
         setMaking(`${how}:${claim.id}`);
         try {
             await run(async () => {
-                if (how === 'share') { if (!await shareOemClaimPdf({ issue, claim })) return ''; return 'OEM data PDF shared. When the OEM has it, press "PDF sent".'; }
-                await downloadOemClaimPdf({ issue, claim });
-                return 'OEM data PDF downloaded. Send it to the OEM, then press "PDF sent".';
+                const tata = isTataClaim(claim);
+                const what = tata ? 'Tata field service report' : 'OEM data PDF';
+                const fill = tata ? ' Fill the blank boxes and the signatures by hand.' : '';
+                if (how === 'share') { if (!await shareOemClaimPdf({ issue, claim, technicianName })) return ''; return `${what} shared.${fill} When ${tata ? 'Tata has' : 'the OEM has'} it, press "PDF sent".`; }
+                await downloadOemClaimPdf({ issue, claim, technicianName });
+                return `${what} downloaded.${fill} Send it to ${tata ? 'Tata' : 'the OEM'}, then press "PDF sent".`;
             }, '', 'issue');
         } finally { setMaking(''); }
     };
@@ -150,8 +155,8 @@ export default function OemClaims({ issue, office = false, technicianOnJob = fal
             {claim.notes && <p className="text-xs text-stone-600 whitespace-pre-line break-words">{claim.notes}</p>}
             {(office || technicianOnJob) && active && !claim.ticket_no && <TicketForm claim={claim} busy={busy} onSave={saveTicket} />}
             {office && <div className="flex flex-wrap gap-2">
-                {sharing && <button type="button" disabled={busy || Boolean(making)} onClick={() => pdf(claim, 'share')} className={small}><Share2 size={14} /> {making === `share:${claim.id}` ? 'Making PDF…' : 'Share OEM PDF'}</button>}
-                <button type="button" disabled={busy || Boolean(making)} onClick={() => pdf(claim, 'download')} className={small}><FileDown size={14} /> {making === `download:${claim.id}` ? 'Making PDF…' : 'Download OEM PDF'}</button>
+                {sharing && <button type="button" disabled={busy || Boolean(making)} onClick={() => pdf(claim, 'share')} className={small}><Share2 size={14} /> {making === `share:${claim.id}` ? 'Making PDF…' : isTataClaim(claim) ? 'Share Tata report' : 'Share OEM PDF'}</button>}
+                <button type="button" disabled={busy || Boolean(making)} onClick={() => pdf(claim, 'download')} className={small}><FileDown size={14} /> {making === `download:${claim.id}` ? 'Making PDF…' : isTataClaim(claim) ? 'Download Tata report' : 'Download OEM PDF'}</button>
                 {active && !claim.pdf_sent_at && <button type="button" disabled={busy} onClick={() => change(claim, { pdf_sent_at: new Date().toISOString() }, 'Marked as sent to the OEM.')} className={small}><Send size={14} /> PDF sent</button>}
                 {active && claim.ticket_no && !claim.part_received_at && <button type="button" disabled={busy} onClick={() => change(claim, { part_received_at: new Date().toISOString() }, 'New part received. The technician can fix it on the next visit.')} className={small}><PackageCheck size={14} /> New part received</button>}
                 {claim.part_received_at && <span className="inline-flex min-h-10 items-center gap-1 px-1 text-xs font-bold text-emerald-700"><Check size={14} /> Ready for the technician</span>}
