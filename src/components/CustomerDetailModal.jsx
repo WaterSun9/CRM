@@ -23,6 +23,7 @@ import HistoryEntryEditor from './HistoryEntryEditor';
 import { AgreementPreview } from './agreement/AgreementPreview';
 import { Page1 } from './agreement/Page1';
 import { FileText, Printer } from 'lucide-react';
+import { mergeDocuments, onLeadDocuments } from '../quotations/leadAttach';
 import { uploadDocument, getCustomerDocuments, getDownloadUrl, getViewUrl, deleteDocument, updateDocumentRemark, downloadFileWithSaveAs, downloadDocumentsAsPdf } from '../utils';
 
 const getDocTypeLabel = (type) => {
@@ -753,6 +754,12 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
             });
         }
     }, [customer?.id]);
+
+    // A document saved in the background (the quote PDF after Add to leads) shows here
+    // at once, without a page refresh (19 Nov 2026).
+    useEffect(() => onLeadDocuments(customer?.id, ({ added, removedIds }) => {
+        setDocuments(prev => mergeDocuments(prev, added, removedIds));
+    }), [customer?.id]);
 
     const handleFileUpload = async (e, docType = null, replacingDocId = null, strictReplacement = false) => {
         const file = e.target.files[0];

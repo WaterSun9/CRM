@@ -4,7 +4,7 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, Download, FileText, Penc
 import { supabase } from '../supabase';
 import AddLeadModal from '../components/AddLeadModal';
 import { useGlobalPopup } from '../components/GlobalPopup';
-import { canUseQuotations,chosenOptions,fromRow,money,toLead,validate,quoteLabel,quoteBrand,quoteFigures,statusOf,groupClients,tallyClients,CLIENT_TABS,MAX_QUOTES } from './model';
+import { canUseQuotations,chosenOptions,fromRow,money,pdfName,toLead,validate,quoteLabel,quoteBrand,quoteFigures,statusOf,groupClients,tallyClients,CLIENT_TABS,MAX_QUOTES } from './model';
 import { quotationRepository as repo } from './client';
 import { PAGE_SIZE } from './repository';
 import QuotationForm from './QuotationForm';
@@ -124,6 +124,13 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
     const [choosing,setChoosing] = useState(null);
     const [conversion,setConversion] = useState(null);
     const [leadPrefill,setLeadPrefill] = useState(null);
+    // The picked quote's PDF, made before the Add Lead form opens so the form shows it attached.
+    const [quotePdf,setQuotePdf] = useState(null);
+    const [preparing,setPreparing] = useState(null);
+    // What was typed in the Add Lead form, per quote, so going back does not lose it (19 Nov 2026).
+    const leadDrafts = useRef(new Map());
+    const conversionRef = useRef(null);
+    conversionRef.current = conversion;
     const [online,setOnline] = useState(navigator.onLine);
     const allowed = canUseQuotations(user);
     const open = route.startsWith('/quotations');
@@ -139,7 +146,10 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         const change = () => {
             const next = readRoute();
             if (next === acceptedRoute.current) return;
-            if (dirty.current && !window.confirm('This quotation has unsaved changes. Leave this screen? A recovery copy remains on this device when storage is available.')) {
+            const leaving = conversionRef.current
+                ? 'The lead is not added yet. Leave this screen? What you typed is kept: tap Add to leads on this quote to carry on.'
+                : 'This quotation has unsaved changes. Leave this screen? A recovery copy remains on this device when storage is available.';
+            if (dirty.current && !window.confirm(leaving)) {
                 window.history.pushState(null,'',`#${acceptedRoute.current}`); return;
             }
             dirty.current = false; acceptedRoute.current = next; setRoute(next); setError(''); setLost(null); setChoosing(null); setConversion(null);
@@ -225,7 +235,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
             const file = await generateQuotationPdf(stored);
             const updated = await repo.generated(stored,user);
             setRow(updated);
-            if (updated.source_lead_id) await saveLeadQuotationPdf(updated,file,user);
+            if (updated.source_lead_id) await saveLeadQuotationPdf(updated,file,user,{ replace:true });
             downloadQuotationFile(file);
             showAlert(`Downloaded ${file.name}`, { title: 'Download complete', type: 'success' });
             setRefresh(n => n + 1);
@@ -335,12 +345,22 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
         const form = fromRow(latest);
         const choices = chosenOptions(form);
         const choice = choices.find(option => option.number === latest.selected_option) || choices[0] || null;
+        // Make the quote PDF first, so the form shows it attached from the start (19 Nov 2026:
+        // staff saw "Not Attached", attached it again and lost the lead going back for it).
+        let file = null;
+        setPreparing(item.id);
+        try { file = await generateQuotationPdf(latest); } catch (err) { console.warn('Quote PDF will be made after the lead is saved:', err); }
+        finally { setPreparing(null); }
+        setQuotePdf({ name:file?.name || pdfName(latest), file });
         setLeadPrefill(toLead(form, choice, meta?.module_brand || [])); setConversion(latest); dirty.current = true;
     });
+    const closeConversion = () => { setConversion(null); setQuotePdf(null); dirty.current = false; };
     // The picked quote's PDF goes into the new lead's documents; the lead's first page lists the quote too.
     // Made right after the lead is saved, which takes a few seconds on a phone: it shows while
     // it runs, retries on a weak signal, and says clearly whether it was saved (12 Nov 2026).
-    const attachToLead = async quote => {
+    // The PDF made for the form is reused when its name still matches; a retry finds an
+    // already-saved copy instead of adding a second one (see leadPdf.js).
+    const attachToLead = async (quote, readyFile = null) => {
         setPdfSaving(true);
         let lastError = null;
         try {
@@ -349,14 +369,15 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
                 try {
                     const linked = await repo.get(quote.id);
                     if (!linked.source_lead_id) return;
-                    await saveLeadQuotationPdf(linked,await generateQuotationPdf(linked),user);
+                    const file = readyFile && readyFile.name === pdfName(linked) ? readyFile : await generateQuotationPdf(linked);
+                    await saveLeadQuotationPdf(linked,file,user);
                     showAlert('The quote PDF is saved in the lead\'s documents.',{title:'Quote PDF saved',type:'success'});
                     return;
                 } catch (err) { lastError = err; }
             }
         } finally { setPdfSaving(false); }
         const again = await showConfirm(`The lead was added, but the quote PDF could not be saved to its documents: ${lastError?.message || 'no connection'}.`,{title:'Quote PDF not saved',confirmLabel:'Try again',cancelLabel:'Later',type:'warning'});
-        if (again) await attachToLead(quote);
+        if (again) await attachToLead(quote, readyFile);
         else showAlert('You can save it later: open the lead and use Download & save on its quotation.',{title:'Quote PDF not saved',type:'warning'});
     };
     const reopenClient = client => run(async () => {
@@ -403,7 +424,7 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
                 </li>;
             })}</ol>
             <div className="q-actions q-client-actions">
-                {client.status === 'picked' && onCreateLead && <button className="q-primary" disabled={busy || !online} onClick={() => addToLeads(client.picked)}>Add to leads</button>}
+                {client.status === 'picked' && onCreateLead && <button className="q-primary" disabled={busy || !online} onClick={() => addToLeads(client.picked)}>{preparing === client.picked.id ? 'Preparing quote PDF…' : 'Add to leads'}</button>}
                 {added && onViewLead && <button disabled={busy || !online} onClick={() => showLead(client.picked.converted_lead_id || client.picked.source_lead_id)}>View lead</button>}
                 {client.full ? <span className="q-limit">{MAX_QUOTES} of {MAX_QUOTES} options made</span> : <button disabled={busy} onClick={() => startForClient(client)}><Plus size={15} /> Another brand quote</button>}
                 {!closed && <button disabled={busy || !online} onClick={() => {setLost(client);setReason('');setRemark('');}}>Lost</button>}
@@ -440,7 +461,10 @@ export default function QuotationModule({ user,meta,channelPartners = [],onCreat
             <div className="q-actions"><button disabled={waChat.sharing} onClick={() => setWaChat(null)}>Close</button>{canShareFile(waChat.file) && <button className="q-primary" disabled={waChat.preparing || waChat.sharing} onClick={shareWhatsAppFile}><Share2 size={16} /> {waChat.sharing ? 'Sharing…' : 'Share PDF'}</button>}</div></div></div>}
 
         {conversion && createPortal(
-            <AddLeadModal isOpen initialValues={leadPrefill} user={user} meta={meta} channel_partners={channelPartners} onClose={() => {setConversion(null);dirty.current = false;}} onSave={async (data,files) => { await onCreateLead(data,files,conversion); dirty.current = false; setConversion(null); setRefresh(n => n + 1); void attachToLead(conversion); }} />,
+            <AddLeadModal isOpen initialValues={leadPrefill} user={user} meta={meta} channel_partners={channelPartners} quotationFile={quotePdf}
+                draft={leadDrafts.current.get(conversion.id)} onDraftChange={draft => leadDrafts.current.set(conversion.id, draft)}
+                onClose={closeConversion}
+                onSave={async (data,files) => { const quote = conversion, ready = quotePdf?.file; await onCreateLead(data,files,quote); leadDrafts.current.delete(quote.id); closeConversion(); setRefresh(n => n + 1); void attachToLead(quote, ready); }} />,
             document.body
         )}
         {lost && <div className="q-dialog" role="dialog" aria-modal="true" aria-labelledby="q-lost-title"><div className="q-panel"><h2 id="q-lost-title">Mark {lost.name || 'this client'} as lost</h2><p className="q-muted">{lost.quotes.length === 1 ? 'Their quote is' : `All ${lost.quotes.length} quotes are`} marked lost. Back to open undoes it.</p><label className="q-field"><span>Reason (optional)</span><select value={reason} onChange={e => setReason(e.target.value)}><option value="">Choose reason</option>{['Price','Competitor selected','Project postponed','Not interested','Other'].map(r => <option key={r}>{r}</option>)}</select></label><label className="q-field" style={{marginTop:16}}><span>Remark (optional)</span><textarea maxLength={1000} value={remark} onChange={e => setRemark(e.target.value)} /></label><div className="q-actions"><button disabled={busy} onClick={() => setLost(null)}>Cancel</button><button className="q-primary" disabled={busy} onClick={markClientLost}>Mark lost</button></div></div></div>}

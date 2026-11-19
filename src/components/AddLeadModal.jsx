@@ -102,6 +102,40 @@ function ChannelPartnerAutocomplete({ label, value, onChange, suggestions = [], 
     );
 }
 
+// The picked quote's PDF on a lead added from Quotations (19 Nov 2026). It shows as attached
+// straight away and cannot be attached a second time; it is saved to the lead's documents
+// as soon as the lead is added. `file` is null only if the PDF could not be made here; it is
+// then made after saving.
+function QuotationAttachedRow({ quotation, onPreview, compact = false }) {
+    if (!quotation) return null;
+    return (
+        <div className={compact ? 'mt-3' : 'py-2.5 border-b border-stone-100 last:border-0 space-y-1.5'} data-testid={compact ? 'quote-pdf-summary' : 'quote-pdf-row'}>
+            {!compact && (
+                <div className="flex items-center gap-2.5">
+                    <div className="w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 bg-emerald-500 border-emerald-500 text-white" title="Attached from the quote">
+                        <svg className="w-2.5 h-2.5 stroke-[3] stroke-current" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                    </div>
+                    <span className="text-xs select-none font-bold text-stone-900">Quotation</span>
+                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">Attached</span>
+                </div>
+            )}
+            <div className={`flex items-center justify-between gap-1.5 bg-emerald-50 border border-emerald-200 rounded-xl px-2.5 py-1.5 ${compact ? '' : 'ml-6'}`}>
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    <FileText size={12} className="text-emerald-700 flex-shrink-0" />
+                    <span className="text-[11px] text-emerald-900 font-semibold truncate" title={quotation.name}>{quotation.name}</span>
+                    {compact && <span className="text-[9px] font-bold text-emerald-700 bg-white px-1.5 rounded border border-emerald-200 flex-shrink-0">Attached</span>}
+                </div>
+                {quotation.file && (
+                    <button type="button" onClick={() => onPreview(quotation.file)} className="text-[10px] font-bold text-emerald-800 hover:text-emerald-950 px-1.5 py-0.5 rounded hover:bg-emerald-100 transition-colors flex items-center gap-0.5 cursor-pointer flex-shrink-0" title="View the quote PDF">
+                        <Eye size={11} /> View
+                    </button>
+                )}
+            </div>
+            <p className={`text-[10px] text-stone-500 ${compact ? 'mt-1' : 'ml-6'}`}>From the quote. Saved in the lead's documents when you tap Add Lead; no need to attach it again.</p>
+        </div>
+    );
+}
+
 // Interactive checklist row with file upload / replace / delete / view
 function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, onFileAttach, onFileRemove, onPreview }) {
     const fileInputRef = useRef(null);
@@ -218,7 +252,9 @@ function AddLeadChecklistItem({ label, field, checked, onToggle, pendingFile, on
 const QUOTATION_FIELDS = ['customer_name', 'phone_number', 'email_address', 'full_address', 'villages', 'sub_divisions', 'district', 'pincode',
     'module_brand', 'module_wp', 'no_of_modules', 'system_capacity_kwp', 'property_type'];
 
-export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, channel_partners = [], user, initialValues = null }) {
+// quotationFile: { name, file } for a lead added from a quote (shown as attached, uploaded by the caller).
+// draft / onDraftChange: the caller keeps what was typed, so closing and coming back does not lose it.
+export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, channel_partners = [], user, initialValues = null, quotationFile = null, draft = null, onDraftChange = null }) {
     const { showAlert, showConfirm } = useGlobalPopup();
     const [formData, setFormData] = useState({ ...DEFAULT_LEAD_FORM });
     const [pendingFiles, setPendingFiles] = useState({}); // { [doc_type]: File }
@@ -248,6 +284,10 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         return () => { cancelled = true; };
     }, [isAgent, isChannelPartnerOffice, partnerName, formData.channel_partner]);
 
+    const draftRef = useRef(draft);
+    draftRef.current = draft;
+    const draftChangeRef = useRef(onDraftChange);
+    draftChangeRef.current = onDraftChange;
     useEffect(() => {
         if (isOpen) {
             const defaults = { ...DEFAULT_LEAD_FORM, ...initialValues };
@@ -260,12 +300,18 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             } else if (isChannelPartnerOffice) {
                 defaults.channel_partner = partnerName || '';
             }
-            setFormData(defaults);
-            setPendingFiles({});
+            const kept = draftRef.current;
+            setFormData(kept?.formData ? { ...defaults, ...kept.formData } : defaults);
+            setPendingFiles(kept?.pendingFiles || {});
             setSaving(false);
-            setIsFormDirty(false);
+            setIsFormDirty(Boolean(kept?.formData));
         }
     }, [isOpen, user, isAgent, isAgent2, isChannelPartnerOffice, partnerName, initialValues]);
+
+    // Hand every change back to the caller as a draft (only once something was typed or attached).
+    useEffect(() => {
+        if (isOpen && isFormDirty) draftChangeRef.current?.({ formData, pendingFiles });
+    }, [isOpen, isFormDirty, formData, pendingFiles]);
 
     // Esc closes the form through the same guard. Declared before the early
     // return below so the hook runs on every render.
@@ -403,7 +449,8 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
         const validatedData = result.data;
 
         // Package attached files as list of { file, doc_type }
-        const filesToUpload = Object.entries(pendingFiles).map(([doc_type, file]) => ({
+        // A lead from a quote gets the quote PDF from the caller, never a second copy from here.
+        const filesToUpload = Object.entries(pendingFiles).filter(([doc_type]) => !(quotationFile && doc_type === 'lead_quotation')).map(([doc_type, file]) => ({
             file,
             doc_type
         }));
@@ -428,9 +475,13 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
             onClose();
             return;
         }
-        const shouldDiscard = await showConfirm('This new lead has unsaved changes.', {
-            title: 'Close without saving?',
-            confirmLabel: 'Discard Lead',
+        // From a quote, what was typed is kept (draft), so say so instead of "discard".
+        const keepsDraft = Boolean(onDraftChange);
+        const shouldDiscard = await showConfirm(keepsDraft
+            ? 'The lead is not added yet. What you typed is kept: tap Add to leads on this quote to carry on.'
+            : 'This new lead has unsaved changes.', {
+            title: keepsDraft ? 'Leave without adding the lead?' : 'Close without saving?',
+            confirmLabel: keepsDraft ? 'Leave for now' : 'Discard Lead',
             cancelLabel: 'Keep Editing',
             type: 'warning'
         });
@@ -496,6 +547,7 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
                         <p>{formData.module_brand} · {formData.no_of_modules} modules × {formData.module_wp} Wp · {formData.inverter_make}</p>
                         <p className="mt-1 font-semibold">Project amount: {new Intl.NumberFormat('en-IN', {style:'currency', currency:'INR', minimumFractionDigits:0, maximumFractionDigits:2}).format(Number(formData.invoice_value))}</p>
                         <p className="mt-1 text-stone-500">Before subsidy. These details will be saved with the lead. Details from the quotation are locked; to change them, edit the quotation first.</p>
+                        <QuotationAttachedRow compact quotation={quotationFile} onPreview={file => handlePreviewFile(file)} />
                     </section>}
                     {/* Section 1: Customer Info (Strictly Line-by-Line) */}
                     <section>
@@ -985,15 +1037,19 @@ export default function AddLeadModal({ isOpen, onClose, onSave, meta = {}, chann
 
                                     {/* The customer's quotation (PDF or photo), kept with the lead documents as
                                         Final Quotation. No tick-box column: the attached file is the record. */}
-                                    <AddLeadChecklistItem
-                                        label="Quotation"
-                                        field="lead_quotation"
-                                        checked={Boolean(pendingFiles['lead_quotation'])}
-                                        pendingFile={pendingFiles['lead_quotation']}
-                                        onFileAttach={handleFileAttach}
-                                        onFileRemove={handleFileRemove}
-                                        onPreview={handlePreviewFile}
-                                    />
+                                    {quotationFile ? (
+                                        <QuotationAttachedRow quotation={quotationFile} onPreview={file => handlePreviewFile(file)} />
+                                    ) : (
+                                        <AddLeadChecklistItem
+                                            label="Quotation"
+                                            field="lead_quotation"
+                                            checked={Boolean(pendingFiles['lead_quotation'])}
+                                            pendingFile={pendingFiles['lead_quotation']}
+                                            onFileAttach={handleFileAttach}
+                                            onFileRemove={handleFileRemove}
+                                            onPreview={handlePreviewFile}
+                                        />
+                                    )}
                                 </div>
                             )}
                         </div>

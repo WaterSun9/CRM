@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import '../index.css';
 import { GlobalPopupProvider } from '../components/GlobalPopup';
 import QuotationModule from '../quotations/QuotationModule';
+import CustomerDetailModal from '../components/CustomerDetailModal';
 import { supabase } from '../supabase';
 import { memoryClient } from '../../tests/quotations/memoryClient.mjs';
 import { newForm,payload } from '../quotations/model';
@@ -21,14 +22,26 @@ if (import.meta.env.DEV) {
     row.quotation_data.client_id=id; row.quotation_data.client_seq=1;
     const older={...payload({...form,customer_name:'Old Customer B',customer_phone:'9876543212'},brandedTemplate()),id:'44444444-4444-4444-8444-444444444444',owner_id:user.id,quotation_no:3200,status:'issued',issued_at:'2026-09-01T10:00:00Z',created_at:'2026-09-01T10:00:00Z',updated_at:'seed-old'};
     if(new URLSearchParams(location.search).has('issued')) { row.status='issued'; row.issued_at=new Date().toISOString(); }
-    const seed=JSON.parse(sessionStorage.getItem('q-fixture') || 'null') || {quotations:[older,row],admin:[lead],profiles:[{...user,phone_number:user.phone}]};
+    // ?fresh starts from the seed again instead of the last run.
+    const seed=(!new URLSearchParams(location.search).has('fresh') && JSON.parse(sessionStorage.getItem('q-fixture') || 'null')) || {quotations:[older,row],admin:[lead],profiles:[{...user,phone_number:user.phone}]};
     const client=memoryClient(seed);
     supabase.from=client.from;
     // All fixture writes, including PDF storage, stay in memory.
-    supabase.storage.from = () => ({upload:async () => ({data:{path:'fixture-only'},error:null}),remove:async () => ({error:null})});
+    // ?slow=3000 makes each stored file take that long, like a phone on a weak signal.
+    const slow=Number(new URLSearchParams(location.search).get('slow')) || 0;
+    supabase.storage.from = () => ({upload:async () => { if(slow) await new Promise(r=>setTimeout(r,slow)); return {data:{path:'fixture-only'},error:null}; },remove:async () => ({error:null}),createSignedUrl:async () => ({data:{signedUrl:'about:blank'},error:null})});
+    supabase.rpc = async () => ({data:null,error:null});
     supabase.auth.getSession = async () => ({data:{session:{user:{id:user.id}}},error:null});
     window.addEventListener('beforeunload',()=>sessionStorage.setItem('q-fixture',JSON.stringify(client.state.tables)));
     window.quotationFixture={client,row,user,repo:quotationRepository,generateQuotationPdf};
     if(!location.hash) location.hash='/quotations';
-    createRoot(document.getElementById('root')).render(<GlobalPopupProvider><QuotationModule embedded user={user} meta={{module_brand:['WAAREE','TATA','ADANI'],module_wp:['580','600','610'],inverter_make:['Solaryan','Growatt','Sungrow']}} onViewLead={selected=>window.alert(`View Lead: ${selected.customer_name}`)} onCreateLead={async(data,files,quote)=>quotationRepository.insertConversionLead(quote,data,user)} /></GlobalPopupProvider>);
+    const meta={module_brand:['WAAREE','TATA','ADANI'],module_wp:['580','600','610'],inverter_make:['Solaryan','Growatt','Sungrow']};
+    // ?card opens the real customer card on View lead (19 Nov 2026 quote-to-lead check).
+    const withCard=new URLSearchParams(location.search).has('card');
+    const Demo=()=>{
+        const [lead,setLead]=React.useState(null);
+        return <><QuotationModule embedded user={user} meta={meta} onViewLead={selected=>withCard ? setLead(selected) : window.alert(`View Lead: ${selected.customer_name}`)} onCreateLead={async(data,files,quote)=>quotationRepository.insertConversionLead(quote,data,user)} />
+            {lead && <CustomerDetailModal customer={lead} user={user} meta={meta} defaultTab="LEADS" onClose={()=>setLead(null)} onUpdate={async()=>true} onDelete={()=>{}} />}</>;
+    };
+    createRoot(document.getElementById('root')).render(<GlobalPopupProvider><Demo /></GlobalPopupProvider>);
 } else { document.getElementById('root').textContent='This test fixture is available only in development.'; }
