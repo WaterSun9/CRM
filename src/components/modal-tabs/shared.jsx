@@ -4,6 +4,7 @@ import { formatINR, toIndianCommas, parseIndianNumber, formatInputValue } from '
 import { supabase } from '../../supabase';
 import { useGlobalPopup } from '../GlobalPopup';
 import CropPhotoModal from '../CropPhotoModal';
+import GeoTagConfirm from '../GeoTagConfirm';
 
 // ─── Vendor name list (process-wide cache) ────────────────────────────────────
 // InstallationStatusTab and MaterialDeliveryTab each fetched this on mount with
@@ -521,6 +522,7 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
     // A picked photo is shown first (crop / rotate / cancel) instead of being
     // uploaded straight away. Other files (PDFs) upload as before.
     const [reviewFile, setReviewFile] = React.useState(null);
+    const [geoFile, setGeoFile] = React.useState(null);
 
     const handleFileSelected = async (e) => {
         const file = e.target.files[0];
@@ -532,6 +534,12 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
         const replacementAllowed = canReplace || (allowReturnedReplace && isReturnedDocument(replacingDoc));
         if (replacingDocId && !replacementAllowed) {
             setReplacingDocId(null);
+            return;
+        }
+        // Geo tag photo (D-042): shown big with "Can you see the geo tag clearly?" first.
+        // Nothing is uploaded (so the stage cannot move) until the user says Yes.
+        if (field === 'geo_tag_image') {
+            setGeoFile(file);
             return;
         }
         if (isCroppableImage(file)) {
@@ -678,6 +686,14 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
                     </button>
                 )}
             </div>
+            {geoFile && (
+                <GeoTagConfirm
+                    file={geoFile}
+                    onYes={async picked => { if (await uploadPicked(picked)) setGeoFile(null); }}
+                    onRetake={setGeoFile}
+                    onCancel={() => { setGeoFile(null); setReplacingDocId(null); }}
+                />
+            )}
             {reviewFile && (
                 <CropPhotoModal
                     review

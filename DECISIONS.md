@@ -235,3 +235,10 @@ No prices or billing here: this repo is the client's. Commercial decisions live 
 - Decision: B. The geo tag photo is compulsory and stays its own slot (none of the 17 is the geo tag photo); the customer can't move on from Geo Tag Photo without it. The 17 named photos are optional records: shown as named slots with progress (e.g. 12/17) and what is missing, never blocking. Only the geo tag photo upload moves the stage automatically (D-034); uploading any of the 17 never moves the stage or sets an installation status.
 - Why: start gently; can tighten later.
 - Status: Built on `claude/nov14-tata-install-photos-13fa44`, not deployed, no SQL
+
+## D-042 · 2026-11-19 · Geo tag photo: preview and confirm before the stage moves
+- Context: the geo tag photo moves the customer from Geo Tag Photo to Discom Submission on upload (D-034), but the uploaded photo can be a bad one.
+- Options: A) auto-move on upload (as built), B) preview + confirm, then auto-move.
+- Decision: B. After a geo tag photo is picked it is shown big with "Can you see the geo tag (location, date, time) clearly on this photo?". Yes = upload it and move the stage as before. No, retake = the photo is discarded (never uploaded) and the picker opens again straight away; the X discards it too. An unconfirmed photo never reaches the database, so it can never move the stage. Applies everywhere a geo tag photo is uploaded: the customer card (every checklist row for the geo tag photo) and the vendor portal. On the customer card the geo tag photo now skips the crop step, which could cut off the geo tag. No SQL.
+- Why: a bad photo shouldn't move the stage.
+- Status: Built on `claude/nov14-tata-install-photos-13fa44`, not deployed

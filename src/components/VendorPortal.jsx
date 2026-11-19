@@ -10,6 +10,7 @@ import {
 import { FilePreviewModal } from './modal-tabs/shared';
 import { STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, VENDOR_LIST_COLUMNS, isFinalTagValue } from '../constants';
 import InstallationPhotos from './InstallationPhotos';
+import GeoTagConfirm from './GeoTagConfirm';
 import { INSTALL_PHOTO_LABELS } from '../utils/installPhotos';
 import { isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
@@ -441,6 +442,19 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             setUploadingPhoto(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
+        return photoUploaded;
+    };
+
+    // Geo tag photo (D-042): the picked photo is shown big with "Can you see the geo tag
+    // clearly?" first. Nothing is uploaded (so the stage cannot move) until Yes.
+    const [pendingGeoFile, setPendingGeoFile] = useState(null);
+    const handleGeoPhotoPicked = (e) => {
+        const file = e.target.files?.[0];
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (file && selectedCust) setPendingGeoFile(file);
+    };
+    const confirmGeoPhoto = async (file) => {
+        if (await handlePhotoUpload({ target: { files: [file] } })) setPendingGeoFile(null);
     };
 
     const handleUpdateDocRemark = async (docId, newRemark) => {
@@ -1249,7 +1263,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 ref={fileInputRef}
                                                 type="file"
                                                 accept="image/*"
-                                                onChange={handlePhotoUpload}
+                                                onChange={handleGeoPhotoPicked}
                                                 className="hidden"
                                             />
 
@@ -1580,6 +1594,14 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             )}
 
             {/* Document Preview Modal */}
+            {pendingGeoFile && (
+                <GeoTagConfirm
+                    file={pendingGeoFile}
+                    onYes={confirmGeoPhoto}
+                    onRetake={setPendingGeoFile}
+                    onCancel={() => setPendingGeoFile(null)}
+                />
+            )}
             {previewDoc && (
                 <FilePreviewModal
                     file={previewDoc.doc}

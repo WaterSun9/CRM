@@ -1,11 +1,14 @@
 // Local-only demo of the 17 installation photos (client list, 2026-11-19) for screenshots.
 // Fake customer, fake photos drawn in the browser, no login and no network.
-// ?done=0 | 12 | 17 (how many photos are already taken), ?view=vendor | office (read only).
+// ?done=0 | 12 | 17 (how many photos are already taken), ?view=vendor | office (read only)
+// | geo (the geo tag photo on the customer card, with the D-042 "is the geo tag clear?" check).
 import { useCallback, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../index.css';
 import InstallationPhotos from '../components/InstallationPhotos';
 import { INSTALL_PHOTOS } from '../utils/installPhotos';
+import { CheckboxRemarkItem } from '../components/modal-tabs/shared';
+import { GlobalPopupProvider } from '../components/GlobalPopup';
 
 const params = new URLSearchParams(location.search);
 const done = Math.min(17, Math.max(0, Number(params.get('done') ?? 12)));
@@ -55,4 +58,30 @@ function Demo() {
     </div>;
 }
 
-createRoot(document.getElementById('root')).render(<Demo />);
+// The geo tag photo on the customer card: the real checklist row, a fake upload that moves the
+// stage the way the card does (Geo Tag Photo -> Discom Submission).
+function GeoDemo() {
+    const [stage, setStage] = useState('Geo Tag Photo');
+    const [docs, setDocs] = useState([]);
+    const upload = async event => {
+        const file = event.target.files[0];
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setDocs([{ id: `g${Date.now()}`, doc_type: 'geo_tag_image', file_name: file.name, storage_path: 'demo/geo', uploaded_at: new Date().toISOString() }]);
+        setStage('Discom Submission');
+        return true;
+    };
+    return <div className="min-h-screen bg-stone-50 p-3 sm:p-6">
+        <div className="mx-auto max-w-3xl space-y-3">
+            <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Customer card</p>
+                <p className="text-base font-black text-stone-900">Demo Customer (fake)</p>
+                <p className="text-xs text-stone-500">Stage: <span className={`font-bold ${stage === 'Discom Submission' ? 'text-emerald-700' : 'text-stone-800'}`}>{stage}</span></p>
+            </div>
+            <div className="rounded-[24px] border border-stone-100 bg-white p-4 shadow-sm">
+                <CheckboxRemarkItem label="Geo Tag Photograph" field="geo_tag_image" value={docs.length > 0} onChange={() => {}} isEditing documents={docs} onUpload={upload} onPreview={() => {}} canDelete />
+            </div>
+        </div>
+    </div>;
+}
+
+createRoot(document.getElementById('root')).render(params.get('view') === 'geo' ? <GlobalPopupProvider><GeoDemo /></GlobalPopupProvider> : <Demo />);
