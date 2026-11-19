@@ -228,3 +228,10 @@ No prices or billing here: this repo is the client's. Commercial decisions live 
 - Why: the clear cases stay one click; the unclear ones need a person, so nothing changes unless picked.
 - Status: Built on `feat/cp-dealer-rules`, not deployed, no SQL. Supersedes the single-action part of D-039.
 
+
+## D-041 · 2026-11-19 · Installation photos: geo tag required, the 17 optional to start
+- Context: Sandeep sent the list of 17 installation photos on 2026-11-19 (`docs/client-requests-2026-11-14/installation-photos.md`).
+- Options: A) all 17 photos required before the installation is complete, B) geo tag photo required, the 17 optional to start.
+- Decision: B. The geo tag photo is compulsory and stays its own slot (none of the 17 is the geo tag photo); the customer can't move on from Geo Tag Photo without it. The 17 named photos are optional records: shown as named slots with progress (e.g. 12/17) and what is missing, never blocking. Only the geo tag photo upload moves the stage automatically (D-034); uploading any of the 17 never moves the stage or sets an installation status.
+- Why: start gently; can tighten later.
+- Status: Built on `claude/nov14-tata-install-photos-13fa44`, not deployed, no SQL

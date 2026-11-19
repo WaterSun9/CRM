@@ -5,7 +5,7 @@
 ## 2026-11-19: Tata form and installation photo list received
 Sandeep sent both. Saved as `installation-photos.md` (17 photos) and `tata-oem-form/` (blank form). Built on `claude/nov14-tata-install-photos-13fa44`, not deployed.
 
-- **Installation photos:** 17 photo boxes on the customer card (Installation Status) and in the vendor portal (Installation tab), with a count and the missing names. Screenshots in `installation-photos/`. Optional for now (Mahvish, 2026-11-19): nothing is blocked and the stage never moves on these photos.
+- **Installation photos:** 17 photo boxes on the customer card (Installation Status) and in the vendor portal (Installation tab), with a count and the missing names. Screenshots in `installation-photos/`. Optional for now (D-041): nothing is blocked and the stage never moves on these photos; the geo tag photo stays compulsory and separate.
 - **Tata claim:** in the OEM replacement box on a complaint, a Tata claim downloads/shares Tata's Field Service Report, filled in, followed by the usual claim pages with every photo. Sample: `tata-oem-form/sample-tata-field-service-report.pdf` (form page only, fake data; remake it with `node scripts/tata-service-report-sample.mjs`). Screenshots in `tata-oem-form/`.
 
 What goes in each box of the Tata form:
@@ -33,7 +33,6 @@ What goes in each box of the Tata form:
 The 2026-11-19 work adds **no SQL**: installation photos are customer documents (`documents.doc_type` is free text), and the Tata report uses the `service_oem_claims` table from file 3.
 
 ### Open questions (2026-11-19)
-- Should the 17 installation photos ever be required before Installation Status can move on (all 17, or some)? Today: optional.
 - Is "Plant Photo" or "System no dur thi photo" the same picture as the geo tag photo? Today: separate.
 - Battery boxes on the Tata form: leave blank (today) or print "N/A" (on-grid rooftop has no battery)?
 - "Type of system: On-grid rooftop" is printed for every Tata claim. Are any Watersun systems hybrid or off-grid?
