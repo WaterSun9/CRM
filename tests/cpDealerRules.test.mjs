@@ -118,3 +118,12 @@ test('cardsSource says whether cards came from the 1 Sep sheet or the CRM', asyn
     assert.equal(cardsSource([{ created_at: '2026-09-01T06:00:00Z' }, { created_at: '2026-10-20T06:00:00Z' }, { created_at: '2026-11-02T06:00:00Z' }]), "1 card from the client's sheet (1 Sep 2026), 2 added in the CRM (Oct 2026 to Nov 2026).");
     assert.equal(cardsSource([{}]), '');
 });
+
+test('spelling follows the login exactly as stored, double spaces included', () => {
+    const logins = [...profiles, { id: 'ram', name: 'RAMESH  SOLANKI', user_type: 'agent2', channel_partner: 'SUN ENERGY', status: 'active' }];
+    const same = card('SUN ENERGY', 'RAMESH  SOLANKI');
+    assert.equal(checkCards([same], logins).spelling.length, 0);
+    const single = card('SUN ENERGY', 'RAMESH SOLANKI');
+    const row = checkCards([single], logins).spelling[0];
+    assert.deepEqual(changesFor(row, single), { sub_channel_partner: 'RAMESH  SOLANKI' });
+});

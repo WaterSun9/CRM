@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, Download, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { supabase } from '../supabase';
 import { logActivity, logFieldChanges, updateAdminRecord } from '../utils';
-import { NO_CHANGE, RULES, cardsSource, changesFor, checkCards, spellingDifference, unusedLogins } from '../utils/cpDealerRules';
+import { NO_CHANGE, RULES, SHEET_IMPORT_DAY, cardsSource, changesFor, checkCards, spellingDifference, unusedLogins } from '../utils/cpDealerRules';
 
 // CP / dealer rules (admin only, D-039). Checks every live customer card against the client's
 // CP / CPO / dealer rules (src/utils/cpDealerRules.js) and the current logins. Each finding is a
@@ -48,11 +48,53 @@ async function loadAll(build) {
     }
 }
 
+// A name with its spaces made visible where they are wrong: each extra, leading or trailing
+// space shows as a small "␣" (a double space looks like one space on screen).
+function Spelled({ value }) {
+    const text = String(value ?? '');
+    const parts = text.split(/(\s+)/);
+    return <>{parts.map((part, i) => {
+        if (!/^\s+$/.test(part)) return part;
+        const edge = i === 0 || i === parts.length - 1;
+        if (!edge && part === ' ') return part;
+        return <span key={i} className="mx-px rounded bg-amber-200 px-0.5 font-bold text-amber-900" title={`${part.length} space${part.length === 1 ? '' : 's'}`}>{'␣'.repeat(edge ? part.length : part.length)}</span>;
+    })}</>;
+}
+
 function Change({ from, to }) {
-    if (to === undefined || (from ?? '') === (to ?? '')) return <span className="text-stone-600">{shown(from)}</span>;
+    const empty = value => value == null || String(value).trim() === '';
+    if (to === undefined || (from ?? '') === (to ?? '')) return <span className="text-stone-600">{empty(from) ? '(empty)' : <Spelled value={from} />}</span>;
     const differs = spellingDifference(from, to);
-    return <span><span className="text-stone-400 line-through">{shown(from)}</span> <span className="font-bold text-emerald-700">→ {shown(to)}</span>
+    return <span><span className="text-stone-500 line-through decoration-stone-400">{empty(from) ? '(empty)' : <Spelled value={from} />}</span> <span className="font-bold text-emerald-700">→ {shown(to)}</span>
         {differs && <span className="ml-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800" title="Only this differs: the letters are the same">{differs}</span>}</span>;
+}
+
+const addedOn = card => {
+    if (!card.created_at) return '';
+    const day = new Date(new Date(card.created_at).getTime() + 330 * 60000).toISOString().slice(0, 10);
+    return day === SHEET_IMPORT_DAY ? 'From the sheet (1 Sep)' : `Added in the CRM, ${new Date(card.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}`;
+};
+
+// Every customer of a line: who they are, where the card came from, and what its CP and
+// Dealer boxes are now and become under the line's choice.
+function CustomerList({ row, choice, onSelectCustomer }) {
+    return <ul className="mt-2 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white">{row.cards.map(c => {
+        const after = changesFor(row, c, choice);
+        const name = String(c.customer_name ?? '').trim() || '(no name on the card)';
+        return <li key={c.id} className="space-y-1 p-2 text-[11px]">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+                {c.folder_no && <span className="font-mono text-stone-500">#{c.folder_no}</span>}
+                {onSelectCustomer ? <button type="button" onClick={() => onSelectCustomer(c)} className="text-left font-bold text-stone-900 underline-offset-2 hover:underline">{name}</button>
+                    : <span className="font-bold text-stone-900">{name}</span>}
+                {c.stage && <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-semibold text-stone-600">{c.stage}</span>}
+                {addedOn(c) && <span className="text-[10px] text-stone-400">{addedOn(c)}</span>}
+            </div>
+            <div className="grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-0.5">
+                <span className="font-bold uppercase tracking-wider text-stone-400">CP</span><Change from={c.channel_partner} to={after.channel_partner} />
+                <span className="font-bold uppercase tracking-wider text-stone-400">Dealer</span><Change from={c.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} />
+            </div>
+        </li>;
+    })}</ul>;
 }
 
 const selectClass = 'min-h-10 w-full rounded-lg border border-stone-300 bg-white px-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-300';
@@ -266,9 +308,8 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                                             <span className="font-bold uppercase tracking-wider text-stone-400">Dealer</span><Change from={first.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} />
                                                         </span>
                                                         <button type="button" onClick={() => setOpenRow(cur => ({ ...cur, [row.id]: !expanded }))} className="text-[11px] font-semibold text-stone-500 underline-offset-2 hover:underline">
-                                                            {row.cards.length} customer{row.cards.length === 1 ? '' : 's'} {expanded ? '▲' : '▼'}</button>
-                                                        {expanded && <ul className="mt-1 space-y-0.5 text-[11px] text-stone-600">{row.cards.map(c => <li key={c.id}>{c.folder_no ? `${c.folder_no} · ` : ''}{onSelectCustomer
-                                                            ? <button type="button" onClick={() => onSelectCustomer(c)} className="underline-offset-2 hover:underline">{c.customer_name}</button> : c.customer_name} <span className="text-stone-400">{c.stage}</span></li>)}</ul>}</>
+                                                            {expanded ? 'Hide' : 'Show'} the {row.cards.length} customer{row.cards.length === 1 ? '' : 's'} {expanded ? '▲' : '▼'}</button>
+                                                        {expanded && <CustomerList row={row} choice={choice} onSelectCustomer={onSelectCustomer} />}</>
                                                     : <>{onSelectCustomer ? <button type="button" onClick={() => onSelectCustomer(first)} className="text-left font-semibold text-stone-900 underline-offset-2 hover:underline">{first.customer_name}</button> : <span className="font-semibold">{first.customer_name}</span>}
                                                         <span className="block text-[10px] text-stone-400">{[first.folder_no, first.stage].filter(Boolean).join(' · ')}</span></>}
                                             </td>

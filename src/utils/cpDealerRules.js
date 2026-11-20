@@ -77,7 +77,10 @@ export const RULES = [
 function spellings(names) {
     const counts = new Map();
     for (const raw of names) {
-        const name = clean(raw);
+        // The login exactly as stored (2026-11-20): partner portals match the card's CP / Dealer
+        // box to the login name with its spaces, so tidying them here would break that match.
+        const name = String(raw ?? '');
+        if (!name.trim()) continue;
         const key = nameKey(name);
         if (!key) continue;
         const byName = counts.get(key) || new Map();
@@ -105,8 +108,8 @@ export function loginIndex(profiles) {
         if (!dKey) continue;
         const under = dealers.get(dKey) || new Map();
         if (!under.has(bKey)) {
-            under.set(bKey, clean(p.name));
-            dealersOf.set(bKey, [...(dealersOf.get(bKey) || []), clean(p.name)]);
+            under.set(bKey, String(p.name ?? ''));
+            dealersOf.set(bKey, [...(dealersOf.get(bKey) || []), String(p.name ?? '')]);
         }
         dealers.set(dKey, under);
     }
