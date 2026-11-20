@@ -72,7 +72,11 @@ export const EVENT_LABELS = {
     fixed: 'Fixed',
     revisit: 'Revisit needed',
     inverter_added: 'Inverter number added',
-    inverter_replaced: 'Inverter replaced'
+    inverter_replaced: 'Inverter replaced',
+    oem_claim: 'OEM claim started',
+    oem_pdf_sent: 'OEM data PDF sent',
+    oem_ticket: 'OEM ticket no.',
+    oem_part_received: 'New part received from OEM'
 };
 export const eventLabel = event => EVENT_LABELS[event] || event;
 export const OVERRIDE_REASONS = ['Customer did not get the code', 'Confirmed by phone call', 'No network at site', 'Customer has no mobile', 'Other'];
@@ -124,7 +128,7 @@ const OPEN_JOB_STATUSES = ['assigned', 'completion_pending'];
 // and named site photos; 'problem' is an older file from the raise form.
 export const PHOTO_KINDS = ['after', 'before'];
 export const PHOTO_LIMIT = 10;
-export const PHOTO_KIND_LABELS = { before: 'Before', after: 'After', site: 'Site' };
+export const PHOTO_KIND_LABELS = { before: 'Before', after: 'After', site: 'Site', reading: 'Reading' };
 // The 10 named site photos of the installation (service_issue_files.label).
 export const SITE_PHOTO_LABELS = ['Panels', 'Panel serial sticker', 'Inverter', 'Inverter serial sticker', 'Inverter display',
     'ACDB', 'DCDB', 'Earthing', 'Meter', 'Structure'];
@@ -133,10 +137,14 @@ export const PHOTO_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/web
 export const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 // About 1600 px on the long side keeps a phone photo near 300 KB.
 export const PHOTO_LONG_SIDE = 1600;
+// Reading photos (one per voltage, 16 Nov 2026): the client wants them as small as possible,
+// so about 800 px on the long side at low quality (roughly 30-60 KB). Enough to read a meter.
+export const READING_PHOTO_LONG_SIDE = 800;
+export const READING_PHOTO_QUALITY = 0.5;
 export const PHOTOS_NEEDED_TEXT = 'Add at least one After photo first.';
 
 export function groupIssueFiles(files) {
-    const groups = { before: [], after: [], site: [], problem: [] };
+    const groups = { before: [], after: [], site: [], reading: [], problem: [] };
     for (const file of files || []) (groups[file?.kind] || groups.problem).push(file);
     return groups;
 }

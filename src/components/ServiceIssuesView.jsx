@@ -18,6 +18,7 @@ import VisitStage from './service/VisitStage';
 import RaisedBy from './service/RaisedBy';
 import CombinedVisitForm from './service/CombinedVisitForm';
 import PastComplaints from './service/PastComplaints';
+import OemClaims from './service/OemClaims';
 import VisitTimeline from './service/VisitTimeline';
 import DayPlan, { readDayPlan } from './service/DayPlan';
 import {
@@ -316,6 +317,7 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
                     : <TechnicianJobPanel key={selected.id} issue={selected} userId={user.id} busy={busy} run={run}
                         onClaimed={id => { setSelectedId(id); chooseFilter('mine', true); }} onReleased={() => setSelectedId(null)}
                         otherJobs={nextJobs} onGoNext={openIssue} jobs={issues} />}
+                {ownJob && <OemClaims key={`oem:${selected.id}`} issue={selected} technicianOnJob={isOpenJobFor(selected, user?.id)} technicianName={user?.name || ''} busy={busy} run={run} />}
             </div>
             <div className={pane('customer')}>
                 <CustomerFacts issue={selected} userType={user?.userType} canAddInverter={ownJob && isOpenJobFor(selected, user?.id)} busy={busy} run={run} />
@@ -388,6 +390,9 @@ export default function ServiceIssuesView({ user, initialCustomer = null, initia
                     {/* Before / After photos are the technician's; partners do not see the photo section. */}
                     {showDetails && !photosInJobPanel && !isPartner && (!isTechnician || ownJob) && <ComplaintPhotos key={`photos:${selected.id}`} issue={selected} userId={user?.id} userType={user?.userType} busy={busy} run={run} />}
                     {canManage && <VisitStage key={`stage:${selected.id}`} issue={selected} busy={busy} run={run} office />}
+                    {/* OEM replacement claims (all OEMs except Tata, 2026-11-16). */}
+                    {showDetails && (canManage || ownJob) && <OemClaims key={`oem:${selected.id}`} issue={selected} office={canManage} technicianOnJob={ownJob && isOpenJobFor(selected, user?.id)}
+                        technicianName={ownJob ? user?.name || '' : technicians?.find(tech => tech.id === selected.assigned_to)?.name || ''} busy={busy} run={run} />}
                     {canManage && <OfficeIssuePanel key={selected.id} issue={selected} technicians={technicians} techError={techError} busy={busy} run={run} update={update} />}
                     {showDetails && (!isTechnician || ownJob) && <ComplaintComments key={`comments:${selected.id}`} issue={selected} user={user} busy={busy} run={run} />}
                     {showDetails && <ComplaintHistory key={`history:${selected.id}`} issue={selected} />}

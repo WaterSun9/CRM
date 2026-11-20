@@ -15,6 +15,10 @@ Every database item below is a migration file the owner runs (see [OPERATIONS.md
 - Dealer: the supplied login returned `Invalid login credentials`; no dealer customer read or save was attempted. Verify the account before testing item 2. No account was deleted.
 - Channel partner: still requires a real `agent` login; the developer role preview retains the original database session and cannot verify RLS.
 
+## 14 Nov client changes (not live)
+
+- Branch `claude/nov14-tata-install-photos-13fa44` (on top of `feat/client-nov14`): reading photos, geo tag photo moves the stage, OEM past data, OEM claims (all OEMs incl. Tata's Field Service Report), 17 installation photos. Before release: Mahvish OKs the screenshots in `docs/client-requests-2026-11-14/`, runs the three SQL files in the order in `docs/client-requests-2026-11-14/NOTES.md`, then deploys. Open questions are listed in that file.
+
 ## P1 - do next
 
 | # | Item | Why | Where |

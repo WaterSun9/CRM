@@ -5,6 +5,10 @@ import { CheckboxRemarkItem, fetchVendorNames } from './shared';
 import { INSTALLATION_TAGS, isFinalTagValue } from '../../constants';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
 import { todayIST } from '../../utils/warranty';
+import { getViewUrl } from '../../utils';
+import InstallationPhotos from '../InstallationPhotos';
+
+const installPhotoUrl = doc => getViewUrl(doc.storage_path);
 
 export default function InstallationStatusTab({
     customer,
@@ -92,6 +96,15 @@ export default function InstallationStatusTab({
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">
+            {/* The 17 installation photos (client list, 2026-11-19). Optional, never move the stage (D-041). */}
+            <InstallationPhotos
+                documents={documents}
+                canUpload={Boolean(onFileUpload) && (isEditable || isSfdcEditable)}
+                onUpload={(file, docType) => onFileUpload({ target: { files: [file], value: '' } }, docType)}
+                onPreview={onFilePreview}
+                getUrl={installPhotoUrl}
+            />
+
             {/* SFDC Photo Checklist Card */}
             <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm space-y-4">
                 <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest flex items-center gap-2">

@@ -38,6 +38,7 @@ const InstallationPaymentsView = lazyWithRetry(() => import('./InstallationPayme
 const DeliveryBatchesView = lazyWithRetry(() => import('./DeliveryBatchesView'));
 const AvailabilityCalendar = lazyWithRetry(() => import('./AvailabilityCalendar'));
 const MissingNumbersView = lazyWithRetry(() => import('./MissingNumbersView'));
+const OemPastDataView = lazyWithRetry(() => import('./OemPastDataView'));
 import { useGlobalPopup } from './GlobalPopup';
 import { missingDetailsForMove, STAGE_REQUIREMENT_COLUMNS } from '../utils/stageRequirements';
 import BrandMark from './BrandMark';
@@ -61,7 +62,7 @@ const getMonthBounds = (monthValue, timestamp = false) => {
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldCheck, ClipboardList, UserRound, Hash
+    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldCheck, ClipboardList, UserRound, Hash, FileClock
 } from 'lucide-react';
 import { todayIST } from '../utils/warranty';
 import { liveWhileVisible } from '../utils/liveWhileVisible';
@@ -1315,6 +1316,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                 : currentView === 'installation_tags' ? 'Installation Tag Tracking'
                 : currentView === 'complaints' ? (onRaiseServiceIssue ? 'Warranty & Complaints' : 'Warranty')
                 : currentView === 'missing_numbers' ? 'Inverter'
+                : currentView === 'oem_past' ? 'OEM past data'
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
                 : currentView === 'profile' ? 'Profile'
                     : currentView === 'installation_payments' ? 'Installation Payments'
@@ -1364,6 +1366,8 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                         <>
                             <div className="text-[9px] uppercase font-bold text-stone-300 px-3 pt-5 pb-2 tracking-widest">System</div>
                             <NavBtn view="missing_numbers" icon={Hash} label="Inverter" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                            {/* Temporary: typing in the paper files of completed customers (14 Nov 2026). */}
+                            <NavBtn view="oem_past" icon={FileClock} label="OEM past data" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                             {user.userType === 'admin' && <>
                             <NavBtn view="channel_partner_mgmt" icon={Users} label="Operations" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                             <NavBtn view="availability" icon={CalendarDays} label="Vendor Calendar" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
@@ -1571,6 +1575,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     )}
                     {currentView === 'availability' && ['admin', 'sales', 'channel_partner_office', 'office2'].includes(user.userType) && <AvailabilityCalendar user={user} />}
                     {currentView === 'missing_numbers' && ['admin', 'sales'].includes(user.userType) && <MissingNumbersView user={user} meta={meta} onSelectCustomer={setSelectedCustomer} />}
+                    {currentView === 'oem_past' && ['admin', 'sales'].includes(user.userType) && <OemPastDataView user={user} />}
                     {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}

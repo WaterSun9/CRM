@@ -196,7 +196,7 @@ export default function TripPanel({ issue, userId, busy, run, onTripState, reloa
         </ol>}
         {current && !current.reached_at && <button type="button" disabled={disabled} onClick={markReached} className={primary}>{locating === 'reach' ? 'Finding your location…' : 'Reached site'}</button>}
 
-        {arrived && visitsReady && !startingAgain && <SiteVisitForm key={current.id} trip={current} busy={busy} run={run} onSaved={loadTrips} />}
+        {arrived && visitsReady && !startingAgain && <SiteVisitForm key={current.id} issue={issue} userId={userId} trip={current} busy={busy} run={run} onSaved={loadTrips} />}
 
         {atHouse && !startingAgain && !ended && nextJobs.length > 0 && <div className="space-y-2 border-t border-stone-100 pt-3">
             <p className="text-xs font-bold uppercase tracking-wider text-stone-500">Next house</p>

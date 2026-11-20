@@ -9,6 +9,9 @@ import {
 } from 'lucide-react';
 import { FilePreviewModal } from './modal-tabs/shared';
 import { STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, VENDOR_LIST_COLUMNS, isFinalTagValue } from '../constants';
+import InstallationPhotos from './InstallationPhotos';
+import GeoTagConfirm from './GeoTagConfirm';
+import { INSTALL_PHOTO_LABELS, requiredInstallPhotoProblems } from '../utils/installPhotos';
 import { isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
@@ -35,6 +38,8 @@ const parsePanelSerials = (raw) => {
     }
     return [raw.trim()];
 };
+
+const vendorInstallPhotoUrl = doc => getViewUrl(doc.storage_path);
 
 export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
     const { showAlert, showConfirm } = useGlobalPopup();
@@ -336,6 +341,29 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         }
     };
 
+    // One of the 17 installation photos (client list, 2026-11-19). A retake replaces the
+    // slot's photo; if the old copy cannot be removed, the newest one still counts.
+    const handleInstallPhotoUpload = async (file, docType) => {
+        if (!file || !selectedCust) return false;
+        const newDoc = await uploadDocument(file, selectedCust.id, docType, user?.id);
+        if (!newDoc) return false;
+        const older = (documents || []).filter(d => d.doc_type === docType && d.id !== newDoc.id);
+        const removed = new Set();
+        for (const old of older) {
+            try {
+                const result = await deleteDocument(old.id, old.storage_path);
+                if (result?.ok !== false) removed.add(old.id);
+            } catch (err) {
+                console.warn('Installation photo saved, but the old copy was not removed:', err);
+            }
+        }
+        setDocuments(prev => [newDoc, ...(prev || []).filter(d => !removed.has(d.id))]);
+        if (user?.id) {
+            void logActivity(user.id, 'upload', `${selectedCust.customer_name}: Installation photo uploaded (${INSTALL_PHOTO_LABELS[docType] || docType})`, '', selectedCust.id);
+        }
+        return true;
+    };
+
     // Upload geo tag photo handler
     const handlePhotoUpload = async (e) => {
         const file = e.target.files?.[0];
@@ -353,15 +381,28 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             setDocuments(prev => [newDoc, ...(prev || [])]);
 
             if (newDoc) {
-                const nextGeoStatus = geoTagStatus === 'Pending' ? 'Proceed' : geoTagStatus;
+                // 14 Nov 2026 (client): the geo tag photo moves the customer on by itself:
+                // status Proceed and, from Geo Tag Photo, the stage to Discom Submission.
+                const nextGeoStatus = 'Proceed';
+                const moveOn = String(selectedCust.stage || '').toUpperCase().trim() === STAGE_IDS.GEO_TAG_PHOTO;
+                const geoPayload = { geo_tag_image: true, geo_tag_status: nextGeoStatus, ...(moveOn ? { stage: STAGE_IDS.DISCOM_SUBMISSION } : {}) };
                 // Unchecked before: the photo uploaded but the flag/status did
                 // not save, and a missing geo_tag_image blocks the move to
                 // Discom Submission - so the vendor was stuck with no reason given.
-                const { ok: geoOk, error: geoErr } = await updateAdminRecord(selectedCust.id, {
-                    geo_tag_image: true,
-                    geo_tag_status: nextGeoStatus
-                });
+                const { ok: geoOk, error: geoErr } = await updateAdminRecord(selectedCust.id, geoPayload);
                 if (!geoOk) throw geoErr;
+                setCustomers(prev => prev.map(customer => customer.id === selectedCust.id ? { ...customer, ...geoPayload } : customer));
+                setSelectedCust(prev => ({ ...prev, ...geoPayload }));
+                if (moveOn) {
+                    setStageMoveError('');
+                    setSaveSuccess(true);
+                    if (user?.id) {
+                        void logActivity(user.id, 'stage_change', `${selectedCust.customer_name}: Stage changed (geo tag photo uploaded)`,
+                            `Stage: ${STAGE_IDS.GEO_TAG_PHOTO} → ${STAGE_IDS.DISCOM_SUBMISSION}`, selectedCust.id);
+                    }
+                    showAlert('Geo tag photo uploaded. The customer moved to Discom Submission.', { title: 'Moved to Discom Submission', type: 'success' });
+                    setTimeout(() => setView('list'), 1200);
+                }
 
                 const existingGeo = (documents || []).filter(d =>
                     (d.doc_type === 'geo_tag_image' || d.doc_type === 'geo_tag') && d.id !== newDoc.id);
@@ -379,9 +420,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 ]);
                 setGeoTagImage(true);
 
-                if (geoTagStatus === 'Pending') {
-                    setGeoTagStatus('Proceed');
-                }
+                setGeoTagStatus('Proceed');
                 
                 if (user?.id) {
                     void logActivity(
@@ -403,6 +442,19 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             setUploadingPhoto(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
+        return photoUploaded;
+    };
+
+    // Geo tag photo (D-042): the picked photo is shown big with "Can you see the geo tag
+    // clearly?" first. Nothing is uploaded (so the stage cannot move) until Yes.
+    const [pendingGeoFile, setPendingGeoFile] = useState(null);
+    const handleGeoPhotoPicked = (e) => {
+        const file = e.target.files?.[0];
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (file && selectedCust) setPendingGeoFile(file);
+    };
+    const confirmGeoPhoto = async (file) => {
+        if (await handlePhotoUpload({ target: { files: [file] } })) setPendingGeoFile(null);
     };
 
     const handleUpdateDocRemark = async (docId, newRemark) => {
@@ -495,6 +547,8 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             if (!effectiveInstallDate) {
                 missingItems.push('Installation Date must be selected.');
             }
+            // D-043: the inverter serial number photo is required (the other 16 photos stay optional).
+            missingItems.push(...requiredInstallPhotoProblems(documents).map(line => `Upload ${line}.`));
 
             if (missingItems.length > 0) {
                 const message = `To move forward to Geo Tag Photo, please complete:\n• ${missingItems.join('\n• ')}`;
@@ -1211,7 +1265,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                                 ref={fileInputRef}
                                                 type="file"
                                                 accept="image/*"
-                                                onChange={handlePhotoUpload}
+                                                onChange={handleGeoPhotoPicked}
                                                 className="hidden"
                                             />
 
@@ -1395,6 +1449,16 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         </div>
                                     </div>
 
+                                    {/* The 17 installation photos. Optional, never move the stage (D-041). */}
+                                    <InstallationPhotos
+                                        documents={documents}
+                                        canUpload={canEditInstallation}
+                                        onUpload={handleInstallPhotoUpload}
+                                        onPreview={handlePhotoPreview}
+                                        getUrl={vendorInstallPhotoUrl}
+                                        className="!p-3 sm:!p-4"
+                                    />
+
                                     {/* When marked Yes: Installation Date */}
                                     {normalizeInstallationStatus(installationStatus) === 'Yes' && (
                                         <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-100 space-y-3 animate-in slide-in-from-top-2 duration-200">
@@ -1532,6 +1596,14 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             )}
 
             {/* Document Preview Modal */}
+            {pendingGeoFile && (
+                <GeoTagConfirm
+                    file={pendingGeoFile}
+                    onYes={confirmGeoPhoto}
+                    onPickAnother={setPendingGeoFile}
+                    onCancel={() => setPendingGeoFile(null)}
+                />
+            )}
             {previewDoc && (
                 <FilePreviewModal
                     file={previewDoc.doc}

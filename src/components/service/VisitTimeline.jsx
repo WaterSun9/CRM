@@ -4,7 +4,7 @@ import { TRIP_DISTANCE_MODE, TRIP_TRAVEL_MODE } from '../../constants';
 import { estimateTripKm } from '../../utils/tripKm';
 import { fetchRoadDistance, latLngOrNull, roadTripKm } from './roadKm';
 import { formatDateTime, visitLabel } from './serviceLabels';
-import { ReadingsLine } from './SiteVisitForm';
+import { ReadingsLine, useReadingPhotos } from './SiteVisitForm';
 import { pincodeInText, pincodePoints } from './tripLabels';
 
 const PRO = TRIP_DISTANCE_MODE === 'pro';
@@ -39,7 +39,7 @@ function useTripKm(trip, customerPin, points) {
 const clock = value => new Date(value).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit' });
 const day = value => new Date(value).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
 
-function VisitRows({ issue, trip, customerPin, points }) {
+function VisitRows({ issue, trip, customerPin, points, photos }) {
     const km = useTripKm(trip, customerPin, points);
     const result = trip.outcome === 'fixed' ? ['Fixed', 'bg-emerald-100 text-emerald-800']
         : trip.outcome === 'revisit' ? ['Revisit', 'bg-amber-100 text-amber-900'] : ['In progress', 'bg-stone-100 text-stone-500'];
@@ -56,7 +56,7 @@ function VisitRows({ issue, trip, customerPin, points }) {
             {cell('Km', km ? `${km.km}` : '')}
             {cell(trip.outcome === 'fixed' ? 'Fixed' : 'Result', trip.outcome_at ? clock(trip.outcome_at) : '')}
         </dl>
-        {trip.readings && <ReadingsLine readings={trip.readings} />}
+        {trip.readings && <ReadingsLine readings={trip.readings} photos={photos} />}
         {trip.outcome_note && <p className="text-xs text-stone-500">{trip.outcome_note}</p>}
     </li>;
 }
@@ -86,6 +86,7 @@ export default function VisitTimeline({ issue, reloadKey }) {
     // A restarted trip is the same visit: keep the last trip of each visit number.
     const visits = [...new Map((trips || []).map(trip => [trip.visit_no ?? trip.id, trip])).values()];
     const customerPin = pincodeInText(issue.service_address);
+    const readingPhotos = useReadingPhotos({ issueId: issue.id, tripIds: visits.filter(trip => trip.readings).map(trip => trip.id), reloadKey });
     return <section aria-label="Visit steps" className="space-y-2">
         <div className="flex items-baseline justify-between gap-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">Visits</h3>
@@ -93,6 +94,6 @@ export default function VisitTimeline({ issue, reloadKey }) {
         </div>
         {trips === null ? <p className="text-xs text-stone-400">Loading…</p>
             : !visits.length ? <p className="text-xs text-stone-400">No visit yet.</p>
-                : <ol className="space-y-2">{visits.map(trip => <VisitRows key={trip.id} issue={issue} trip={trip} customerPin={customerPin} points={points} />)}</ol>}
+                : <ol className="space-y-2">{visits.map(trip => <VisitRows key={trip.id} issue={issue} trip={trip} customerPin={customerPin} points={points} photos={readingPhotos.ready ? readingPhotos.byTrip[trip.id] || {} : null} />)}</ol>}
     </section>;
 }
