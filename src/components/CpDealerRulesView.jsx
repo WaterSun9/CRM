@@ -31,10 +31,12 @@ const SET_ALL = {
 // dealer with no login, logins with no customers, Miscellaneous) are built but hidden: Task 2,
 // later (docs/cp-dealer-rules-2026-11-16/README.md). Add their ids here to switch them on.
 // 'dealer_under_cp' hidden 2026-11-20 (D-046): a CP may keep a dealer name for their own records.
-const SHOWN = ['cp_as_dealer', 'dealer_other_cpo', 'spelling'];
+// 'spelling' hidden 2026-11-20 (D-049): space differences are fixed when a card is saved
+// (trg_snap_partner_names, D-047) and capitals do not matter (D-048).
+const SHOWN = ['cp_as_dealer', 'dealer_other_cpo'];
 const SHOW_UNUSED_LOGINS = false;
 const SHOWN_RULES = RULES.filter(rule => SHOWN.includes(rule.id));
-const TAB_COLS = { 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4' };
+const TAB_COLS = { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4' };
 
 // Short tab names; the full title shows above the list.
 const TAB_NAMES = { cp_as_dealer: 'CP as dealer', dealer_under_cp: 'Dealer under a CP', dealer_other_cpo: 'Dealer of another CPO', spelling: 'Spelling',
@@ -390,7 +392,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                         <p className="font-bold text-stone-800">Left alone on purpose (not counted above)</p>
                         <ul className="list-disc space-y-0.5 pl-5">
                             <li>A CP also written as their own dealer, e.g. CP BHARAT UNJA, Dealer BHARAT UNJA (D-048, 20 Nov 2026).</li>
-                            <li>A name that differs from the login only in capitals, e.g. Ganeshbhai and GANESHBHAI: partners still see these customers (D-048).</li>
+                            <li>Spelling: a name that differs from the login only in capitals or spaces (D-048, D-049). Capitals do not matter, and since 20 Nov 2026 a name with different spaces is saved with the login's spelling automatically.</li>
                             <li>A dealer written under an independent CP: may be the CP's own record (D-046).</li>
                             <li>For later: names with no login, empty CP boxes, office staff or a CPO's name as dealer, unused logins, deleted and DEBOARDED customers.</li>
                         </ul>

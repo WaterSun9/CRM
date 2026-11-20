@@ -40,4 +40,6 @@ These are not listed and not fixed, by Mahvish's choice:
 2. **A CP also written as their own dealer** (72 cards, e.g. CP BHARAT UNJA, Dealer BHARAT UNJA): same name, no harm (D-048).
 3. **Capitals only** (e.g. Ganeshbhai / GANESHBHAI, 6 cards): partners match names ignoring capitals, so they still see these customers (D-048). Spaces that differ from the login are still listed, because those hide customers.
 
+4. **Spelling tab removed** (D-049, 2026-11-20): space differences are fixed automatically when a card is saved (D-047), and capitals do not matter.
+
 The page shows the same list under the tabs. Still hidden for later (Task 2): CP / CPO with no login, dealer with no login, logins with no customers, Miscellaneous.
