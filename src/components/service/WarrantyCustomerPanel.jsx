@@ -7,6 +7,7 @@ import ComplaintButton from './ComplaintButton';
 import WarrantyBadge from '../WarrantyBadge';
 import ComplaintHistory from './ComplaintHistory';
 import OemPastRecords from './OemPastRecords';
+import { OEM_PAST_DATA } from '../../featureFlags';
 import ComplaintComments from './ComplaintComments';
 import ComplaintPhotos from './ComplaintPhotos';
 import {
@@ -305,7 +306,7 @@ export function WarrantyCustomerBody({ customer, user, onCardChanged }) {
                 : <>{!issues.length ? <p className="rounded-2xl border bg-white p-6 text-center text-sm text-stone-500">No complaints yet for this customer.</p>
                     : <div className="space-y-3">{issues.map(issue => <PastComplaint key={issue.id} issue={issue} visits={visits.filter(v => v.issue_id === issue.id)} extra={extras[issue.id]} user={user} run={run} busy={busy} />)}</div>}
                     {/* Past OEM claims from the paper files (office only; nothing shows for others). */}
-                    <OemPastRecords customerId={customer.id} /></>}
+                    {OEM_PAST_DATA && <OemPastRecords customerId={customer.id} />}</>}
     </div>;
 }
 

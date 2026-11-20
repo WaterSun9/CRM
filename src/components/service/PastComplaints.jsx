@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
 import { STATUS_LABELS, STATUS_PILL, formatDateTime } from './serviceLabels';
 import OemPastRecords from './OemPastRecords';
+import { OEM_PAST_DATA } from '../../featureFlags';
 
 // Earlier complaints of the same customer (service_customer_past), for the office and the
 // technician, so the technician knows what was already done at this house.
@@ -16,7 +17,7 @@ export default function PastComplaints({ issue }) {
         return () => { active = false; };
     }, [issue.id, issue.customer_id]);
     // Past OEM claims typed in from the paper files (OEM past data page) come after.
-    const oem = issue.customer_id ? <OemPastRecords issueId={issue.id} /> : null;
+    const oem = OEM_PAST_DATA && issue.customer_id ? <OemPastRecords issueId={issue.id} /> : null;
     if (!rows?.length) return oem;
     return <><section className="space-y-2">
         <h3 className="text-xs font-bold uppercase tracking-wider text-stone-500">Earlier complaints · {rows.length}</h3>
