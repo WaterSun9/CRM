@@ -227,6 +227,11 @@ function ReviewRow({ row, card, otherCard, onDone, onOpen, user }) {
                 .update({ resolution, resolved_by: user.id, resolved_at: new Date().toISOString() })
                 .eq('id', row.id).select('id').single();
             if (error) throw error;
+            // A row closed without writing to a card is in the activity log too (2026-11-20).
+            if (!targetId) {
+                await logActivity(user.id, 'update', `Inverter page: sheet row "${row.sheet_name || '-'}" (${numberLabel} ${row.sheet_number || '-'}) marked ${resolution === 'dismissed' ? 'not a match, nothing changed' : resolution}`,
+                    '', row.admin_id || null);
+            }
             await onDone(row, targetId);
         } catch (err) {
             showAlert('Could not save: ' + (err?.message || err), { type: 'error' });
