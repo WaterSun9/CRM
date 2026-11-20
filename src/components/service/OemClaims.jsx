@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check, ClipboardList, FileDown, PackageCheck, Send, Share2, Trash2 } from 'lucide-react';
 import { supabase } from '../../supabase';
+import { logActivity } from '../../utils';
 import { useGlobalPopup } from '../GlobalPopup';
 import { canShareFiles, downloadOemClaimPdf, isTataClaim, shareOemClaimPdf } from './oemClaimPdf';
 import { OEM_NAMES } from './OemPastRecords';
@@ -111,28 +112,30 @@ export default function OemClaims({ issue, office = false, technicianOnJob = fal
     if (!ready || claims === null) return null;
     if (!claims.length && !(office && active)) return null;
 
-    const step = (work, message) => run(async () => { await work(); await load(); }, message, 'issue');
+    // Every claim change also goes into the activity log under the person who made it (2026-11-20).
+    const logged = text => { if (userId) void logActivity(userId, 'update', `${issue.customer_name || 'Customer'}: complaint ${issue.ticket_no || ''} OEM claim, ${text}`.replace(/  +/g, ' '), '', issue.customer_id || null); };
+    const step = (work, message, log) => run(async () => { await work(); if (log) logged(log); await load(); }, message, 'issue');
     const start = form => step(async () => {
         const { error } = await supabase.from('service_oem_claims').insert({ issue_id: issue.id, oem: form.oem.trim(), part: form.part, faulty_serial: form.faulty_serial, notes: form.notes });
         if (error) throw error;
         setStarting(false);
-    }, 'OEM claim started. Download the PDF and send it to the OEM.');
+    }, 'OEM claim started. Download the PDF and send it to the OEM.', `started (${form.oem.trim()}, ${String(form.part || '').toLowerCase()}${form.faulty_serial ? `, faulty serial ${form.faulty_serial}` : ''})`);
     const change = (claim, values, message) => step(async () => {
         const { error } = await supabase.from('service_oem_claims').update(values).eq('id', claim.id);
         if (error) throw error;
-    }, message);
+    }, message, `${claim.oem}: ${String(message || '').replace(/\.$/, '')}`);
     const saveTicket = (claim, ticket) => office
-        ? change(claim, { ticket_no: ticket }, 'OEM ticket no. saved.')
+        ? change(claim, { ticket_no: ticket }, `OEM ticket no. ${ticket} saved.`)
         : step(async () => {
             const { error } = await supabase.rpc('service_oem_ticket', { p_claim_id: claim.id, p_ticket: ticket });
             if (error) throw error;
-        }, 'OEM ticket no. saved.');
+        }, 'OEM ticket no. saved.', `${claim.oem}: ticket no. ${ticket} saved`);
     const remove = async claim => {
         if (!await showConfirm(`Delete the ${claim.oem} ${claim.part.toLowerCase()} claim? Its steps stay in the complaint history.`, { title: 'Delete OEM claim?', confirmLabel: 'Delete', cancelLabel: 'Keep', type: 'warning' })) return;
         step(async () => {
             const { error } = await supabase.from('service_oem_claims').delete().eq('id', claim.id);
             if (error) throw error;
-        }, 'OEM claim deleted.');
+        }, 'OEM claim deleted.', `${claim.oem} ${String(claim.part || '').toLowerCase()} claim deleted`);
     };
     // One PDF with every value and every photo: download it, or share it (phone share sheet).
     const pdf = async (claim, how) => {

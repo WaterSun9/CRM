@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Camera, Check, FileDown, Share2, X } from 'lucide-react';
 import { supabase } from '../../supabase';
+import { logActivity } from '../../utils';
 import { PhotoViewer, saveClaimReadingPhoto } from './ComplaintPhotos';
 import { canShareFiles, claimReadingLabel, downloadOemClaimPdf, loadClaimData, shareOemClaimPdf } from './oemClaimPdf';
 import { READINGS, READING_LABELS, TATA_FIELDS, mergeTataForm, tataFormProgress, tataFormToSave } from './tataServiceReport';
@@ -90,6 +91,7 @@ export default function TataClaimForm({ issue, claim, canEdit = false, canAddPho
             throw new Error(notReady ? 'Saving the Tata form is not set up yet (database update not run). Tell the office.' : (error.message || 'The form was not saved. Try again.'));
         }
         setSavedValues(values); setDirty(false);
+        if (userId) void logActivity(userId, 'update', `${issue.customer_name || 'Customer'}: complaint ${issue.ticket_no || ''} Tata field service report saved`.replace(/  +/g, ' '), '', issue.customer_id || null);
         onSaved?.();
         return values;
     };

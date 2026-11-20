@@ -17,7 +17,7 @@ import {
     LayoutDashboard, History, Plus, ShieldCheck, Lock, Unlock, ClipboardList, Banknote, Tag, Mail, PauseCircle, Check,
     Eye, Search, Image as ImageIcon, MessageSquare, Calendar } from 'lucide-react';
 import { PRIMARY_STAGES, STAGE_IDS, SUBSIDY_TAGS, SUBSIDY_TAG_COLORS, LOAN_TAGS, LOAN_TAG_COLORS, ROOF_BOM_TEMPLATE, SHED_BOM_TEMPLATE, DOC_TYPE_LABELS, DOC_TYPE_FLAG_COLUMN, isPaymentUndecided } from '../constants';
-import { requiredInstallPhotoProblems } from '../utils/installPhotos';
+import { INSTALL_PHOTO_LABELS, requiredInstallPhotoProblems } from '../utils/installPhotos';
 import { logActivity, formatDateToDDMMYYYY, parseIndianNumber, fetchAgent2SubAgents, normalizeMeterInstallation, sanitizePhoneNumber, logFieldChanges, readAdminFields } from '../utils';
 import { supabase } from '../supabase';
 import HistoryEntryEditor from './HistoryEntryEditor';
@@ -890,7 +890,7 @@ export default function CustomerDetailModal({ customer, onClose, onUpdate, onDel
                 logActivity(
                     user.id,
                     'update',
-                    `${customer.customer_name}: Uploaded document (${file.name})`,
+                    `${customer.customer_name}: Uploaded ${INSTALL_PHOTO_LABELS[docType] ? `installation photo "${INSTALL_PHOTO_LABELS[docType]}"` : docType === 'geo_tag_image' ? 'geo tag photo' : 'document'} (${file.name})`,
                     '',
                     customer.id
                 ).catch(console.error);
