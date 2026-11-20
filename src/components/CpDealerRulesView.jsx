@@ -143,11 +143,22 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
     const check = useCallback(async () => {
         setState(current => ({ ...current, loading: true, error: '' }));
         try {
-            const [cards, profiles] = await Promise.all([
+            const [cards, profiles, fixes] = await Promise.all([
                 loadAll(() => supabase.from('admin').select(COLUMNS).is('deleted_at', null).order('id')),
                 loadAll(() => supabase.from('profiles').select('id, name, email, user_type, channel_partner, status, created_at').order('id')),
+                // Cards already fixed on this page (every fix is in the activity log): for the progress bar.
+                loadAll(() => supabase.from('activity_log').select('id, customer_id, new_value').ilike('new_value', 'Saved from: CP/dealer rules:%').order('id'))
+                    .catch(() => []),
             ]);
-            setState({ loading: false, error: '', byRule: checkCards(cards, profiles), unused: unusedLogins(cards, profiles), cards: cards.length, logins: profiles.length, at: new Date() });
+            const doneByRule = {};
+            for (const rule of SHOWN_RULES) {
+                const ids = new Set(fixes.filter(f => f.customer_id && String(f.new_value || '').startsWith(`Saved from: CP/dealer rules: ${rule.title} (`)).map(f => f.customer_id));
+                doneByRule[rule.id] = ids;
+            }
+            const byRule = checkCards(cards, profiles);
+            // A card fixed once but found again counts as still to do.
+            for (const rule of SHOWN_RULES) for (const row of byRule[rule.id] || []) for (const card of row.cards) doneByRule[rule.id]?.delete(card.id);
+            setState({ loading: false, error: '', byRule, done: doneByRule, unused: unusedLogins(cards, profiles), cards: cards.length, logins: profiles.length, at: new Date() });
             setChoices({});
         } catch (error) {
             setState(current => ({ ...current, loading: false, error: error.message || String(error) }));
@@ -277,14 +288,30 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                 const changingOf = id => (id === 'unused_login' ? plan.logins.length : plan.edits.filter(e => e.rule.id === id).length);
                 const current = topics.find(t => t.id === tab) || topics[0];
                 const rows = rowsOf(current.id);
+                const toDoOf = id => (rowsOf(id) || []).reduce((n, r) => n + (r.cards ? r.cards.length : 1), 0);
+                const doneOf = id => state.done?.[id]?.size || 0;
+                const left = SHOWN_RULES.reduce((n, r) => n + toDoOf(r.id), 0);
+                const doneAll = SHOWN_RULES.reduce((n, r) => n + doneOf(r.id), 0);
+                const totalAll = left + doneAll;
+                const pct = totalAll ? Math.round((doneAll / totalAll) * 100) : 100;
                 return <div className="space-y-3">
+                    <div className="rounded-2xl border border-stone-200 bg-white p-4 sm:p-5" role="group" aria-label="Progress">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <p className="text-base font-bold text-stone-900">{left ? `${left} customer card${left === 1 ? '' : 's'} left to complete` : 'All complete'}</p>
+                            <p className="text-sm font-semibold text-stone-600">{doneAll} of {totalAll} done · {pct}%</p>
+                        </div>
+                        <div className="mt-3 h-3 overflow-hidden rounded-full bg-stone-100" role="progressbar" aria-valuemin={0} aria-valuemax={totalAll} aria-valuenow={doneAll} aria-label={`${doneAll} of ${totalAll} done`}>
+                            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                        <p className="mt-2 text-xs text-stone-500">Done = fixed on this page by any admin (from the activity log). Cards left on "No change" still count as left.</p>
+                    </div>
                     <div role="tablist" aria-label="Topics" className={`grid grid-cols-2 gap-1.5 ${TAB_COLS[topics.length] || 'sm:grid-cols-4'}`}>{topics.map(t => {
                         const count = rowsOf(t.id).length, changing = changingOf(t.id);
                         return <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
                             className={`rounded-xl px-3 py-2 text-left text-xs font-bold ${tab === t.id ? 'bg-stone-900 text-white' : 'border border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}>
                             <span className="block">{TAB_NAMES[t.id] || t.title}</span>
                             <span className={`block text-[10px] font-semibold ${tab === t.id ? 'text-white/70' : count ? 'text-amber-700' : 'text-emerald-700'}`}>
-                                {count ? `${t.grouped ? `${rowsOf(t.id).reduce((n, r) => n + r.cards.length, 0)} customers` : `${count} found`} · ${changing} to change` : 'All fine'}</span>
+                                {count ? `${t.grouped ? `${toDoOf(t.id)} left` : `${count} found`} · ${doneOf(t.id)} done` : doneOf(t.id) ? `All done · ${doneOf(t.id)} fixed` : 'All fine'}{count && changing !== toDoOf(t.id) ? ` · ${changing} set to change` : ''}</span>
                         </button>;
                     })}</div>
 
