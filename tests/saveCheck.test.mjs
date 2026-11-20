@@ -101,3 +101,10 @@ test('merge: a colleague change to another field comes in; my unsaved edit stays
     assert.equal(next.invoice_value, 171000);
     assert.deepEqual(unsavedKeys, ['vendor']);
 });
+
+test('CP / Dealer snapped to the login spelling counts as saved (D-047)', () => {
+    assert.deepEqual(findUnsavedFields({ sub_channel_partner: 'rameshbhai solanki' }, { sub_channel_partner: 'RAMESHBHAI  SOLANKI' }), []);
+    assert.deepEqual(findUnsavedFields({ channel_partner: ' Bhagvan  thakor ' }, { channel_partner: 'BHAGVAN THAKOR' }), []);
+    assert.deepEqual(findUnsavedFields({ sub_channel_partner: 'RAMESHBHAISOLANKI' }, { sub_channel_partner: 'RAMESHBHAI SOLANKI' }), ['sub_channel_partner']);
+    assert.deepEqual(findUnsavedFields({ customer_name: 'ram  patel' }, { customer_name: 'RAM PATEL' }), ['customer_name']);
+});

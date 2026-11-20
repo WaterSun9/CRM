@@ -40,6 +40,7 @@ const AvailabilityCalendar = lazyWithRetry(() => import('./AvailabilityCalendar'
 const MissingNumbersView = lazyWithRetry(() => import('./MissingNumbersView'));
 const OemPastDataView = lazyWithRetry(() => import('./OemPastDataView'));
 import { OEM_PAST_DATA } from '../featureFlags';
+const CpDealerRulesView = lazyWithRetry(() => import('./CpDealerRulesView'));
 import { useGlobalPopup } from './GlobalPopup';
 import { missingDetailsForMove, STAGE_REQUIREMENT_COLUMNS } from '../utils/stageRequirements';
 import BrandMark from './BrandMark';
@@ -63,7 +64,7 @@ const getMonthBounds = (monthValue, timestamp = false) => {
 
 import {
     LayoutDashboard, Activity, UserCog, Menu, X,
-    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldCheck, ClipboardList, UserRound, Hash, FileClock
+    Search, Plus, Download, LogOut, Trash2, Users, Tag, IndianRupee, Wrench, CreditCard, Terminal, Truck, CalendarDays, ShieldCheck, ClipboardList, UserRound, Hash, FileClock, ListChecks
 } from 'lucide-react';
 import { todayIST } from '../utils/warranty';
 import { liveWhileVisible } from '../utils/liveWhileVisible';
@@ -1318,6 +1319,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                 : currentView === 'complaints' ? (onRaiseServiceIssue ? 'Warranty & Complaints' : 'Warranty')
                 : currentView === 'missing_numbers' ? 'Inverter'
                 : currentView === 'oem_past' ? 'OEM past data'
+                : currentView === 'cp_dealer_rules' ? 'CP / dealer rules'
                 : currentView === 'channel_partner_mgmt' ? 'Operations'
                 : currentView === 'profile' ? 'Profile'
                     : currentView === 'installation_payments' ? 'Installation Payments'
@@ -1371,6 +1373,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                             {OEM_PAST_DATA && <NavBtn view="oem_past" icon={FileClock} label="OEM past data" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />}
                             {user.userType === 'admin' && <>
                             <NavBtn view="channel_partner_mgmt" icon={Users} label="Operations" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
+                            <NavBtn view="cp_dealer_rules" icon={ListChecks} label="CP / dealer rules" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                             <NavBtn view="availability" icon={CalendarDays} label="Vendor Calendar" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                             <NavBtn view="installation_payments" icon={CreditCard} label="Installation Payments" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
                             <NavBtn view="activity" icon={Activity} label="Activity Log" count={0} currentView={currentView} selectedStage={selectedStage} setCurrentView={setCurrentView} setSelectedStage={setSelectedStage} setSidebarOpen={setSidebarOpen} />
@@ -1577,6 +1580,7 @@ export default function Dashboard({ user, onLogout, onRaiseServiceIssue, onOpenD
                     {currentView === 'availability' && ['admin', 'sales', 'channel_partner_office', 'office2'].includes(user.userType) && <AvailabilityCalendar user={user} />}
                     {currentView === 'missing_numbers' && ['admin', 'sales'].includes(user.userType) && <MissingNumbersView user={user} meta={meta} onSelectCustomer={setSelectedCustomer} />}
                     {OEM_PAST_DATA && currentView === 'oem_past' && ['admin', 'sales'].includes(user.userType) && <OemPastDataView user={user} />}
+                    {currentView === 'cp_dealer_rules' && user.userType === 'admin' && <CpDealerRulesView user={user} onSelectCustomer={setSelectedCustomer} />}
                     {currentView === 'subsidy' && <SubsidyView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'loan_tags' && <LoanView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}
                     {currentView === 'installation_tags' && <InstallationView onSelectCustomer={setSelectedCustomer} isChannelPartnerOffice={isChannelPartnerOffice} partnerName={partnerName} channelPartnerFilter={channelPartnerFilter} dealerFilter={dealerFilter} />}

@@ -36,12 +36,20 @@ export const valuesMatch = (a, b) => {
     return false;
 };
 
+// CP and Dealer boxes: the database snaps a name to the login's spelling when only capitals
+// or the number of spaces between words differ (D-047, trg_snap_partner_names), so a stored
+// "RAMESHBHAI  SOLANKI" for a typed "rameshbhai solanki" is saved, not lost.
+const PARTNER_NAME_FIELDS = new Set(['channel_partner', 'sub_channel_partner']);
+export const partnerNameKey = (value) => String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+
 export const findUnsavedFields = (sent = {}, stored = {}) => {
     const unsaved = [];
     Object.keys(sent || {}).forEach(key => {
         // Only real columns can be checked; keys the app strips before writing
         // are not columns (sanitizeAdminUpdate warns about those separately).
         if (!ADMIN_COLUMNS.has(key) || ['id', 'created_at', 'updated_at', 'crn'].includes(key)) return;
+        if (PARTNER_NAME_FIELDS.has(key) && typeof sent[key] === 'string' && typeof stored?.[key] === 'string'
+            && partnerNameKey(sent[key]) === partnerNameKey(stored[key])) return;
         if (!valuesMatch(sent[key], stored?.[key])) unsaved.push(key);
     });
     return unsaved;
