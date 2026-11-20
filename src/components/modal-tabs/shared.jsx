@@ -505,7 +505,9 @@ export const isReturnedDocument = (doc) => String(doc?.remark || '').trim().toUp
 export const REPLACED_DOCUMENT_PREFIX = '[REPLACED]';
 export const isReplacedDocument = (doc) => String(doc?.remark || '').trim().toUpperCase().startsWith(REPLACED_DOCUMENT_PREFIX);
 
-export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onDownload, onUpdateRemark, note, canDelete = false, canReplace = canDelete, allowReturnedReplace = !canDelete }) {
+// reviewTitle / reviewQuestion (optional, 2026-11-20): shown on the Check photo screen, e.g. for the
+// installation photos "Check photo 9 of 17" and "Is this \"Dcdb open photo\", and is it clear?".
+export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, documents = [], onUpload, onDelete, onPreview, onDownload, onUpdateRemark, note, canDelete = false, canReplace = canDelete, allowReturnedReplace = !canDelete, reviewTitle = '', reviewQuestion = '' }) {
     const { showConfirm, showAlert } = useGlobalPopup();
     const fieldDocs = documents.filter(d => d.doc_type === field && !isReplacedDocument(d));
     const fileInputRef = React.useRef(null);
@@ -698,6 +700,8 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
             {reviewFile && (
                 <CropPhotoModal
                     review
+                    title={reviewTitle}
+                    question={reviewQuestion}
                     file={reviewFile}
                     onClose={() => { setReviewFile(null); setReplacingDocId(null); }}
                     onSave={uploadPicked}

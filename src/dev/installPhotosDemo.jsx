@@ -1,6 +1,7 @@
 // Local-only demo of the 17 installation photos (client list, 2026-11-19) for screenshots.
 // Fake customer, fake photos drawn in the browser, no login and no network.
-// ?done=0 | 12 | 17 (how many photos are already taken), ?view=vendor | office (read only)
+// ?done=0 | 12 | 17 (how many photos are already taken), ?view=vendor | office (read only) | admin
+// (office staff: Change, Delete, Send Back, remarks)
 // | geo (the geo tag photo on the customer card, with the D-042 "is the geo tag clear?" check).
 // The vendor view has a "Move to Geo Tag Photo" button with the D-043 check (#17 required).
 import { useCallback, useState } from 'react';
@@ -14,6 +15,7 @@ import { GlobalPopupProvider, useGlobalPopup } from '../components/GlobalPopup';
 const params = new URLSearchParams(location.search);
 const done = Math.min(17, Math.max(0, Number(params.get('done') ?? 12)));
 const readOnly = params.get('view') === 'office';
+const admin = params.get('view') === 'admin';
 // Taken photos: a spread so the missing ones are not all at the end; #17 (required) is taken last.
 const order = [0, 1, 2, 3, 5, 6, 7, 9, 10, 12, 14, 4, 8, 11, 13, 15, 16];
 const taken = new Set(order.slice(0, done));
@@ -49,12 +51,18 @@ function Demo() {
         setStage('Geo Tag Photo');
     };
     const getUrl = useCallback(doc => fakePhoto(Number(String(doc.storage_path).split('/').pop())), []);
-    const upload = async (file, docType) => {
+    // Same signature as the real uploaders: (event, docType, replacingDocId).
+    const upload = async (event, docType, replacingDocId) => {
+        const file = event?.target?.files?.[0];
         await new Promise(resolve => setTimeout(resolve, 500));
         const n = INSTALL_PHOTOS.findIndex(p => p.docType === docType) + 1;
-        setDocs(current => [{ id: `n${Date.now()}`, doc_type: docType, storage_path: `demo/${n}`, file_name: file.name, uploaded_at: new Date().toISOString() }, ...current.filter(d => d.doc_type !== docType)]);
-        return true;
+        const doc = { id: `n${Date.now()}`, doc_type: docType, storage_path: `demo/${n}`, file_name: file?.name || 'photo.jpg', uploaded_at: new Date().toISOString() };
+        // The office replaces in place; a vendor's returned copy is marked [REPLACED] by the row.
+        setDocs(current => [doc, ...current.filter(d => !(admin && (d.id === replacingDocId || (!replacingDocId && d.doc_type === docType))))]);
+        return doc;
     };
+    const remove = async doc => { setDocs(current => current.filter(d => d.id !== doc.id)); return true; };
+    const remark = async (id, text) => { setDocs(current => current.map(d => d.id === id ? { ...d, remark: text } : d)); return true; };
     return <div className="min-h-screen bg-stone-50 p-3 sm:p-6">
         <div className="mx-auto max-w-3xl space-y-3">
             <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
@@ -62,7 +70,7 @@ function Demo() {
                 <p className="text-base font-black text-stone-900">Demo Customer (fake)</p>
                 <p className="text-xs text-stone-500">3.27 kW · Demo Village · Stage: <span className={`font-bold ${stage === 'Geo Tag Photo' ? 'text-emerald-700' : 'text-stone-800'}`}>{stage}</span></p>
             </div>
-            <InstallationPhotos documents={docs} canUpload={!readOnly} onUpload={upload} onPreview={doc => setOpen(doc)} getUrl={getUrl} />
+            <InstallationPhotos documents={docs} canUpload={!readOnly} onUpload={upload} onDelete={remove} onUpdateRemark={remark} canDelete={admin} onPreview={doc => setOpen(doc)} />
             {!readOnly && stage === 'Installation Status' && <button type="button" onClick={moveOn}
                 className="min-h-12 w-full rounded-2xl bg-amber-500 text-sm font-bold text-white">Save &amp; move to Geo Tag Photo</button>}
         </div>

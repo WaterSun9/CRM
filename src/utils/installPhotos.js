@@ -47,6 +47,8 @@ export function installPhotoStatus(documents = []) {
     const newest = {};
     for (const doc of documents || []) {
         if (!doc || !isInstallPhotoType(doc.doc_type)) continue;
+        // A photo sent back by the office ([RETURNED]) or replaced ([REPLACED]) does not count (2026-11-20).
+        if (/^\s*\[(RETURNED|REPLACED)\]/i.test(String(doc.remark || ''))) continue;
         if (!newest[doc.doc_type] || uploadedAt(doc) >= uploadedAt(newest[doc.doc_type])) newest[doc.doc_type] = doc;
     }
     const slots = INSTALL_PHOTOS.map((photo, index) => ({ ...photo, required: Boolean(photo.required), number: index + 1, doc: newest[photo.docType] || null }));

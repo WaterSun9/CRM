@@ -51,3 +51,14 @@ test('D-043: only #17 Inverter serial number photo is required', () => {
     assert.equal(requiredInstallPhotoProblems(sixteen).length, 1);
     assert.deepEqual(requiredInstallPhotoProblems([{ id: 'x', doc_type: 'install_inverter_serial' }]), []);
 });
+
+test('a photo sent back or replaced does not count as taken (2026-11-20)', () => {
+    const docs = [
+        { id: 'a', doc_type: 'install_la', remark: '[RETURNED] Please upload the correct document.' },
+        { id: 'b', doc_type: 'install_plant_photo', remark: '[REPLACED] old' },
+        { id: 'c', doc_type: 'install_plant_photo', remark: '' },
+    ];
+    const status = installPhotoStatus(docs);
+    assert.equal(status.done, 1);
+    assert.ok(status.missing.some(m => m.docType === 'install_la'));
+});

@@ -5,10 +5,9 @@ import { CheckboxRemarkItem, fetchVendorNames } from './shared';
 import { INSTALLATION_TAGS, isFinalTagValue } from '../../constants';
 import { sendVendorLeadNotification } from '../../utils/vendorNotification';
 import { todayIST } from '../../utils/warranty';
-import { getViewUrl } from '../../utils';
+
 import InstallationPhotos from '../InstallationPhotos';
 
-const installPhotoUrl = doc => getViewUrl(doc.storage_path);
 
 export default function InstallationStatusTab({
     customer,
@@ -100,9 +99,11 @@ export default function InstallationStatusTab({
             <InstallationPhotos
                 documents={documents}
                 canUpload={Boolean(onFileUpload) && (isEditable || isSfdcEditable)}
-                onUpload={(file, docType) => onFileUpload({ target: { files: [file], value: '' } }, docType)}
+                onUpload={onFileUpload}
+                onDelete={onFileDelete}
                 onPreview={onFilePreview}
-                getUrl={installPhotoUrl}
+                onUpdateRemark={onUpdateRemark}
+                canDelete={canDeleteDocs}
             />
 
             {/* SFDC Photo Checklist Card */}
