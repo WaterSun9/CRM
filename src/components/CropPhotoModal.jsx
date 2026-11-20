@@ -21,7 +21,9 @@ const FULL = { x: 0, y: 0, w: 1, h: 1 };
 // button reads "Upload" and also works with no crop (the photo goes as picked).
 // title / question (optional, 2026-11-20): name the photo being checked, e.g. the installation
 // photo "9. Dcdb open photo", and ask about it above the photo.
-export default function CropPhotoModal({ doc, file, onSave, onClose, review = false, useLabel = 'Upload', title = '', question = '' }) {
+// allowCrop = false (geo tag photo): rotate only, so the geo tag text cannot be cut off; note is
+// shown instead of the crop help.
+export default function CropPhotoModal({ doc, file, onSave, onClose, review = false, useLabel = 'Upload', title = '', question = '', allowCrop = true, note = '' }) {
     const frameRef = useRef(null);
     const imageRef = useRef(null);
     const dragRef = useRef(null);
@@ -169,7 +171,7 @@ export default function CropPhotoModal({ doc, file, onSave, onClose, review = fa
                     <button type="button" onClick={onClose} aria-label="Close crop editor" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100"><X size={18} /></button>
                 </div>
                 {question && <p className="text-sm font-bold text-stone-900">{question}</p>}
-                <p className="text-xs text-stone-500">Drag on the photo to choose the area to keep. Drag inside the box to move it. {review ? `${useLabel} keeps it as shown; Cancel leaves it out.` : 'Saving replaces this photo.'}</p>
+                <p className="text-xs text-stone-500">{allowCrop ? 'Drag on the photo to choose the area to keep. Drag inside the box to move it. ' : ''}{note || (review ? `${useLabel} keeps it as shown; Cancel leaves it out.` : 'Saving replaces this photo.')}</p>
                 {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
                 <div className="flex justify-center rounded-xl bg-stone-100 p-2">
                     {loading && <p className="py-16 text-sm text-stone-500">Loading photo…</p>}
@@ -177,11 +179,11 @@ export default function CropPhotoModal({ doc, file, onSave, onClose, review = fa
                         <div
                             ref={frameRef}
                             className="relative inline-block max-w-full select-none overflow-hidden"
-                            style={{ touchAction: 'none', cursor: 'crosshair' }}
-                            onPointerDown={onPointerDown}
-                            onPointerMove={onPointerMove}
-                            onPointerUp={onPointerUp}
-                            onPointerCancel={onPointerUp}
+                            style={allowCrop ? { touchAction: 'none', cursor: 'crosshair' } : undefined}
+                            onPointerDown={allowCrop ? onPointerDown : undefined}
+                            onPointerMove={allowCrop ? onPointerMove : undefined}
+                            onPointerUp={allowCrop ? onPointerUp : undefined}
+                            onPointerCancel={allowCrop ? onPointerUp : undefined}
                         >
                             <img ref={imageRef} src={src} alt="Photo to crop" draggable={false} className="block max-h-[60vh] max-w-full" />
                             {!isFull && (
@@ -196,7 +198,7 @@ export default function CropPhotoModal({ doc, file, onSave, onClose, review = fa
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex gap-2">
                         <button type="button" onClick={rotate} disabled={!src || saving} className="flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold disabled:opacity-50"><RotateCw size={14} /> Rotate</button>
-                        <button type="button" onClick={() => setRect(FULL)} disabled={!src || saving || isFull} className="flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold disabled:opacity-50"><RefreshCcw size={14} /> Reset</button>
+                        {allowCrop && <button type="button" onClick={() => setRect(FULL)} disabled={!src || saving || isFull} className="flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold disabled:opacity-50"><RefreshCcw size={14} /> Reset</button>}
                     </div>
                     <div className="flex gap-2">
                         <button type="button" onClick={onClose} className="min-h-11 rounded-lg border px-4 text-sm">Cancel</button>

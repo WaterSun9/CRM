@@ -4,7 +4,7 @@ import { formatINR, toIndianCommas, parseIndianNumber, formatInputValue } from '
 import { supabase } from '../../supabase';
 import { useGlobalPopup } from '../GlobalPopup';
 import CropPhotoModal from '../CropPhotoModal';
-import GeoTagConfirm from '../GeoTagConfirm';
+import GeoTagConfirm, { GEO_TAG_QUESTION } from '../GeoTagConfirm';
 
 // ─── Vendor name list (process-wide cache) ────────────────────────────────────
 // InstallationStatusTab and MaterialDeliveryTab each fetched this on mount with
@@ -541,7 +541,9 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
         // Geo tag photo (D-042): shown big with "Can you see the geo tag clearly?" first.
         // Nothing is uploaded (so the stage cannot move) until the user says Yes.
         if (field === 'geo_tag_image') {
-            setGeoFile(file);
+            // 2026-11-20: a photo gets the site's Check photo screen (no crop, so the geo tag text
+            // stays); a PDF keeps the simple check screen.
+            if (isCroppableImage(file)) setReviewFile(file); else setGeoFile(file);
             return;
         }
         if (isCroppableImage(file)) {
@@ -700,8 +702,10 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
             {reviewFile && (
                 <CropPhotoModal
                     review
-                    title={reviewTitle}
-                    question={reviewQuestion}
+                    title={field === 'geo_tag_image' ? 'Check the geo tag photo' : reviewTitle}
+                    question={field === 'geo_tag_image' ? GEO_TAG_QUESTION : reviewQuestion}
+                    allowCrop={field !== 'geo_tag_image'}
+                    note={field === 'geo_tag_image' ? 'Upload saves the photo. At the Geo Tag Photo stage the customer then moves to Discom Submission. Cancel leaves it out.' : ''}
                     file={reviewFile}
                     onClose={() => { setReviewFile(null); setReplacingDocId(null); }}
                     onSave={uploadPicked}

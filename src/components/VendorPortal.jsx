@@ -10,7 +10,8 @@ import {
 import { FilePreviewModal } from './modal-tabs/shared';
 import { STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, VENDOR_LIST_COLUMNS, isFinalTagValue } from '../constants';
 import InstallationPhotos from './InstallationPhotos';
-import GeoTagConfirm from './GeoTagConfirm';
+import { GEO_TAG_QUESTION } from './GeoTagConfirm';
+import CropPhotoModal from './CropPhotoModal';
 import { INSTALL_PHOTO_LABELS, requiredInstallPhotoProblems } from '../utils/installPhotos';
 import { isReturnedDocument } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
@@ -445,9 +446,8 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         if (fileInputRef.current) fileInputRef.current.value = '';
         if (file && selectedCust) setPendingGeoFile(file);
     };
-    const confirmGeoPhoto = async (file) => {
-        if (await handlePhotoUpload({ target: { files: [file] } })) setPendingGeoFile(null);
-    };
+    // Returns true when stored (the Check photo screen then closes itself).
+    const confirmGeoPhoto = async (file) => Boolean(await handlePhotoUpload({ target: { files: [file] } }));
 
     const handleUpdateDocRemark = async (docId, newRemark) => {
         // The try/catch here was decorative - updateDocumentRemark never threw,
@@ -1589,11 +1589,16 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
 
             {/* Document Preview Modal */}
             {pendingGeoFile && (
-                <GeoTagConfirm
+                // The site's Check photo screen (2026-11-20), rotate only: the geo tag text stays.
+                <CropPhotoModal
+                    review
                     file={pendingGeoFile}
-                    onYes={confirmGeoPhoto}
-                    onPickAnother={setPendingGeoFile}
-                    onCancel={() => setPendingGeoFile(null)}
+                    title="Check the geo tag photo"
+                    question={GEO_TAG_QUESTION}
+                    allowCrop={false}
+                    note="Upload saves the photo and moves the customer to Discom Submission. Cancel leaves it out."
+                    onSave={confirmGeoPhoto}
+                    onClose={() => setPendingGeoFile(null)}
                 />
             )}
             {previewDoc && (
