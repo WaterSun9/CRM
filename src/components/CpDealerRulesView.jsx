@@ -36,6 +36,11 @@ const SET_ALL = {
 const SHOWN = ['cp_as_dealer', 'dealer_other_cpo'];
 const SHOW_UNUSED_LOGINS = false;
 const SHOWN_RULES = RULES.filter(rule => SHOWN.includes(rule.id));
+// Local copy only (npm run dev, 2026-11-20): the hidden topics show as view-only tabs, with the
+// list of changes and exceptions, so they can be looked at before switching them on. The live
+// site shows only SHOWN. Nothing on a local-only tab can be changed or counted.
+const LOCAL = import.meta.env.DEV;
+const PREVIEW_RULES = LOCAL ? RULES.filter(rule => !SHOWN.includes(rule.id)) : [];
 const TAB_COLS = { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4' };
 
 // Short tab names; the full title shows above the list.
@@ -103,7 +108,7 @@ function CustomerTable({ row, choice, onSelectCustomer }) {
 }
 
 // One line of a grouped tab: what we found in plain words, its choice, then its customers.
-function LineCard({ row, choice, setChoice, expanded, toggle, onSelectCustomer }) {
+function LineCard({ row, choice, setChoice, expanded, toggle, onSelectCustomer, readOnly = false }) {
     const first = row.cards[0];
     const after = changesFor(row, first, choice);
     const n = row.cards.length;
@@ -115,7 +120,7 @@ function LineCard({ row, choice, setChoice, expanded, toggle, onSelectCustomer }
                 {cardsSource(row.cards) && <p className="text-sm font-semibold text-stone-700">{cardsSource(row.cards)}</p>}
             </div>
             <label className="w-full shrink-0 text-[11px] font-bold uppercase tracking-wider text-stone-500 lg:w-80">What to do with all {n} customer{n === 1 ? '' : 's'}
-                <select value={choice} onChange={e => setChoice(e.target.value)} aria-label={`Choice for ${row.title}`}
+                <select value={choice} disabled={readOnly} onChange={e => setChoice(e.target.value)} aria-label={`Choice for ${row.title}`}
                     className="mt-1 min-h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-300">
                     {row.options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select></label>
@@ -285,10 +290,12 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
         {state.loading && !state.byRule ? <p className="flex items-center gap-2 text-sm text-stone-400"><Loader2 size={16} className="animate-spin" /> Checking every customer…</p>
             : state.byRule && (() => {
                 // One tab per topic; logins with no customers, then Miscellaneous last.
-                const topics = [...SHOWN_RULES.filter(r => r.id !== 'misc'), ...(SHOW_UNUSED_LOGINS ? [unusedRule] : []), ...SHOWN_RULES.filter(r => r.id === 'misc')];
+                const topics = [...SHOWN_RULES.filter(r => r.id !== 'misc'), ...(SHOW_UNUSED_LOGINS ? [unusedRule] : []), ...SHOWN_RULES.filter(r => r.id === 'misc'),
+                    ...(LOCAL ? [...PREVIEW_RULES.filter(r => r.id !== 'misc'), ...(SHOW_UNUSED_LOGINS ? [] : [unusedRule]), ...PREVIEW_RULES.filter(r => r.id === 'misc')].map(r => ({ ...r, preview: true })) : [])];
                 const rowsOf = id => (id === 'unused_login' ? state.unused : state.byRule[id]);
                 const changingOf = id => (id === 'unused_login' ? plan.logins.length : plan.edits.filter(e => e.rule.id === id).length);
                 const current = topics.find(t => t.id === tab) || topics[0];
+                const preview = Boolean(current.preview);
                 const rows = rowsOf(current.id);
                 const toDoOf = id => (rowsOf(id) || []).reduce((n, r) => n + (r.cards ? r.cards.length : 1), 0);
                 const doneOf = id => state.done?.[id]?.size || 0;
@@ -310,10 +317,12 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                     <div role="tablist" aria-label="Topics" className={`grid grid-cols-2 gap-1.5 ${TAB_COLS[topics.length] || 'sm:grid-cols-4'}`}>{topics.map(t => {
                         const count = rowsOf(t.id).length, changing = changingOf(t.id);
                         return <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
-                            className={`rounded-xl px-3 py-2 text-left text-xs font-bold ${tab === t.id ? 'bg-stone-900 text-white' : 'border border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}>
+                            className={`rounded-xl px-3 py-2 text-left text-xs font-bold ${tab === t.id ? 'bg-stone-900 text-white' : t.preview ? 'border border-dashed border-violet-300 bg-violet-50/60 text-stone-700 hover:bg-violet-50' : 'border border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}>
                             <span className="block">{TAB_NAMES[t.id] || t.title}</span>
+                            {t.preview && <span className={`block text-[10px] font-bold uppercase tracking-wider ${tab === t.id ? 'text-violet-200' : 'text-violet-700'}`}>Local only · view</span>}
                             <span className={`block text-[10px] font-semibold ${tab === t.id ? 'text-white/70' : count ? 'text-amber-700' : 'text-emerald-700'}`}>
-                                {count ? `${t.grouped ? `${toDoOf(t.id)} left` : `${count} found`} · ${doneOf(t.id)} done` : doneOf(t.id) ? `All done · ${doneOf(t.id)} fixed` : 'All fine'}{count && changing !== toDoOf(t.id) ? ` · ${changing} set to change` : ''}</span>
+                                {t.preview ? (count ? `${t.grouped ? `${toDoOf(t.id)} cards` : `${count} found`}` : 'None')
+                                    : <>{count ? `${t.grouped ? `${toDoOf(t.id)} left` : `${count} found`} · ${doneOf(t.id)} done` : doneOf(t.id) ? `All done · ${doneOf(t.id)} fixed` : 'All fine'}{count && changing !== toDoOf(t.id) ? ` · ${changing} set to change` : ''}</>}</span>
                         </button>;
                     })}</div>
 
@@ -323,7 +332,8 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                 <h2 className="text-lg font-bold text-stone-900">{current.title}</h2>
                                 <p className="mt-1 max-w-3xl text-sm leading-relaxed text-stone-600">{current.rule}</p>
                             </div>
-                            {rows.length > 0 && SET_ALL[current.id].length > 1 && <label className="block w-full max-w-sm text-[11px] font-bold uppercase tracking-wider text-stone-500">Set every line to
+                            {preview && <p className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm font-semibold text-violet-900">Hidden on the live site. You see this only on the local copy. View only: nothing here can be changed, and it is not counted in the bar above.</p>}
+                            {!preview && rows.length > 0 && SET_ALL[current.id].length > 1 && <label className="block w-full max-w-sm text-[11px] font-bold uppercase tracking-wider text-stone-500">Set every line to
                                 <select value="" onChange={e => e.target.value && setAll(current.id, e.target.value)} className={`${selectClass} mt-1 normal-case tracking-normal`}>
                                     <option value="">Choose…</option>
                                     {SET_ALL[current.id].map(([id, label]) => <option key={id} value={id}>{label}</option>)}
@@ -332,7 +342,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                         {!rows.length ? <p className="flex items-center gap-2 p-6 text-sm font-semibold text-emerald-700"><CheckCircle2 size={18} /> Nothing to fix here.</p>
                             : current.grouped ? <div className="space-y-4 bg-stone-50/60 p-3 sm:p-4">{rows.map(row => <LineCard key={row.id} row={row} choice={choiceOf(row)}
                                 setChoice={value => setChoices(cur => ({ ...cur, [row.id]: value }))} expanded={Boolean(openRow[row.id])}
-                                toggle={() => setOpenRow(cur => ({ ...cur, [row.id]: !cur[row.id] }))} onSelectCustomer={onSelectCustomer} />)}</div>
+                                toggle={() => setOpenRow(cur => ({ ...cur, [row.id]: !cur[row.id] }))} onSelectCustomer={onSelectCustomer} readOnly={preview} />)}</div>
                             : <div className="max-h-[60vh] overflow-auto">{current.id === 'unused_login'
                                 ? <table className="w-full text-left text-xs">
                                     <thead className="sticky top-0 z-10 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-500"><tr>
@@ -346,7 +356,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                             <td className="p-2">{kind}</td>
                                             <td className="p-2">{login.user_type === 'agent' ? '–' : login.channel_partner || '–'}</td>
                                             <td className="whitespace-nowrap p-2">{day(login.created_at)}</td>
-                                            <td className="p-2"><select value={choice} onChange={e => setChoices(cur => ({ ...cur, [id]: e.target.value }))} aria-label={`Choice for login ${login.name}`} className={selectClass}>
+                                            <td className="p-2"><select value={choice} disabled={preview} onChange={e => setChoices(cur => ({ ...cur, [id]: e.target.value }))} aria-label={`Choice for login ${login.name}`} className={selectClass}>
                                                 <option value={NO_CHANGE}>Keep</option><option value="deactivate">Deactivate</option>
                                             </select></td>
                                         </tr>;
@@ -381,22 +391,35 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                             {!current.grouped && <>
                                                 <td className="p-2"><Change from={first.channel_partner} to={after.channel_partner} /></td>
                                                 <td className="p-2"><Change from={first.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} /></td></>}
-                                            <td className="p-2"><select value={choice} onChange={e => setChoices(cur => ({ ...cur, [row.id]: e.target.value }))} aria-label={`Choice for ${row.title}`} className={selectClass}>
+                                            <td className="p-2"><select value={choice} disabled={preview} onChange={e => setChoices(cur => ({ ...cur, [row.id]: e.target.value }))} aria-label={`Choice for ${row.title}`} className={selectClass}>
                                                 {row.options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                                             </select></td>
                                         </tr>;
                                     })}</tbody>
                                 </table>}</div>}
                     </section>
-                    <div className="space-y-1 rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600">
-                        <p className="font-bold text-stone-800">Left alone on purpose (not counted above)</p>
-                        <ul className="list-disc space-y-0.5 pl-5">
-                            <li>A CP also written as their own dealer, e.g. CP BHARAT UNJA, Dealer BHARAT UNJA (D-048, 20 Nov 2026).</li>
-                            <li>Spelling: a name that differs from the login only in capitals or spaces (D-048, D-049). Capitals do not matter, and since 20 Nov 2026 a name with different spaces is saved with the login's spelling automatically.</li>
-                            <li>A dealer written under an independent CP: may be the CP's own record (D-046).</li>
-                            <li>For later: names with no login, empty CP boxes, office staff or a CPO's name as dealer, unused logins, deleted and DEBOARDED customers.</li>
-                        </ul>
-                    </div>
+                    {LOCAL && <div className="space-y-3 rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-4 text-xs text-stone-700">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-violet-700">Local copy only, not on the live site</p>
+                        <div>
+                            <p className="font-bold text-stone-800">Changes made to this page</p>
+                            <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                                <li>16 Nov: page built with a choice per row; 4 topics shown, the rest hidden for later (D-039, D-040).</li>
+                                <li>20 Nov: one line per CP / CPO and dealer pair in plain words, one choice for all its customers; where the cards came from (sheet or CRM).</li>
+                                <li>20 Nov: logins compared exactly as stored (a double space in a login name is kept); each customer listed with now → after.</li>
+                                <li>20 Nov: every fix goes into the activity log under the admin; progress bar of cards left and done.</li>
+                                <li>20 Nov: names typed with different spaces or capitals are saved with the login's spelling (D-047, database).</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <p className="font-bold text-stone-800">Left alone on purpose (not counted in the bar)</p>
+                            <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                                <li>A CP also written as their own dealer, e.g. CP BHARAT UNJA, Dealer BHARAT UNJA (D-048).</li>
+                                <li>Spelling tab removed: capitals do not matter, spaces are fixed when a card is saved (D-048, D-049).</li>
+                                <li>A dealer written under an independent CP: may be the CP's own record (D-046).</li>
+                                <li>Hidden for later, view-only tabs above: CP / CPO with no login, dealer with no login, logins with no customers, Miscellaneous.</li>
+                            </ul>
+                        </div>
+                    </div>}
                 </div>;
             })()}
 
