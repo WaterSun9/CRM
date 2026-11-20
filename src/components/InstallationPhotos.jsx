@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Camera, CheckCircle2, ChevronRight, RotateCcw } from 'lucide-react';
+import { Camera, CheckCircle2, Eye, Paperclip, Upload } from 'lucide-react';
 import { installPhotoStatus } from '../utils/installPhotos';
-import GeoTagConfirm from './GeoTagConfirm';
+import CropPhotoModal from './CropPhotoModal';
 
 // The 17 installation photos (client list, 2026-11-19) as big tappable slots, one per name,
 // with a count (12/17) and the missing names. Used on the customer card (Installation Status)
@@ -11,9 +11,11 @@ import GeoTagConfirm from './GeoTagConfirm';
 // D-043: #17 (Inverter serial number photo) is required: shown with a red * and "Required", and
 // the Installation stage cannot be left without it (checked where the stage is moved).
 //
-// 2026-11-20 (Mahvish): made for the phone (one big row per photo) and every photo is shown big
-// with "Is this the <name> photo, and is it clear?" before it is saved (same screen as the geo tag
-// check). Yes saves it and points to the next missing photo; No picks another; X saves nothing.
+// 2026-11-20 (Mahvish): every photo is checked before it is saved, and the page uses the site's
+// own look: rows like the other document checklists (tick box, name, Uploaded / Not Uploaded,
+// "Attach File / Photo", a file line with View and Change) and the site's "Check photo" screen
+// (CropPhotoModal review) asking "Is this <name>, and is it clear?". After a photo is saved the
+// list scrolls to the next missing one.
 //
 // Props:
 //   documents   the customer's documents
@@ -78,22 +80,23 @@ export default function InstallationPhotos({ documents = [], canUpload = false, 
         setProblem('');
         setChecking({ slot, file });
     };
+    // Called by the Check photo screen; true closes it, false keeps it open with its own message.
     const save = async file => {
         const slot = checking?.slot;
-        if (!slot) return;
+        if (!slot) return false;
         setAdding(slot.docType);
         try {
             const small = await shrinkPhoto(file);
             const stored = await onUpload(small, slot.docType);
-            if (stored === false) { setChecking(null); setProblem(`${slot.number}. ${slot.name}: the photo was not saved. Try again.`); return; }
-            setChecking(null);
+            if (stored === false) return false;
             setLastSaved(slot.docType);
             // Point to the next photo still missing.
             const next = status.missing.find(m => m.docType !== slot.docType && m.number > slot.number) || status.missing.find(m => m.docType !== slot.docType);
             if (next) setTimeout(() => jump(next.docType), 150);
+            return true;
         } catch (failure) {
-            setChecking(null);
             setProblem(`${slot.number}. ${slot.name}: ${failure?.message || 'the photo was not saved. Try again.'}`);
+            return false;
         } finally {
             setAdding('');
         }
@@ -108,10 +111,10 @@ export default function InstallationPhotos({ documents = [], canUpload = false, 
             <div className="flex items-end justify-between gap-3">
                 <div>
                     <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-stone-700"><Camera className="h-4 w-4 text-amber-500" aria-hidden="true" /> Installation photos</h4>
-                    <p className="mt-0.5 text-[11px] font-medium text-stone-500">{canUpload ? 'Add each photo; you check it before it saves.' : 'Photos taken by the installer.'} <span className="text-red-600">*</span> = required to finish installation.</p>
+                    <p className="mt-0.5 text-[11px] font-medium text-stone-500">{canUpload ? 'Attach each photo; you check it before it uploads.' : 'Photos taken by the installer.'} <span className="text-red-600">*</span> = required to finish installation.</p>
                 </div>
-                <p className={`text-2xl font-black tabular-nums ${allDone ? 'text-emerald-600' : 'text-stone-900'}`} aria-label={`${status.done} of ${status.total} photos taken`}>
-                    {status.done}<span className="text-base font-bold text-stone-400">/{status.total}</span>
+                <p className={`text-lg font-bold tabular-nums ${allDone ? 'text-emerald-600' : 'text-stone-900'}`} aria-label={`${status.done} of ${status.total} photos taken`}>
+                    {status.done}<span className="text-sm font-bold text-stone-400">/{status.total}</span>
                 </p>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-stone-100" role="progressbar" aria-valuemin={0} aria-valuemax={status.total} aria-valuenow={status.done}>
@@ -135,42 +138,50 @@ export default function InstallationPhotos({ documents = [], canUpload = false, 
             {problem && <p role="alert" className="rounded-lg bg-red-50 p-2 text-xs font-semibold text-red-700">{problem}</p>}
         </div>
 
-        <ol className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+        <ol className="flex flex-col divide-y divide-stone-100">
             {status.slots.map(slot => {
                 const busy = adding === slot.docType;
                 const url = slot.doc ? urls[slot.doc.storage_path] : '';
-                const picker = <input type="file" accept="image/*" disabled={Boolean(adding) || Boolean(checking)} onChange={event => take(slot, event.target)} className="sr-only"
-                    aria-label={`${slot.doc ? 'Change' : 'Add'} photo: ${slot.number}. ${slot.name}${slot.required ? ' (required)' : ''}`} />;
                 const justSaved = lastSaved === slot.docType;
-                return <li key={slot.docType} id={`install-photo-${slot.docType}`}
-                    className={`flex items-start gap-3 rounded-2xl border-2 p-3 ${slot.doc ? 'border-emerald-300 bg-emerald-50/50' : slot.required ? 'border-dashed border-red-400 bg-white' : 'border-dashed border-stone-300 bg-white'} ${justSaved ? 'ring-2 ring-emerald-400' : ''} ${adding && !busy ? 'opacity-60' : ''}`}>
-                    {slot.doc
-                        ? <button type="button" onClick={() => onPreview?.(slot.doc)} className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-stone-100" aria-label={`Open photo: ${slot.number}. ${slot.name}`}>
-                            {url ? <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <CheckCircle2 size={28} className="text-emerald-500" aria-hidden="true" />}
-                            {busy && <span className="absolute inset-0 flex items-center justify-center bg-white/80 text-[11px] font-bold text-stone-700">Saving…</span>}
-                        </button>
-                        : <span className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-xl ${slot.required ? 'bg-red-50 text-red-500' : 'bg-stone-100 text-stone-400'}`}>
-                            {busy ? <span className="text-[11px] font-bold text-stone-700">Saving…</span> : <Camera size={28} aria-hidden="true" />}
-                        </span>}
-                    <div className="min-w-0 flex-1">
-                        <p className="flex items-start gap-1.5 text-[15px] font-bold leading-snug text-stone-900">
-                            <span className={`mt-0.5 inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-black ${slot.doc ? 'bg-emerald-600 text-white' : 'bg-stone-200 text-stone-700'}`}>{slot.number}</span>
-                            <span className="break-words">{slot.name}{slot.required && <span className="text-red-600" aria-hidden="true"> *</span>}</span>
-                        </p>
-                        <p className={`mt-1 text-xs font-semibold ${slot.doc ? 'text-emerald-700' : slot.required ? 'text-red-700' : 'text-stone-500'}`}>
-                            {slot.doc ? (justSaved ? 'Saved just now ✓' : 'Saved ✓') : slot.required ? 'Required: not added yet' : 'Not added yet'}
-                        </p>
-                        {canUpload && <label className={`mt-2 inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-xl px-4 text-sm font-bold ${slot.doc ? 'border border-stone-200 bg-white text-stone-700' : 'bg-stone-900 text-white'} ${adding || checking ? 'pointer-events-none opacity-50' : ''}`}>
-                            {slot.doc ? <><RotateCcw size={15} aria-hidden="true" /> Change photo</> : <>Add photo <ChevronRight size={16} aria-hidden="true" /></>}
-                            {picker}
-                        </label>}
+                const picker = <input type="file" accept="image/*" disabled={Boolean(adding) || Boolean(checking)} onChange={event => take(slot, event.target)} className="hidden"
+                    aria-label={`${slot.doc ? 'Change' : 'Attach'} photo: ${slot.number}. ${slot.name}${slot.required ? ' (required)' : ''}`} />;
+                return <li key={slot.docType} id={`install-photo-${slot.docType}`} className={`py-2 ${justSaved ? 'rounded-lg bg-emerald-50/60 px-2' : ''}`}>
+                    <div className="flex items-center gap-2.5">
+                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${slot.doc ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-stone-300 bg-stone-100 text-transparent'}`} aria-hidden="true">
+                            {slot.doc && <svg className="h-2.5 w-2.5 stroke-current stroke-[3]" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
+                        </span>
+                        <span className={`min-w-0 flex-1 break-words text-xs ${slot.doc ? 'font-bold text-stone-900' : 'font-medium text-stone-600'}`}>
+                            {slot.number}. {slot.name}{slot.required && <span className="text-red-500"> *</span>}
+                        </span>
+                        {slot.doc
+                            ? <span className="shrink-0 rounded border border-emerald-200 bg-emerald-50 px-1.5 text-[9px] font-bold text-emerald-700">Uploaded</span>
+                            : <span className={`shrink-0 rounded px-1.5 text-[9px] font-bold ${slot.required ? 'bg-red-50 text-red-600' : 'bg-stone-100 text-stone-400'}`}>{slot.required ? 'Required' : 'Not Uploaded'}</span>}
+                    </div>
+                    <div className="ml-6.5 mt-1.5">
+                        {slot.doc
+                            ? <div className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 p-1.5">
+                                <button type="button" onClick={() => onPreview?.(slot.doc)} className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-stone-100" aria-label={`Open photo: ${slot.number}. ${slot.name}`}>
+                                    {url ? <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <Paperclip size={12} className="text-stone-400" aria-hidden="true" />}
+                                    {busy && <span className="absolute inset-0 bg-white/70" />}
+                                </button>
+                                <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-stone-600">{busy ? 'Saving…' : slot.doc.file_name || 'Photo'}</span>
+                                {onPreview && <button type="button" onClick={() => onPreview(slot.doc)} className="flex min-h-8 cursor-pointer items-center gap-0.5 rounded px-1.5 text-[10px] font-bold text-amber-600 hover:bg-amber-50 hover:text-amber-700"><Eye size={11} /> View</button>}
+                                {canUpload && <label className={`flex min-h-8 cursor-pointer items-center gap-0.5 rounded px-1.5 text-[10px] font-bold text-blue-600 hover:bg-blue-50 hover:text-blue-700 ${adding || checking ? 'pointer-events-none opacity-50' : ''}`}>
+                                    <Upload size={11} /> Change{picker}
+                                </label>}
+                            </div>
+                            : canUpload
+                                ? <label className={`inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-2.5 text-[11px] font-bold transition-all hover:border-amber-300 hover:bg-amber-50/30 hover:text-amber-600 ${slot.required ? 'border-red-300 text-red-600' : 'border-stone-200 text-stone-500'} ${adding || checking ? 'pointer-events-none opacity-50' : ''}`}>
+                                    {busy ? 'Saving…' : <><Paperclip size={12} /> Attach File / Photo</>}{picker}
+                                </label>
+                                : <span className="text-[10px] italic text-stone-400">Not taken yet</span>}
                     </div>
                 </li>;
             })}
         </ol>
-        {checking && <GeoTagConfirm file={checking.file} title={`Photo ${checking.slot.number} of ${status.total}`}
+        {checking && <CropPhotoModal review file={checking.file} useLabel="Upload"
+            title={`Check photo ${checking.slot.number} of ${status.total}`}
             question={`Is this "${checking.slot.name}", and is it clear?`}
-            note={`Yes saves it as photo ${checking.slot.number}. ${checking.slot.name}.`}
-            onYes={save} onPickAnother={file => setChecking(current => current && { ...current, file })} onCancel={() => { if (!adding) setChecking(null); }} />}
+            onSave={save} onClose={() => { if (!adding) setChecking(null); }} />}
     </section>;
 }

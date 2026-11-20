@@ -19,7 +19,9 @@ const FULL = { x: 0, y: 0, w: 1, h: 1 };
 // device and not uploaded yet (Add Lead) - used directly.
 // review: shown right after a photo is picked, before it is uploaded. The
 // button reads "Upload" and also works with no crop (the photo goes as picked).
-export default function CropPhotoModal({ doc, file, onSave, onClose, review = false, useLabel = 'Upload' }) {
+// title / question (optional, 2026-11-20): name the photo being checked, e.g. the installation
+// photo "9. Dcdb open photo", and ask about it above the photo.
+export default function CropPhotoModal({ doc, file, onSave, onClose, review = false, useLabel = 'Upload', title = '', question = '' }) {
     const frameRef = useRef(null);
     const imageRef = useRef(null);
     const dragRef = useRef(null);
@@ -163,9 +165,10 @@ export default function CropPhotoModal({ doc, file, onSave, onClose, review = fa
         <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-3 sm:p-4" role="dialog" aria-modal="true" aria-label="Crop photo">
             <div className="bg-white rounded-2xl p-4 sm:p-5 w-full max-w-3xl max-h-[92vh] overflow-y-auto space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                    <h2 className="font-bold text-stone-900">{review ? 'Check photo' : 'Crop photo'}</h2>
+                    <h2 className="font-bold text-stone-900">{title || (review ? 'Check photo' : 'Crop photo')}</h2>
                     <button type="button" onClick={onClose} aria-label="Close crop editor" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100"><X size={18} /></button>
                 </div>
+                {question && <p className="text-sm font-bold text-stone-900">{question}</p>}
                 <p className="text-xs text-stone-500">Drag on the photo to choose the area to keep. Drag inside the box to move it. {review ? `${useLabel} keeps it as shown; Cancel leaves it out.` : 'Saving replaces this photo.'}</p>
                 {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
                 <div className="flex justify-center rounded-xl bg-stone-100 p-2">
