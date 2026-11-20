@@ -386,7 +386,15 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                     })}</tbody>
                                 </table>}</div>}
                     </section>
-                    <p className="text-xs text-stone-500">Left alone for now: a dealer written under an independent CP (may be the CP's own record), deleted and DEBOARDED customers, names with no login, names that only look alike (e.g. DASHRATH and DASHRATH MALI), empty CP boxes and unused logins. Those come later.</p>
+                    <div className="space-y-1 rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600">
+                        <p className="font-bold text-stone-800">Left alone on purpose (not counted above)</p>
+                        <ul className="list-disc space-y-0.5 pl-5">
+                            <li>A CP also written as their own dealer, e.g. CP BHARAT UNJA, Dealer BHARAT UNJA (D-048, 20 Nov 2026).</li>
+                            <li>A name that differs from the login only in capitals, e.g. Ganeshbhai and GANESHBHAI: partners still see these customers (D-048).</li>
+                            <li>A dealer written under an independent CP: may be the CP's own record (D-046).</li>
+                            <li>For later: names with no login, empty CP boxes, office staff or a CPO's name as dealer, unused logins, deleted and DEBOARDED customers.</li>
+                        </ul>
+                    </div>
                 </div>;
             })()}
 

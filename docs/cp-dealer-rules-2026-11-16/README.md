@@ -33,3 +33,11 @@ The rest is built but hidden (`SHOWN` and `SHOW_UNUSED_LOGINS` at the top of `sr
 1. **Test on live data**: open the page logged in as admin, look at each tab and download the list, without pressing fix; check the numbers with Mahvish; then fix.
 2. Switch on the hidden topics, one by one, after a look at live data: CP / CPO with no login, Dealer with no login, Logins with no customers, Miscellaneous (empty CP, office staff as dealer, CPO name as dealer).
 3. Remember "No change" / "Different people" so those rows don't come back (best done with the UUID identity migration, `docs/BACKLOG.md`).
+
+## Exceptions: left alone on purpose (2026-11-20)
+These are not listed and not fixed, by Mahvish's choice:
+1. **Dealer under an independent CP** (13 cards): the CP may keep that name for their own records (D-046). Tab hidden.
+2. **A CP also written as their own dealer** (72 cards, e.g. CP BHARAT UNJA, Dealer BHARAT UNJA): same name, no harm (D-048).
+3. **Capitals only** (e.g. Ganeshbhai / GANESHBHAI, 6 cards): partners match names ignoring capitals, so they still see these customers (D-048). Spaces that differ from the login are still listed, because those hide customers.
+
+The page shows the same list under the tabs. Still hidden for later (Task 2): CP / CPO with no login, dealer with no login, logins with no customers, Miscellaneous.

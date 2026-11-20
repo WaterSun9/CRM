@@ -157,8 +157,11 @@ export function findingFor(card, index) {
     // 5. Spelling: the CP box and / or the Dealer box differ only in capitals, spaces or dots.
     const exactCp = cpIsBranch ? index.branches.get(cpKey) : cpIsIndependent ? index.cps.get(cpKey) : null;
     const exactDealer = cpIsBranch && dealerUnder?.has(cpKey) ? dealerUnder.get(cpKey) : null;
-    const newCp = exactCp && exactCp !== String(card.channel_partner ?? '') ? exactCp : null;
-    const newDealer = exactDealer && exactDealer !== String(card.sub_channel_partner ?? '') ? exactDealer : null;
+    // Capitals alone are left alone (D-048, 2026-11-20): partners match names ignoring capitals,
+    // so only spaces, dots or punctuation that differ from the login are listed.
+    const differs = (login, typed) => login && login.toLowerCase() !== String(typed ?? '').toLowerCase();
+    const newCp = differs(exactCp, card.channel_partner) ? exactCp : null;
+    const newDealer = differs(exactDealer, card.sub_channel_partner) ? exactDealer : null;
     if (newCp || newDealer) return { rule: 'spelling', to: { channel_partner: newCp || card.channel_partner, sub_channel_partner: newDealer || card.sub_channel_partner } };
     // 6. A CPO customer whose dealer has no login anywhere.
     if (cpIsBranch && dealerKey && !dealerUnder) return { rule: 'dealer_no_login', key: `${cpKey}|${dealerKey}`, name: dealer, branch: exactCp };

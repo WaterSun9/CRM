@@ -41,17 +41,17 @@ test('dealer of another CPO: empty by default, or move to that CPO', () => {
 test('spelling: same person by default, different people = no change', () => {
     const c = card('sun energy', 'dashrath  mali');
     const row = rowOf(checkCards([c], profiles), 'spelling');
-    assert.deepEqual(changesFor(row, c), { channel_partner: 'SUN ENERGY', sub_channel_partner: 'DASHRATH MALI' });
+    assert.deepEqual(changesFor(row, c), { sub_channel_partner: 'DASHRATH MALI' });
     assert.deepEqual(changesFor(row, c, NO_CHANGE), {});
 });
 
 test('dealer with no login: grouped, no change by default, DEBOARDED keeps the name', () => {
     const a = card('SUN ENERGY', 'JAYANTI'), b = card('Sun Energy', 'jayanti');
     const byRule = checkCards([a, b], profiles);
-    // b is a spelling fix first (CP box); a goes to the no-login group.
+    // Capitals alone are not a spelling fix (D-048), so both go to the no-login group.
     const row = rowOf(byRule, 'dealer_no_login');
     assert.equal(row.choice, NO_CHANGE);
-    assert.equal(row.cards.length, 1);
+    assert.equal(row.cards.length, 2);
     assert.deepEqual(changesFor(row, a, 'deboard'), { channel_partner: 'DEBOARDED' });
     assert.deepEqual(changesFor(row, a, 'empty'), { sub_channel_partner: null });
     assert.ok(row.options.some(o => o.id === 'login:DASHRATH MALI'));
@@ -131,4 +131,8 @@ test('spelling follows the login exactly as stored, double spaces included', () 
 test('a CP also written as their own dealer is left alone (D-048)', () => {
     const c = card('KISHORBHAI', 'KISHORBHAI');
     assert.equal(checkCards([c], profiles).cp_as_dealer.length, 0);
+});
+
+test('capitals alone are left alone (D-048)', () => {
+    assert.equal(checkCards([card('sun energy', 'Dashrath Mali')], profiles).spelling.length, 0);
 });
