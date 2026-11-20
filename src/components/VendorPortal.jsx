@@ -10,10 +10,8 @@ import {
 import { FilePreviewModal } from './modal-tabs/shared';
 import { STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, VENDOR_LIST_COLUMNS, isFinalTagValue } from '../constants';
 import InstallationPhotos from './InstallationPhotos';
-import { GEO_TAG_QUESTION } from './GeoTagConfirm';
-import CropPhotoModal from './CropPhotoModal';
 import { INSTALL_PHOTO_LABELS, requiredInstallPhotoProblems } from '../utils/installPhotos';
-import { isReturnedDocument } from './modal-tabs/shared';
+import { CheckboxRemarkItem } from './modal-tabs/shared';
 import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
 import AvailabilityCalendar from './AvailabilityCalendar';
@@ -402,6 +400,7 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                 const undeleted = [];
                 for (const oldDoc of existingGeo) {
                     const removed = await deleteDocument(oldDoc);
+                    if (removed?.ok) removedGeoIdsRef.current.add(oldDoc.id);
                     if (!removed?.ok) {
                         undeleted.push(oldDoc);
                         console.warn('New geo tag photo saved, but removing the old one failed:', removed?.error);
@@ -438,16 +437,13 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
         return photoUploaded;
     };
 
-    // Geo tag photo (D-042): the picked photo is shown big with "Can you see the geo tag
-    // clearly?" first. Nothing is uploaded (so the stage cannot move) until Yes.
-    const [pendingGeoFile, setPendingGeoFile] = useState(null);
-    const handleGeoPhotoPicked = (e) => {
-        const file = e.target.files?.[0];
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        if (file && selectedCust) setPendingGeoFile(file);
-    };
-    // Returns true when stored (the Check photo screen then closes itself).
-    const confirmGeoPhoto = async (file) => Boolean(await handlePhotoUpload({ target: { files: [file] } }));
+    // Geo tag photo (D-042): the upload row (CheckboxRemarkItem, 2026-11-20) shows it on the Check
+    // photo screen first ("Can you see the geo tag clearly?", rotate only); nothing is uploaded, so
+    // the stage cannot move, until Upload. handlePhotoUpload removes the older
+    // copies itself, so a copy it already removed needs no "[REPLACED]" mark afterwards.
+    const removedGeoIdsRef = useRef(new Set());
+    const geoUploadFromRow = async (event) => handlePhotoUpload(event);
+    const geoRemarkFromRow = async (docId, remark) => (removedGeoIdsRef.current.has(docId) ? true : handleUpdateDocRemark(docId, remark));
 
     const handleUpdateDocRemark = async (docId, newRemark) => {
         // The try/catch here was decorative - updateDocumentRemark never threw,
@@ -1242,86 +1238,23 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
                                         </div>
                                     </div>
 
-                                    {/* Photo Upload Card */}
-                                    <div className="bg-stone-50 p-4 rounded-2xl border border-stone-150/80 space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <Camera className="w-4 h-4 text-amber-500" />
-                                                <div>
-                                                    <p className="text-[10px] font-bold text-stone-700 uppercase tracking-wide">Geo Tag Photograph</p>
-                                                    <p className="text-[9px] text-stone-400 font-medium">Upload site photo with geo-coordinates.</p>
-                                                </div>
-                                            </div>
-
-                                            <input
-                                                ref={fileInputRef}
-                                                type="file"
-                                                accept="image/*"
-                                                onChange={handleGeoPhotoPicked}
-                                                className="hidden"
-                                            />
-
-                                            <button
-                                                type="button"
-                                                disabled={uploadingPhoto || !canEditGeoTag}
-                                                onClick={() => fileInputRef.current?.click()}
-                                                className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-amber-500/10 cursor-pointer disabled:opacity-50"
-                                            >
-                                                {uploadingPhoto ? (
-                                                    <><Loader2 size={11} className="animate-spin" /> Uploading...</>
-                                                ) : (
-                                                    <><Camera size={11} /> Attach / Upload Photo</>
-                                                )}
-                                            </button>
-                                        </div>
-
-                                        {/* Attached Photos List */}
-                                        {geoDocs.length > 0 ? (
-                                            <div className="space-y-2 pt-1">
-                                                {geoDocs.map(doc => (
-                                                    <div key={doc.id} className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-stone-200 shadow-xs">
-                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                            <ImageIcon size={14} className="text-amber-500 flex-shrink-0" />
-                                                            <span className="text-xs font-semibold text-stone-700 truncate">{doc.file_name}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handlePhotoPreview(doc)}
-                                                                className="text-stone-500 hover:text-stone-800 p-1 rounded-lg hover:bg-stone-100 transition cursor-pointer"
-                                                                title="View full photo"
-                                                            >
-                                                                <Eye size={13} />
-                                                            </button>
-                                                            {/* An uploaded photo is locked. Admin or Office must send it
-                                                                back before it can be replaced; there is no delete. */}
-                                                            {isReturnedDocument(doc) ? (
-                                                                <>
-                                                                    <span className="text-[9px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">Returned</span>
-                                                                    <button
-                                                                        type="button"
-                                                                        disabled={!canEditGeoTag}
-                                                                        onClick={() => fileInputRef.current?.click()}
-                                                                        className="text-blue-600 hover:text-blue-800 p-1 rounded-lg hover:bg-blue-50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                                                        title="Replace the returned photo"
-                                                                    >
-                                                                        <Upload size={13} />
-                                                                    </button>
-                                                                </>
-                                                            ) : (
-                                                                <span className="text-[9px] font-semibold text-stone-400 uppercase tracking-wide" title="Admin or Office must send this back before it can be replaced">
-                                                                    Locked
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-[10px] text-stone-400 italic text-center py-2">
-                                                No photo uploaded yet. Tap "Attach / Upload Photo" to add one.
-                                            </p>
-                                        )}
+                                    {/* Geo tag photo: the same upload row as every other photo (2026-11-20): the Check photo
+                                        screen first (rotate only), View, locked once uploaded until the office sends it back.
+                                        Upload saves it and moves the customer to Discom Submission by itself. */}
+                                    <div className="space-y-2 rounded-2xl border border-stone-150/80 bg-stone-50 p-4">
+                                        <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-stone-700"><Camera className="h-4 w-4 text-amber-500" /> Geo Tag Photograph</p>
+                                        <p className="text-[9px] font-medium text-stone-400">Upload the site photo with the geo tag (location, date, time). You check it before it uploads; then the customer moves to Discom Submission.</p>
+                                        <CheckboxRemarkItem
+                                            label="Geo Tag Photograph *"
+                                            field="geo_tag_image"
+                                            value={geoDocs.length > 0}
+                                            isEditing={canEditGeoTag && !uploadingPhoto}
+                                            documents={documents.map(d => (d.doc_type === 'geo_tag' ? { ...d, doc_type: 'geo_tag_image' } : d))}
+                                            onUpload={geoUploadFromRow}
+                                            onPreview={handlePhotoPreview}
+                                            onUpdateRemark={geoRemarkFromRow}
+                                            canDelete={false}
+                                        />
                                     </div>
 
                                     {saveSuccess && (
@@ -1588,19 +1521,6 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
             )}
 
             {/* Document Preview Modal */}
-            {pendingGeoFile && (
-                // The site's Check photo screen (2026-11-20), rotate only: the geo tag text stays.
-                <CropPhotoModal
-                    review
-                    file={pendingGeoFile}
-                    title="Check the geo tag photo"
-                    question={GEO_TAG_QUESTION}
-                    allowCrop={false}
-                    note="Upload saves the photo and moves the customer to Discom Submission. Cancel leaves it out."
-                    onSave={confirmGeoPhoto}
-                    onClose={() => setPendingGeoFile(null)}
-                />
-            )}
             {previewDoc && (
                 <FilePreviewModal
                     file={previewDoc.doc}
