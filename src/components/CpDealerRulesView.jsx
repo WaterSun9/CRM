@@ -30,9 +30,11 @@ const SET_ALL = {
 // Take 1 (2026-11-16): only these 4 topics are shown and fixed. The others (CP / CPO with no login,
 // dealer with no login, logins with no customers, Miscellaneous) are built but hidden: Task 2,
 // later (docs/cp-dealer-rules-2026-11-16/README.md). Add their ids here to switch them on.
-const SHOWN = ['cp_as_dealer', 'dealer_under_cp', 'dealer_other_cpo', 'spelling'];
+// 'dealer_under_cp' hidden 2026-11-20 (D-046): a CP may keep a dealer name for their own records.
+const SHOWN = ['cp_as_dealer', 'dealer_other_cpo', 'spelling'];
 const SHOW_UNUSED_LOGINS = false;
 const SHOWN_RULES = RULES.filter(rule => SHOWN.includes(rule.id));
+const TAB_COLS = { 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4' };
 
 // Short tab names; the full title shows above the list.
 const TAB_NAMES = { cp_as_dealer: 'CP as dealer', dealer_under_cp: 'Dealer under a CP', dealer_other_cpo: 'Dealer of another CPO', spelling: 'Spelling',
@@ -276,7 +278,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                 const current = topics.find(t => t.id === tab) || topics[0];
                 const rows = rowsOf(current.id);
                 return <div className="space-y-3">
-                    <div role="tablist" aria-label="Topics" className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">{topics.map(t => {
+                    <div role="tablist" aria-label="Topics" className={`grid grid-cols-2 gap-1.5 ${TAB_COLS[topics.length] || 'sm:grid-cols-4'}`}>{topics.map(t => {
                         const count = rowsOf(t.id).length, changing = changingOf(t.id);
                         return <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
                             className={`rounded-xl px-3 py-2 text-left text-xs font-bold ${tab === t.id ? 'bg-stone-900 text-white' : 'border border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}>
@@ -357,7 +359,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                     })}</tbody>
                                 </table>}</div>}
                     </section>
-                    <p className="text-xs text-stone-500">Left alone for now: deleted and DEBOARDED customers, names with no login, names that only look alike (e.g. DASHRATH and DASHRATH MALI), empty CP boxes and unused logins. Those come later.</p>
+                    <p className="text-xs text-stone-500">Left alone for now: a dealer written under an independent CP (may be the CP's own record), deleted and DEBOARDED customers, names with no login, names that only look alike (e.g. DASHRATH and DASHRATH MALI), empty CP boxes and unused logins. Those come later.</p>
                 </div>;
             })()}
 
