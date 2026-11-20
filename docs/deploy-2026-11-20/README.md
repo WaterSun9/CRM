@@ -1,22 +1,24 @@
-# Release 20 Nov 2026: the 14 Nov work
+# Release 20 Nov 2026: installation photos, geo tag check, reading photos
 
-Branch `release/nov20` = live `main` (4a51c06) + `claude/nov14-tata-install-photos-13fa44`.
-Installation photos (D-041, D-043, D-044), geo tag confirm (D-042), reading photos, OEM past data, OEM claims, Tata form.
+Branch `release/nov20` = live `main` + the 14 Nov work. **Switched off** for now (`src/featureFlags.js`):
+OEM past data (moving into the warranty page history) and OEM claims / Tata form (their SQL is not run).
+
+In this release: 17 named installation photos (#17 inverter serial required to leave Installation;
+D-041, D-043, D-044), geo tag photo shown big and confirmed before it saves and moves the stage
+(D-042), a photo for each of the 6 readings on a technician visit, and the activity-log lines.
 
 ## Order (important)
-1. Backup: check last night's "Daily Supabase Backup" run ended with `BACKUP COMPLETE`.
-2. SQL Editor: run `0-precheck-read-only.sql`. Expect 0 rows, 0 rows, all null / 0. If not, stop.
-3. SQL Editor: run `supabase/migrations/20261116130000_oem_past_data.sql` (new tables only; the live app is not affected).
-4. SQL Editor: run `supabase/migrations/20261116140000_oem_claims.sql` (new table + 4 new history event names; the live app is not affected).
-5. Deploy the frontend (`npm run deploy` from the release worktree).
-6. **Straight after the deploy**, SQL Editor: run `supabase/migrations/20261116120000_reading_photos.sql`.
-   Why last: once it runs, saving readings needs 6 photos. The old app has no photo boxes, so it must already be replaced. The new app works before and after this file.
-7. Smoke test: technician visit (6 reading photos, then Save readings), installation photos, geo tag confirm, OEM past data page, an OEM claim.
+1. Backup: GitHub, Actions, "Daily Supabase Backup": last night's run finished with `BACKUP COMPLETE`.
+2. SQL Editor (read-only, changes nothing): `0-precheck-read-only.sql`, first query only. Expect 0 rows.
+3. Deploy the frontend (`npm run deploy` from `.claude/worktrees/deploy-main` after `main` = `release/nov20`).
+4. **Straight after the deploy**, SQL Editor: run `supabase/migrations/20261116120000_reading_photos.sql`.
+   Why after: once it runs, Save readings needs 6 photos, and only the new app has the photo boxes.
+   The new app works before and after this file.
+5. Quick check: a technician visit shows a photo box per reading.
 
-Each file is one transaction with `set lock_timeout = '8s'`; safe to run again if it fails. "lock timeout" or "deadlock": nothing changed, wait a minute, run the same file again.
+Not in this release (do not run yet): `20261116130000_oem_past_data.sql`, `20261116140000_oem_claims.sql`.
 
 ## Known, not blocking (independent SQL review, 2026-11-20)
-- A visit still open with no readings saved will need the 6 photos after step 6.
-- A technician can delete a reading photo after the visit is closed, and cannot add it back (old remove rule). Fix later.
+- A visit still open with no readings saved will need the 6 photos after step 4.
+- A technician can delete a reading photo after the visit is closed, and cannot add it back. Fix later.
 - A double tap on the same reading photo can quietly keep only the first one. Fix later.
-- Partners (CP/CPO/dealer) do not see OEM past visits or OEM claims; office and technicians do. The SQL comments say otherwise **(uncertain whether partners should see them)**.
