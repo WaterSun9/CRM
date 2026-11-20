@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Camera, CheckCircle2 } from 'lucide-react';
 import { installPhotoStatus } from '../utils/installPhotos';
 import { CheckboxRemarkItem } from './modal-tabs/shared';
+import { PHOTO_SIZES, shrinkPhoto } from '../utils/photoShrink';
 
 // The 17 installation photos (client list, 2026-11-19), with a count (12/17) and the missing names.
 // Used on the customer card (Installation Status) and in the vendor portal (Installation tab).
@@ -24,33 +25,7 @@ import { CheckboxRemarkItem } from './modal-tabs/shared';
 //   onUpdateRemark  (docId, remark) => true when saved (Send Back, remarks, replaced copies)
 //   canDelete       office (admin / office staff): Change, Delete and Send Back
 
-// Phone photos are shrunk before upload (about 1600 px, WebP or JPEG) so they go up fast on site.
-const LONG_SIDE = 1600; // serial numbers and nut marks stay readable
-const QUALITY = 0.8;
-
-// Shrinks a phone photo before upload: about 1600 px on the long side, WebP where the phone
-// can make it, else JPEG. Anything that cannot be redrawn is sent as it is.
-async function shrinkPhoto(file) {
-    if (!file?.type?.startsWith('image/') || typeof createImageBitmap !== 'function') return file;
-    let bitmap;
-    try { bitmap = await createImageBitmap(file); } catch { return file; }
-    const scale = Math.min(1, LONG_SIDE / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const ctx = canvas.getContext('2d', { alpha: false });
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close?.();
-    const encode = type => new Promise(resolve => canvas.toBlob(resolve, type, QUALITY));
-    let blob = await encode('image/webp');
-    if (!blob || blob.type !== 'image/webp') blob = await encode('image/jpeg');
-    if (!blob || blob.size >= file.size) return file;
-    const base = String(file.name || 'photo').replace(/\.[^/.]+$/, '');
-    return new File([blob], `${base}${blob.type === 'image/webp' ? '.webp' : '.jpg'}`, { type: blob.type, lastModified: Date.now() });
-}
-
+// Phone photos are shrunk before upload (about 1280 px, src/utils/photoShrink.js) to keep storage low.
 export default function InstallationPhotos({ documents = [], canUpload = false, onUpload, onDelete, onPreview, onUpdateRemark, canDelete = false, className = '' }) {
     const status = useMemo(() => installPhotoStatus(documents), [documents]);
     const [lastSaved, setLastSaved] = useState('');
@@ -65,7 +40,7 @@ export default function InstallationPhotos({ documents = [], canUpload = false, 
     const upload = async (event, docType, replacingDocId) => {
         const file = event?.target?.files?.[0];
         if (!file || !onUpload) return false;
-        const small = await shrinkPhoto(file);
+        const small = await shrinkPhoto(file, PHOTO_SIZES.installation);
         return onUpload({ target: { files: [small], value: '' } }, docType, replacingDocId);
     };
     const allDone = status.done === status.total;

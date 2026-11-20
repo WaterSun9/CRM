@@ -5,6 +5,7 @@ import { supabase } from '../../supabase';
 import { useGlobalPopup } from '../GlobalPopup';
 import CropPhotoModal from '../CropPhotoModal';
 import GeoTagConfirm, { GEO_TAG_QUESTION } from '../GeoTagConfirm';
+import { PHOTO_SIZES, shrinkPhoto } from '../../utils/photoShrink';
 
 // ─── Vendor name list (process-wide cache) ────────────────────────────────────
 // InstallationStatusTab and MaterialDeliveryTab each fetched this on mount with
@@ -554,7 +555,9 @@ export function CheckboxRemarkItem({ label, field, value, onChange, isEditing, d
     };
 
     // Returns true when the file was stored.
-    const uploadPicked = async (file) => {
+    const uploadPicked = async (picked) => {
+        // The geo tag photo is made small before upload too (about 1600 px; low storage, 2026-11-20).
+        const file = field === 'geo_tag_image' ? await shrinkPhoto(picked, PHOTO_SIZES.geo) : picked;
         const wrappedEvent = { target: { files: [file], value: '' } };
         const replacingDoc = fieldDocs.find(d => d.id === replacingDocId);
         // The admin uploader handles its own replacement after a successful upload.

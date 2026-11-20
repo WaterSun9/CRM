@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, ChevronLeft, ImagePlus, X } from 'lucide-react';
+import { PHOTO_SIZES, shrinkPhoto } from '../../utils/photoShrink';
 import { supabase } from '../../supabase';
 import { compressImage } from '../../utils';
 import {
     PHOTO_KINDS, PHOTO_KIND_LABELS, PHOTO_LIMIT, SITE_PHOTO_LABELS, PHOTO_LONG_SIDE, PHOTO_MAX_BYTES,
-    READING_PHOTO_LONG_SIDE, READING_PHOTO_QUALITY,
     canDeletePhoto, canUploadPhotos, formatDateTime, groupIssueFiles, isPhotoType, missingTable,
     photoCounts, photoError, photoPath, pickPhotos, plainError
 } from './serviceLabels';
@@ -28,38 +28,20 @@ export async function signedLinks(paths) {
     return Object.fromEntries(paths.map(path => [path, links.get(path)?.url || '']));
 }
 
-// Shrinks a phone photo (about 1600 px, JPEG) before it is sent.
-async function shrink(file) {
-    const small = await compressImage(file, { maxWidth: PHOTO_LONG_SIDE, maxHeight: PHOTO_LONG_SIDE, quality: 0.8 });
+// Shrinks a phone photo before it is sent (2026-11-20: low storage, src/utils/photoShrink.js):
+// Before / After / site photos about 1024 px, reading photos about 800 px. Falls back to the
+// older JPEG shrink on phones that cannot redraw the photo.
+async function shrink(file, size = PHOTO_SIZES.technician) {
+    let small = await shrinkPhoto(file, size);
+    if (small === file && file.size > 300 * 1024) small = await compressImage(file, { maxWidth: PHOTO_LONG_SIDE, maxHeight: PHOTO_LONG_SIDE, quality: 0.7 });
     if (!isPhotoType(small?.type)) throw plainError('Only JPG, PNG or WebP photos can be added. Use Take photo instead.');
     if (small.size > PHOTO_MAX_BYTES) throw plainError('The photo is too large.');
     return small;
 }
-
-// Reading photo: as small as a meter can still be read. Always redrawn at about
-// 800 px; WebP where the phone can make it (smaller), else JPEG.
-async function shrinkTiny(file) {
+const shrinkTiny = file => {
     if (!file?.type?.startsWith('image/')) throw plainError('Only photos can be added. Use Take photo.');
-    let bitmap;
-    try {
-        bitmap = await createImageBitmap(file);
-    } catch {
-        // Older phones: fall back to the normal shrink.
-        return shrink(file);
-    }
-    const scale = Math.min(1, READING_PHOTO_LONG_SIDE / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    canvas.getContext('2d', { alpha: false }).drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close?.();
-    const encode = type => new Promise(resolve => canvas.toBlob(resolve, type, READING_PHOTO_QUALITY));
-    let blob = await encode('image/webp');
-    if (!blob || blob.type !== 'image/webp') blob = await encode('image/jpeg');
-    if (!blob || !isPhotoType(blob.type)) return shrink(file);
-    const name = String(file.name || 'reading').replace(/\.[^/.]+$/, '') + (blob.type === 'image/webp' ? '.webp' : '.jpg');
-    return new File([blob], name, { type: blob.type, lastModified: Date.now() });
-}
+    return shrink(file, PHOTO_SIZES.reading);
+};
 
 // One reading photo for one visit; a retake replaces the old one.
 export async function saveReadingPhoto({ issueId, userId, tripId, key, file, old }) {

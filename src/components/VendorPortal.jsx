@@ -12,6 +12,7 @@ import { STAGE_IDS, PRIMARY_STAGES, INSTALLATION_TAGS, VENDOR_LIST_COLUMNS, isFi
 import InstallationPhotos from './InstallationPhotos';
 import { INSTALL_PHOTO_LABELS, requiredInstallPhotoProblems } from '../utils/installPhotos';
 import { CheckboxRemarkItem } from './modal-tabs/shared';
+import { PHOTO_SIZES, shrinkPhoto } from '../utils/photoShrink';
 import { useGlobalPopup } from './GlobalPopup';
 import BrandMark from './BrandMark';
 import AvailabilityCalendar from './AvailabilityCalendar';
@@ -357,7 +358,8 @@ export default function VendorPortal({ user, onLogout, onOpenDevSwitcher }) {
 
     // Upload geo tag photo handler
     const handlePhotoUpload = async (e) => {
-        const file = e.target.files?.[0];
+        // Made small before upload (about 1600 px; low storage, 2026-11-20).
+        const file = await shrinkPhoto(e.target.files?.[0], PHOTO_SIZES.geo);
         if (!file || !selectedCust) return;
 
         setUploadingPhoto(true);
