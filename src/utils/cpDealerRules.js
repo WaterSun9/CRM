@@ -192,6 +192,8 @@ export function checkCards(cards, profiles) {
         };
         if (f.rule === 'cp_as_dealer') {
             const same = nameKey(cp) === nameKey(f.cpName);
+            // The CP also written as their own dealer: left alone (D-048, 2026-11-20); same person, no harm.
+            if (same) continue;
             pair(same ? `CP ${f.cpName} is also written as their own dealer`
                 : `CP ${f.cpName} is written as a dealer under ${cpKind} ${cp}`,
             same ? `${f.cpName} has a CP login. A CP is never a dealer, so the Dealer box should be empty.`

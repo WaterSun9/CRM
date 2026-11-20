@@ -127,3 +127,8 @@ test('spelling follows the login exactly as stored, double spaces included', () 
     const row = checkCards([single], logins).spelling[0];
     assert.deepEqual(changesFor(row, single), { sub_channel_partner: 'RAMESH  SOLANKI' });
 });
+
+test('a CP also written as their own dealer is left alone (D-048)', () => {
+    const c = card('KISHORBHAI', 'KISHORBHAI');
+    assert.equal(checkCards([c], profiles).cp_as_dealer.length, 0);
+});
