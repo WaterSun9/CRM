@@ -16,4 +16,4 @@ select to_regclass('public.oem_past_records') as oem_past_records,
        (select count(*) from information_schema.columns
          where table_schema='public' and table_name='service_issue_files' and column_name='trip_id') as trip_col,
        (select count(*) from pg_proc
-         where proname in ('service_customer_oem_past','service_oem_ticket','oem_past_stamp','service_oem_claim_stamp')) as funcs;
+         where proname in ('service_customer_oem_past','service_oem_ticket','service_oem_form','oem_past_stamp','service_oem_claim_stamp')) as funcs;
