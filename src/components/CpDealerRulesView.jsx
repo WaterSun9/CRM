@@ -75,26 +75,56 @@ const addedOn = card => {
     return day === SHEET_IMPORT_DAY ? 'From the sheet (1 Sep)' : `Added in the CRM, ${new Date(card.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}`;
 };
 
-// Every customer of a line: who they are, where the card came from, and what its CP and
-// Dealer boxes are now and become under the line's choice.
-function CustomerList({ row, choice, onSelectCustomer }) {
-    return <ul className="mt-2 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white">{row.cards.map(c => {
+// Every customer of a line, full width: who they are, where the card came from, and what
+// its CP and Dealer boxes are now and become under the line's choice.
+function CustomerTable({ row, choice, onSelectCustomer }) {
+    return <ul className="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200 bg-white">{row.cards.map(c => {
         const after = changesFor(row, c, choice);
-        const name = String(c.customer_name ?? '').trim() || '(no name on the card)';
-        return <li key={c.id} className="space-y-1 p-2 text-[11px]">
-            <div className="flex flex-wrap items-baseline gap-x-2">
-                {c.folder_no && <span className="font-mono text-stone-500">#{c.folder_no}</span>}
-                {onSelectCustomer ? <button type="button" onClick={() => onSelectCustomer(c)} className="text-left font-bold text-stone-900 underline-offset-2 hover:underline">{name}</button>
-                    : <span className="font-bold text-stone-900">{name}</span>}
-                {c.stage && <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-semibold text-stone-600">{c.stage}</span>}
-                {addedOn(c) && <span className="text-[10px] text-stone-400">{addedOn(c)}</span>}
+        const name = String(c.customer_name ?? '').trim();
+        return <li key={c.id} className="space-y-2 px-4 py-3">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                {c.folder_no && <span className="font-mono text-sm text-stone-500">#{c.folder_no}</span>}
+                {!name ? <span className="text-sm italic text-stone-400">No name on the card</span>
+                    : onSelectCustomer ? <button type="button" onClick={() => onSelectCustomer(c)} className="text-left text-sm font-bold text-stone-900 underline-offset-2 hover:underline">{name}</button>
+                        : <span className="text-sm font-bold text-stone-900">{name}</span>}
+                {c.stage && <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-600">{c.stage}</span>}
+                {addedOn(c) && <span className="text-xs text-stone-500">{addedOn(c)}</span>}
             </div>
-            <div className="grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-0.5">
-                <span className="font-bold uppercase tracking-wider text-stone-400">CP</span><Change from={c.channel_partner} to={after.channel_partner} />
-                <span className="font-bold uppercase tracking-wider text-stone-400">Dealer</span><Change from={c.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} />
+            <div className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                <div><span className="mr-2 text-[11px] font-bold uppercase tracking-wider text-stone-400">CP</span><Change from={c.channel_partner} to={after.channel_partner} /></div>
+                <div><span className="mr-2 text-[11px] font-bold uppercase tracking-wider text-stone-400">Dealer</span><Change from={c.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} /></div>
             </div>
         </li>;
     })}</ul>;
+}
+
+// One line of a grouped tab: what we found in plain words, its choice, then its customers.
+function LineCard({ row, choice, setChoice, expanded, toggle, onSelectCustomer }) {
+    const first = row.cards[0];
+    const after = changesFor(row, first, choice);
+    const n = row.cards.length;
+    return <article className={`rounded-2xl border p-4 sm:p-5 ${choice === NO_CHANGE ? 'border-stone-200 bg-white' : 'border-emerald-200 bg-emerald-50/40'}`}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <div className="min-w-0 flex-1 space-y-1.5">
+                <h3 className="text-base font-bold leading-snug text-stone-900">{row.title}</h3>
+                {row.detail && <p className="text-sm leading-relaxed text-stone-600">{row.detail}</p>}
+                {cardsSource(row.cards) && <p className="text-sm font-semibold text-stone-700">{cardsSource(row.cards)}</p>}
+            </div>
+            <label className="w-full shrink-0 text-[11px] font-bold uppercase tracking-wider text-stone-500 lg:w-80">What to do with all {n} customer{n === 1 ? '' : 's'}
+                <select value={choice} onChange={e => setChoice(e.target.value)} aria-label={`Choice for ${row.title}`}
+                    className="mt-1 min-h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-300">
+                    {row.options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select></label>
+        </div>
+        <div className="mt-4 grid gap-2 rounded-xl bg-stone-50 p-3 text-sm sm:grid-cols-2">
+            <div><span className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">CP box</span><Change from={first.channel_partner} to={after.channel_partner} /></div>
+            <div><span className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">Dealer box</span><Change from={first.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} /></div>
+        </div>
+        <button type="button" onClick={toggle} aria-expanded={expanded}
+            className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-700 hover:bg-stone-50">
+            {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />} {expanded ? 'Hide' : 'Show'} the {n} customer{n === 1 ? '' : 's'}</button>
+        {expanded && <div className="mt-3"><CustomerTable row={row} choice={choice} onSelectCustomer={onSelectCustomer} /></div>}
+    </article>;
 }
 
 const selectClass = 'min-h-10 w-full rounded-lg border border-stone-300 bg-white px-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-300';
@@ -257,18 +287,21 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                     })}</div>
 
                     <section role="tabpanel" aria-label={current.title} className="rounded-2xl border border-stone-200 bg-white">
-                        <div className="flex flex-wrap items-end gap-3 border-b border-stone-100 p-4">
-                            <div className="min-w-0 flex-1">
-                                <h2 className="text-base font-bold text-stone-900">{current.title}</h2>
-                                <p className="text-xs text-stone-500">{current.rule}</p>
+                        <div className="space-y-3 border-b border-stone-100 p-4 sm:p-5">
+                            <div>
+                                <h2 className="text-lg font-bold text-stone-900">{current.title}</h2>
+                                <p className="mt-1 max-w-3xl text-sm leading-relaxed text-stone-600">{current.rule}</p>
                             </div>
-                            {rows.length > 0 && SET_ALL[current.id].length > 1 && <label className="w-60 text-[10px] font-bold uppercase tracking-wider text-stone-500">Set all to
+                            {rows.length > 0 && SET_ALL[current.id].length > 1 && <label className="block w-full max-w-sm text-[11px] font-bold uppercase tracking-wider text-stone-500">Set every line to
                                 <select value="" onChange={e => e.target.value && setAll(current.id, e.target.value)} className={`${selectClass} mt-1 normal-case tracking-normal`}>
                                     <option value="">Choose…</option>
                                     {SET_ALL[current.id].map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                                 </select></label>}
                         </div>
                         {!rows.length ? <p className="flex items-center gap-2 p-6 text-sm font-semibold text-emerald-700"><CheckCircle2 size={18} /> Nothing to fix here.</p>
+                            : current.grouped ? <div className="space-y-4 bg-stone-50/60 p-3 sm:p-4">{rows.map(row => <LineCard key={row.id} row={row} choice={choiceOf(row)}
+                                setChoice={value => setChoices(cur => ({ ...cur, [row.id]: value }))} expanded={Boolean(openRow[row.id])}
+                                toggle={() => setOpenRow(cur => ({ ...cur, [row.id]: !cur[row.id] }))} onSelectCustomer={onSelectCustomer} />)}</div>
                             : <div className="max-h-[60vh] overflow-auto">{current.id === 'unused_login'
                                 ? <table className="w-full text-left text-xs">
                                     <thead className="sticky top-0 z-10 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-500"><tr>
@@ -309,7 +342,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                                         </span>
                                                         <button type="button" onClick={() => setOpenRow(cur => ({ ...cur, [row.id]: !expanded }))} className="text-[11px] font-semibold text-stone-500 underline-offset-2 hover:underline">
                                                             {expanded ? 'Hide' : 'Show'} the {row.cards.length} customer{row.cards.length === 1 ? '' : 's'} {expanded ? '▲' : '▼'}</button>
-                                                        {expanded && <CustomerList row={row} choice={choice} onSelectCustomer={onSelectCustomer} />}</>
+                                                        {expanded && <CustomerTable row={row} choice={choice} onSelectCustomer={onSelectCustomer} />}</>
                                                     : <>{onSelectCustomer ? <button type="button" onClick={() => onSelectCustomer(first)} className="text-left font-semibold text-stone-900 underline-offset-2 hover:underline">{first.customer_name}</button> : <span className="font-semibold">{first.customer_name}</span>}
                                                         <span className="block text-[10px] text-stone-400">{[first.folder_no, first.stage].filter(Boolean).join(' · ')}</span></>}
                                             </td>
