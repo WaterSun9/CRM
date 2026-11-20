@@ -68,6 +68,9 @@ export const Page1: React.FC<Page1Props> = ({
               </div>
             </div>
             {(page1 as any).address && <p className="mt-1 text-[11px] break-words">{(page1 as any).address}</p>}
+            {/* Client email (Sandeep, 2026-11-20). It sat inside the old contact block below, which was
+                commented out in the 4 Oct release, so quotes stopped printing it. */}
+            {(page1 as any).email && <p className="q-customer-email text-[11px] break-all">{(page1 as any).email}</p>}
             {/*
             <div className="mt-1 text-left" style={{ whiteSpace: 'nowrap' }}>
               <table
