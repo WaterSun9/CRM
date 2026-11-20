@@ -110,3 +110,11 @@ test('customers with the same CP and dealer are one line, one choice for all', (
     assert.equal(rows[0].cards.length, 2);
     assert.match(rows[0].title, /KISHORBHAI is written as a dealer under CPO SUN ENERGY/);
 });
+
+test('cardsSource says whether cards came from the 1 Sep sheet or the CRM', async () => {
+    const { cardsSource } = await import('../src/utils/cpDealerRules.js');
+    assert.equal(cardsSource([{ created_at: '2026-09-01T06:00:00Z' }, { created_at: '2026-09-01T07:00:00Z' }]), "All 2 cards came from the client's sheet (imported 1 Sep 2026).");
+    assert.equal(cardsSource([{ created_at: '2026-10-20T06:00:00Z' }]), 'This card was added in the CRM (Oct 2026).');
+    assert.equal(cardsSource([{ created_at: '2026-09-01T06:00:00Z' }, { created_at: '2026-10-20T06:00:00Z' }, { created_at: '2026-11-02T06:00:00Z' }]), "1 card from the client's sheet (1 Sep 2026), 2 added in the CRM (Oct 2026 to Nov 2026).");
+    assert.equal(cardsSource([{}]), '');
+});

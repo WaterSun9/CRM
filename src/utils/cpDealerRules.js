@@ -37,6 +37,22 @@ export function spellingDifference(from, to) {
     return words.join(', ');
 }
 
+// Where a line's cards came from, in words. The client's sheet was imported on 1 Sep 2026
+// (D-006); cards added after that were typed in the CRM (2026-11-20: "say from sheet").
+export const SHEET_IMPORT_DAY = '2026-09-01';
+const istDay = iso => (iso ? new Date(new Date(iso).getTime() + 330 * 60000).toISOString().slice(0, 10) : '');
+const monthName = day => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+export function cardsSource(cards) {
+    const days = (cards || []).map(c => istDay(c.created_at)).filter(Boolean);
+    if (!days.length) return '';
+    const sheet = days.filter(d => d === SHEET_IMPORT_DAY).length, later = days.length - sheet;
+    const laterDays = days.filter(d => d !== SHEET_IMPORT_DAY).sort();
+    const span = laterDays.length ? (monthName(laterDays[0]) === monthName(laterDays.at(-1)) ? monthName(laterDays[0]) : `${monthName(laterDays[0])} to ${monthName(laterDays.at(-1))}`) : '';
+    if (!later) return sheet === 1 ? 'This card came from the client\'s sheet (imported 1 Sep 2026).' : `All ${sheet} cards came from the client's sheet (imported 1 Sep 2026).`;
+    if (!sheet) return `${later === 1 ? 'This card was' : `All ${later} cards were`} added in the CRM (${span}).`;
+    return `${sheet} card${sheet === 1 ? '' : 's'} from the client's sheet (1 Sep 2026), ${later} added in the CRM (${span}).`;
+}
+
 export const DEBOARDED = 'DEBOARDED';
 export const NO_CHANGE = 'none';
 
@@ -188,8 +204,8 @@ export function checkCards(cards, profiles) {
             const options = [option('empty', `Different people: stay with ${cp}, empty dealer`, { sub_channel_partner: null })];
             if (f.otherBranch) options.push(option('move', `Same person: move to CPO ${f.otherBranch}, keep dealer ${f.otherDealer}`, { channel_partner: f.otherBranch, sub_channel_partner: f.otherDealer }));
             options.push(noChange());
-            pair(`CPO ${cp} has dealer ${dealer}, but ${f.otherBranch ? `CPO ${f.otherBranch}` : 'another CPO'} has a dealer login with this name`,
-                `Is ${dealer} under ${cp} the same person as ${f.otherDealer}${f.otherBranch ? ` under ${f.otherBranch}` : ''}? ${dealer} has no dealer login under ${cp}.`,
+            pair(`Cards say CPO ${cp}, dealer ${dealer}. There is no ${dealer} login under ${cp}; the only ${f.otherDealer} login is a dealer under ${f.otherBranch ? `CPO ${f.otherBranch}` : 'another CPO'}`,
+                `Same name under two CPOs. Is the ${dealer} on ${cp}'s cards the same person as the ${f.otherDealer} login under ${f.otherBranch || 'the other CPO'}?`,
                 options, 'empty');
         } else if (f.rule === 'spelling') {
             // Words, not the two names side by side: a double space looks the same on screen.

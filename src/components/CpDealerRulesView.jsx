@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, Download, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { supabase } from '../supabase';
 import { logActivity, logFieldChanges, updateAdminRecord } from '../utils';
-import { NO_CHANGE, RULES, changesFor, checkCards, spellingDifference, unusedLogins } from '../utils/cpDealerRules';
+import { NO_CHANGE, RULES, cardsSource, changesFor, checkCards, spellingDifference, unusedLogins } from '../utils/cpDealerRules';
 
 // CP / dealer rules (admin only, D-039). Checks every live customer card against the client's
 // CP / CPO / dealer rules (src/utils/cpDealerRules.js) and the current logins. Each finding is a
@@ -11,7 +11,7 @@ import { NO_CHANGE, RULES, changesFor, checkCards, spellingDifference, unusedLog
 // end applies every choice. Each card is re-read just before saving and skipped if its CP or
 // Dealer changed since the check; every change goes into the customer's log.
 
-const COLUMNS = 'id, customer_name, folder_no, stage, channel_partner, sub_channel_partner, deleted_at';
+const COLUMNS = 'id, customer_name, folder_no, stage, channel_partner, sub_channel_partner, deleted_at, created_at';
 const shown = value => (value == null || String(value).trim() === '' ? '(empty)' : value);
 const csvCell = value => { const s = value == null ? '' : String(value); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const day = iso => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '');
@@ -260,6 +260,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                                 {current.grouped
                                                     ? <><span className="block font-bold text-stone-900">{row.title}</span>
                                                         {row.detail && <span className="mt-0.5 block text-[11px] leading-snug text-stone-500">{row.detail}</span>}
+                                                        {cardsSource(row.cards) && <span className="mt-0.5 block text-[11px] font-semibold leading-snug text-stone-600">{cardsSource(row.cards)}</span>}
                                                         <span className="mt-1.5 grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-0.5 text-[11px]">
                                                             <span className="font-bold uppercase tracking-wider text-stone-400">CP</span><Change from={first.channel_partner} to={after.channel_partner} />
                                                             <span className="font-bold uppercase tracking-wider text-stone-400">Dealer</span><Change from={first.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} />
