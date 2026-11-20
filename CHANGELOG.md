@@ -4,6 +4,15 @@ A dated history of changes to this project and of events with the client. The ne
 
 Entries before 2026-11-16 were reconstructed on that date from the git history (about 470 commits across all branches, 8 Aug to 16 Nov 2026), past Claude Code and Codex chats, and `docs/`. They summarise by week, not commit by commit. Use `git log` for detail.
 
+## 2026-11-20
+- Tata claim easy fill screen (D-045), on `claude/nov14-tata-install-photos-13fa44`, not deployed:
+  - "Fill Tata form" on a Tata claim (office and the technician on the job) shows every box of Tata's Field Service Report as a plain field, started from the CRM, with the missing ones marked "Missing, fill in" and a count ("14 of 22 boxes filled").
+  - The 6 readings are a table with their meter photos; missing readings or photos are added right there.
+  - Save keeps the values on the claim.
+  - Last step: Download / Share. The PDF is Tata's page from the saved values, then the readings table with the 6 photos, then the other photos.
+  - **SQL change**: `20261116140000_oem_claims.sql` gains `service_oem_claims.form_values` and the function `service_oem_form`. The file is still not run.
+  - Demo complaint #1008 (`complaints-demo.html?view=technician&page=jobs&job=i-8`). Screenshots in `docs/client-requests-2026-11-14/tata-oem-form/easy-fill/`, sample `tata-oem-form/sample-tata-easy-fill-report.pdf` (fake data).
+
 ## 2026-11-19
 - `claude/nov14-tata-install-photos-13fa44` (from `feat/client-nov14` 85be0ed), not deployed, **no new SQL**:
   - Saved the client's files: `docs/client-requests-2026-11-14/installation-photos.md` (the 17 names as written, Gujarati included) and the blank Tata form in `docs/client-requests-2026-11-14/tata-oem-form/` (also `src/assets/tata-field-service-report.pdf` for the app).

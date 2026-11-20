@@ -7,11 +7,16 @@
 // print "N/A" there is still open), array short circuit current, loads, customer's remarks and
 // both signatures.
 //
+// D-045 (2026-11-20): before the PDF, the technician (or office) checks every box on an easy
+// fill screen (TataClaimForm.jsx): the values below are only the starting point, every box can
+// be edited, and the boxes the CRM cannot fill are typed in. The edited values are saved on the
+// claim (service_oem_claims.form_values) and win over the starting values (mergeTataForm).
+//
 // Pure: no database and no browser APIs, so it runs in Node for tests and the sample PDF.
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 // Same keys and names as READING_GROUPS in SiteVisitForm.jsx (volts).
-const READINGS = [
+export const READINGS = [
     ['AC', [['ac_pn', 'P-N'], ['ac_pe', 'P-E'], ['ac_ne', 'N-E']]],
     ['DC', [['dc_pm', '+/-'], ['dc_pe', '+/E'], ['dc_me', '-/E']]],
 ];
@@ -81,8 +86,102 @@ export function tataReportValues({ issue = {}, claim = {}, card = null, visit = 
         fieldObservations: observations,
         actionTaken: action,
         customerRemarks: '',
+        // General checks we do not keep: typed on the easy fill screen.
+        noOfLoads: '',
+        typeOfLoad: '',
+        arrayOcv: '',
+        arrayScc: '',
+        totalLoad: '',
         technicianName: technicianName || '',
     };
+}
+
+// Every box of Tata's form, in the form's order, for the easy fill screen (D-045).
+// type: text | number (number keyboard) | long (several lines). The battery section is not
+// here: an on-grid rooftop system has no battery and those boxes stay blank (still open).
+export const TATA_FIELDS = [
+    { key: 'dateOfVisit', label: 'Date of visit', hint: 'dd/mm/yyyy' },
+    { key: 'customerName', label: "Customer's name" },
+    { key: 'customerContact', label: 'Customer phone / consumer no.' },
+    { key: 'customerAddress', label: 'Customer address' },
+    { key: 'natureOfComplaint', label: 'Nature of complaint', type: 'long' },
+    { key: 'product', label: 'Product' },
+    { key: 'salesOrderNo', label: 'Sales order no.' },
+    { key: 'typeOfSystem', label: 'Type of system' },
+    { key: 'capacity', label: 'Capacity' },
+    { key: 'dateOfInstallation', label: 'Date of installation', hint: 'dd/mm/yyyy' },
+    { key: 'operatingVoltage', label: 'Operating voltage (VDC)', type: 'number' },
+    { key: 'moduleType', label: 'Module type' },
+    { key: 'moduleSerialNo', label: 'Module Sl. No.' },
+    { key: 'noOfLoads', label: 'No. of loads', type: 'number', section: 'General checks' },
+    { key: 'typeOfLoad', label: 'Type of load used', section: 'General checks' },
+    { key: 'arrayOcv', label: 'Array open circuit voltage (VDC)', type: 'number', section: 'General checks' },
+    { key: 'arrayScc', label: 'Array short circuit current (ADC)', type: 'number', section: 'General checks' },
+    { key: 'totalLoad', label: 'Total load in wattage (W)', type: 'number', section: 'General checks' },
+    { key: 'fieldObservations', label: 'Field observations and remarks', type: 'long', section: 'Report' },
+    { key: 'actionTaken', label: 'Action taken by CSPT representative', type: 'long', section: 'Report' },
+    { key: 'customerRemarks', label: "Customer's remarks", type: 'long', section: 'Report' },
+    { key: 'technicianName', label: 'Technician name (signature box)', section: 'Report' },
+];
+export const READING_KEYS = READINGS.flatMap(([, fields]) => fields.map(([key]) => key));
+export const READING_LABELS = Object.fromEntries(READINGS.flatMap(([group, fields]) => fields.map(([key, name]) => [key, `${group} ${name}`])));
+
+const text = value => (value === null || value === undefined ? '' : String(value));
+const own = (object, key) => Boolean(object) && Object.prototype.hasOwnProperty.call(object, key);
+
+// The readings the screen starts from: the saved ones, else the latest visit's.
+// { readings: { ac_pn: '232', ... }, floating: 'Yes' | 'No' | '' }
+export function startingReadings(visit = null, saved = null) {
+    const fromVisit = visit?.readings || {};
+    const readings = {};
+    for (const key of READING_KEYS) readings[key] = own(saved?.readings, key) ? text(saved.readings[key]) : text(fromVisit[key]);
+    const visitFloat = visit?.readings ? (fromVisit.floating ? 'Yes' : 'No') : '';
+    const floating = own(saved, 'floating') ? text(saved.floating) : visitFloat;
+    return { readings, floating };
+}
+
+// Everything the screen and the PDF use: the CRM values with the saved edits on top.
+// saved = claim.form_values ({ fields, readings, floating }) or null.
+// Returns { fields, readings, floating, auto } (auto = which fields still hold the CRM value).
+export function mergeTataForm({ issue = {}, claim = {}, card = null, visit = null, technicianName = '', saved = null }) {
+    const { readings, floating } = startingReadings(visit, saved);
+    // The starting text (observations, operating voltage) uses the readings as they now stand.
+    const readingsForText = READING_KEYS.some(key => has(readings[key]))
+        ? { ...Object.fromEntries(READING_KEYS.map(key => [key, has(readings[key]) ? readings[key] : null])), floating: floating === 'Yes' }
+        : null;
+    const start = tataReportValues({ issue, claim, card, visit: readingsForText ? { ...(visit || {}), readings: readingsForText } : visit, technicianName });
+    const fields = {};
+    const auto = {};
+    for (const { key } of TATA_FIELDS) {
+        if (own(saved?.fields, key)) { fields[key] = text(saved.fields[key]); auto[key] = false; } else { fields[key] = text(start[key]); auto[key] = has(start[key]); }
+    }
+    return { fields, readings, floating, auto, heading: start.heading };
+}
+
+// How much is filled: { filled, total, missing: [keys], readings, readingsTotal }.
+export function tataFormProgress({ fields = {}, readings = {} } = {}) {
+    const missing = TATA_FIELDS.filter(({ key }) => !has(fields[key])).map(({ key }) => key);
+    return {
+        filled: TATA_FIELDS.length - missing.length, total: TATA_FIELDS.length, missing,
+        readings: READING_KEYS.filter(key => has(readings[key])).length, readingsTotal: READING_KEYS.length,
+    };
+}
+
+// What is stored on the claim (form_values): only the values, trimmed.
+export function tataFormToSave({ fields = {}, readings = {}, floating = '' }, savedByName = '') {
+    const clip = (value, max) => text(value).trim().slice(0, max);
+    return {
+        fields: Object.fromEntries(TATA_FIELDS.map(({ key, type }) => [key, clip(fields[key], type === 'long' ? 1500 : 200)])),
+        readings: Object.fromEntries(READING_KEYS.map(key => [key, clip(readings[key], 20)])),
+        floating: ['Yes', 'No'].includes(floating) ? floating : '',
+        saved_at: new Date().toISOString(),
+        ...(savedByName ? { saved_by_name: clip(savedByName, 80) } : {}),
+    };
+}
+
+// The values Tata's page is printed from (fillTataReport), from a merged form.
+export function tataPrintValues(form) {
+    return { ...form.fields, heading: form.heading || '' };
 }
 
 // Where each value goes on the A4 page (points from the bottom-left), measured from the
@@ -101,6 +200,13 @@ const SPOTS = {
     operatingVoltage: { x: RIGHT_VALUE + 8, y: 704.1, maxWidth: 55 },
     moduleType: { x: RIGHT_VALUE, y: 693.4, maxWidth: BOX_RIGHT - RIGHT_VALUE },
     moduleSerialNo: { x: RIGHT_VALUE, y: 682.6, maxWidth: BOX_RIGHT - RIGHT_VALUE },
+    // General checks: the value column runs from about 313 to 543; OCV and SCC stop before
+    // the printed VDC / ADC (about x 369).
+    noOfLoads: { x: 318, y: 529.6, maxWidth: 220 },
+    typeOfLoad: { x: 318, y: 515.3, maxWidth: 220 },
+    arrayOcv: { x: 318, y: 501.0, maxWidth: 46 },
+    arrayScc: { x: 318, y: 486.7, maxWidth: 46 },
+    totalLoad: { x: 318, y: 458.1, maxWidth: 220 },
 };
 // Multi-line boxes: first line, line gap, number of lines, width.
 const BOXES = {

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, FileDown, PackageCheck, Send, Share2, Trash2 } from 'lucide-react';
+import { Check, ClipboardList, FileDown, PackageCheck, Send, Share2, Trash2 } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { useGlobalPopup } from '../GlobalPopup';
 import { canShareFiles, downloadOemClaimPdf, isTataClaim, shareOemClaimPdf } from './oemClaimPdf';
 import { OEM_NAMES } from './OemPastRecords';
+import TataClaimForm from './TataClaimForm';
+import { mergeTataForm, tataFormProgress } from './tataServiceReport';
 
 // OEM replacement claims on one complaint (client meeting 2026-11-14, D-033, D-038). For Tata
 // (form from Sandeep, 2026-11-19) the PDF starts with Tata's own Field Service Report, filled in;
@@ -12,9 +14,12 @@ import { OEM_NAMES } from './OemPastRecords';
 //   4 New part received -> the technician fixes it on the second visit.
 // Office (admin, sales) does every step; the technician on the open job sees the claim and can
 // type the OEM ticket no. Table public.service_oem_claims (20261116140000).
+// Tata (D-045, 2026-11-20): "Fill Tata form" opens the easy fill screen (TataClaimForm.jsx) for the
+// office and the technician on the job: every box of Tata's form, the 6 readings with photos,
+// then the PDF. The values are saved on the claim (form_values).
 
 const PARTS = ['Inverter', 'Panel', 'Other'];
-const COLUMNS = 'id, oem, part, faulty_serial, notes, pdf_sent_at, ticket_no, ticket_at, part_received_at, created_by_name, created_at';
+const COLUMNS = 'id, oem, part, faulty_serial, notes, pdf_sent_at, ticket_no, ticket_at, part_received_at, form_values, created_by_name, created_at';
 const when = iso => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }) : '');
 const missing = error => ['42P01', 'PGRST205', 'PGRST202', '42883'].includes(error?.code) || /does not exist|could not find/i.test(error?.message || '');
 const input = 'min-h-11 w-full rounded-xl border border-stone-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300';
@@ -53,7 +58,7 @@ function StartForm({ issue, busy, onSave, onCancel }) {
         <label className="block"><span className={label}>What is wrong (goes in the PDF)</span>
             <textarea rows={2} maxLength={500} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="e.g. Inverter shows error 117, no output"
                 className="w-full rounded-xl border border-stone-200 bg-white p-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" /></label>
-        {isTataClaim(form) && <p className="rounded-lg bg-amber-100 p-2 text-xs font-semibold text-amber-900">Tata: the PDF is Tata's Field Service Report, filled in from this complaint and the customer card. Boxes we do not keep (sales order no., battery checks, customer's remarks) and both signatures are left blank to fill by hand.</p>}
+        {isTataClaim(form) && <p className="rounded-lg bg-amber-100 p-2 text-xs font-semibold text-amber-900">Tata: after starting, press "Fill Tata form". Every box of Tata's Field Service Report is filled from this complaint, the customer card and the latest visit; check them, type the missing ones (sales order no., loads, array readings, customer's remarks) and the 6 readings with photos, then make the PDF. Battery boxes and both signatures stay blank.</p>}
         <div className="flex gap-2">
             <button disabled={busy || !form.oem.trim()} className="min-h-11 flex-1 rounded-xl bg-stone-900 px-4 text-sm font-bold text-white disabled:opacity-40">Start OEM claim</button>
             <button type="button" onClick={onCancel} className="min-h-11 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-600">Cancel</button>
@@ -79,12 +84,20 @@ function Steps({ claim }) {
     </li>)}</ol>;
 }
 
-export default function OemClaims({ issue, office = false, technicianOnJob = false, technicianName = '', busy, run }) {
+// "14 of 22 filled" for a saved Tata form, from the saved values only (no database read).
+const savedProgress = (issue, claim) => {
+    if (!claim.form_values) return '';
+    const { filled, total } = tataFormProgress(mergeTataForm({ issue, claim, saved: claim.form_values }));
+    return `${filled} of ${total} filled`;
+};
+
+export default function OemClaims({ issue, office = false, technicianOnJob = false, technicianName = '', userId = null, userName = '', busy, run }) {
     const { showConfirm } = useGlobalPopup();
     const [claims, setClaims] = useState(null);
     const [ready, setReady] = useState(true);
     const [starting, setStarting] = useState(false);
     const [making, setMaking] = useState('');
+    const [filling, setFilling] = useState(null); // the Tata claim whose form is open
 
     const load = useCallback(async () => {
         const { data, error } = await supabase.from('service_oem_claims').select(COLUMNS).eq('issue_id', issue.id).order('created_at');
@@ -153,6 +166,10 @@ export default function OemClaims({ issue, office = false, technicianOnJob = fal
             </div>
             <Steps claim={claim} />
             {claim.notes && <p className="text-xs text-stone-600 whitespace-pre-line break-words">{claim.notes}</p>}
+            {isTataClaim(claim) && (office || technicianOnJob) && <button type="button" disabled={busy} onClick={() => setFilling(claim)}
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 text-sm font-bold text-white disabled:opacity-50">
+                <ClipboardList size={16} aria-hidden="true" /> {claim.form_values ? `Tata form · ${savedProgress(issue, claim)}` : 'Fill Tata form'}
+            </button>}
             {(office || technicianOnJob) && active && !claim.ticket_no && <TicketForm claim={claim} busy={busy} onSave={saveTicket} />}
             {office && <div className="flex flex-wrap gap-2">
                 {sharing && <button type="button" disabled={busy || Boolean(making)} onClick={() => pdf(claim, 'share')} className={small}><Share2 size={14} /> {making === `share:${claim.id}` ? 'Making PDF…' : isTataClaim(claim) ? 'Share Tata report' : 'Share OEM PDF'}</button>}
@@ -164,5 +181,8 @@ export default function OemClaims({ issue, office = false, technicianOnJob = fal
             </div>}
             {technicianOnJob && !office && claim.part_received_at && <p className="rounded-lg bg-emerald-50 p-2 text-xs font-semibold text-emerald-800">The new {claim.part.toLowerCase()} has arrived. Fit it on this visit; if it is the inverter, add the new number under Inverter.</p>}
         </article>)}
+        {filling && <TataClaimForm issue={issue} claim={claims.find(claim => claim.id === filling.id) || filling}
+            canEdit={(office || technicianOnJob) && active} canAddPhotos={technicianOnJob && active && Boolean(userId)} office={office}
+            userId={userId} userName={userName} technicianName={technicianName} onClose={() => setFilling(null)} onSaved={load} />}
     </section>;
 }

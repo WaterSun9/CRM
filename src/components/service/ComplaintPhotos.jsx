@@ -72,6 +72,19 @@ export async function saveReadingPhoto({ issueId, userId, tripId, key, file, old
     await addPhoto(issueId, userId, 'reading', file, key, { tripId, tiny: true });
 }
 
+// A reading photo taken on an OEM claim form (D-045): a site photo whose label names the
+// reading ("OEM reading AC Pos–Neg"), not tied to a visit, so it can be added after the visit
+// is closed. A retake replaces the old one. Only the technician on the open job can add it.
+export async function saveClaimReadingPhoto({ issueId, userId, label, file, old }) {
+    if (old) {
+        const { error } = await supabase.from('service_issue_files').delete().eq('id', old.id);
+        if (error) throw error;
+        await supabase.storage.from(BUCKET).remove([old.storage_path]).catch(() => {});
+        links.delete(old.storage_path);
+    }
+    await addPhoto(issueId, userId, 'site', file, label, { tiny: true });
+}
+
 // A dropped connection (common on site) is worth another try; a refusal is not.
 const isNetworkFailure = failure => {
     const text = `${failure?.name || ''} ${failure?.message || ''}`;
