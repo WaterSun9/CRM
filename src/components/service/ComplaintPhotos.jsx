@@ -99,8 +99,16 @@ async function addPhoto(issueId, userId, kind, file, label = null, { tripId = nu
         issue_id: issueId, storage_path: path, file_name: String(file.name || `${kind}.jpg`).slice(0, 200),
         mime_type: small.type, uploaded_by: userId, kind, ...(label ? { label } : {}), ...(tripId ? { trip_id: tripId } : {})
     }));
-    // storage_path is unique: "duplicate" after a retry means the row is saved.
-    if (saved.error && saved.error.code !== '23505') {
+    // storage_path is unique: "duplicate" after a retry means the row is saved. A duplicate can
+    // also be "one photo per reading per visit" (a double tap, two phones): then this photo was
+    // not saved, so take its file back out and say so (2026-11-20, SQL review).
+    if (saved.error?.code === '23505') {
+        const mine = await supabase.from('service_issue_files').select('id').eq('storage_path', path).maybeSingle();
+        if (mine.data) return;
+        await withRetry(() => supabase.storage.from(BUCKET).remove([path])).catch(() => {});
+        throw plainError('This reading already has a photo. Wait a moment, then use Retake to change it.');
+    }
+    if (saved.error) {
         await withRetry(() => supabase.storage.from(BUCKET).remove([path])).catch(() => {});
         throw saved.error;
     }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera } from 'lucide-react';
 import { supabase } from '../../supabase';
 import { tripError } from './tripLabels';
@@ -85,6 +85,7 @@ export default function SiteVisitForm({ issue, userId, trip, busy, run, onSaved 
     const [asking, setAsking] = useState(false);
     const [note, setNote] = useState('');
     const [adding, setAdding] = useState('');
+    const addingRef = useRef(false);
     const [photoProblem, setPhotoProblem] = useState('');
     const photos = useReadingPhotos({ issueId: issue?.id, tripIds: [trip.id] });
     const mine = photos.byTrip[trip.id] || {};
@@ -95,16 +96,19 @@ export default function SiteVisitForm({ issue, userId, trip, busy, run, onSaved 
 
     const complete = READING_KEYS.every(key => String(values[key] ?? '').trim() !== '') && floating !== null && photosDone;
 
+    // A ref, not only state: a quick double tap fires twice before the state updates.
     const takePhoto = async (key, input) => {
         const file = input.files?.[0];
         input.value = '';
-        if (!file || adding) return;
+        if (!file || adding || addingRef.current) return;
+        addingRef.current = true;
         setAdding(key); setPhotoProblem('');
         try {
             await saveReadingPhoto({ issueId: issue.id, userId, tripId: trip.id, key, file, old: mine[key] });
         } catch (failure) {
             setPhotoProblem(`${READING_NAMES[key]}: ${photoError(failure)}`);
         } finally {
+            addingRef.current = false;
             setAdding('');
             photos.reload();
         }
