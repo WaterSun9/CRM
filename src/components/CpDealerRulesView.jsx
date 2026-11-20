@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, Download, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { supabase } from '../supabase';
 import { logActivity, logFieldChanges, updateAdminRecord } from '../utils';
-import { NO_CHANGE, RULES, changesFor, checkCards, unusedLogins } from '../utils/cpDealerRules';
+import { NO_CHANGE, RULES, changesFor, checkCards, spellingDifference, unusedLogins } from '../utils/cpDealerRules';
 
 // CP / dealer rules (admin only, D-039). Checks every live customer card against the client's
 // CP / CPO / dealer rules (src/utils/cpDealerRules.js) and the current logins. Each finding is a
@@ -50,7 +50,9 @@ async function loadAll(build) {
 
 function Change({ from, to }) {
     if (to === undefined || (from ?? '') === (to ?? '')) return <span className="text-stone-600">{shown(from)}</span>;
-    return <span><span className="text-stone-400 line-through">{shown(from)}</span> <span className="font-bold text-emerald-700">→ {shown(to)}</span></span>;
+    const differs = spellingDifference(from, to);
+    return <span><span className="text-stone-400 line-through">{shown(from)}</span> <span className="font-bold text-emerald-700">→ {shown(to)}</span>
+        {differs && <span className="ml-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800" title="Only this differs: the letters are the same">{differs}</span>}</span>;
 }
 
 const selectClass = 'min-h-10 w-full rounded-lg border border-stone-300 bg-white px-2 text-xs font-semibold text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-300';

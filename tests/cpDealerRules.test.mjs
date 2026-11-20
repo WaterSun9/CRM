@@ -89,3 +89,16 @@ test('miscellaneous: empty CP, staff as dealer, CPO name as dealer; no change by
     assert.equal(row.choice, NO_CHANGE);
     assert.deepEqual(changesFor(row, c, 'empty'), { sub_channel_partner: null });
 });
+
+test('spellingDifference says what differs between two spellings', async () => {
+    const { spellingDifference } = await import('../src/utils/cpDealerRules.js');
+    assert.equal(spellingDifference('RAMESHBHAI  SOLANKI', 'RAMESHBHAI SOLANKI'), 'extra space');
+    assert.equal(spellingDifference('RAMESHBHAI SOLANKI ', 'RAMESHBHAI SOLANKI'), 'extra space');
+    assert.equal(spellingDifference('RAMESHBHAISOLANKI', 'RAMESHBHAI SOLANKI'), 'missing space');
+    assert.equal(spellingDifference('Ganeshbhai', 'GANESHBHAI'), 'capitals');
+    assert.equal(spellingDifference('R.K. PATEL', 'RK PATEL'), 'dots');
+    assert.equal(spellingDifference('ganesh  bhai', 'GANESH BHAI'), 'extra space, capitals');
+    assert.equal(spellingDifference('VIPUL', 'VIPULBHAI'), '');
+    assert.equal(spellingDifference('VIPUL', 'VIPUL'), '');
+    assert.equal(spellingDifference('', 'VIPUL'), '');
+});

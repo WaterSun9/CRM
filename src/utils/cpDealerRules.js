@@ -16,6 +16,27 @@
 
 export const nameKey = value => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
+// What differs between two spellings of the same name, in words, e.g. "extra space" or
+// "capitals" (Spelling tab, 2026-11-20: a double space looks the same on screen). '' when they
+// are not the same name, or not different at all.
+export function spellingDifference(from, to) {
+    const a = String(from ?? ''), b = String(to ?? '');
+    if (!a || !b || a === b || nameKey(a) !== nameKey(b)) return '';
+    const spaces = value => (value.match(/\s/g) || []).length;
+    const words = [];
+    if (spaces(a) > spaces(b)) words.push('extra space');
+    else if (spaces(a) < spaces(b)) words.push('missing space');
+    else {
+        const spacing = value => value.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s/g, ' ');
+        if (spacing(a) !== spacing(b)) words.push('spaces');
+    }
+    const bare = value => value.replace(/[^A-Za-z0-9]/g, '');
+    if (bare(a) !== bare(b)) words.push('capitals');
+    const marks = value => value.replace(/[A-Za-z0-9\s]/g, '');
+    if (marks(a) !== marks(b)) words.push(/^\.*$/.test(marks(a) + marks(b)) ? 'dots' : 'punctuation');
+    return words.join(', ');
+}
+
 export const DEBOARDED = 'DEBOARDED';
 export const NO_CHANGE = 'none';
 
