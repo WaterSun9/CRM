@@ -41,14 +41,14 @@ export const DEBOARDED = 'DEBOARDED';
 export const NO_CHANGE = 'none';
 
 export const RULES = [
-    { id: 'cp_as_dealer', title: 'CP written as dealer',
-        rule: 'The name in the Dealer box is an independent CP with its own CP login. Put them in the CP box and empty the Dealer box (rules 2 and 6).' },
-    { id: 'dealer_under_cp', title: 'Dealer filled in under an independent CP',
-        rule: 'An independent CP works alone, so the Dealer box stays empty (rule 6).' },
-    { id: 'dealer_other_cpo', title: 'Dealer belongs to another CPO',
-        rule: 'The dealer has a login under a different CPO. Empty the Dealer box (the customer stays with its CPO, rule 7), or move the customer to the dealer\'s CPO.' },
-    { id: 'spelling', title: 'Name spelled differently from the login',
-        rule: 'Same letters, but capitals, spaces or dots differ from the login. Same person: use the login\'s spelling (rule 10). Different people: leave it.' },
+    { id: 'cp_as_dealer', title: 'CP written as dealer', grouped: true,
+        rule: 'The name in the Dealer box is an independent CP with its own CP login. A CP is never a dealer: put them in the CP box and empty the Dealer box (rules 2 and 6). One line per CP / CPO and dealer pair; the choice applies to all its customers.' },
+    { id: 'dealer_under_cp', title: 'Dealer filled in under an independent CP', grouped: true,
+        rule: 'An independent CP works alone and has no dealers, so the Dealer box stays empty (rule 6). One line per CP and dealer pair; the choice applies to all its customers.' },
+    { id: 'dealer_other_cpo', title: 'Dealer belongs to another CPO', grouped: true,
+        rule: 'The dealer name has a login under a different CPO. Same person: move the customers to that CPO and keep the dealer. Different people: the customers stay with their CPO and the Dealer box is emptied (rule 7). One line per CPO and dealer pair.' },
+    { id: 'spelling', title: 'Name spelled differently from the login', grouped: true,
+        rule: 'Same letters, but capitals, spaces or dots differ from the login. Same person: use the login\'s spelling (rule 10). Different people: leave it. One line per spelling.' },
     { id: 'cp_no_login', title: 'CP / CPO with no login', grouped: true,
         rule: 'Nobody has a CP or CPO login with this name. Leave it, change it to an existing login, or move these customers to DEBOARDED.' },
     { id: 'dealer_no_login', title: 'Dealer with no login', grouped: true,
@@ -160,23 +160,54 @@ export function checkCards(cards, profiles) {
     for (const card of cards || []) {
         const f = findingFor(card, index);
         if (!f) continue;
-        const one = (options, choice, title = card.customer_name) => byRule[f.rule].push({ id: `${f.rule}:${card.id}`, rule: f.rule, title, cards: [card], options, choice });
+        const cp = clean(card.channel_partner), dealer = clean(card.sub_channel_partner);
+        const cpKind = index.branches.has(nameKey(cp)) ? 'CPO' : 'CP';
+        // One line per CP / dealer pair (exact spelling): the choice applies to all its customers.
+        const pair = (title, detail, options, choice) => {
+            const id = `${f.rule}:${String(card.channel_partner ?? '')}|${String(card.sub_channel_partner ?? '')}`;
+            const group = groups.get(id);
+            if (group) { group.cards.push(card); return; }
+            const row = { id, rule: f.rule, title, detail, cards: [card], options, choice };
+            groups.set(id, row);
+            byRule[f.rule].push(row);
+        };
         if (f.rule === 'cp_as_dealer') {
-            one([option('fix', `Move to CP ${f.cpName}, empty dealer`, { channel_partner: f.cpName, sub_channel_partner: null }), noChange()], 'fix');
+            const same = nameKey(cp) === nameKey(f.cpName);
+            pair(same ? `CP ${f.cpName} is also written as their own dealer`
+                : `CP ${f.cpName} is written as a dealer under ${cpKind} ${cp}`,
+            same ? `${f.cpName} has a CP login. A CP is never a dealer, so the Dealer box should be empty.`
+                : `${f.cpName} has their own CP login, so they are not ${cp}'s dealer. Moving makes these customers ${f.cpName}'s own (${cp} no longer sees them).`,
+            [option('fix', same ? `Keep CP ${f.cpName}, empty the Dealer box` : `Move to CP ${f.cpName} only, empty dealer`, { channel_partner: f.cpName, sub_channel_partner: null }), noChange()], 'fix');
         } else if (f.rule === 'dealer_under_cp') {
-            one([option('fix', 'Empty the Dealer box', { sub_channel_partner: null }), noChange()], 'fix');
+            const under = index.dealers.get(nameKey(dealer));
+            const where = under ? [...under.keys()].map(k => index.branches.get(k)).filter(Boolean) : [];
+            pair(`${dealer} is written as a dealer under independent CP ${cp}`,
+                `An independent CP has no dealers.${where.length ? ` ${dealer} is a dealer login under CPO ${where.join(', ')}.` : ` ${dealer} has no dealer login.`}`,
+                [option('fix', `Keep CP ${cp}, empty the Dealer box`, { sub_channel_partner: null }), noChange()], 'fix');
         } else if (f.rule === 'dealer_other_cpo') {
-            const options = [option('empty', `Stay with ${clean(card.channel_partner)}, empty dealer`, { sub_channel_partner: null })];
-            if (f.otherBranch) options.push(option('move', `Move to ${f.otherBranch}, keep dealer ${f.otherDealer}`, { channel_partner: f.otherBranch, sub_channel_partner: f.otherDealer }));
+            const options = [option('empty', `Different people: stay with ${cp}, empty dealer`, { sub_channel_partner: null })];
+            if (f.otherBranch) options.push(option('move', `Same person: move to CPO ${f.otherBranch}, keep dealer ${f.otherDealer}`, { channel_partner: f.otherBranch, sub_channel_partner: f.otherDealer }));
             options.push(noChange());
-            one(options, 'empty');
+            pair(`CPO ${cp} has dealer ${dealer}, but ${f.otherBranch ? `CPO ${f.otherBranch}` : 'another CPO'} has a dealer login with this name`,
+                `Is ${dealer} under ${cp} the same person as ${f.otherDealer}${f.otherBranch ? ` under ${f.otherBranch}` : ''}? ${dealer} has no dealer login under ${cp}.`,
+                options, 'empty');
+        } else if (f.rule === 'spelling') {
+            // Words, not the two names side by side: a double space looks the same on screen.
+            const how = what => ({ 'extra space': 'with an extra space', 'missing space': 'without a space', spaces: 'with the spaces in a different place', capitals: 'in different capitals', dots: 'with different dots', punctuation: 'with different punctuation' }[what] || `with ${what}`);
+            const parts = [];
+            for (const [label, from, to] of [[cpKind, card.channel_partner, f.to.channel_partner], ['Dealer', card.sub_channel_partner, f.to.sub_channel_partner]]) {
+                if (to === from) continue;
+                const what = spellingDifference(from, to);
+                parts.push(`${label} ${to} is written ${what ? what.split(', ').map(how).join(' and ') : 'differently'} on these cards`);
+            }
+            pair(parts.join('; '),
+                'The letters are the same as the login. Same person: use the login\'s spelling, so the name matches in every list and filter.',
+                [option('same', `Same person: use the login spelling`, f.to), noChange('Different people: no change')], 'same');
         } else if (f.rule === 'misc') {
             const options = [noChange()];
             if (f.kind === 'empty_cp') options.push(...loginNames.map(name => option(`login:${name}`, `Set CP to ${name}`, { channel_partner: name })));
             else options.push(option('empty', 'Empty the Dealer box', { sub_channel_partner: null }));
             byRule.misc.push({ id: `misc:${card.id}`, rule: 'misc', title: card.customer_name, problem: f.problem, cards: [card], options, choice: NO_CHANGE });
-        } else if (f.rule === 'spelling') {
-            one([option('same', `Same person: ${[f.to.channel_partner, f.to.sub_channel_partner].filter(Boolean).join(' / ')}`, f.to), noChange('Different people: no change')], 'same');
         } else {
             const group = groups.get(`${f.rule}:${f.key}`);
             if (group) { group.cards.push(card); continue; }

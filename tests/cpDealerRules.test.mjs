@@ -102,3 +102,11 @@ test('spellingDifference says what differs between two spellings', async () => {
     assert.equal(spellingDifference('VIPUL', 'VIPUL'), '');
     assert.equal(spellingDifference('', 'VIPUL'), '');
 });
+
+test('customers with the same CP and dealer are one line, one choice for all', () => {
+    const a = card('SUN ENERGY', 'kishorbhai'), b = { ...card('SUN ENERGY', 'kishorbhai'), id: 'second' };
+    const rows = checkCards([a, b], profiles).cp_as_dealer;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].cards.length, 2);
+    assert.match(rows[0].title, /KISHORBHAI is written as a dealer under CPO SUN ENERGY/);
+});

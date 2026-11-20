@@ -17,9 +17,9 @@ const csvCell = value => { const s = value == null ? '' : String(value); return 
 const day = iso => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '');
 // "Set all to" choices per rule (only those every row of the rule has).
 const SET_ALL = {
-    cp_as_dealer: [['fix', 'Move to the CP box'], [NO_CHANGE, 'No change']],
+    cp_as_dealer: [['fix', 'Move to the CP only, empty dealer'], [NO_CHANGE, 'No change']],
     dealer_under_cp: [['fix', 'Empty the Dealer box'], [NO_CHANGE, 'No change']],
-    dealer_other_cpo: [['empty', 'Stay with own CPO, empty dealer'], ['move', "Move to the dealer's CPO"], [NO_CHANGE, 'No change']],
+    dealer_other_cpo: [['empty', 'Different people: stay, empty dealer'], ['move', "Same person: move to the dealer's CPO"], [NO_CHANGE, 'No change']],
     spelling: [['same', 'Same person: use the login spelling'], [NO_CHANGE, 'Different people: no change']],
     cp_no_login: [[NO_CHANGE, 'No change'], ['deboard', 'Move to DEBOARDED']],
     dealer_no_login: [[NO_CHANGE, 'No change'], ['empty', 'Empty the Dealer box'], ['deboard', 'Move to DEBOARDED']],
@@ -181,7 +181,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
         <div className="flex items-start justify-between gap-3">
             <div>
                 <h1 className="flex items-center gap-2 text-xl font-bold text-stone-900"><ShieldCheck size={20} /> CP / dealer rules</h1>
-                <p className="mt-1 max-w-3xl text-sm text-stone-500">Checks every customer card against the CP / CPO / dealer rules and today's logins. Each row has a choice, already set to the usual fix; change it or pick No change. Press Review and fix; nothing changes until you confirm.</p>
+                <p className="mt-1 max-w-3xl text-sm text-stone-500">Checks every customer card against the CP / CPO / dealer rules and today's logins. Each line is one CP / CPO and dealer pair, with all its customers; its choice is already set to the usual fix and applies to all of them. Change it or pick No change. Press Review and fix; nothing changes until you confirm.</p>
                 {state.at && <p className="mt-1 text-xs text-stone-400">Checked {state.cards.toLocaleString('en-IN')} customers and {state.logins} logins at {state.at.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}.</p>}
             </div>
             <button type="button" disabled={busy} onClick={check} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 text-sm font-bold text-stone-700 disabled:opacity-50">
@@ -210,7 +210,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                             className={`rounded-xl px-3 py-2 text-left text-xs font-bold ${tab === t.id ? 'bg-stone-900 text-white' : 'border border-stone-200 bg-white text-stone-700 hover:bg-stone-50'}`}>
                             <span className="block">{TAB_NAMES[t.id] || t.title}</span>
                             <span className={`block text-[10px] font-semibold ${tab === t.id ? 'text-white/70' : count ? 'text-amber-700' : 'text-emerald-700'}`}>
-                                {count ? `${count} found · ${changing} to change` : 'All fine'}</span>
+                                {count ? `${t.grouped ? `${rowsOf(t.id).reduce((n, r) => n + r.cards.length, 0)} customers` : `${count} found`} · ${changing} to change` : 'All fine'}</span>
                         </button>;
                     })}</div>
 
@@ -248,7 +248,7 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                 </table>
                                 : <table className="w-full text-left text-xs">
                                     <thead className="sticky top-0 z-10 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-500"><tr>
-                                        <th className="p-2">{current.grouped ? 'Name' : 'Customer'}</th>{current.id === 'misc' && <th className="p-2">Problem</th>}<th className="p-2">CP</th><th className="p-2">Dealer</th><th className="w-72 p-2">Choice</th>
+                                        <th className="p-2">{current.grouped ? 'What we found' : 'Customer'}</th>{current.id === 'misc' && <th className="p-2">Problem</th>}{!current.grouped && <><th className="p-2">CP</th><th className="p-2">Dealer</th></>}<th className="w-72 p-2">Choice</th>
                                     </tr></thead>
                                     <tbody className="divide-y divide-stone-100">{rows.map(row => {
                                         const choice = choiceOf(row);
@@ -259,6 +259,11 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                             <td className="p-2">
                                                 {current.grouped
                                                     ? <><span className="block font-bold text-stone-900">{row.title}</span>
+                                                        {row.detail && <span className="mt-0.5 block text-[11px] leading-snug text-stone-500">{row.detail}</span>}
+                                                        <span className="mt-1.5 grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-0.5 text-[11px]">
+                                                            <span className="font-bold uppercase tracking-wider text-stone-400">CP</span><Change from={first.channel_partner} to={after.channel_partner} />
+                                                            <span className="font-bold uppercase tracking-wider text-stone-400">Dealer</span><Change from={first.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} />
+                                                        </span>
                                                         <button type="button" onClick={() => setOpenRow(cur => ({ ...cur, [row.id]: !expanded }))} className="text-[11px] font-semibold text-stone-500 underline-offset-2 hover:underline">
                                                             {row.cards.length} customer{row.cards.length === 1 ? '' : 's'} {expanded ? '▲' : '▼'}</button>
                                                         {expanded && <ul className="mt-1 space-y-0.5 text-[11px] text-stone-600">{row.cards.map(c => <li key={c.id}>{c.folder_no ? `${c.folder_no} · ` : ''}{onSelectCustomer
@@ -267,8 +272,9 @@ export default function CpDealerRulesView({ user, onSelectCustomer }) {
                                                         <span className="block text-[10px] text-stone-400">{[first.folder_no, first.stage].filter(Boolean).join(' · ')}</span></>}
                                             </td>
                                             {current.id === 'misc' && <td className="p-2 font-semibold text-stone-700">{row.problem}</td>}
-                                            <td className="p-2"><Change from={first.channel_partner} to={after.channel_partner} /></td>
-                                            <td className="p-2"><Change from={first.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} /></td>
+                                            {!current.grouped && <>
+                                                <td className="p-2"><Change from={first.channel_partner} to={after.channel_partner} /></td>
+                                                <td className="p-2"><Change from={first.sub_channel_partner} to={'sub_channel_partner' in after ? after.sub_channel_partner : undefined} /></td></>}
                                             <td className="p-2"><select value={choice} onChange={e => setChoices(cur => ({ ...cur, [row.id]: e.target.value }))} aria-label={`Choice for ${row.title}`} className={selectClass}>
                                                 {row.options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                                             </select></td>
