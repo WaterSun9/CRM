@@ -2,8 +2,9 @@
 // site, the system and warranty, the latest site readings, the complaint, and every complaint
 // photo (shrunk to JPEG), all in one file. The office downloads it, or shares it straight to
 // WhatsApp / email from a phone, and sends it to the OEM.
-// Tata (2026-11-19): Tata's own "Field Service Report for SPV products" comes first, filled in
-// (tataServiceReport.js), then the same pages as for the other OEMs.
+// Tata (2026-11-19, D-045 2026-11-20): page 1 is Tata's own "Field Service Report for SPV
+// products" printed from the values checked on the easy fill screen (TataClaimForm.jsx, saved on
+// the claim), then the 6 readings as a table with their photos, then the other photos.
 // Text uses only characters the built-in PDF font has (no ₹ or arrows).
 import tataTemplateUrl from '../../assets/tata-field-service-report.pdf?url';
 import { supabase } from '../../supabase';
@@ -44,16 +45,63 @@ async function photoData(url) {
 
 export const isTataClaim = claim => /^\s*tata/i.test(String(claim?.oem || ''));
 
-// Reads everything and builds "OEM claim <ticket>-<OEM>.pdf": { pdf, blob, name, card, trips }.
-async function buildOemClaimPdf({ issue, claim }) {
-    const [{ jsPDF }, card, trips, files] = await Promise.all([
-        import('jspdf'),
-        issue.customer_id ? supabase.from('admin').select(CARD).eq('id', issue.customer_id).maybeSingle().then(r => r.data || null) : null,
+// A reading photo taken on the claim form is a site photo with this label (D-045).
+export const claimReadingLabel = key => `OEM reading ${READING_NAMES[key] || key}`;
+
+// Everything one claim's screen and PDF need, read once: the customer card (null when this
+// person cannot read it), the visits (newest first), the visit the readings come from, every
+// complaint photo with a link, and the photo for each of the 6 readings:
+// readingPhotos = { [key]: { ...file, url, source: 'claim' | 'visit' } }.
+export async function loadClaimData({ issue }) {
+    const [card, trips, files] = await Promise.all([
+        issue.customer_id ? supabase.from('admin').select(CARD).eq('id', issue.customer_id).maybeSingle().then(r => r.data || null, () => null) : null,
         supabase.from('service_trips').select('id, visit_no, readings, reached_at, started_at, outcome, outcome_note').eq('issue_id', issue.id).order('started_at', { ascending: false }).limit(20).then(r => r.data || []),
-        supabase.from('service_issue_files').select('kind, label, trip_id, storage_path, mime_type, created_at').eq('issue_id', issue.id).order('created_at').then(r => r.data || []),
+        supabase.from('service_issue_files').select('id, kind, label, trip_id, storage_path, mime_type, uploaded_by, created_at').eq('issue_id', issue.id).order('created_at').then(r => r.data || []),
     ]);
     const photos = files.filter(f => /^image\//.test(f.mime_type || 'image/'));
     const urls = photos.length ? await signedLinks(photos.map(f => f.storage_path)).catch(() => ({})) : {};
+    const visit = trips.find(t => t.readings) || trips[0] || null;
+    const readingPhotos = {};
+    for (const key of Object.keys(READING_NAMES)) {
+        const onClaim = photos.filter(f => f.kind === 'site' && f.label === claimReadingLabel(key)).pop();
+        const onVisit = visit ? photos.filter(f => f.kind === 'reading' && f.trip_id === visit.id && f.label === key).pop() : null;
+        const file = onClaim || onVisit;
+        if (file) readingPhotos[key] = { ...file, url: urls[file.storage_path] || '', source: onClaim ? 'claim' : 'visit' };
+    }
+    return { card, trips, files, photos, urls, visit, readingPhotos };
+}
+
+// Photos two to a row with a caption each; returns the new y.
+async function photoGrid({ pdf, y, room, photos, urls, trips, W, M }) {
+    const colW = (W - M * 2 - 6) / 2;
+    let col = 0, rowH = 0;
+    const at = () => y;
+    for (const file of photos) {
+        const url = urls[file.storage_path];
+        let image = null;
+        try { image = url ? await photoData(url) : null; } catch { image = null; }
+        // A reading photo says what the meter should show: "AC Pos–Neg 230 V".
+        const tripReadings = file.kind === 'reading' ? trips.find(t => t.id === file.trip_id)?.readings : null;
+        const value = tripReadings?.[file.label] != null ? ` ${tripReadings[file.label]} V` : '';
+        const caption = safe([KIND[file.kind] || file.kind, file.kind === 'reading' ? `${READING_NAMES[file.label] || file.label}${value}` : file.label, day(file.created_at)].filter(Boolean).join(' · '));
+        const h = image ? Math.min(75, colW * image.height / image.width) : 10;
+        if (col === 0) y = room(h + 8, at());
+        const x = M + col * (colW + 6);
+        if (image) pdf.addImage(image.data, 'JPEG', x, y, colW * Math.min(1, (h / (colW * image.height / image.width))), h, undefined, 'FAST');
+        else { pdf.setFontSize(8); pdf.setTextColor(150); pdf.text('Photo could not be loaded', x, y + 5); }
+        pdf.setFontSize(8); pdf.setTextColor(90); pdf.text(caption, x, y + h + 4);
+        rowH = Math.max(rowH, h + 8);
+        col += 1;
+        if (col === 2) { col = 0; y += rowH; rowH = 0; }
+    }
+    if (col) y += rowH;
+    return y;
+}
+
+// Reads everything and builds "OEM claim <ticket>-<OEM>.pdf": { pdf, blob, name }.
+async function buildOemClaimPdf({ issue, claim }) {
+    const [{ jsPDF }, data] = await Promise.all([import('jspdf'), loadClaimData({ issue })]);
+    const { card, trips, photos, urls } = data;
     const latest = trips.find(t => t.readings);
     const warranty = card ? warrantyInfo(card) : null;
 
@@ -61,6 +109,7 @@ async function buildOemClaimPdf({ issue, claim }) {
     const W = 210, M = 14, bottom = 285;
     let y = M;
     const room = need => { if (y + need > bottom) { pdf.addPage(); y = M; } };
+    const roomAt = (need, at) => { y = at; room(need); return y; };
     const heading = text => { room(12); y += 3; pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11); pdf.setTextColor(30); pdf.text(safe(text), M, y); y += 2; pdf.setDrawColor(220); pdf.line(M, y, W - M, y); y += 5; };
     const row = (name, value) => {
         const lines = pdf.splitTextToSize(safe(value || '-'), W - M * 2 - 45);
@@ -108,48 +157,80 @@ async function buildOemClaimPdf({ issue, claim }) {
 
     if (photos.length) {
         heading(`Photos (${photos.length})`);
-        const colW = (W - M * 2 - 6) / 2;
-        let col = 0, rowH = 0;
-        for (const file of photos) {
-            const url = urls[file.storage_path];
-            let image = null;
-            try { image = url ? await photoData(url) : null; } catch { image = null; }
-            // A reading photo says what the meter should show: "AC Pos–Neg 230 V".
-            const tripReadings = file.kind === 'reading' ? trips.find(t => t.id === file.trip_id)?.readings : null;
-            const value = tripReadings?.[file.label] != null ? ` ${tripReadings[file.label]} V` : '';
-            const caption = safe([KIND[file.kind] || file.kind, file.kind === 'reading' ? `${READING_NAMES[file.label] || file.label}${value}` : file.label, day(file.created_at)].filter(Boolean).join(' · '));
-            const h = image ? Math.min(75, colW * image.height / image.width) : 10;
-            if (col === 0) room(h + 8);
-            const x = M + col * (colW + 6);
-            if (image) pdf.addImage(image.data, 'JPEG', x, y, colW * Math.min(1, (h / (colW * image.height / image.width))), h, undefined, 'FAST');
-            else { pdf.setFontSize(8); pdf.setTextColor(150); pdf.text('Photo could not be loaded', x, y + 5); }
-            pdf.setFontSize(8); pdf.setTextColor(90); pdf.text(caption, x, y + h + 4);
-            rowH = Math.max(rowH, h + 8);
-            col += 1;
-            if (col === 2) { col = 0; y += rowH; rowH = 0; }
-        }
-        if (col) y += rowH;
+        y = await photoGrid({ pdf, y, room: roomAt, photos, urls, trips, W, M });
     }
 
     const name = `${safe(`OEM claim ${issue.ticket_no ?? ''}-${claim.oem}`).replace(/[^\w .-]+/g, '').trim() || 'OEM claim'}.pdf`;
-    return { pdf, blob: pdf.output('blob'), name, card, trips };
+    return { pdf, blob: pdf.output('blob'), name };
 }
 
-// Tata: Tata's Field Service Report (filled, Tata's layout) as page 1, then the claim pages
-// above (claim, customer, readings, every photo). Fields we do not store stay blank.
+// The pages after Tata's form: the 6 readings as a table with their photos, then every other
+// photo. form = mergeTataForm(...) (the values checked on the easy fill screen).
+async function buildTataReadingPages({ issue, form, data }) {
+    const { jsPDF } = await import('jspdf');
+    const { trips, photos, urls, readingPhotos } = data;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+    const W = 210, M = 14, bottom = 285;
+    let y = M;
+    const room = need => { if (y + need > bottom) { pdf.addPage(); y = M; } };
+    const roomAt = (need, at) => { y = at; room(need); return y; };
+
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.setTextColor(20);
+    pdf.text(safe(`Site readings with photos - Complaint #${issue.ticket_no ?? ''}`), M, y + 4); y += 10;
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(110);
+    pdf.text(safe(`${form.fields.customerName || ''}${form.fields.dateOfVisit ? ` · visit ${form.fields.dateOfVisit}` : ''}`), M, y); y += 5;
+
+    // Table: Reading | Volts | Photo. Six rows of 36 mm fit on one page.
+    const cols = [M, M + 55, M + 85], rowH = 36, photoW = W - M - cols[2];
+    const line = () => { pdf.setDrawColor(200); pdf.line(M, y, W - M, y); };
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9); pdf.setTextColor(60);
+    line(); y += 5; pdf.text('Reading', cols[0] + 1, y); pdf.text('Volts', cols[1] + 1, y); pdf.text('Photo of the meter', cols[2] + 1, y); y += 2.5; line();
+    for (const key of Object.keys(READING_NAMES)) {
+        room(rowH);
+        const value = String(form.readings[key] ?? '').trim();
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(20);
+        pdf.text(safe(READING_NAMES[key]), cols[0] + 1, y + 7);
+        pdf.setFont('helvetica', 'bold'); pdf.text(value ? `${safe(value)} V` : '-', cols[1] + 1, y + 7);
+        const photo = readingPhotos[key];
+        let image = null;
+        try { image = photo?.url ? await photoData(photo.url) : null; } catch { image = null; }
+        if (image) {
+            const h = rowH - 4, w = Math.min(photoW, h * image.width / image.height);
+            pdf.addImage(image.data, 'JPEG', cols[2] + 1, y + 2, w, h * Math.min(1, w / (h * image.width / image.height)), undefined, 'FAST');
+        } else { pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(150); pdf.text(photo ? 'Photo could not be loaded' : 'No photo', cols[2] + 1, y + 7); }
+        y += rowH; line();
+    }
+    room(9);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(20);
+    pdf.text('Floating voltage', cols[0] + 1, y + 6); pdf.setFont('helvetica', 'bold'); pdf.text(safe(form.floating || '-'), cols[1] + 1, y + 6); y += 9; line();
+
+    const used = new Set(Object.values(readingPhotos).map(file => file.storage_path));
+    const others = photos.filter(file => !used.has(file.storage_path));
+    if (others.length) {
+        // The heading stays with its first row of photos.
+        room(95); y += 6;
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11); pdf.setTextColor(30); pdf.text(`Other photos (${others.length})`, M, y); y += 2; pdf.setDrawColor(220); pdf.line(M, y, W - M, y); y += 5;
+        y = await photoGrid({ pdf, y, room: roomAt, photos: others, urls, trips, W, M });
+    }
+    return pdf.output('blob');
+}
+
+// Tata: Tata's Field Service Report (Tata's layout) as page 1, printed from the saved form
+// values (CRM values where nothing was saved), then the readings table with photos and the
+// other photos. Boxes still empty stay blank.
 async function buildTataClaimPdf({ issue, claim, technicianName }) {
-    const pack = await buildOemClaimPdf({ issue, claim });
-    const [{ PDFDocument }, { fillTataReport, tataReportValues }, template] = await Promise.all([
+    const [{ PDFDocument }, { fillTataReport, mergeTataForm, tataPrintValues }, template, data] = await Promise.all([
         import('pdf-lib'),
         import('./tataServiceReport'),
         fetch(tataTemplateUrl).then(response => {
             if (!response.ok) throw new Error('The Tata form could not be loaded. Check the connection and try again.');
             return response.arrayBuffer();
         }),
+        loadClaimData({ issue }),
     ]);
-    const visit = pack.trips.find(trip => trip.readings) || pack.trips[0] || null;
-    const doc = await fillTataReport(template, tataReportValues({ issue, claim, card: pack.card, visit, technicianName }));
-    const extra = await PDFDocument.load(await pack.blob.arrayBuffer());
+    const form = mergeTataForm({ issue, claim, card: data.card, visit: data.visit, technicianName, saved: claim.form_values || null });
+    const doc = await fillTataReport(template, tataPrintValues(form));
+    const extra = await PDFDocument.load(await (await buildTataReadingPages({ issue, form, data })).arrayBuffer());
     for (const page of await doc.copyPages(extra, extra.getPageIndices())) doc.addPage(page);
     const bytes = await doc.save();
     const name = `${safe(`Tata field service report ${issue.ticket_no ?? ''}`).replace(/[^\w .-]+/g, '').trim() || 'Tata field service report'}.pdf`;

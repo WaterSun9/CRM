@@ -5,6 +5,9 @@
 -- the job can enter it too). When the new part arrives the office marks "Part received" and the
 -- technician fixes it on the second visit. Tata (CSN / CRN, Rs 800 per site) comes later, once
 -- Sandeep sends Tata's form.
+-- 2026-11-20 (D-045): form_values holds the boxes of the OEM's form as checked and completed on
+-- the easy fill screen (Tata's Field Service Report: every box, the 6 readings). The technician
+-- on the open job saves it through service_oem_form(); the office writes it directly.
 -- Office (admin, sales) does everything; the technician on the job and anyone who can see the
 -- complaint can read it. Each step goes into the complaint history.
 -- One transaction; safe to run twice.
@@ -23,12 +26,19 @@ create table if not exists public.service_oem_claims (
     ticket_no text check (ticket_no is null or length(ticket_no) <= 80),
     ticket_at timestamptz,
     part_received_at timestamptz,
+    form_values jsonb,
     created_by uuid default auth.uid(),
     created_by_name text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
 create index if not exists service_oem_claims_issue_idx on public.service_oem_claims (issue_id, created_at);
+
+-- The form values (also when the table was made by an earlier copy of this file).
+alter table public.service_oem_claims add column if not exists form_values jsonb;
+alter table public.service_oem_claims drop constraint if exists service_oem_claims_form_values_check;
+alter table public.service_oem_claims add constraint service_oem_claims_form_values_check
+    check (form_values is null or (jsonb_typeof(form_values) = 'object' and length(form_values::text) <= 20000));
 
 -- Complaint history: the claim steps.
 alter table public.service_issue_events drop constraint if exists service_issue_events_event_check;
@@ -128,12 +138,38 @@ end;
 $$;
 revoke all on function public.service_oem_ticket(uuid, text) from public, anon;
 grant execute on function public.service_oem_ticket(uuid, text) to authenticated;
+
+-- The technician on the open job saves the form values (only that field).
+create or replace function public.service_oem_form(p_claim_id uuid, p_values jsonb)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+    claim record;
+begin
+    select c.id, c.issue_id into claim from public.service_oem_claims c where c.id = p_claim_id;
+    if not found then
+        raise exception 'OEM claim not found. Refresh the page.';
+    end if;
+    perform public.require_my_open_job(claim.issue_id);
+    if p_values is null or jsonb_typeof(p_values) <> 'object' or length(p_values::text) > 20000 then
+        raise exception 'The form could not be saved: the values are too long.';
+    end if;
+    update public.service_oem_claims set form_values = p_values where id = claim.id;
+    return true;
+end;
+$$;
+revoke all on function public.service_oem_form(uuid, jsonb) from public, anon;
+grant execute on function public.service_oem_form(uuid, jsonb) to authenticated;
 revoke all on function public.service_oem_claim_stamp() from public, anon;
 
 commit;
 
--- Check: expect claims_table = 1, rls = true, events_ok = true.
+-- Check: expect claims_table = 1, rls = true, events_ok = true, form_values = 1.
 select
   (select count(*) from information_schema.tables where table_schema = 'public' and table_name = 'service_oem_claims') as claims_table,
   (select relrowsecurity from pg_class where oid = 'public.service_oem_claims'::regclass) as rls,
-  (select pg_get_constraintdef(oid) like '%oem_part_received%' from pg_constraint where conname = 'service_issue_events_event_check') as events_ok;
+  (select pg_get_constraintdef(oid) like '%oem_part_received%' from pg_constraint where conname = 'service_issue_events_event_check') as events_ok,
+  (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'service_oem_claims' and column_name = 'form_values') as form_values;

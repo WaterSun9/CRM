@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { fillTataReport, isTataOem, pdfSafe, tataReportValues, wrapLines } from '../src/components/service/tataServiceReport.js';
+import { READING_KEYS, TATA_FIELDS, fillTataReport, isTataOem, mergeTataForm, pdfSafe, tataFormProgress, tataFormToSave, tataPrintValues, tataReportValues, wrapLines } from '../src/components/service/tataServiceReport.js';
 
 const card = {
     customer_name: 'Test Customer', phone_number: '90000 00000', consumer_no: 'PGVCL-1', full_address: 'Road 1', pincode: '385340',
@@ -73,4 +73,52 @@ test('fills the real blank Tata form: one A4 page that saves', async () => {
     assert.deepEqual([width, height], [595, 842]);
     const bytes = await doc.save();
     assert.ok(bytes.length > 5000);
+});
+
+// D-045: the easy fill screen.
+test('easy fill: every box in form order, CRM values first, the rest missing', () => {
+    assert.equal(TATA_FIELDS[0].key, 'dateOfVisit');
+    assert.equal(TATA_FIELDS.at(-1).key, 'technicianName');
+    assert.equal(new Set(TATA_FIELDS.map(f => f.key)).size, TATA_FIELDS.length);
+    const form = mergeTataForm({ issue: { ticket_no: 5, problem_type: 'No output' }, claim: { oem: 'Tata Power', part: 'Inverter', faulty_serial: 'INV-1' }, card, visit, technicianName: 'Tech' });
+    assert.equal(form.fields.customerName, 'Test Customer');
+    assert.equal(form.auto.customerName, true);
+    assert.equal(form.readings.ac_pn, '232');
+    assert.equal(form.floating, 'Yes');
+    const p = tataFormProgress(form);
+    for (const key of ['salesOrderNo', 'moduleSerialNo', 'noOfLoads', 'typeOfLoad', 'arrayOcv', 'arrayScc', 'totalLoad', 'customerRemarks']) assert.ok(p.missing.includes(key), key);
+    assert.equal(p.filled + p.missing.length, p.total);
+    assert.equal(p.readings, 6);
+});
+
+test('easy fill: saved edits win, also an emptied box; readings edit the observations', () => {
+    const saved = { fields: { customerName: 'Typed Name', salesOrderNo: 'SO-9', capacity: '' }, readings: { ac_pn: '240' }, floating: 'No' };
+    const form = mergeTataForm({ claim: { oem: 'Tata', part: 'Inverter' }, card, visit, saved });
+    assert.equal(form.fields.customerName, 'Typed Name');
+    assert.equal(form.fields.salesOrderNo, 'SO-9');
+    assert.equal(form.fields.capacity, '');
+    assert.equal(form.readings.ac_pn, '240');
+    assert.equal(form.readings.dc_pm, '380', 'readings not saved come from the visit');
+    assert.equal(form.floating, 'No');
+    // No visit at all: readings start empty.
+    const bare = mergeTataForm({ claim: { oem: 'Tata', part: 'Inverter' } });
+    assert.deepEqual(READING_KEYS.map(k => bare.readings[k]), ['', '', '', '', '', '']);
+    assert.equal(bare.floating, '');
+});
+
+test('easy fill: what is saved, and the values print on the form', async () => {
+    const form = mergeTataForm({ claim: { oem: 'Tata', part: 'Inverter' }, card, visit });
+    form.fields.noOfLoads = ' 4 ';
+    form.fields.arrayOcv = '410';
+    const saved = tataFormToSave(form, 'Office');
+    assert.equal(saved.fields.noOfLoads, '4');
+    assert.equal(Object.keys(saved.fields).length, TATA_FIELDS.length);
+    assert.equal(saved.saved_by_name, 'Office');
+    assert.ok(JSON.stringify(saved).length < 20000);
+    const again = mergeTataForm({ claim: { oem: 'Tata', part: 'Inverter' }, saved });
+    assert.equal(again.fields.noOfLoads, '4');
+    assert.equal(again.fields.customerName, 'Test Customer', 'saved values stand without the card');
+    const template = readFileSync(new URL('../src/assets/tata-field-service-report.pdf', import.meta.url));
+    const doc = await fillTataReport(template, tataPrintValues(again));
+    assert.equal(doc.getPageCount(), 1);
 });

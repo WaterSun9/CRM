@@ -1,4 +1,5 @@
-// Makes the sample filled Tata Field Service Report from made-up data (no database):
+// Makes the sample filled Tata Field Service Report (page 1 only) from made-up data (no database).
+// The full 3-page sample (readings table and photos) is made from the demo: sample-tata-easy-fill-report.pdf.
 //   node scripts/tata-service-report-sample.mjs
 // Output: docs/client-requests-2026-11-14/tata-oem-form/sample-tata-field-service-report.pdf
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -16,6 +17,8 @@ const values = tataReportValues({
     visit: { visit_no: 1, reached_at: '2026-11-18T06:30:00Z', readings: { ac_pn: 232, ac_pe: 231, ac_ne: 2, dc_pm: 380, dc_pe: 190, dc_me: 189, floating: false }, outcome: 'revisit', outcome_note: 'Inverter to be replaced by Tata' },
     technicianName: 'Demo Technician',
 });
+// Boxes typed on the easy fill screen (D-045).
+Object.assign(values, { salesOrderNo: 'SO-DEMO-4471', moduleSerialNo: 'N/A (inverter claim)', noOfLoads: '4', typeOfLoad: 'Fans, lights, fridge, TV', arrayOcv: '412', arrayScc: '13.6', totalLoad: '850', customerRemarks: 'Please replace the inverter quickly.' });
 const doc = await fillTataReport(template, values);
 const out = new URL('../docs/client-requests-2026-11-14/tata-oem-form/sample-tata-field-service-report.pdf', import.meta.url);
 writeFileSync(out, await doc.save());
