@@ -204,7 +204,7 @@ export function checkCards(cards, profiles) {
             const options = [option('empty', `Different people: stay with ${cp}, empty dealer`, { sub_channel_partner: null })];
             if (f.otherBranch) options.push(option('move', `Same person: move to CPO ${f.otherBranch}, keep dealer ${f.otherDealer}`, { channel_partner: f.otherBranch, sub_channel_partner: f.otherDealer }));
             options.push(noChange());
-            pair(`Cards say CPO ${cp}, dealer ${dealer}. There is no ${dealer} login under ${cp}; the only ${f.otherDealer} login is a dealer under ${f.otherBranch ? `CPO ${f.otherBranch}` : 'another CPO'}`,
+            pair(`{source}: CPO ${cp}, dealer ${dealer}. There is no ${dealer} login under ${cp}; the only ${f.otherDealer} login is a dealer under ${f.otherBranch ? `CPO ${f.otherBranch}` : 'another CPO'}`,
                 `Same name under two CPOs. Is the ${dealer} on ${cp}'s cards the same person as the ${f.otherDealer} login under ${f.otherBranch || 'the other CPO'}?`,
                 options, 'empty');
         } else if (f.rule === 'spelling') {
@@ -243,6 +243,12 @@ export function checkCards(cards, profiles) {
             groups.set(row.id, row);
             byRule[f.rule].push(row);
         }
+    }
+    // "{source}" in a title: where its cards came from (the imported sheet or the CRM).
+    for (const rows of Object.values(byRule)) for (const row of rows) {
+        if (!row.title?.includes('{source}')) continue;
+        const sheet = row.cards.filter(c => istDay(c.created_at) === SHEET_IMPORT_DAY).length;
+        row.title = row.title.replace('{source}', sheet === row.cards.length ? 'Sheet imported on 1 Sep' : sheet ? 'Sheet imported on 1 Sep and the CRM' : 'Added in the CRM');
     }
     for (const rule of RULES.filter(r => r.grouped)) byRule[rule.id].sort((a, b) => b.cards.length - a.cards.length || a.title.localeCompare(b.title));
     return byRule;
