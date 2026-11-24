@@ -163,3 +163,5 @@ jobs:
                  RCLONE_CONFIG_DEST_ACCESS_KEY_ID="$DST_KEY_ID" RCLONE_CONFIG_DEST_SECRET_ACCESS_KEY="$DST_SECRET"
           # "copy" never deletes from the backup, so a file removed in the CRM is still recoverable.
           rclone copy supa:customer-documents "dest:$DST_BUCKET/customer-documents" --transfers 8 --checksum --stats-one-line -v
+          # Complaint photos, After photos, meter-reading and part-label photos (added 2026-11-24).
+          rclone copy supa:service-issues "dest:$DST_BUCKET/service-issues" --transfers 8 --checksum --stats-one-line -v

@@ -49,7 +49,35 @@ OPTIONAL_TABLES = [
     'service_issues', 'service_visits', 'service_issue_files',
     'customer_payment_review_flags',
     'serial_number_review', 'serial_number_import',
+    # Added 2026-11-24 (Mahvish: back up every table we made). Also found by discover_tables().
+    'admin_field_guard_log', 'admin_field_guard_settings', 'admin_field_rules', 'customer_sites',
+    'oem_past_finish', 'oem_past_records', 'panel_loading', 'phone_otp_requests',
+    'service_completion_otps', 'service_day_trip_points', 'service_day_trips', 'service_issue_comments',
+    'service_issue_events', 'service_issue_plans', 'service_km_settings', 'service_oem_claims',
+    'service_plan_stops', 'service_trips', 'trip_distance_cache', 'trip_distance_lookups',
+    'whatsapp_contacts', 'whatsapp_inbound', 'whatsapp_messages',
 ]
+
+
+def discover_tables(base_url, key):
+    """Every table the API can see, with its primary key columns: {table: [pk, ...]}.
+    Read from the API's own description (OpenAPI), so a table made later is backed up without
+    editing this file (2026-11-24). Views (read-only, no insert/delete) are left out: their rows
+    are in their tables already."""
+    status, _headers, body = request(f'{base_url}/rest/v1/', key, {'Accept': 'application/openapi+json'})
+    if status != 200:
+        raise RuntimeError(f'table list: HTTP {status}: {body[:200]!r}')
+    spec = json.loads(body)
+    found = {}
+    for path, operations in (spec.get('paths') or {}).items():
+        name = path.strip('/')
+        if not name or name.startswith('rpc/') or '/' in name:
+            continue
+        if not ({'post', 'delete', 'patch'} & set(operations)):
+            continue
+        props = ((spec.get('definitions') or {}).get(name) or {}).get('properties') or {}
+        found[name] = [col for col, prop in props.items() if '<pk/>' in str(prop.get('description', ''))]
+    return found
 
 
 def request(url, key, extra_headers=None):
@@ -83,11 +111,11 @@ def total_from_content_range(headers):
     return None
 
 
-def export_table(base_url, key, table):
-    """Returns (rows, server_total). Raises on any failure."""
+def export_table(base_url, key, table, order_by='id.asc'):
+    """Returns (rows, server_total). Raises on any failure. order_by keeps pages stable
+    (the primary key when known)."""
     rows = []
     server_total = None
-    order_by = 'id.asc'
     offset = 0
     while True:
         params = {'select': '*'}
@@ -194,10 +222,23 @@ def main():
     manifest = {'tables': {}, 'warnings': []}
     failures = []
 
-    for table in REQUIRED_TABLES + OPTIONAL_TABLES:
-        optional = table in OPTIONAL_TABLES
+    try:
+        discovered = discover_tables(base_url, key)
+        print(f'table list: {len(discovered)} tables found on the server')
+    except (RuntimeError, ValueError) as err:
+        discovered = {}
+        note = f'could not read the table list ({err}); backing up the named tables only'
+        manifest['warnings'].append(note)
+        print(f'::warning::{note}')
+    named = REQUIRED_TABLES + OPTIONAL_TABLES
+    tables = named + sorted(t for t in discovered if t not in named)
+
+    for table in tables:
+        optional = table not in REQUIRED_TABLES
+        pk = discovered.get(table) or []
+        order_by = ','.join(f'{col}.asc' for col in pk) if pk else 'id.asc'
         try:
-            rows, server_total = export_table(base_url, key, table)
+            rows, server_total = export_table(base_url, key, table, order_by)
         except RuntimeError as err:
             if optional and ('404' in str(err) or 'PGRST205' in str(err)):
                 note = f'{table}: table does not exist yet - skipped'
