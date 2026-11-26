@@ -58,7 +58,7 @@
             });
         })();
     </script>
-  <script type="module" crossorigin src="./assets/main-DDyRJINa.js"></script>
+  <script type="module" crossorigin src="./assets/main-Dkj1WmPB.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/chunk-QTnfLwEv.js">
   <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-Dezn_h7o.js">
   <link rel="modulepreload" crossorigin href="./assets/preload-helper-kNaey6uv.js">
@@ -96,7 +96,7 @@
         // Also what lets Chrome offer "Install app / Add to home screen". Skipped on local development hosts.
         if ('serviceWorker' in navigator && !/^(localhost|127\.0\.0\.1|192\.168\.)/.test(location.hostname)) {
             window.addEventListener('load', function () {
-                navigator.serviceWorker.register('./sw.js').catch(function () { /* optional */ });
+                navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(function () { /* optional */ });
             });
         }
         // Chrome's install offer, kept for the app's "Add to home screen" button (InstallApp in the technician home).

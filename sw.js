@@ -17,7 +17,11 @@ self.addEventListener('activate', event => {
     );
 });
 
+// Opening the CRM always asks the server for the page (2026-11-27). GitHub Pages lets a phone keep
+// the start page for 10 minutes; opening from the home-screen icon in that time ran the old version
+// after a deploy (Mahvish: the refresh bar came and went in a second, still the old version).
+// "no-store" skips that saved copy. With no internet: the offline page, as before.
 self.addEventListener('fetch', event => {
     if (event.request.mode !== 'navigate') return;
-    event.respondWith(fetch(event.request).catch(() => caches.match('offline.html')));
+    event.respondWith(fetch(new Request(event.request, { cache: 'no-store' })).catch(() => caches.match('offline.html')));
 });
