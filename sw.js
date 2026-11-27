@@ -23,5 +23,8 @@ self.addEventListener('activate', event => {
 // "no-store" skips that saved copy. With no internet: the offline page, as before.
 self.addEventListener('fetch', event => {
     if (event.request.mode !== 'navigate') return;
-    event.respondWith(fetch(new Request(event.request, { cache: 'no-store' })).catch(() => caches.match('offline.html')));
+    // Older phone browsers cannot build that request (audit 2026-11-27, finding 11): then a normal load.
+    let fresh;
+    try { fresh = new Request(event.request, { cache: 'no-store' }); } catch { fresh = event.request; }
+    event.respondWith(fetch(fresh).catch(() => caches.match('offline.html')));
 });
